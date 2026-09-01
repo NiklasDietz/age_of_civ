@@ -2319,8 +2319,8 @@ void despecklePlateOwnership(SphereField& field) {
     // A cell whose north and south neighbours agree with each other but not
     // with it is such a fringe, and adopts them. Jacobi (read `src`, write
     // `dst`) so the result cannot depend on traversal or thread order.
-    constexpr int32_t LON = SphereField::LON_CELLS;
-    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    constexpr int32_t LON     = SphereField::LON_CELLS;
+    constexpr int32_t LAT     = SphereField::LAT_CELLS;
     std::vector<int16_t> next = field.plateId;
     for (int32_t j = 1; j < LAT - 1; ++j) {
         for (int32_t i = 0; i < LON; ++i) {
@@ -2372,21 +2372,23 @@ void seedTerranesFromRaster(const SphereField& field, std::vector<Terrane>& terr
         std::vector<uint8_t> nextMask(mask);
         for (int32_t j = 0; j < LAT; ++j) {
             for (int32_t i = 0; i < LON; ++i) {
-                const std::size_t idx = SphereField::cellIndex(i, j);
-                const int32_t iW = (i == 0) ? LON - 1 : i - 1;
-                const int32_t iE = (i == LON - 1) ? 0 : i + 1;
+                const std::size_t idx   = SphereField::cellIndex(i, j);
+                const int32_t iW        = (i == 0) ? LON - 1 : i - 1;
+                const int32_t iE        = (i == LON - 1) ? 0 : i + 1;
                 const std::size_t nb[4] = {SphereField::cellIndex(iW, j),
                                            SphereField::cellIndex(iE, j),
                                            SphereField::cellIndex(i, std::max(0, j - 1)),
                                            SphereField::cellIndex(i, std::min(LAT - 1, j + 1))};
-                int32_t on = 0;
+                int32_t on              = 0;
                 for (const std::size_t n : nb) {
                     on += mask[n] ? 1 : 0;
                 }
                 // Strict majority in either direction; a 2-2 split holds, so
                 // the filter cannot oscillate and is idempotent at convergence.
-                if (on >= 3) nextMask[idx] = 1u;
-                else if (on <= 1) nextMask[idx] = 0u;
+                if (on >= 3)
+                    nextMask[idx] = 1u;
+                else if (on <= 1)
+                    nextMask[idx] = 0u;
             }
         }
         mask.swap(nextMask);
@@ -2414,14 +2416,15 @@ void seedTerranesFromRaster(const SphereField& field, std::vector<Terrane>& terr
                     field.crustThicknessKm[static_cast<std::size_t>(cur)];
                 body.ageMy[static_cast<std::size_t>(cur)] =
                     field.crustAgeMy[static_cast<std::size_t>(cur)];
-                const int32_t j = cur / LON;
-                const int32_t i = cur % LON;
-                const int32_t iW = (i == 0) ? LON - 1 : i - 1;
-                const int32_t iE = (i == LON - 1) ? 0 : i + 1;
-                const int32_t nb[4] = {static_cast<int32_t>(SphereField::cellIndex(iW, j)),
-                                       static_cast<int32_t>(SphereField::cellIndex(iE, j)),
-                                       static_cast<int32_t>(SphereField::cellIndex(i, std::max(0, j - 1))),
-                                       static_cast<int32_t>(SphereField::cellIndex(i, std::min(LAT - 1, j + 1)))};
+                const int32_t j     = cur / LON;
+                const int32_t i     = cur % LON;
+                const int32_t iW    = (i == 0) ? LON - 1 : i - 1;
+                const int32_t iE    = (i == LON - 1) ? 0 : i + 1;
+                const int32_t nb[4] = {
+                    static_cast<int32_t>(SphereField::cellIndex(iW, j)),
+                    static_cast<int32_t>(SphereField::cellIndex(iE, j)),
+                    static_cast<int32_t>(SphereField::cellIndex(i, std::max(0, j - 1))),
+                    static_cast<int32_t>(SphereField::cellIndex(i, std::min(LAT - 1, j + 1)))};
                 for (const int32_t n : nb) {
                     if (n == cur || seen[static_cast<std::size_t>(n)]) continue;
                     if (!mask[static_cast<std::size_t>(n)]) continue;
@@ -2460,7 +2463,7 @@ void assignTerraneDrift(std::vector<Terrane>& terranes, float totalMy) {
     // an ocean between blocks that start ~50 deg apart -- and lands at
     // ~0.017 deg/My, comfortably inside the 0.005-0.30 deg/My envelope drawn
     // from the Muller 2022 reconstruction for real plates.
-    constexpr int32_t LON     = SphereField::LON_CELLS;
+    constexpr int32_t LON      = SphereField::LON_CELLS;
     constexpr float SPREAD_DEG = 50.0f;
     if (terranes.empty() || totalMy <= 0.0f) return;
 
@@ -2508,11 +2511,11 @@ void assignTerraneDrift(std::vector<Terrane>& terranes, float totalMy) {
             axis          = Vec3{std::cos(a), std::sin(a), 0.0f};
             alen          = 1.0f;
         }
-        axis = Vec3{axis.x / alen, axis.y / alen, axis.z / alen};
-        const LatLon pole      = vec3ToLatLon(axis);
-        t.driftPoleLatDeg      = pole.latDeg;
-        t.driftPoleLonDeg      = pole.lonDeg;
-        t.driftRateDegPerMy    = SPREAD_DEG / totalMy;
+        axis                = Vec3{axis.x / alen, axis.y / alen, axis.z / alen};
+        const LatLon pole   = vec3ToLatLon(axis);
+        t.driftPoleLatDeg   = pole.latDeg;
+        t.driftPoleLonDeg   = pole.lonDeg;
+        t.driftRateDegPerMy = SPREAD_DEG / totalMy;
     }
 }
 
@@ -2556,7 +2559,7 @@ void bakeTerranesToRaster(SphereField& field, const std::vector<Terrane>& terran
     for (int32_t j = 0; j < LAT; ++j) {
         const float latDeg = -90.0f + (static_cast<float>(j) + 0.5f) * SphereField::CELL_DEG;
         for (int32_t i = 0; i < LON; ++i) {
-            const float lonDeg    = -180.0f + (static_cast<float>(i) + 0.5f) * SphereField::CELL_DEG;
+            const float lonDeg = -180.0f + (static_cast<float>(i) + 0.5f) * SphereField::CELL_DEG;
             const std::size_t idx = SphereField::cellIndex(i, j);
             // SUPERSAMPLED membership -- five sub-positions, majority vote.
             //
@@ -2576,7 +2579,7 @@ void bakeTerranesToRaster(SphereField& field, const std::vector<Terrane>& terran
             // resolution this metric can distinguish -- the supersampling is
             // kept because it removes a visible artefact, not because 33 beats
             // 29 significantly.
-            constexpr float Q = 0.25f * SphereField::CELL_DEG;
+            constexpr float Q    = 0.25f * SphereField::CELL_DEG;
             const LatLon subs[5] = {{latDeg, lonDeg},
                                     {latDeg - Q, lonDeg - Q},
                                     {latDeg - Q, lonDeg + Q},
@@ -2598,10 +2601,10 @@ void bakeTerranesToRaster(SphereField& field, const std::vector<Terrane>& terran
                     if (body.terraneId[bidx] == t.id) ++hits;
                 }
                 if (hits < 3) continue;
-                newFrac[idx]  = 1.0f;
-                newCrust[idx] = body.crustKm[centreBidx] > 0.0f
-                                    ? body.crustKm[centreBidx]
-                                    : PhysicsConstants::refContinentalThicknessKm;
+                newFrac[idx]    = 1.0f;
+                newCrust[idx]   = body.crustKm[centreBidx] > 0.0f
+                                      ? body.crustKm[centreBidx]
+                                      : PhysicsConstants::refContinentalThicknessKm;
                 newTerrane[idx] = t.id;
                 break; // first terrane wins an overlap; welding resolves it
             }
@@ -2642,10 +2645,10 @@ void writebackTerraneCrust(const SphereField& field, std::vector<Terrane>& terra
             if (tid < 0 || static_cast<std::size_t>(tid) >= terranes.size()) continue;
             const Terrane& t = terranes[static_cast<std::size_t>(tid)];
             if (!t.alive) continue;
-            const float lonDeg     = -180.0f + (static_cast<float>(i) + 0.5f) * SphereField::CELL_DEG;
-            const Vec3 b           = applyRotT(t.rot, latLonToVec3(LatLon{latDeg, lonDeg}));
-            const LatLon bl        = vec3ToLatLon(b);
-            const auto bc          = SphereField::locate(bl.latDeg, bl.lonDeg);
+            const float lonDeg = -180.0f + (static_cast<float>(i) + 0.5f) * SphereField::CELL_DEG;
+            const Vec3 b       = applyRotT(t.rot, latLonToVec3(LatLon{latDeg, lonDeg}));
+            const LatLon bl    = vec3ToLatLon(b);
+            const auto bc      = SphereField::locate(bl.latDeg, bl.lonDeg);
             const std::size_t bidx = SphereField::cellIndex(bc.lonIdx, bc.latIdx);
             if (body.terraneId[bidx] != tid) continue;
             body.crustKm[bidx] = field.crustThicknessKm[idx];
@@ -2682,12 +2685,12 @@ void writebackTerraneCrust(const SphereField& field, std::vector<Terrane>& terra
             const std::size_t idx = SphereField::cellIndex(i, j);
             if (field.terraneId[idx] >= 0) continue;
             if (field.continentalFraction[idx] < 0.5f) continue;
-            const int32_t iW = (i == 0) ? LON - 1 : i - 1;
-            const int32_t iE = (i == LON - 1) ? 0 : i + 1;
+            const int32_t iW        = (i == 0) ? LON - 1 : i - 1;
+            const int32_t iE        = (i == LON - 1) ? 0 : i + 1;
             const std::size_t nb[4] = {SphereField::cellIndex(iW, j), SphereField::cellIndex(iE, j),
                                        SphereField::cellIndex(i, std::max(0, j - 1)),
                                        SphereField::cellIndex(i, std::min(LAT - 1, j + 1))};
-            int16_t host = -1;
+            int16_t host            = -1;
             for (const std::size_t n : nb) {
                 if (field.terraneId[n] >= 0) {
                     host = field.terraneId[n];
@@ -2697,10 +2700,10 @@ void writebackTerraneCrust(const SphereField& field, std::vector<Terrane>& terra
             if (host < 0 || static_cast<std::size_t>(host) >= terranes.size()) continue;
             Terrane& t = terranes[static_cast<std::size_t>(host)];
             if (!t.alive) continue;
-            const float lonDeg     = -180.0f + (static_cast<float>(i) + 0.5f) * SphereField::CELL_DEG;
-            const Vec3 b           = applyRotT(t.rot, latLonToVec3(LatLon{latDeg, lonDeg}));
-            const LatLon bl        = vec3ToLatLon(b);
-            const auto bc          = SphereField::locate(bl.latDeg, bl.lonDeg);
+            const float lonDeg = -180.0f + (static_cast<float>(i) + 0.5f) * SphereField::CELL_DEG;
+            const Vec3 b       = applyRotT(t.rot, latLonToVec3(LatLon{latDeg, lonDeg}));
+            const LatLon bl    = vec3ToLatLon(b);
+            const auto bc      = SphereField::locate(bl.latDeg, bl.lonDeg);
             const std::size_t bidx = SphereField::cellIndex(bc.lonIdx, bc.latIdx);
             if (body.terraneId[bidx] >= 0) continue; // body cell already taken
             body.terraneId[bidx] = host;
@@ -2878,6 +2881,8 @@ void applySubduction(SphereField& field, const std::vector<Plate>& plates, float
         field.continentalFraction[i] = 0.0f;
         field.crustAgeMy[i]          = 0.0f;
         field.sutureContactMy[i]     = 0.0f;
+        // L10 sediment sink: recycle sediment at subduction zones.
+        if (!field.sedimentThicknessKm.empty()) field.sedimentThicknessKm[i] = 0.0f;
         frontier.push_back(i);
     }
     while (!frontier.empty()) {
@@ -2917,10 +2922,11 @@ void applySubduction(SphereField& field, const std::vector<Plate>& plates, float
             field.continentalFraction[n] = 0.0f;
             field.crustAgeMy[n]          = 0.0f;
             field.sutureContactMy[n]     = 0.0f;
-            peelBudget[n]                = candBudget[n];
-            peelOwner[n]                 = candOwner[n];
-            peelConsumed[n]              = candConsumed[n];
-            candBudget[n]                = -1;
+            if (!field.sedimentThicknessKm.empty()) field.sedimentThicknessKm[n] = 0.0f;
+            peelBudget[n]   = candBudget[n];
+            peelOwner[n]    = candOwner[n];
+            peelConsumed[n] = candConsumed[n];
+            candBudget[n]   = -1;
             frontier.push_back(n);
         }
     }
@@ -3206,13 +3212,13 @@ void recomputeOceanicCrustAge(SphereField& field) {
     // CONTINENTAL CRUST IS NOT TOUCHED. Its age is a basement age with entirely
     // different meaning (billions of years, and read by the resource geology),
     // and nothing here should overwrite it.
-    constexpr int32_t LON              = SphereField::LON_CELLS;
-    constexpr int32_t LAT              = SphereField::LAT_CELLS;
-    constexpr float HALF_SPREAD_KM_MY  = 35.0f;
+    constexpr int32_t LON               = SphereField::LON_CELLS;
+    constexpr int32_t LAT               = SphereField::LAT_CELLS;
+    constexpr float HALF_SPREAD_KM_MY   = 35.0f;
     constexpr float MAX_SEAFLOOR_AGE_MY = 200.0f;
-    constexpr float OCEANIC_GATE       = 0.5f;
-    constexpr float CELL_RAD           = SphereField::CELL_DEG * 0.01745329252f;
-    const float cellHeightKm           = PhysicsConstants::earthRadiusKm * CELL_RAD;
+    constexpr float OCEANIC_GATE        = 0.5f;
+    constexpr float CELL_RAD            = SphereField::CELL_DEG * 0.01745329252f;
+    const float cellHeightKm            = PhysicsConstants::earthRadiusKm * CELL_RAD;
     // Distance beyond which the age is clamped anyway; the search stops there
     // so an ocean with no ridge at all does not sweep the whole raster.
     const float maxDistKm = HALF_SPREAD_KM_MY * MAX_SEAFLOOR_AGE_MY;
@@ -3243,11 +3249,11 @@ void recomputeOceanicCrustAge(SphereField& field) {
         const int32_t i = static_cast<int32_t>(idx) % LON;
         const float cellWidthKm =
             cellHeightKm *
-            std::max(0.05f, std::cos((-90.0f + (static_cast<float>(j) + 0.5f) *
-                                                   SphereField::CELL_DEG) *
-                                     0.01745329252f));
-        const int32_t iW = (i == 0) ? LON - 1 : i - 1;
-        const int32_t iE = (i == LON - 1) ? 0 : i + 1;
+            std::max(0.05f,
+                     std::cos((-90.0f + (static_cast<float>(j) + 0.5f) * SphereField::CELL_DEG) *
+                              0.01745329252f));
+        const int32_t iW                            = (i == 0) ? LON - 1 : i - 1;
+        const int32_t iE                            = (i == LON - 1) ? 0 : i + 1;
         const std::pair<std::size_t, float> nbrs[4] = {
             {SphereField::cellIndex(iW, j), cellWidthKm},
             {SphereField::cellIndex(iE, j), cellWidthKm},
@@ -3270,9 +3276,9 @@ void recomputeOceanicCrustAge(SphereField& field) {
         const float d = dist[idx];
         // Ocean with no reachable ridge is old crust, not new: clamp, do not
         // zero. Zeroing would make every ridgeless basin a shallow young sea.
-        const float age = (d == std::numeric_limits<float>::max())
-                              ? MAX_SEAFLOOR_AGE_MY
-                              : std::min(MAX_SEAFLOOR_AGE_MY, d / HALF_SPREAD_KM_MY);
+        const float age       = (d == std::numeric_limits<float>::max())
+                                    ? MAX_SEAFLOOR_AGE_MY
+                                    : std::min(MAX_SEAFLOOR_AGE_MY, d / HALF_SPREAD_KM_MY);
         field.crustAgeMy[idx] = age;
     }
 }
@@ -3331,9 +3337,9 @@ void applyContinentalMarginProfile(SphereField& field) {
     // 50-500 km (Shepard 1963 mean shelf width 78 km; slope 20-80 km), so this
     // is at the wide end -- deliberately, because the hex sampler strides ~286
     // km and a narrower ramp would fall entirely between two tiles.
-    constexpr int32_t LON       = SphereField::LON_CELLS;
-    constexpr int32_t LAT       = SphereField::LAT_CELLS;
-    constexpr float CONT_GATE   = 0.5f;
+    constexpr int32_t LON     = SphereField::LON_CELLS;
+    constexpr int32_t LAT     = SphereField::LAT_CELLS;
+    constexpr float CONT_GATE = 0.5f;
     // The shoreline sits at a FIXED DISTANCE inside the crust outline, and the
     // elevation ramps linearly through it. That makes land a morphological
     // erosion of the crust mask -- a shape operation -- rather than a threshold
@@ -3436,10 +3442,10 @@ void applyContinentalMarginProfile(SphereField& field) {
                     const int32_t cur = stack.back();
                     stack.pop_back();
                     ++n;
-                    const int32_t cj = cur / LON;
-                    const int32_t ci = cur % LON;
-                    const int32_t iW = (ci == 0) ? LON - 1 : ci - 1;
-                    const int32_t iE = (ci == LON - 1) ? 0 : ci + 1;
+                    const int32_t cj        = cur / LON;
+                    const int32_t ci        = cur % LON;
+                    const int32_t iW        = (ci == 0) ? LON - 1 : ci - 1;
+                    const int32_t iE        = (ci == LON - 1) ? 0 : ci + 1;
                     const std::size_t nb[4] = {
                         SphereField::cellIndex(iW, cj), SphereField::cellIndex(iE, cj),
                         SphereField::cellIndex(ci, std::max(0, cj - 1)),
@@ -3473,14 +3479,13 @@ void applyContinentalMarginProfile(SphereField& field) {
         for (int32_t i = 0; i < LON; ++i) {
             const std::size_t idx = SphereField::cellIndex(i, j);
             if (field.continentalFraction[idx] < CONT_GATE) continue;
-            const int32_t iW = (i == 0) ? LON - 1 : i - 1;
-            const int32_t iE = (i == LON - 1) ? 0 : i + 1;
+            const int32_t iW        = (i == 0) ? LON - 1 : i - 1;
+            const int32_t iE        = (i == LON - 1) ? 0 : i + 1;
             const std::size_t nb[4] = {SphereField::cellIndex(iW, j), SphereField::cellIndex(iE, j),
                                        SphereField::cellIndex(i, std::max(0, j - 1)),
                                        SphereField::cellIndex(i, std::min(LAT - 1, j + 1))};
             for (const std::size_t n : nb) {
-                if (field.continentalFraction[n] < CONT_GATE &&
-                    oceanComp[n] == worldOcean) {
+                if (field.continentalFraction[n] < CONT_GATE && oceanComp[n] == worldOcean) {
                     dist[idx] = 0;
                     queue.push_back(static_cast<int32_t>(idx));
                     break;
@@ -3489,11 +3494,11 @@ void applyContinentalMarginProfile(SphereField& field) {
         }
     }
     for (std::size_t head = 0; head < queue.size(); ++head) {
-        const int32_t cur = queue[head];
-        const int32_t j   = cur / LON;
-        const int32_t i   = cur % LON;
-        const int32_t iW  = (i == 0) ? LON - 1 : i - 1;
-        const int32_t iE  = (i == LON - 1) ? 0 : i + 1;
+        const int32_t cur       = queue[head];
+        const int32_t j         = cur / LON;
+        const int32_t i         = cur % LON;
+        const int32_t iW        = (i == 0) ? LON - 1 : i - 1;
+        const int32_t iE        = (i == LON - 1) ? 0 : i + 1;
         const std::size_t nb[4] = {SphereField::cellIndex(iW, j), SphereField::cellIndex(iE, j),
                                    SphereField::cellIndex(i, std::max(0, j - 1)),
                                    SphereField::cellIndex(i, std::min(LAT - 1, j + 1))};
@@ -3515,8 +3520,7 @@ void applyContinentalMarginProfile(SphereField& field) {
         // continental crust entirely enclosed by an inland sea. That is deep
         // interior, so it takes the full platform rather than being skipped
         // and left with whatever the isostatic law happened to give it.
-        const float d = (dist[idx] < 0) ? (SHORE_CELLS + RAMP_HALF)
-                                        : static_cast<float>(dist[idx]);
+        const float d = (dist[idx] < 0) ? (SHORE_CELLS + RAMP_HALF) : static_cast<float>(dist[idx]);
         // Signed distance from the shoreline: positive inland, negative drowned.
         const float s = d - SHORE_CELLS;
         float profile;
@@ -3525,8 +3529,8 @@ void applyContinentalMarginProfile(SphereField& field) {
         } else if (-s <= SHELF_CELLS) {
             profile = -SHELF_BREAK_M * (-s / SHELF_CELLS);
         } else {
-            const float t = std::min(1.0f, (-s - SHELF_CELLS) /
-                                               std::max(1.0f, SHORE_CELLS - SHELF_CELLS));
+            const float t =
+                std::min(1.0f, (-s - SHELF_CELLS) / std::max(1.0f, SHORE_CELLS - SHELF_CELLS));
             profile = -SHELF_BREAK_M - (SLOPE_FOOT_M - SHELF_BREAK_M) * t;
         }
         // Orogenic roots ride on top, so mountain belts stand where their crust
@@ -3591,7 +3595,7 @@ void applyContinentalMarginProfile(SphereField& field) {
         // One field is doing two jobs and no setting of it serves both; giving
         // the coastline its roughness back needs a separate source of
         // short-wavelength relief, not another setting of this one.
-        const float relief = (s >= 0.0f) ? root : std::max(0.0f, root * rootW);
+        const float relief           = (s >= 0.0f) ? root : std::max(0.0f, root * rootW);
         field.surfaceElevationM[idx] = relief + profile;
     }
 }
@@ -3613,9 +3617,9 @@ void solveContinentalFreeboard(SphereField& field) {
     // SERIAL fixed-order summation, for the same reason the old solve was:
     // an OpenMP float reduction is thread-count dependent and breaks
     // test_determinism and the portable golden preset.
-    constexpr int32_t LON      = SphereField::LON_CELLS;
-    constexpr int32_t LAT      = SphereField::LAT_CELLS;
-    constexpr float TARGET     = 0.292f;
+    constexpr int32_t LON  = SphereField::LON_CELLS;
+    constexpr int32_t LAT  = SphereField::LAT_CELLS;
+    constexpr float TARGET = 0.292f;
     // Physical bound on freeboard. Earth's is ~840 m of mean land elevation
     // over ~40 km of crust; +-1500 m brackets any plausible planet and stops a
     // crust-starved early epoch (continental area ~8 % at epoch 1, where 29.2 %
@@ -3629,8 +3633,8 @@ void solveContinentalFreeboard(SphereField& field) {
     // remove. Land fraction is consequently a geometric OUTPUT -- crust area
     // minus the drowned rim -- and is tuned by the seeded stock and the ramp,
     // not by this solve.
-    constexpr float FB_MIN     = -200.0f;
-    constexpr float FB_MAX     = 200.0f;
+    constexpr float FB_MIN = -200.0f;
+    constexpr float FB_MAX = 200.0f;
 
     field.seaLevelM = 0.0f;
 
@@ -3651,7 +3655,7 @@ void solveContinentalFreeboard(SphereField& field) {
             double row     = 0.0;
             for (int32_t i = 0; i < LON; ++i) {
                 const std::size_t idx = SphereField::cellIndex(i, j);
-                const float base      = field.surfaceElevationM[idx] -
+                const float base = field.surfaceElevationM[idx] -
                                    field.continentalFreeboardM * field.continentalFraction[idx];
                 if (base + fb * field.continentalFraction[idx] > 0.0f) row += 1.0;
             }
@@ -3774,17 +3778,41 @@ void solveSeaLevelFixedVolume(SphereField& field) {
 // the slope-only law it replaces. Measured with AOC_DUMP_EROSION: the point of
 // L9b is to move erosion into channels, not to erode more.
 inline constexpr float STREAM_GAIN = 1.20f;
-static const bool kDumpErosion = std::getenv("AOC_DUMP_EROSION") != nullptr;
-static double gErodedRockM     = 0.0;
-static std::size_t gErodedCells = 0;
+static const bool kDumpErosion     = std::getenv("AOC_DUMP_EROSION") != nullptr;
+static double gErodedRockM         = 0.0;
+static std::size_t gErodedCells    = 0;
+
+// L10 sediment routing constants.
+// Airy ratio for sediment: km of surface elevation per km of sediment pile.
+// rho_sed ≈ 2016 kg/m3 → (3300 - 2016) / 3300 = 0.389 ≈ 0.39.
+// Matches the plan-calibrated value from the L10 second attempt.
+inline constexpr float SEDIMENT_BUOYANCY = 0.39f;
+// Maximum sediment pile in km. Earth's passive margins carry 3-10 km;
+// 5 km caps pathological stacks while allowing a real shelf prism to develop.
+inline constexpr float MAX_SEDIMENT_KM = 5.0f;
+// Fraction of available water-column accommodation filled per epoch.
+// 0.05 lets slope cells converge toward shelf depth over ~60 epochs
+// (H_n = 0.95^n H_0; residual after 60 epochs ≈ 5 % of initial depth)
+// while preventing single-step overfill at any starting depth.
+inline constexpr float SEDIMENT_ACCOMMODATION_FRAC = 0.05f;
+// Minimum water depth (m, negative) for deposition.  Cells shallower
+// than this are the geometric shelf terrace produced by
+// applyContinentalMarginProfile; depositing there would raise them
+// above sea level and collapse the shelf gate.  Sediment builds the
+// shelf by filling the continental SLOPE upward into the shelf band.
+inline constexpr float SEDIMENT_MIN_DEPTH_M = -90.0f;
+// Ring-fan half-radius (cells) for river-mouth spreading.
+// 5 cells × 0.5 deg ≈ 280 km, continental-shelf scale.
+inline constexpr int32_t SEDIMENT_FAN_RADIUS = 5;
+// Hard cap on fan cells per mouth to bound the O(r²) ring scan.
+inline constexpr int32_t SEDIMENT_FAN_MAX_CELLS = 96;
 
 void reportErosionTotals() {
     if (!kDumpErosion) return;
     std::fprintf(stderr,
                  "[erosion] total rock removed %.6g m-cells over %zu cell-steps "
                  "(mean %.4g m per eroding cell-step)\n",
-                 gErodedRockM, gErodedCells,
-                 gErodedRockM / std::max<std::size_t>(1, gErodedCells));
+                 gErodedRockM, gErodedCells, gErodedRockM / std::max<std::size_t>(1, gErodedCells));
 }
 
 void computeDrainage(const SphereField& field, std::vector<int32_t>& receiver,
@@ -3843,8 +3871,8 @@ void computeDrainage(const SphereField& field, std::vector<int32_t>& receiver,
         const int32_t cur = top.second;
         if (done[static_cast<std::size_t>(cur)]) continue;
         done[static_cast<std::size_t>(cur)] = 1u;
-        const int32_t j = cur / LON;
-        const int32_t i = cur % LON;
+        const int32_t j                     = cur / LON;
+        const int32_t i                     = cur % LON;
         for (int32_t dj = -1; dj <= 1; ++dj) {
             const int32_t nj = j + dj;
             if (nj < 0 || nj >= LAT) continue;
@@ -3883,12 +3911,12 @@ void computeDrainage(const SphereField& field, std::vector<int32_t>& receiver,
     // D8 receiver on the filled surface: steepest descent by true metric
     // gradient, not by height difference alone.
     for (int32_t j = 0; j < LAT; ++j) {
-        const float wKm = widthKm[static_cast<std::size_t>(j)];
+        const float wKm    = widthKm[static_cast<std::size_t>(j)];
         const float diagKm = std::sqrt(wKm * wKm + cellHeightKm * cellHeightKm);
         for (int32_t i = 0; i < LON; ++i) {
             const std::size_t idx = SphereField::cellIndex(i, j);
-            if (field.surfaceElevationM[idx] < 0.0f) continue;   // ocean: an outlet
-            if (zf[idx] == INF) continue;                        // never reached
+            if (field.surfaceElevationM[idx] < 0.0f) continue; // ocean: an outlet
+            if (zf[idx] == INF) continue;                      // never reached
             float bestSlope = 0.0f;
             int32_t best    = -1;
             for (int32_t dj = -1; dj <= 1; ++dj) {
@@ -3901,8 +3929,7 @@ void computeDrainage(const SphereField& field, std::vector<int32_t>& receiver,
                     if (zf[nIdx] == INF) continue;
                     const float drop = zf[idx] - zf[nIdx];
                     if (drop <= 0.0f) continue;
-                    const float dist =
-                        (di == 0) ? cellHeightKm : ((dj == 0) ? wKm : diagKm);
+                    const float dist  = (di == 0) ? cellHeightKm : ((dj == 0) ? wKm : diagKm);
                     const float slope = drop / dist;
                     // Strict >, then lowest index, so equal slopes resolve the
                     // same way every run.
@@ -3944,7 +3971,7 @@ void computeDrainage(const SphereField& field, std::vector<int32_t>& receiver,
             if (field.surfaceElevationM[i] < 0.0f) continue;
             ++landCells;
             landKm2 += areaKm2[static_cast<std::size_t>(i / LON)];
-            maxA = std::max(maxA, static_cast<double>(drainageAreaKm2[i]));
+            maxA            = std::max(maxA, static_cast<double>(drainageAreaKm2[i]));
             const int32_t r = receiver[i];
             if (r < 0) {
                 ++sinks;
@@ -3960,24 +3987,24 @@ void computeDrainage(const SphereField& field, std::vector<int32_t>& receiver,
         }
         std::sort(as.begin(), as.end());
         const auto pct = [&](double p) {
-            return as.empty() ? 0.0f
-                              : as[std::min(as.size() - 1,
-                                            static_cast<std::size_t>(p * (as.size() - 1)))];
+            return as.empty()
+                       ? 0.0f
+                       : as[std::min(as.size() - 1, static_cast<std::size_t>(p * (as.size() - 1)))];
         };
         std::fprintf(stderr,
                      "[drainage] land=%zu cells (%.3g Mkm2) mouths=%zu sinks=%zu\n"
                      "[drainage] area km2: p50=%.4g p90=%.4g p99=%.4g max=%.4g "
                      "(largest basin %.2f%% of land)\n"
                      "[drainage] largest basin reaching the sea: %.4g km2\n",
-                     landCells, landKm2 * 1e-6, mouths, sinks,
-                     static_cast<double>(pct(0.50)), static_cast<double>(pct(0.90)),
-                     static_cast<double>(pct(0.99)), maxA,
+                     landCells, landKm2 * 1e-6, mouths, sinks, static_cast<double>(pct(0.50)),
+                     static_cast<double>(pct(0.90)), static_cast<double>(pct(0.99)), maxA,
                      100.0 * maxA / std::max(1.0, landKm2), mouthMax);
     }
 }
 
 void applySurfaceErosionOnRaster(SphereField& field, float dtMy,
-                                 const std::vector<float>& drainageAreaKm2) {
+                                 const std::vector<float>& drainageAreaKm2,
+                                 std::vector<float>* erodedVolKm3) {
     // Metres of crust that must be removed per metre of surface lowering.
     // Derived as the INVERSE of the elevation law's own slope rather than
     // recomputed from the densities, so the two cannot drift: erosion and
@@ -4003,6 +4030,14 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy,
     constexpr float CELL_RAD = SphereField::CELL_DEG * 0.01745329252f;
     const float earthRadiusM = PhysicsConstants::earthRadiusKm * 1000.0f;
     const float cellHeightM  = earthRadiusM * CELL_RAD;
+    // L10 slope exclusion: when sediment exists, subtract its elevation
+    // contribution from neighbour samples before computing gradients so the
+    // sediment→slope→erosion feedback cannot run away (the sediment-modified
+    // surface builds the shelf but does not steepen the river-incision rate).
+    const bool hasSediment = !field.sedimentThicknessKm.empty();
+    // L10 eroded-volume output: initialise to zero if the caller wants it.
+    const std::size_t N = SphereField::CELL_COUNT;
+    if (erodedVolKm3 != nullptr) erodedVolKm3->assign(N, 0.0f);
 #if defined(AOC_HAS_OPENMP)
 #pragma omp parallel for schedule(static)
 #endif
@@ -4084,9 +4119,9 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy,
             // (the reason the floor exists, documented above); trunk streams
             // grade to the sea.
             constexpr float PENEPLAIN_M    = 150.0f;
-            constexpr float CHANNEL_A0_KM2 = 1.0e4f;   // hillslope
-            constexpr float CHANNEL_A1_KM2 = 1.0e6f;   // trunk river
-            float channelW = 0.0f;
+            constexpr float CHANNEL_A0_KM2 = 1.0e4f; // hillslope
+            constexpr float CHANNEL_A1_KM2 = 1.0e6f; // trunk river
+            float channelW                 = 0.0f;
             if (!drainageAreaKm2.empty()) {
                 const float a = std::max(1.0f, drainageAreaKm2[idx]);
                 channelW = std::clamp((std::log10(a) - std::log10(CHANNEL_A0_KM2)) /
@@ -4116,14 +4151,24 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy,
             const float sea    = field.seaLevelM;
             const int32_t lonW = (lonIdx == 0) ? LON - 1 : lonIdx - 1;
             const int32_t lonE = (lonIdx == LON - 1) ? 0 : lonIdx + 1;
-            const float zW =
-                std::max(sea, field.surfaceElevationM[SphereField::cellIndex(lonW, latIdx)]);
-            const float zE =
-                std::max(sea, field.surfaceElevationM[SphereField::cellIndex(lonE, latIdx)]);
-            const float zS =
-                std::max(sea, field.surfaceElevationM[SphereField::cellIndex(lonIdx, latS)]);
-            const float zN =
-                std::max(sea, field.surfaceElevationM[SphereField::cellIndex(lonIdx, latN)]);
+            // L10 slope exclusion: subtract sediment elevation from each
+            // neighbour so the erosion law sees the BEDROCK surface. Without
+            // this, sediment deposited on the shelf steepens coastal gradients
+            // and drives a positive feedback (more sediment → steeper slope →
+            // more erosion → more sediment) that caused the second L10 attempt
+            // to run away (denudation 2.5x, piles 24-30 km). The sediment
+            // still contributes to surfaceElevationM for geometry / routing,
+            // just not to the slope that drives the incision rate.
+            const auto bedrockZ = [&](std::size_t nk) -> float {
+                const float elev = field.surfaceElevationM[nk];
+                if (!hasSediment) return std::max(sea, elev);
+                const float sedElev = field.sedimentThicknessKm[nk] * 1000.0f * SEDIMENT_BUOYANCY;
+                return std::max(sea, elev - sedElev);
+            };
+            const float zW    = bedrockZ(SphereField::cellIndex(lonW, latIdx));
+            const float zE    = bedrockZ(SphereField::cellIndex(lonE, latIdx));
+            const float zS    = bedrockZ(SphereField::cellIndex(lonIdx, latS));
+            const float zN    = bedrockZ(SphereField::cellIndex(lonIdx, latN));
             const float dzLon = (zE - zW) / (2.0f * cellWidthM);
             const float dzLat = (zN - zS) / (2.0f * cellHeightM);
             const float slope = std::sqrt(dzLon * dzLon + dzLat * dzLat);
@@ -4165,14 +4210,14 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy,
             // that changes the total would shift every hypsometry gate at once
             // and confound the measurement.
             constexpr float STREAM_M    = 0.5f;
-            constexpr float STREAM_AREF = 1.0e4f;   // km2
+            constexpr float STREAM_AREF = 1.0e4f; // km2
             float dRockM;
             if (drainageAreaKm2.empty()) {
                 dRockM = K_EROSION_M_PER_MY_PER_SLOPE * slope * dtMy;
             } else {
                 const float a = std::max(1.0f, drainageAreaKm2[idx]) / STREAM_AREF;
-                dRockM = K_EROSION_M_PER_MY_PER_SLOPE * STREAM_GAIN *
-                         std::pow(a, STREAM_M) * slope * dtMy;
+                dRockM        = K_EROSION_M_PER_MY_PER_SLOPE * STREAM_GAIN * std::pow(a, STREAM_M) *
+                                slope * dtMy;
             }
             // Cap so one forward-Euler step cannot drive the SURFACE below the
             // peneplain floor; convert that surface allowance back into rock
@@ -4187,6 +4232,113 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy,
                 gErodedRockM += static_cast<double>(dRockM);
                 ++gErodedCells;
             }
+            // L10: record eroded rock volume (km3) for sediment routing.
+            if (erodedVolKm3 != nullptr) {
+                const float cellAreaKm2 = (cellWidthM * 1e-3f) * (cellHeightM * 1e-3f);
+                (*erodedVolKm3)[idx]    = dRockM * 1e-3f * cellAreaKm2;
+            }
+        }
+    }
+}
+
+void routeSediment(SphereField& field, const std::vector<int32_t>& receiver,
+                   const std::vector<int32_t>& order, const std::vector<float>& erodedVolKm3) {
+    // Carry eroded rock volumes (km3 per cell) downstream to river mouths and
+    // deposit as sediment on the continental shelf.
+    //
+    // Design:
+    // - Volume transfer: each eroding cell contributes dRockKm × areaKm2 km3.
+    //   Routing accumulates this so totals are area-conserving regardless of
+    //   cos-lat size variation.
+    // - order is sorted descending by filled elevation (headwaters first),
+    //   same ordering as computeDrainage. Walking front-to-back ensures each
+    //   tributary is summed before propagating onward.
+    // - Deposition at ocean cells directly downstream of a land cell (river
+    //   mouths). Flux is spread over a ring fan (SEDIMENT_FAN_RADIUS, max
+    //   SEDIMENT_FAN_MAX_CELLS cells) in fixed (dj, di) order, shared equally.
+    // - Accommodation cap per fan cell per epoch: at most
+    //   SEDIMENT_ACCOMMODATION_FRAC × water-depth / SEDIMENT_BUOYANCY km of
+    //   sediment, preventing single-step overfill.
+    // - Equilibrium sink: applySubduction zeroes sedimentThicknessKm for
+    //   consumed cells so the pile cannot grow without bound.
+    constexpr int32_t LON    = SphereField::LON_CELLS;
+    constexpr int32_t LAT    = SphereField::LAT_CELLS;
+    constexpr float CELL_RAD = SphereField::CELL_DEG * 0.01745329252f;
+    const float cellHeightKm = PhysicsConstants::earthRadiusKm * CELL_RAD;
+
+    // Per-row cell area in km2.
+    std::vector<float> areaKm2(static_cast<std::size_t>(LAT));
+    for (int32_t j = 0; j < LAT; ++j) {
+        const float latDeg = -90.0f + (static_cast<float>(j) + 0.5f) * SphereField::CELL_DEG;
+        const float c      = std::max(0.02f, std::cos(latDeg * 0.01745329252f));
+        areaKm2[static_cast<std::size_t>(j)] = cellHeightKm * cellHeightKm * c;
+    }
+
+    // Accumulate sediment flux downstream (km3). Start from eroded volumes.
+    const std::size_t N     = SphereField::CELL_COUNT;
+    std::vector<float> flux = erodedVolKm3;
+    if (flux.size() != N) flux.assign(N, 0.0f);
+    for (const int32_t k : order) {
+        const int32_t r = receiver[static_cast<std::size_t>(k)];
+        if (r < 0) continue;
+        flux[static_cast<std::size_t>(r)] += flux[static_cast<std::size_t>(k)];
+    }
+
+    // Deposit at river mouths (land cell whose direct receiver is ocean).
+    struct FanCell {
+        std::size_t idx;
+        float maxVolKm3;
+    };
+    std::vector<FanCell> fan;
+    fan.reserve(static_cast<std::size_t>(SEDIMENT_FAN_MAX_CELLS));
+
+    for (const int32_t k : order) {
+        if (field.surfaceElevationM[static_cast<std::size_t>(k)] < 0.0f) continue;
+        const int32_t r = receiver[static_cast<std::size_t>(k)];
+        if (r < 0) continue;
+        if (field.surfaceElevationM[static_cast<std::size_t>(r)] >= 0.0f) continue;
+        const float vol = flux[static_cast<std::size_t>(k)];
+        if (vol <= 0.0f) continue;
+
+        // Scan ocean cells in the ring fan around the mouth cell.
+        const int32_t mLon = static_cast<int32_t>(static_cast<std::size_t>(r) % LON);
+        const int32_t mLat = static_cast<int32_t>(static_cast<std::size_t>(r) / LON);
+        const int32_t R2   = SEDIMENT_FAN_RADIUS * SEDIMENT_FAN_RADIUS;
+        fan.clear();
+        for (int32_t dj = -SEDIMENT_FAN_RADIUS;
+             dj <= SEDIMENT_FAN_RADIUS && static_cast<int32_t>(fan.size()) < SEDIMENT_FAN_MAX_CELLS;
+             ++dj) {
+            const int32_t nj = mLat + dj;
+            if (nj < 0 || nj >= LAT) continue;
+            for (int32_t di = -SEDIMENT_FAN_RADIUS;
+                 di <= SEDIMENT_FAN_RADIUS &&
+                 static_cast<int32_t>(fan.size()) < SEDIMENT_FAN_MAX_CELLS;
+                 ++di) {
+                if (di * di + dj * dj > R2) continue;
+                const int32_t ni       = (mLon + di + LON) % LON;
+                const std::size_t nIdx = SphereField::cellIndex(ni, nj);
+                if (field.surfaceElevationM[nIdx] > SEDIMENT_MIN_DEPTH_M) continue;
+                const float waterDepthKm = -field.surfaceElevationM[nIdx] * 1e-3f;
+                const float maxAddKm =
+                    SEDIMENT_ACCOMMODATION_FRAC * waterDepthKm / SEDIMENT_BUOYANCY;
+                const float maxFromCap =
+                    std::max(0.0f, MAX_SEDIMENT_KM - field.sedimentThicknessKm[nIdx]);
+                const float avail     = std::min(maxAddKm, maxFromCap);
+                const float maxVolKm3 = avail * areaKm2[static_cast<std::size_t>(nj)];
+                if (maxVolKm3 <= 0.0f) continue;
+                fan.push_back({nIdx, maxVolKm3});
+            }
+        }
+        if (fan.empty()) continue;
+
+        // Distribute flux equally; cap each cell by its accommodation.
+        const float shareKm3 = vol / static_cast<float>(fan.size());
+        for (const FanCell& fc : fan) {
+            const float depositKm3 = std::min(shareKm3, fc.maxVolKm3);
+            const int32_t fj       = static_cast<int32_t>(fc.idx / static_cast<std::size_t>(LON));
+            const float addKm      = depositKm3 / areaKm2[static_cast<std::size_t>(fj)];
+            field.sedimentThicknessKm[fc.idx] =
+                std::min(MAX_SEDIMENT_KM, field.sedimentThicknessKm[fc.idx] + addKm);
         }
     }
 }
@@ -4348,10 +4500,22 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
     recomputeOceanicCrustAge(field);
     recomputeIsostaticElevationOnRaster(field);
     applyContinentalMarginProfile(field);
+    // L10: add sediment elevation AFTER the margin profile overwrites
+    // surfaceElevationM for continental cells. This must run every epoch
+    // because applyContinentalMarginProfile resets the field; the sediment
+    // pile itself persists in sedimentThicknessKm across epochs.
+    // Disabled by AOC_NO_SEDIMENT (same gate as routeSediment below).
+    static const bool kNoSediment = std::getenv("AOC_NO_SEDIMENT") != nullptr;
+    if (!kNoSediment && !field.sedimentThicknessKm.empty()) {
+        for (std::size_t k = 0; k < SphereField::CELL_COUNT; ++k) {
+            field.surfaceElevationM[k] +=
+                field.sedimentThicknessKm[k] * 1000.0f * SEDIMENT_BUOYANCY;
+        }
+    }
     solveContinentalFreeboard(field);
-    // L9b: route, then incise in proportion to discharge. AOC_NO_STREAM_POWER
-    // falls back to the slope-only law, which is what the denudation invariant
-    // is calibrated against.
+    // L9b+L10: route drainage, incise channels, deposit sediment at mouths.
+    // AOC_NO_STREAM_POWER falls back to the slope-only law (L9b disabled).
+    // AOC_NO_SEDIMENT disables routeSediment while keeping L9b active.
     static const bool kNoStreamPower = std::getenv("AOC_NO_STREAM_POWER") != nullptr;
     if (kNoStreamPower) {
         applySurfaceErosionOnRaster(field, dtMy);
@@ -4359,7 +4523,11 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
         std::vector<int32_t> rcv, ord;
         std::vector<float> area;
         computeDrainage(field, rcv, ord, area);
-        applySurfaceErosionOnRaster(field, dtMy, area);
+        std::vector<float> erodedVol;
+        applySurfaceErosionOnRaster(field, dtMy, area, kNoSediment ? nullptr : &erodedVol);
+        if (!kNoSediment && !erodedVol.empty() && !field.sedimentThicknessKm.empty()) {
+            routeSediment(field, rcv, ord, erodedVol);
+        }
     }
     budgetSnap(dErode);
     if (kBudgetTrace) {
@@ -4498,11 +4666,10 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
                      static_cast<double>(dtMy), static_cast<double>(minRate),
                      static_cast<double>(maxRate), static_cast<double>(maxCrust),
                      static_cast<double>(maxZ), static_cast<double>(field.continentalFreeboardM),
-                     mountainCells,
-                     continentalCells, meanContFrac, plates.size(), boundaryCount, btConvergent,
-                     btDivergent, btTransform, fragmentedPlates, maxComponents, contiguityMoved,
-                     static_cast<double>(traceMaxOmegaDeg), static_cast<double>(cflCells),
-                     continentalCrustVolume(field));
+                     mountainCells, continentalCells, meanContFrac, plates.size(), boundaryCount,
+                     btConvergent, btDivergent, btTransform, fragmentedPlates, maxComponents,
+                     contiguityMoved, static_cast<double>(traceMaxOmegaDeg),
+                     static_cast<double>(cflCells), continentalCrustVolume(field));
     }
 }
 

@@ -16,6 +16,7 @@ void SphereField::resize() {
     sutureContactMy.assign(CELL_COUNT, 0.0f);
     stretchFactor.assign(CELL_COUNT, 1.0f);
     terraneId.assign(CELL_COUNT, static_cast<int16_t>(-1));
+    sedimentThicknessKm.assign(CELL_COUNT, 0.0f);
     continentalFreeboardM = 0.0f;
     seaLevelM             = 0.0f;
     boundaryType.assign(CELL_COUNT, static_cast<uint8_t>(0));

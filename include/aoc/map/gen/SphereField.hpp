@@ -126,6 +126,16 @@ struct SphereField {
     // bakeTerranesToRaster; see Terrane.hpp for why continental crust is
     // carried as rigid bodies rather than resampled raster values.
     std::vector<int16_t> terraneId;
+    // Sediment pile accumulated by river deposition, in km. Written by
+    // routeSediment and never reset by bakeTerranesToRaster (the terrane
+    // bake writes crustThicknessKm, not this field). Contributes to
+    // surfaceElevationM after each applyContinentalMarginProfile call but
+    // is excluded from the slope seen by applySurfaceErosionOnRaster
+    // (slope exclusion) so the sediment→slope→erosion feedback cannot run
+    // away. Zeroed for any cell consumed by applySubduction (subduction
+    // sink). Empty until resize() is called (same lifetime as all SoA
+    // fields).
+    std::vector<float> sedimentThicknessKm;
 
     // Sea level in metres above the mantle datum, resolved each epoch
     // by solveSeaLevelFixedVolume: the level at which the world's

@@ -329,7 +329,6 @@ void bakeTerranesToRaster(SphereField& field, const std::vector<Terrane>& terran
 void writebackTerraneCrust(const SphereField& field, std::vector<Terrane>& terranes,
                            TerraneBody& body);
 
-
 /// Share of the sphere's surface covered by continental crust (cells with
 /// `continentalFraction >= 0.5`), cos-latitude weighted. Earth is ~0.41.
 ///
@@ -372,8 +371,19 @@ void reportErosionTotals();
 /// `drainageAreaKm2` comes from computeDrainage and selects the erosion law:
 /// when it is empty the historical slope-only form runs, otherwise stream
 /// power `K (A/Aref)^m S` incises channels in proportion to discharge.
+/// When `erodedVolKm3` is non-null it is resized to CELL_COUNT and filled
+/// with the per-cell eroded rock volume (km3) for routeSediment.
 void applySurfaceErosionOnRaster(SphereField& field, float dtMy,
-                                 const std::vector<float>& drainageAreaKm2 = {});
+                                 const std::vector<float>& drainageAreaKm2 = {},
+                                 std::vector<float>* erodedVolKm3          = nullptr);
+
+/// L10: carry eroded volumes (km3 per cell from applySurfaceErosionOnRaster)
+/// downstream and deposit at river mouths as sediment.  Accumulates in
+/// SphereField::sedimentThicknessKm, which persists across epochs and is
+/// never reset by bakeTerranesToRaster.  Requires receiver/order from the
+/// same computeDrainage call that produced drainageAreaKm2.
+void routeSediment(SphereField& field, const std::vector<int32_t>& receiver,
+                   const std::vector<int32_t>& order, const std::vector<float>& erodedVolKm3);
 
 /// Single-step epoch driver. Sequences ownership / boundary /
 /// closing-rate / thicken / subduct / slab-pull / Wilson rifting /
