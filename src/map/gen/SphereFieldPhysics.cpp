@@ -3396,13 +3396,35 @@ void applyContinentalMarginProfile(SphereField& field) {
     // 20.7 % of water and the shallow share within it from 26.6 % to 16.3 %,
     // compounding to a 2.2x loss. The physics was right and the sampling ate it.
     //
-    // So the terrace is 18 cells (~3.5 tiles), wide enough to have interior
-    // tiles that straddle neither edge, and it grades to 90 m rather than to
-    // the 140 m cut, leaving 50 m of headroom before an averaged tile falls out
-    // of the band. That is also the more faithful shape: Earth's shelf averages
-    // ~60 m deep and breaks at ~140 m, so a terrace using the entire depth
-    // range to the break was already too steep.
-    constexpr float SHELF_CELLS   = 18.0f;
+    // The reasoning above is why this was 18 for months, and it was reasoning
+    // against a BROKEN RULER. 2026-09-01: the gate counted tiles whose MEAN
+    // footprint depth cleared 140 m, which under-reports shelf AREA by ~2x on a
+    // concave margin, so the terrace kept being widened until a biased
+    // estimator was satisfied. Measured with the unbiased sub-grid estimator
+    // (added 09d1688, gated in d95f49c), the 18-cell terrace put 0.112 of the
+    // planet under the 140 m cut against Earth's ~4.0 % -- nearly 3x too much.
+    // It was not "the more faithful shape"; it was compensation for the
+    // instrument.
+    //
+    // Share of planet, unbiased estimator, seed 42:
+    //     SHELF_CELLS=18 -> 0.112,  12 -> 0.066,  9 -> 0.042
+    // Over 24 seeds at 9: median 0.048, 18/24 inside [0.035, 0.055], and the
+    // total score 144/288 -> 159/288.
+    //
+    // So 9 cells (~1.7 tiles). Such a terrace genuinely IS chewed by footprint
+    // averaging -- that part of the old comment was true and the 2.2x loss it
+    // measured is real -- but the right response is to measure the area that
+    // survives, not to inflate the geometry until a biased count looks right.
+    // It still grades to 90 m rather than to the 140 m cut, which is the part
+    // of the old reasoning that stands: Earth's shelf averages ~60 m deep and
+    // breaks at ~140 m.
+    //
+    // This also unpins SHORE_CELLS, since the rim can be no narrower than the
+    // terrace: 18 forced a 20-cell rim with only 2 cells of slope. At 9 the rim
+    // is free to fall toward the ~13 that would bring crust_submerged (0.410)
+    // to the ~0.272 that makes raster land fraction Earth-like -- while leaving
+    // a WIDER slope than today.
+    constexpr float SHELF_CELLS   = 9.0f;
     constexpr float SHELF_BREAK_M = 90.0f;
     constexpr float SLOPE_FOOT_M  = 2200.0f;
     // Fixed, NOT tied to SHELF_CELLS: the root fades over a set distance from
