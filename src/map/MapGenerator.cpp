@@ -770,10 +770,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // This filters out no-continent worlds. It does NOT fix the missing
         // continental shelves -- 10 of those 12 seeds drown under 10 % of their
         // continental crust, so there is no shelf-bearing draw to select for.
-        constexpr float ACCEPT_MIN_CRUST_SHARE = 0.25f;
-        constexpr float ACCEPT_MAX_CRUST_SHARE = 0.50f;
-        constexpr float ACCEPT_TARGET_SHARE    = 0.40f;
-        constexpr int32_t MAX_WORLD_ATTEMPTS   = 4;
+        constexpr float ACCEPT_MIN_CRUST_SHARE                 = 0.25f;
+        constexpr float ACCEPT_MAX_CRUST_SHARE                 = 0.50f;
+        constexpr float ACCEPT_TARGET_SHARE                    = 0.40f;
+        constexpr int32_t MAX_WORLD_ATTEMPTS                   = 4;
         const aoc::map::gen::SphereField pristineField         = sphereField;
         const std::vector<aoc::map::gen::Plate> pristinePlates = plates;
         const std::vector<Hotspot> pristineHotspots            = hotspots;
@@ -884,14 +884,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 constexpr float STOCK_FRACTION_MAX = 0.45f;
                 constexpr float NUCLEUS_LOG_SIGMA  = 1.0f;
                 const float totalStockCells =
-                    cratonRng.nextFloat(STOCK_FRACTION_MIN, STOCK_FRACTION_MAX) * static_cast<float>(N);
+                    cratonRng.nextFloat(STOCK_FRACTION_MIN, STOCK_FRACTION_MAX) *
+                    static_cast<float>(N);
                 std::vector<float> nucleusWeight(static_cast<std::size_t>(numCratons), 0.0f);
                 float weightSum = 0.0f;
                 for (int32_t i = 0; i < numCratons; ++i) {
-                    const float u1    = std::max(1e-6f, cratonRng.nextFloat(0.0f, 1.0f));
-                    const float u2    = cratonRng.nextFloat(0.0f, 1.0f);
-                    const float gauss = std::sqrt(-2.0f * std::log(u1)) * std::cos(6.28318530718f * u2);
-                    nucleusWeight[static_cast<std::size_t>(i)] = std::exp(NUCLEUS_LOG_SIGMA * gauss);
+                    const float u1 = std::max(1e-6f, cratonRng.nextFloat(0.0f, 1.0f));
+                    const float u2 = cratonRng.nextFloat(0.0f, 1.0f);
+                    const float gauss =
+                        std::sqrt(-2.0f * std::log(u1)) * std::cos(6.28318530718f * u2);
+                    nucleusWeight[static_cast<std::size_t>(i)] =
+                        std::exp(NUCLEUS_LOG_SIGMA * gauss);
                     weightSum += nucleusWeight[static_cast<std::size_t>(i)];
                 }
                 // Per-craton target, in CELL-AREA units (sum of cos(lat) over the
@@ -1075,8 +1078,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     const float axisAz = cratonRng.nextFloat(0.0f, 3.14159265f);
                     const float axCos  = std::cos(axisAz);
                     const float axSin  = std::sin(axisAz);
-                    const float aniso =
-                        std::exp(cratonRng.nextFloat(0.405f, 1.099f)); // ln(1.5)..ln(3.0), log-uniform
+                    const float aniso  = std::exp(
+                        cratonRng.nextFloat(0.405f, 1.099f)); // ln(1.5)..ln(3.0), log-uniform
                     // Semi-major axis in RADIANS of arc, from the target solid
                     // angle: area ~ pi * a * (a / A) on a small cap.
                     //
@@ -1087,7 +1090,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // latitude unscaled -- a tangent-plane approximation taken at
                     // the seed and then used out to 30-45 deg away, which stretched
                     // every high-latitude craton east-west.
-                    const double targetSolidAngle = targetArea / rasterArea * 4.0 * 3.14159265358979;
+                    const double targetSolidAngle =
+                        targetArea / rasterArea * 4.0 * 3.14159265358979;
                     const double semiMajorRad =
                         std::sqrt(targetSolidAngle * static_cast<double>(aniso) / 3.14159265358979);
                     const aoc::map::gen::LatLon seedPos = SF::cellCenter(sLon, sLat);
@@ -1203,7 +1207,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         sphereField.continentalFraction[idx] = frac;
                         sphereField.crustThicknessKm[idx] =
                             frac * aoc::map::gen::PhysicsConstants::initialContinentalThicknessKm +
-                            (1.0f - frac) * aoc::map::gen::PhysicsConstants::initialOceanicThicknessKm;
+                            (1.0f - frac) *
+                                aoc::map::gen::PhysicsConstants::initialOceanicThicknessKm;
                     }
                 }
             }
@@ -1214,8 +1219,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // non-convex peninsulas + bays + lobed shapes. From this
             // initial cut onwards plateId persists; only mechanism passes
             // (subduction, ridge accretion, docking, rifting) rewrite it.
-            aoc::map::gen::generateInitialPlateOwnership(sphereField, plates,
-                                                         attemptSeed);
+            aoc::map::gen::generateInitialPlateOwnership(sphereField, plates, attemptSeed);
             // Invariant check: region growing should already produce one
             // component per plate; this is a no-op unless it regresses.
             aoc::map::gen::enforcePlateContiguity(sphereField, plates);
@@ -1249,8 +1253,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // until dispersal earns its place. See the plan file for the full
             // tables.
             std::atexit(aoc::map::gen::reportErosionTotals);
-            aoc::map::gen::assignTerraneDrift(terranes,
-                                              static_cast<float>(config.tectonicTotalMy));
+            aoc::map::gen::assignTerraneDrift(terranes, static_cast<float>(config.tectonicTotalMy));
             aoc::map::gen::recomputeIsostaticElevationOnRaster(sphereField);
             // Per-epoch substep duration in My. Derived from total simulated
             // time so the physics integrates at a fixed cadence regardless
@@ -1293,8 +1296,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 for (Plate& p : plates) {
                     if (p.eulerPoleLatDeg != 0.0f || p.eulerPoleLonDeg != 0.0f ||
                         p.angularVelDeg != 0.0f) {
-                        p.eulerPoleLatDeg = std::clamp(
-                            p.eulerPoleLatDeg + gaussianFromUniform() * poleSigmaDeg, -89.0f, 89.0f);
+                        p.eulerPoleLatDeg =
+                            std::clamp(p.eulerPoleLatDeg + gaussianFromUniform() * poleSigmaDeg,
+                                       -89.0f, 89.0f);
                         p.eulerPoleLonDeg += gaussianFromUniform() * poleSigmaDeg;
                         while (p.eulerPoleLonDeg > 180.0f) p.eulerPoleLonDeg -= 360.0f;
                         while (p.eulerPoleLonDeg < -180.0f) p.eulerPoleLonDeg += 360.0f;
@@ -1597,18 +1601,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         float acc             = 0.0f;
                         for (int32_t sy = 0; sy < SUB; ++sy) {
                             const float fy =
-                                (static_cast<float>(row) + (static_cast<float>(sy) + 0.5f) /
-                                                               static_cast<float>(SUB)) /
+                                (static_cast<float>(row) +
+                                 (static_cast<float>(sy) + 0.5f) / static_cast<float>(SUB)) /
                                 static_cast<float>(height);
                             for (int32_t sx = 0; sx < SUB; ++sx) {
                                 const float fx =
-                                    (static_cast<float>(col) + (static_cast<float>(sx) + 0.5f) /
-                                                                   static_cast<float>(SUB)) /
+                                    (static_cast<float>(col) +
+                                     (static_cast<float>(sx) + 0.5f) / static_cast<float>(SUB)) /
                                     static_cast<float>(width);
                                 const aoc::map::gen::MollweideInverseResult sm =
                                     aoc::map::gen::projectionInverse(config.projection, fx, fy);
-                                const aoc::map::gen::LatLon at =
-                                    sm.valid ? sm.coord : mw.coord;
+                                const aoc::map::gen::LatLon at = sm.valid ? sm.coord : mw.coord;
                                 acc += sphereField.bilinearSample(sphereField.surfaceElevationM,
                                                                   at.latDeg, at.lonDeg);
                             }
@@ -1662,8 +1665,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // not in this noise. Do not delete this expecting shape to
                     // improve; the gate is kept so the null result stays
                     // reproducible.
-                    static const bool kNoCoastNoise =
-                        std::getenv("AOC_NO_COAST_NOISE") != nullptr;
+                    static const bool kNoCoastNoise = std::getenv("AOC_NO_COAST_NOISE") != nullptr;
                     const float coastBand = 1.0f - std::min(1.0f, std::abs(zRelM) / 400.0f);
                     if (!kNoCoastNoise && coastBand > 0.0f && contFracHere >= 0.05f) {
                         const float latR = mw.coord.latDeg * 0.01745329252f;
