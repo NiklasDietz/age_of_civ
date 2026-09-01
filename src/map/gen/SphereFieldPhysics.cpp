@@ -3815,6 +3815,29 @@ void solveSeaLevelFixedVolume(SphereField& field) {
 // Calibration gain on the stream-power law, set so total denudation matches
 // the slope-only law it replaces. Measured with AOC_DUMP_EROSION: the point of
 // L9b is to move erosion into channels, not to erode more.
+//
+// DO NOT re-tune this against inland_depth_over_disc. Swept 2026-09-01 over 24
+// seeds, with denudation held at the seed-42 baseline of 1.155e9 m-cells so the
+// exponent was the only variable:
+//
+//   m=0.50 gain=1.20 (shipped)  inland 0.486  box_dim 1.165  perim 2.373  173/288
+//   m=0.50 gain=0.60            inland 0.481  box_dim 1.166  perim 2.450  173/288
+//   m=0.25 gain=1.03            inland 0.513  box_dim 1.148  perim 2.233  173/288
+//   stream power off entirely   inland 0.637  box_dim 1.147  perim 1.963  178/288
+//
+// The score is flat across the whole axis (resolution +/-2.3). Halving the gain
+// does nothing at all, because what dissects interiors is the A^m CONCENTRATION
+// of erosion into channels, not its magnitude; and every setting that recovers
+// inland depth gives back exactly as much in box dimension and perimeter, which
+// are the same quantity viewed from the other side. Turning the law off reaches
+// Earth's inland depth (0.631) but drops perimeter to 1.963 against Earth's
+// 2.326, so it is not a fix either.
+//
+// inland_depth is therefore NOT an erosion-law problem. It is gated behind the
+// supercontinent: largest_crust_component 0.774 against a [0.35, 0.65] band,
+// big_landmasses 3 against [4, 99]. Earth reaches inland depth 0.631 WITH a
+// 2.326 perimeter by having several compact continents, not one stringy welded
+// mass with a smooth coast. That is L7, not a constant here.
 inline constexpr float STREAM_GAIN = 1.20f;
 static const bool kDumpErosion     = std::getenv("AOC_DUMP_EROSION") != nullptr;
 static double gErodedRockM         = 0.0;
