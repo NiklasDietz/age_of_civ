@@ -198,6 +198,26 @@ private:
         /// Crustal composition per tile, 0 = pure oceanic, 1 = pure
         /// continental, sampled from SphereField::continentalFraction.
         std::vector<float> continentalFraction;
+        /// Fraction of the tile's raster footprint (0..1) that is water
+        /// shallower than the 140 m shelf break, counted per sub-sample BEFORE
+        /// they are averaged into elevationMap.
+        ///
+        /// Why this exists separately from elevationMap. The tile elevation is
+        /// the MEAN of a 4x4 sub-sample grid, and the shelf tier is then a
+        /// threshold on that mean. On a concave margin -- terrace at -90 m
+        /// falling to a slope foot at -2200 m -- averaging then thresholding is
+        /// a biased estimator of shelf AREA: a tile half terrace and half slope
+        /// averages far below the 140 m cut and reports zero shelf instead of
+        /// one half. Measured consequence: at SHELF_CELLS=12 the raster carried
+        /// shelf/planet 0.053, inside the Earth band, while the hex map read
+        /// 0.024 and the gate scored 0/24. Thresholding each sub-sample first
+        /// and then averaging is unbiased.
+        ///
+        /// Reported as a diagnostic only -- it does NOT feed the terrain tier or
+        /// the gate, so the existing measurement keeps its meaning and the two
+        /// estimators can be compared on the same run. Empty when the generator
+        /// did not run the sphere path.
+        std::vector<float> shelfSubgridFraction;
         /// Elevation value that separates land from water (the sea-level cut).
         float waterThreshold = 0.0f;
     };

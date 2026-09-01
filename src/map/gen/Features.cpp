@@ -208,11 +208,22 @@ void MapGenerator::smoothCoastlines(HexGrid& grid, const TerrainFields& fields) 
             }
             std::fprintf(stderr, "\n");
         }
-        std::size_t shelf   = 0;
-        std::size_t water   = 0;
-        std::size_t byDepth = 0;
-        std::size_t coast   = 0;
+        std::size_t shelf        = 0;
+        std::size_t water        = 0;
+        std::size_t byDepth      = 0;
+        std::size_t coast        = 0;
+        double subgridShelfTiles = 0.0;
         for (int32_t i = 0; i < total; ++i) {
+            // Accumulated over ALL tiles, not just water ones: a tile whose
+            // footprint is part shallow shelf and part land is emitted as land
+            // but still carries real shelf area, and the point of this estimator
+            // is to stop discarding exactly that.
+            {
+                const std::size_t sIdx = static_cast<std::size_t>(i);
+                if (sIdx < fields.shelfSubgridFraction.size()) {
+                    subgridShelfTiles += static_cast<double>(fields.shelfSubgridFraction[sIdx]);
+                }
+            }
             if (!isWater(grid.terrain(i))) {
                 continue;
             }
@@ -251,6 +262,15 @@ void MapGenerator::smoothCoastlines(HexGrid& grid, const TerrainFields& fields) 
         std::fprintf(stderr, "[shelf] coast tier=%zu of %zu water tiles (%.1f%%)\n", coast, water,
                      100.0 * static_cast<double>(coast) /
                          static_cast<double>(std::max<std::size_t>(1, water)));
+        // Unbiased sub-grid estimate of the same quantity the 140 m line above
+        // reports, as a share of the PLANET so it is directly comparable to the
+        // shelf_share_of_planet gate. The line above thresholds a per-tile MEAN
+        // and so under-reports shelf area wherever a tile straddles the terrace
+        // and the slope; this one thresholds each sub-sample first. Diagnostic
+        // only -- nothing consumes it, and the gate still parses the line above.
+        std::fprintf(stderr, "[shelf] subgrid area share of planet %.4f (%.1f tile-equivalents)\n",
+                     subgridShelfTiles / static_cast<double>(std::max(1, total)),
+                     subgridShelfTiles);
     }
 }
 

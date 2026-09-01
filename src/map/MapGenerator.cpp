@@ -684,6 +684,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // deep the water is. Zero (pure oceanic) for tiles the sphere sample never
     // reaches, which is the conservative default -- they will not be called shelf.
     std::vector<float> contFracTile(static_cast<std::size_t>(width * height), 0.0f);
+    // Unbiased sub-grid estimate of shelf area share per tile. Zero for tiles
+    // the sphere sample never reaches, matching contFracTile's default.
+    std::vector<float> shelfSubgridTile(static_cast<std::size_t>(width * height), 0.0f);
     // Per-tile auxiliary fields populated during/after the tectonic sim.
     // Size matches the tile grid so they can be written by world-frame
     // post-passes (post-sim sediment, rock type, margin type, crust age).
@@ -1596,9 +1599,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // projection means an unweighted mean over a regular
                     // sub-grid is already the area-weighted one.
                     float zM = 0.0f;
+                    // Share of the same sub-samples that are water shallower
+                    // than the shelf break. Counted BEFORE the average, because
+                    // averaging then thresholding under-reports shelf area on a
+                    // concave margin -- see TerrainFields::shelfSubgridFraction.
+                    // Diagnostic only; it does not feed the tier or the gate.
+                    float shelfSubFrac = 0.0f;
                     {
-                        constexpr int32_t SUB = 4;
-                        float acc             = 0.0f;
+                        constexpr int32_t SUB         = 4;
+                        constexpr float SHELF_BREAK_M = 140.0f;
+                        float acc                     = 0.0f;
+                        int32_t shelfHits             = 0;
                         for (int32_t sy = 0; sy < SUB; ++sy) {
                             const float fy =
                                 (static_cast<float>(row) +
@@ -1612,12 +1623,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                 const aoc::map::gen::MollweideInverseResult sm =
                                     aoc::map::gen::projectionInverse(config.projection, fx, fy);
                                 const aoc::map::gen::LatLon at = sm.valid ? sm.coord : mw.coord;
-                                acc += sphereField.bilinearSample(sphereField.surfaceElevationM,
-                                                                  at.latDeg, at.lonDeg);
+                                const float zs                 = sphereField.bilinearSample(
+                                    sphereField.surfaceElevationM, at.latDeg, at.lonDeg);
+                                acc += zs;
+                                const float depthM = sphereField.seaLevelM - zs;
+                                if (depthM > 0.0f && depthM < SHELF_BREAK_M) {
+                                    ++shelfHits;
+                                }
                             }
                         }
                         zM = acc / static_cast<float>(SUB * SUB);
+                        shelfSubFrac =
+                            static_cast<float>(shelfHits) / static_cast<float>(SUB * SUB);
                     }
+                    shelfSubgridTile[static_cast<std::size_t>(row * width + col)] = shelfSubFrac;
                     const float contFracHere = sphereField.bilinearSample(
                         sphereField.continentalFraction, mw.coord.latDeg, mw.coord.lonDeg);
                     // Map metres above mantle datum (zero = real sea level
@@ -2801,9 +2820,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     aoc::map::gen::runCoastalErosion(grid);
 
     // Hand the metric elevation field to the passes that need real depth.
-    outFields.elevationMap        = std::move(elevationMap);
-    outFields.continentalFraction = std::move(contFracTile);
-    outFields.waterThreshold      = waterThreshold;
+    outFields.elevationMap         = std::move(elevationMap);
+    outFields.continentalFraction  = std::move(contFracTile);
+    outFields.shelfSubgridFraction = std::move(shelfSubgridTile);
+    outFields.waterThreshold       = waterThreshold;
 }
 
 // smoothCoastlines, assignFeatures, placeNaturalWonders moved to src/map/gen/Features.cpp.
