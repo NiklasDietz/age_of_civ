@@ -1324,7 +1324,15 @@ GATES = {
     "big_landmasses":           (4,    99,    "landmasses >2 % of land"),
     "axis_aligned_frac":        (0.00, 0.55,  "coastline axis_aligned_frac"),
     "coast_box_dimension":      (1.15, 1.25,  "coastline box dimension"),
-    "shelf_share_of_planet":    (0.05, 0.08,  "shelf / planet"),
+    # Band retuned 2026-09-01 from (0.05, 0.08). The old band was Earth's
+    # 0..-200 m shelf figure (5.2 % of the planet) while the value fed to it is
+    # read off the 140 m cut, where Earth is ~4.0 % -- the mis-calibration was
+    # recorded in the plan and never applied. The source also changed on the
+    # same date, from a per-tile threshold to the unbiased sub-grid estimator
+    # (see parse_crust_budget), which removed a ~2x low bias. Both corrections
+    # push the same way, so the pre-2026-09-01 shelf numbers are NOT comparable
+    # to anything after it.
+    "shelf_share_of_planet":    (0.035, 0.055, "shelf / planet"),
     # --- second-order shape gates, added 2026-08-31 ---
     #
     # Why these exist. Every gate above is a first-order statistic -- a
@@ -1387,18 +1395,30 @@ def parse_crust_budget(stderr):
     if m:
         out["crust_share"] = round(float(m.group(1)) / 100.0, 4)
         out["crust_submerged"] = round(float(m.group(2)) / 100.0, 4)
-    # The 140 m depth cut is reported as a share of WATER; convert to a share
-    # of the planet so it is comparable to Earth's ~5.3 %.
+    # Kept as a reported diagnostic only. This is the OLD gate source: a count
+    # of tiles whose MEAN footprint depth clears the 140 m cut, as a share of
+    # WATER. It is a biased estimator of shelf AREA -- on a concave margin a
+    # tile half terrace and half slope averages below the cut and contributes
+    # nothing instead of one half -- and it measured ~2x low against the
+    # sub-grid figure below (seed 42: 0.056 vs 0.112 of planet). Retained so
+    # the two can be compared on one run and so the pre-2026-09-01 baselines
+    # stay interpretable.
     m = re.search(r"\[shelf\] by 140 m depth cut it would be \d+ \(([\d.]+)%\)", stderr)
     if m:
         out["_shelf_share_of_water"] = round(float(m.group(1)) / 100.0, 4)
+    # THE GATE SOURCE since 2026-09-01. Each of the 16 sub-samples behind a
+    # tile's elevation is thresholded before they are averaged, so this
+    # estimates shelf area without the averaging bias. Already a share of the
+    # PLANET -- it must NOT be multiplied by (1 - land_fraction).
+    m = re.search(r"\[shelf\] subgrid area share of planet ([\d.]+)", stderr)
+    if m:
+        out["_shelf_subgrid_share_of_planet"] = round(float(m.group(1)), 4)
     return out
 
 
 def gate_values(res):
     """Flatten one seed's result into the scalars GATES names."""
     cb = res.get("crust_budget") or {}
-    shelf = cb.get("_shelf_share_of_water")
     land = res.get("land_fraction")
     return {
         "land_fraction": land,
@@ -1412,8 +1432,11 @@ def gate_values(res):
         "big_landmasses": res.get("big_landmasses"),
         "axis_aligned_frac": (res.get("coast_orientation") or {}).get("axis_aligned_frac"),
         "coast_box_dimension": res.get("coast_box_dimension"),
-        "shelf_share_of_planet": (round(shelf * (1.0 - land), 4)
-                                  if shelf is not None and land is not None else None),
+        # Already a share of planet -- no (1 - land) conversion, unlike the
+        # per-tile estimator it replaced. Falls back to nothing rather than to
+        # the old biased figure: a run whose generator predates the sub-grid
+        # line must read as UNMEASURED, not silently score on the old ruler.
+        "shelf_share_of_planet": cb.get("_shelf_subgrid_share_of_planet"),
     }
 
 
