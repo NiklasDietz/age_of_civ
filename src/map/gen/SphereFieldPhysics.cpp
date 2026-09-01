@@ -448,6 +448,27 @@ void applySlabPullFeedback(SphereField& field, std::vector<Plate>& plates, float
 // Expressed as a share of the planet's own crust it is scale-free: it
 // asks the question the citation actually answers, and it is immune to
 // the land-fraction spread across seeds.
+// DO NOT retune this to force more rifting. Tried 0.25 -> 0.18, 2026-09-01,
+// 24 seeds: score 173/288 -> 160/288, and the four gates it was meant to fix
+// all got WORSE -- largest_share_of_land 12/24 -> 7/24 (0.622 -> 0.658),
+// big_landmasses 11/24 -> 9/24, inland_depth 5/24 -> 2/24.
+//
+// The trace says why, and it is structural rather than a bad value. At 0.25 the
+// clock never matures: max plate crust share hovers at 0.228-0.253 so the
+// supercontinent classification flickers on and off, and meanThermal reads 4-50
+// against the 150 it needs. Lowering the bar does not help, because the loop is
+// SELF-LIMITING: more rifting makes smaller plates, which drops max share back
+// under the new bar (measured 0.155-0.164 at 0.18) and resets the clock harder
+// than before (meanThermal 1-2). The system settles just below whatever
+// threshold it is given, at any value.
+//
+// And the rifts it does fire are the wrong shape: they split a PLATE, while the
+// supercontinent is continental crust welded ACROSS 12-15 plates. Fragmenting
+// the tessellation while the land stays joined is exactly what the numbers show
+// -- largest_share_of_land got WORSE while crust components moved.
+//
+// This is the evidence for L7 (WilsonSchedule): the trigger asks the wrong
+// question about the wrong object, so no constant here can answer it.
 inline constexpr float SUPERCONTINENT_CRUST_SHARE = 0.25f;
 inline constexpr float RIFT_THRESHOLD_MY          = 150.0f;
 // Probability ramp width above RIFT_THRESHOLD_MY: rift probability
