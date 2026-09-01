@@ -3363,7 +3363,23 @@ void applyContinentalMarginProfile(SphereField& field) {
     // single-seed sweep: it raised the shelf share (7.7 % -> 8.1 % of water)
     // AND cut the submerged share of crust (49.2 % -> 42.8 %) at once, because
     // a narrower rim spends proportionally more of itself inside the terrace.
-    constexpr float SHORE_CELLS = 20.0f;
+    //
+    // 20 -> 13 (2026-09-01), continuing in the same direction now that the rim
+    // is no longer pinned by the terrace. It could not go below SHELF_CELLS,
+    // and that was 18 until fdf0eea cut it to 9.
+    //
+    // The size is set by the target, not by a sweep. crust_submerged is the
+    // rim's share of crust area, so for a craton of radius R it is
+    // 1 - ((R - SHORE_CELLS) / R)^2; at R ~ 80 cells that gives 0.44 for a
+    // 20-cell rim, which matches the measured 0.410. The value wanted is 0.272,
+    // because raster land = crust_share x (1 - crust_submerged) and 0.401 x
+    // 0.728 = 0.292, i.e. Earth. That inverts to a rim near 12-13 cells.
+    //
+    // This is the fix for a land fraction that was, until now, only reaching
+    // its gate because a hex-space +0.04 elevation nudge in PostSim supplied
+    // five points the raster never made (raster land measured 0.239 against
+    // Earth's 0.292).
+    constexpr float SHORE_CELLS = 13.0f;
     constexpr float RAMP_HALF   = 10.0f;
     constexpr float RELIEF_M    = 300.0f;
     // Seaward of the shoreline the profile is NOT the mirror of the landward

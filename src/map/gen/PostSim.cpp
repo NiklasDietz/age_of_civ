@@ -383,35 +383,33 @@ void runPostSimPasses(MapGenContext& ctx) {
                         // pre-threshold elevation).
                         continue;
                     }
-                    if (m == 2) {
-                        // AOC_NO_SHELF_WIDENING disables this boost.
-                        //
-                        // The rationale in the pass comment above ("so they read
-                        // as ShallowWater shelf, not deep Ocean") is STALE: on
-                        // 2026-08-10 the ShallowWater/Ocean split moved to a
-                        // COMPOSITION test in Features.cpp, which elevation does
-                        // not control. What the boost actually does now is raise
-                        // ocean-side tiles across the LAND cut, and PostSim runs
-                        // after the raster freeboard solve, so nothing
-                        // compensates for its removal.
-                        //
-                        // Measured 2026-09-01, 24 seeds, deleting it: score
-                        // 160/288 -> 147/288. land_fraction 18/24 -> 12/24
-                        // (0.297 -> 0.253, at the band floor) and shelf/planet
-                        // 16/24 -> 8/24 (0.056 -> 0.086, OVERSHOOTING the 0.08
-                        // ceiling) -- the tiles it holds above the cut fall back
-                        // to shallow water and are then counted as shelf.
-                        // coast_box_dimension and inland_depth each moved one
-                        // seed the right way, nowhere near paying for the rest.
-                        // So the comment was wrong about the mechanism but the
-                        // pass is load-bearing. Do not delete it without a
-                        // replacement for the land it holds.
-                        static const bool kNoShelfWidening =
-                            std::getenv("AOC_NO_SHELF_WIDENING") != nullptr;
-                        if (!kNoShelfWidening) {
-                            elevDelta[static_cast<std::size_t>(nIdx)] += 0.04f;
-                        }
-                    } else if (m == 1) {
+                    // The passive-margin (m == 2) branch here used to add +0.04,
+                    // described as making tiles "read as ShallowWater shelf, not
+                    // deep Ocean". That was doubly wrong by 2026-09-01: the
+                    // ShallowWater/Ocean split moved to a COMPOSITION test in
+                    // Features.cpp on 2026-08-10 and elevation does not control
+                    // it, and what the boost really did was hold ocean-side tiles
+                    // above the LAND cut -- supplying land the raster was not
+                    // making. Measured, it was worth +0.037 of hex land fraction
+                    // against a raster that produced only 0.239 (Earth: 0.292).
+                    //
+                    // Deleting it was measured TWICE, and the answer inverted:
+                    //   with SHORE_CELLS=20 (raster land 0.239): 160 -> 147/288.
+                    //     Land fraction fell to the band floor, so it looked
+                    //     load-bearing and was kept.
+                    //   with SHORE_CELLS=13 (raster land 0.288): 161 -> 173/288.
+                    //     land_fraction 12/24 -> 18/24 (0.328 -> 0.297),
+                    //     coast_box_dimension 10/24 -> 15/24 (1.133 -> 1.165,
+                    //     inside its band for the first time), and
+                    //     axis_aligned_frac back to a clean 24/24.
+                    //
+                    // It was never load-bearing on its own merits; it was
+                    // propping up a rim that was too wide. Once the rim was
+                    // narrowed the prop became an overshoot, so it is gone, and
+                    // with it AOC_NO_SHELF_WIDENING, which gated nothing else.
+                    // Passive margins now take no neighbour-sweep adjustment;
+                    // this pass exists for the trench.
+                    if (m == 1) {
                         // 2026-07-05: -0.03 -> -0.06 now that active
                         // margins actually classify (trenches are the
                         // deepest bathymetry on Earth; the offshore
