@@ -384,7 +384,33 @@ void runPostSimPasses(MapGenContext& ctx) {
                         continue;
                     }
                     if (m == 2) {
-                        elevDelta[static_cast<std::size_t>(nIdx)] += 0.04f;
+                        // AOC_NO_SHELF_WIDENING disables this boost.
+                        //
+                        // The rationale in the pass comment above ("so they read
+                        // as ShallowWater shelf, not deep Ocean") is STALE: on
+                        // 2026-08-10 the ShallowWater/Ocean split moved to a
+                        // COMPOSITION test in Features.cpp, which elevation does
+                        // not control. What the boost actually does now is raise
+                        // ocean-side tiles across the LAND cut, and PostSim runs
+                        // after the raster freeboard solve, so nothing
+                        // compensates for its removal.
+                        //
+                        // Measured 2026-09-01, 24 seeds, deleting it: score
+                        // 160/288 -> 147/288. land_fraction 18/24 -> 12/24
+                        // (0.297 -> 0.253, at the band floor) and shelf/planet
+                        // 16/24 -> 8/24 (0.056 -> 0.086, OVERSHOOTING the 0.08
+                        // ceiling) -- the tiles it holds above the cut fall back
+                        // to shallow water and are then counted as shelf.
+                        // coast_box_dimension and inland_depth each moved one
+                        // seed the right way, nowhere near paying for the rest.
+                        // So the comment was wrong about the mechanism but the
+                        // pass is load-bearing. Do not delete it without a
+                        // replacement for the land it holds.
+                        static const bool kNoShelfWidening =
+                            std::getenv("AOC_NO_SHELF_WIDENING") != nullptr;
+                        if (!kNoShelfWidening) {
+                            elevDelta[static_cast<std::size_t>(nIdx)] += 0.04f;
+                        }
                     } else if (m == 1) {
                         // 2026-07-05: -0.03 -> -0.06 now that active
                         // margins actually classify (trenches are the
