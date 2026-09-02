@@ -36,6 +36,7 @@
 #include "aoc/map/gen/SphereField.hpp"
 #include "aoc/map/gen/SphereFieldPhysics.hpp"
 #include "aoc/map/gen/Terrane.hpp"
+#include "aoc/map/gen/WilsonSchedule.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/map/Chokepoint.hpp"
@@ -1230,33 +1231,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // (measured 1.28x an equal-area disc at epoch 1) and the run's job
             // is now to move them, not to redraw them every substep.
             aoc::map::gen::seedTerranesFromRaster(sphereField, terranes, terraneBody);
-            // KNOWN INERT, deliberately left so. `config.tectonicTotalMy` is
-            // the RAW request field and defaults to 0; the resolved value is
-            // the local `totalMy` above. Passing the raw field trips
-            // assignTerraneDrift's `totalMy <= 0` guard, so it returns
-            // immediately and every block keeps driftRateDegPerMy = 0.
-            // Prescribed dispersal has therefore never run, and the gate
-            // movement once attributed to it came from changes that shipped
-            // beside it.
+            // L7: Prescribed Wilson schedule replaces the inert assignTerraneDrift
+            // call and the broken thermal-age trigger (applyWilsonRifting).
             //
-            // Do NOT "fix" this by passing totalMy without also redesigning the
-            // dispersal itself -- that has been measured, twice, at 24 seeds:
-            //   radial-from-centroid, live: axis_aligned_frac 24/24 -> 16/24
-            //     (rotation aliases), score 157 -> 145. Radial dispersal on a
-            //     sphere also reverses past 90 deg, and the centroid is
-            //     dominated by the largest block, so small blocks converge on
-            //     the antipode.
-            //   pairwise repulsion, live: keeps axis_aligned at 24/24 and moves
-            //     perimeter_over_disc 7/24 -> 12/24, but costs inland depth
-            //     16/24 -> 11/24 and land fraction 19/24 -> 16/24; score 151.
-            //   repulsion + size-aware craton separation: best result for
-            //     largest crust component (10/24 -> 12/24, median into band)
-            //     but axis 21/24, shelf 14/24; score 149.
-            // None beat the inert baseline's 157, so the call is left as it is
-            // until dispersal earns its place. See the plan file for the full
-            // tables.
+            // Previous prescriptions were measured and failed (see commit 4086c17
+            // and the long comment that was here). WilsonSchedule is the redesign:
+            // it constructs 4-6 assembly/dispersal cycles BACKWARDS from the
+            // required end state so that at totalMy the world sits 40-70% through
+            // a dispersal phase, yielding 3-6 separate continents. Assembly poles
+            // are placed ≥ 60° from a fixed superoceanPole (the Pacific guarantee).
             std::atexit(aoc::map::gen::reportErosionTotals);
-            aoc::map::gen::assignTerraneDrift(terranes, static_cast<float>(config.tectonicTotalMy));
+            const aoc::map::gen::WilsonSchedule wilsonSchedule =
+                aoc::map::gen::WilsonSchedule::build(static_cast<uint32_t>(attemptSeed) ^
+                                                         0x57494C53u, // "WILS"
+                                                     static_cast<float>(totalMy));
             aoc::map::gen::recomputeIsostaticElevationOnRaster(sphereField);
             // Per-epoch substep duration in My. Derived from total simulated
             // time so the physics integrates at a fixed cadence regardless
@@ -1337,6 +1325,15 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     }
                     h.cy = std::clamp(h.cy, 0.05f, 0.95f);
                 }
+
+                // L7: Update terrane drift poles from the Wilson schedule before
+                // the physics epoch so advanceTerraneRotations (inside
+                // stepSpherePhysicsEpoch) picks up the revised poles.
+                // timeMy = time elapsed up to the START of this epoch.
+                const float timeMy = static_cast<float>(epoch) * MY_PER_EPOCH_P1;
+                // AOC_NO_WILSON_SCHEDULE: measure the baseline without WilsonSchedule.
+                static const bool kNoWilson = std::getenv("AOC_NO_WILSON_SCHEDULE") != nullptr;
+                if (!kNoWilson) wilsonSchedule.applyTo(terranes, timeMy);
 
                 // Raster physics epoch: advection, boundary classification,
                 // thickening, arc growth, subduction, ridge accretion,

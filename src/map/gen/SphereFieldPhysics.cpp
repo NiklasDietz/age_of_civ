@@ -4571,11 +4571,20 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
     // ridge spreading record (Atlantic age gradient never appears).
     accreteAtDivergentBoundary(field, dtMy);
     budgetSnap(dDiverge);
-    applyContinentalDocking(field, plates, dtMy);
+    // AOC_NO_OLD_WILSON disables the three legacy Wilson-cycle functions so
+    // WilsonSchedule can be evaluated without their side effects.
+    static const bool kNoOldWilson = std::getenv("AOC_NO_OLD_WILSON") != nullptr;
+    if (!kNoOldWilson) {
+        applyContinentalDocking(field, plates, dtMy);
+    }
     budgetSnap(dDock);
-    applySlabPullFeedback(field, plates, dtMy);
+    if (!kNoOldWilson) {
+        applySlabPullFeedback(field, plates, dtMy);
+    }
     budgetSnap(dSlab);
-    applyWilsonRifting(field, plates, rngState, dtMy);
+    if (!kNoOldWilson) {
+        applyWilsonRifting(field, plates, rngState, dtMy);
+    }
     budgetSnap(dRift);
     const int32_t contiguityMoved = enforcePlateContiguity(field, plates);
     budgetSnap(dContig);

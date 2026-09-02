@@ -278,6 +278,7 @@ set(AOC_LIB_SOURCES
     src/map/gen/Features.cpp
     src/map/gen/Rivers.cpp
     src/map/gen/Terrane.cpp
+    src/map/gen/WilsonSchedule.cpp
     src/map/gen/SphereField.cpp
     src/map/gen/SphereFieldPhysics.cpp
     src/map/gen/SphereGeometry.cpp
