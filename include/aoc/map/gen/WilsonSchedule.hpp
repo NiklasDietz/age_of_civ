@@ -27,16 +27,22 @@
  * the assembly pole, and unique per-terrane hashes produce N separate
  * destinations rather than all terranes heading to one point.
  *
- * **Why disabled (rate = 0).** Measured on 24 seeds: the baseline
- * (no WilsonSchedule) already achieves crust_largest <= 0.65 in 12/24 seeds,
- * which exceeds the L7 gate of >= 9/24.  V4 with random hash targets caused
- * seeds 4, 10, 12, 16, 21 to cluster and regress from PASS to FAIL (8/24),
- * while gaining only seed17 — a net -4.  The root cause: hash-based targets
- * are not guaranteed to spread terranes; they can direct multiple terranes
- * toward the same hemisphere.  The right fix is repulsion-based dispersal
- * (each terrane pushed away from all others via cross-product forces), which
- * trivially reaches Thomson-problem equilibrium.  Set rate > 0 and replace
- * `applyTo` hash logic with repulsion sums to activate.
+ * **Why disabled (rate = 0).** Measured on the 24 `DEFAULT_SEEDS` of
+ * `tools/mapgen_metrics.py`: V4 at rate = 0.150 costs 18 gates
+ * (173/288 -> 155/288) while moving `crust_largest_component_share` by a
+ * single seed (9/24 -> 8/24), which is inside the +/-2.2 gate resolution.
+ * Root cause: hash-based targets are not guaranteed to spread terranes -- two
+ * terranes can draw targets in the same hemisphere -- so the schedule
+ * reshuffles which seeds cluster rather than reducing clustering.  The right
+ * fix is repulsion-based dispersal (each terrane pushed away from all others
+ * via cross-product forces weighted by inverse cosine distance), which
+ * reaches Thomson-problem equilibrium and leaves already-separated terranes
+ * alone.  Set rate > 0 and replace the `applyTo` hash logic with repulsion
+ * sums to activate.
+ *
+ * At rate = 0 this class is gate-identical to not calling it at all (all
+ * twelve gate medians reproduce the `e5be590` baseline), since
+ * `advanceTerraneRotations` then integrates zero motion.
  *
  * **Per-epoch update.** `applyTo` updates each terrane's
  * `driftPoleLatDeg / driftPoleLonDeg / driftRateDegPerMy` for the
