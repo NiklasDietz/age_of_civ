@@ -926,6 +926,29 @@ static float scoreTrader(const LeaderBehavior& behavior,
 }
 
 // -------------------------------------------------------------------------
+// Internal: can this city actually pay a building's construction goods?
+//
+// A3 (2026-09-03): the AI used to score buildings purely on utility. The only
+// two reads of BuildingDef::resourceCosts were at completion time in
+// ProductionSystem, so a city would happily queue a building whose goods it
+// could never obtain and sit on it forever -- the Mint (1 Stone, quarried by
+// nobody) wedged every capital for ~93% of a 60-turn game. Gate selection on
+// the same costs completion checks.
+// -------------------------------------------------------------------------
+
+static bool cityCanAffordBuildingGoods(const aoc::game::City& city,
+                                        const BuildingDef& bdef) {
+    if (!bdef.hasResourceCost()) { return true; }
+    const CityStockpileComponent& stockpile = city.stockpile();
+    for (const BuildingResourceCost& cost : bdef.resourceCosts) {
+        if (cost.isValid() && stockpile.getAmount(cost.goodId) < cost.amount) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// -------------------------------------------------------------------------
 // Internal: score a building candidate using the existing utility scorer
 // with the UtilityAI base-weight pattern applied
 // -------------------------------------------------------------------------
@@ -1256,6 +1279,10 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                      bidx < static_cast<uint16_t>(BUILDING_DEFS.size()); ++bidx) {
                 const BuildingDef& bdef = BUILDING_DEFS[bidx];
                 if (!canBuildBuilding(gameState, this->m_player, city, bdef.id, &grid)) {
+                    continue;
+                }
+                // Don't queue what we cannot finish (A3).
+                if (!cityCanAffordBuildingGoods(city, bdef)) {
                     continue;
                 }
                 const float buildingScore =

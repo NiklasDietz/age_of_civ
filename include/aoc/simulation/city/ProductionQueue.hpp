@@ -45,6 +45,13 @@ struct ProductionQueueItem {
     std::string        name;
     float              totalCost;   ///< Total production needed
     float              progress;    ///< Production accumulated so far
+
+    /// Consecutive turns this item finished its production cost but could not
+    /// be completed for lack of a consumable good. Drives the give-up escape
+    /// hatch in processProductionQueues. Deliberately NOT serialized -- the
+    /// counter restarting at 0 after a load is harmless, and leaving it out
+    /// keeps the ProductionQueues save section byte-identical.
+    int32_t            stalledTurns = 0;
 };
 
 /// A template entry for repeating build orders.

@@ -299,7 +299,7 @@ void processProductionQueues(aoc::game::GameState& gameState,
         bool completed = queue.addProgress(production);
 
         if (completed) {
-            const ProductionQueueItem& item = queue.queue.front();
+            ProductionQueueItem& item = queue.queue.front();
 
             // Check resource requirements
             CityStockpileComponent& stockpile = city->stockpile();
@@ -337,8 +337,29 @@ void processProductionQueues(aoc::game::GameState& gameState,
                          static_cast<int>(item.name.size()),
                          item.name.c_str(),
                          static_cast<unsigned>(missingGoodId));
+
+                // A3 (2026-09-03): "retries next turn once the good arrives"
+                // assumes the good ever arrives. When nothing in the empire
+                // produces it, the head wedged permanently -- measured at 55-57
+                // of 60 turns in all four capitals, on a Mint needing Stone that
+                // no civ ever quarried. Give up after a long stall so the city
+                // works on something else; the AI selection gate keeps it from
+                // re-queueing the same unbuildable item.
+                constexpr int32_t MAX_STALLED_TURNS = 12;
+                ++item.stalledTurns;
+                if (item.stalledTurns >= MAX_STALLED_TURNS) {
+                    LOG_WARN("Abandoning %.*s in %s after %d stalled turns (good %u never arrived)",
+                             static_cast<int>(item.name.size()),
+                             item.name.c_str(),
+                             city->name().c_str(),
+                             item.stalledTurns,
+                             static_cast<unsigned>(missingGoodId));
+                    queue.queue.erase(queue.queue.begin());
+                }
                 continue;
             }
+
+            item.stalledTurns = 0;
 
             // Consume resources. The pre-check above already guaranteed
             // availability, so a false from consumeGoods means the stockpile

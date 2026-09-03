@@ -6333,13 +6333,6 @@ void Application::handleEndTurn() {
                                              1.0f);
             this->m_soundQueue.push(aoc::audio::SoundEffect::TechResearched);
 
-            {
-                aoc::game::Player* eraPlayer = this->m_gameState.humanPlayer();
-                if (eraPlayer != nullptr) {
-                    aoc::sim::addEraScore(*eraPlayer, 2, "Researched " + techName);
-                }
-            }
-
             if (!humanPost->tech().currentResearch.isValid()) {
                 this->m_techScreen.setContext(&this->m_gameState, 0);
                 this->m_techScreen.setGrid(&this->m_hexGrid);

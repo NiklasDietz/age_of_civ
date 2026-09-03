@@ -390,6 +390,13 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     aoc::game::Player* gsPlayer = turnContext.gameState->player(player);
     assert(gsPlayer != nullptr && "processPlayerTurn: invalid player id");
 
+    // A4 (2026-09-03): an eliminated player used to run the full per-player
+    // pipeline -- growing, researching and accruing GDP with zero cities. Some
+    // twenty other sites already honour this flag; the turn loop did not.
+    if (gsPlayer->victoryTracker().isEliminated) {
+        return;
+    }
+
     // Civilization meeting detection: check if any of our units/cities are
     // within 4 hexes of another player's entity. Triggers MeetCivilization eureka.
     {
@@ -745,7 +752,20 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
                 }
             }
         }
-        advanceResearch(gsPlayer->tech(), science);
+        // Capture the tech-in-progress before advancing, for the same reason the
+        // civic path below does: advanceResearch calls completeResearch() on
+        // completion, which clears currentResearch.
+        const TechId techBeforeAdvance = gsPlayer->tech().currentResearch;
+        if (advanceResearch(gsPlayer->tech(), science) && techBeforeAdvance.isValid()) {
+            const aoc::sim::TechDef& doneTech = aoc::sim::techDef(techBeforeAdvance);
+            gsPlayer->era().updateEra(doneTech.era);
+            // Era score had exactly one source in the whole game, and it lived in
+            // Application.cpp -- human player only, graphical build only. So every
+            // AI, and every player in every headless run, sat at score 0 forever
+            // and therefore in a permanent Dark Age. Award it here instead, where
+            // both builds and all players go through.
+            addEraScore(*gsPlayer, 2, "Researched " + std::string(doneTech.name));
+        }
         // Capture the civic-in-progress before advancing: advanceCivicResearch
         // calls completeResearch() on completion, which clears currentResearch.
         // Without capturing first, the just-completed civic id is unrecoverable.
@@ -754,6 +774,9 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
             && civicBeforeAdvance.isValid()) {
             applyCivicEffect(*turnContext.gameState, player,
                              static_cast<uint8_t>(civicBeforeAdvance.value));
+            const aoc::sim::CivicDef& doneCivic = aoc::sim::civicDef(civicBeforeAdvance);
+            gsPlayer->era().updateEra(doneCivic.era);
+            addEraScore(*gsPlayer, 2, "Adopted " + std::string(doneCivic.name));
         }
     }
 
