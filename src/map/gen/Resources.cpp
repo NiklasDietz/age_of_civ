@@ -603,13 +603,26 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
             // game, and a Mint needing 1 Stone could never be built. The geology
             // path does have rules for all four (see the mountain/orogeny blocks
             // above) but they did not fire on any tile -- mountainMetalsPlaced
-            // came back 0. Targets are deliberately at or above oil's density:
-            // these gate the early game, where oil is inert.
-            {aoc::sim::goods::IRON_ORE, "iron ore", std::max(8, (width * height) / 350), 0},
-            {aoc::sim::goods::STONE, "stone", std::max(6, (width * height) / 400), 0},
-            {aoc::sim::goods::WOOD, "wood", std::max(8, (width * height) / 350), 0},
-            {aoc::sim::goods::COPPER_ORE, "copper ore", std::max(6, (width * height) / 500), 0},
+            // came back 0, because that seed produced zero Mountain tiles for the
+            // mountain-metal rules to key on.
+            //
+            // These four are sized as a share of LAND rather than of width*height
+            // (see landShareTargets below). The other four use map area, which
+            // silently under-counts: on this map 7604 of 12600 tiles are ocean, so
+            // a width*height/350 "floor" of 36 tiles is under 1% of the 3875 land
+            // tiles. Only ~7.9% of land is ever inside a city's borders
+            // (Grassland 15.8%, Plains 6.7%, Desert 1.0%), so 36 scattered tiles
+            // put an expected 2.8 of them in anyone's reach, and the measured
+            // figure was 3. A floor has to be a playable floor, not a token one.
+            {aoc::sim::goods::IRON_ORE, "iron ore", 0, 0},
+            {aoc::sim::goods::STONE, "stone", 0, 0},
+            {aoc::sim::goods::WOOD, "wood", 0, 0},
+            {aoc::sim::goods::COPPER_ORE, "copper ore", 0, 0},
         };
+        // Percent-of-land target for the four entries above, in the same order,
+        // starting at the index where they begin. 0 means "use the target as
+        // literally given" for the map-area entries.
+        constexpr double landShareTargets[] = {0.0, 0.0, 0.0, 0.0, 0.030, 0.025, 0.030, 0.020};
         constexpr std::size_t BACKSTOP_COUNT = sizeof(wanted) / sizeof(wanted[0]);
 
         // What geology actually delivered.
@@ -636,6 +649,23 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
                 }
                 candidates.push_back(idx);
             }
+        }
+
+        // candidates + already-occupied land is the land pool the shares refer to.
+        // Occupied tiles are excluded from `candidates` but still count as land.
+        int32_t landTiles = static_cast<int32_t>(candidates.size());
+        for (int32_t r = 0; r < height; ++r) {
+            for (int32_t c = 0; c < width; ++c) {
+                const int32_t idx    = r * width + c;
+                const TerrainType tt = grid.terrain(idx);
+                if (isWater(tt) || tt == TerrainType::Mountain) { continue; }
+                if (grid.resource(idx).isValid()) { ++landTiles; }
+            }
+        }
+        for (std::size_t k = 0; k < BACKSTOP_COUNT; ++k) {
+            if (landShareTargets[k] <= 0.0) { continue; }
+            wanted[k].target = std::max(
+                8, static_cast<int32_t>(landShareTargets[k] * static_cast<double>(landTiles)));
         }
 
         aoc::Random fillRng(resRng);

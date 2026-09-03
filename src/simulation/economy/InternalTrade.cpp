@@ -67,21 +67,30 @@ float transportEfficiency(float distance) {
     return std::max(0.0f, 1.0f - totalLoss);
 }
 
-/// Check if a city needs a specific good for any of its recipes.
-bool cityNeedsGoodForRecipe(const aoc::game::City& city, uint16_t goodId) {
+/// How much of `goodId` this city needs on hand to run a batch of the hungriest
+/// recipe it is actually equipped for. 0 if none of its recipes want the good.
+///
+/// This used to be a bool "does any recipe want it", which left a dead zone: a
+/// city was classified as a deficit only at exactly 0, and as a surplus only
+/// above 2. A Forge city sitting on 1 iron ore therefore counted as neither, so
+/// it never received a top-up and could never reach the 2 ore that "Smelt Iron"
+/// needs. Measured effect: Ingots stayed at 0-1 for a whole 60-turn game even
+/// once ore was reaching cities.
+int32_t cityRecipeNeedForGood(const aoc::game::City& city, uint16_t goodId) {
     const CityDistrictsComponent& districts = city.districts();
 
+    int32_t needed = 0;
     for (const ProductionRecipe& recipe : allRecipes()) {
         if (!districts.hasBuilding(recipe.requiredBuilding)) {
             continue;
         }
         for (const RecipeInput& input : recipe.inputs) {
-            if (input.goodId == goodId) {
-                return true;
+            if (input.goodId == goodId && input.amount > needed) {
+                needed = input.amount;
             }
         }
     }
-    return false;
+    return needed;
 }
 
 } // anonymous namespace
@@ -118,9 +127,14 @@ void processInternalTrade(aoc::game::GameState& gameState,
             const aoc::game::City& city = *cities[ci];
             const int32_t amount = city.stockpile().getAmount(goodId);
 
-            if (amount > SURPLUS_THRESHOLD) {
+            const int32_t recipeNeed = cityRecipeNeedForGood(city, goodId);
+
+            if (amount > SURPLUS_THRESHOLD && amount > recipeNeed) {
+                // Never ship away the working stock a city needs for its own
+                // recipes -- a Forge city used to export the very ore it was
+                // about to smelt.
                 surplusCities.push_back({ci, amount});
-            } else if (amount == 0 && cityNeedsGoodForRecipe(city, goodId)) {
+            } else if (recipeNeed > 0 && amount < recipeNeed) {
                 deficitCities.push_back({ci});
             }
         }
