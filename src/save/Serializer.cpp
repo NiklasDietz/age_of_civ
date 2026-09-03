@@ -2909,19 +2909,18 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
             break;
         }
         case SectionId::ConfederationState: {
-            // Confederation removed 2026-04-27. Skip section to keep
-            // backwards-compat with old saves: read count + per-record
-            // bytes and discard.
-            uint32_t count = buf.readU32();
-            for (uint32_t i = 0; i < count; ++i) {
-                (void)buf.readU32(); // id
-                (void)buf.readI32(); // formedTurn
-                (void)buf.readU8();  // isActive
-                uint32_t memberCount = buf.readU32();
-                for (uint32_t m = 0; m < memberCount; ++m) {
-                    (void)buf.readU8();
-                }
-            }
+            // Confederation removed 2026-04-27. Skip the section wholesale to
+            // stay loadable for old saves.
+            //
+            // This used to hand-walk the records, reading a u32 count and then
+            // that many variable-length entries. Since every count came off the
+            // file unguarded, a hostile save could claim ~4e9 records: the
+            // sticky-corrupt ReadBuffer keeps the reads memory-safe, but the
+            // outer loop still spins ~4e9 times doing nothing, which hangs the
+            // load. Skipping by the section's own declared size, as
+            // SectionId::FogOfWar already does, is both shorter and immune to
+            // the record count entirely.
+            buf.skip(sectionSize);
             break;
         }
         case SectionId::ElectricityAgreementState: {
