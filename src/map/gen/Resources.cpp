@@ -594,6 +594,21 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
             {aoc::sim::goods::NATURAL_GAS, "gas", std::max(3, (width * height) / 800), 0},
             {aoc::sim::goods::NITER, "niter", std::max(4, (width * height) / 600), 0},
             {aoc::sim::goods::TIN, "tin", std::max(3, (width * height) / 800), 0},
+            // 2026-09-03: the backstop covered only the late-game strategics, so
+            // nothing guarded the goods the whole production tree is rooted in.
+            // Measured on a 140x90 Realistic map (seed 777): IRON_ORE 0 tiles,
+            // STONE 1, WOOD 15 -- against OIL 353 and NATURAL_GAS 179. With no
+            // iron there are no ingots, hence no tools and no steel, so
+            // IncomeGoodsEcon was 0 for every player on every turn of a 60-turn
+            // game, and a Mint needing 1 Stone could never be built. The geology
+            // path does have rules for all four (see the mountain/orogeny blocks
+            // above) but they did not fire on any tile -- mountainMetalsPlaced
+            // came back 0. Targets are deliberately at or above oil's density:
+            // these gate the early game, where oil is inert.
+            {aoc::sim::goods::IRON_ORE, "iron ore", std::max(8, (width * height) / 350), 0},
+            {aoc::sim::goods::STONE, "stone", std::max(6, (width * height) / 400), 0},
+            {aoc::sim::goods::WOOD, "wood", std::max(8, (width * height) / 350), 0},
+            {aoc::sim::goods::COPPER_ORE, "copper ore", std::max(6, (width * height) / 500), 0},
         };
         constexpr std::size_t BACKSTOP_COUNT = sizeof(wanted) / sizeof(wanted[0]);
 

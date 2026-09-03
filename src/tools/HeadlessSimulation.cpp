@@ -332,7 +332,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         << "Population,Cities,Military,TechsResearched,CultureTotal,"
         << "TradePartners,CompositeCSI,EraVP,AvgHappiness,"
         << "Corruption,CrisisType,IndustrialRev,GovernmentType,"
-        << "IncomeTax,IncomeCommercial,IncomeIndustrial,IncomeTileGold,"
+        << "IncomeCapital,IncomeTax,IncomeCommercial,IncomeIndustrial,IncomeTileGold,"
         << "IncomeGoodsEcon,TotalIncome,EffectiveIncome,"
         << "ExpenseUnits,ExpenseBuildings,TotalExpense,NetFlow,GoodsStockpiled,"
         << "FoodPerTurn,FamineCities,ScienceDiffusion,CultureDiffusion\n";
@@ -967,7 +967,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             if (snapPlayer != nullptr) {
                 aoc::sim::EconomicBreakdown bd =
                     aoc::sim::computeEconomicBreakdown(*snapPlayer, grid);
-                csv << bd.incomeTax << "," << bd.incomeCommercial << ","
+                csv << bd.incomeCapital << "," << bd.incomeTax << "," << bd.incomeCommercial << ","
                     << bd.incomeIndustrial << "," << bd.incomeTileGold << ","
                     << bd.incomeGoodsEcon << "," << bd.totalIncome << ","
                     << bd.effectiveIncome << ","
@@ -975,7 +975,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                     << bd.totalExpense << "," << bd.netFlow << ","
                     << bd.goodsStockpiled;
             } else {
-                csv << "0,0,0,0,0,0,0,0,0,0,0,0";
+                csv << "0,0,0,0,0,0,0,0,0,0,0,0,0";
             }
             csv << "," << snap.foodPerTurn << "," << snap.famineCities
                 << "," << snap.scienceDiffusion << "," << snap.cultureDiffusion;
