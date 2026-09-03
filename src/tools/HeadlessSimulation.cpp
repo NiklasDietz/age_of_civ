@@ -123,6 +123,11 @@ struct PlayerSnapshot {
     int32_t tradePartners = 0;
     float compositeCSI = 0.0f;
     int32_t eraVP = 0;
+    /// PlayerEraComponent::currentEra. Logged because it was stuck at 0 for
+    /// every player in every game until 2026-09-03 and nothing surfaced it.
+    int32_t era = 0;
+    /// True once victoryTracker reports the player out of the game.
+    int32_t eliminated = 0;
     float avgHappiness = 0.0f;
     float corruption = 0.0f;
     uint8_t crisisType = 0;
@@ -191,8 +196,10 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
         const aoc::sim::VictoryTrackerComponent& vt = player->victoryTracker();
         snap.compositeCSI = vt.compositeCSI;
         snap.eraVP = vt.eraVictoryPoints;
+        snap.eliminated = vt.isEliminated ? 1 : 0;
         snap.cultureTotal = vt.totalCultureAccumulated;
     }
+    snap.era = static_cast<int32_t>(player->era().currentEra.value);
 
     // Currency crisis
     snap.crisisType = static_cast<uint8_t>(player->currencyCrisis().activeCrisis);
@@ -330,7 +337,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     csv << "Turn,Player,PlayerCount,MapWidth,MapHeight,CivId,MetPlayersMask,IsLastPlayer,"
         << "GDP,Treasury,CoinTier,MonetarySystem,Inflation,"
         << "Population,Cities,Military,TechsResearched,CultureTotal,"
-        << "TradePartners,CompositeCSI,EraVP,AvgHappiness,"
+        << "TradePartners,CompositeCSI,EraVP,Era,Eliminated,AvgHappiness,"
         << "Corruption,CrisisType,IndustrialRev,GovernmentType,"
         << "IncomeCapital,IncomeTax,IncomeCommercial,IncomeIndustrial,IncomeTileGold,"
         << "IncomeGoodsEcon,TotalIncome,EffectiveIncome,"
@@ -958,6 +965,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 << snap.tradePartners << ","
                 << snap.compositeCSI << ","
                 << snap.eraVP << ","
+                << snap.era << ","
+                << snap.eliminated << ","
                 << snap.avgHappiness << ","
                 << snap.corruption << ","
                 << static_cast<int>(snap.crisisType) << ","

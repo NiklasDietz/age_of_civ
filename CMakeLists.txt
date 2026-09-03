@@ -1027,6 +1027,40 @@ if(AOC_BUILD_TESTS)
         set_tests_properties(test_turn_loop_smoke PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")
     endif()
 
+    # Sim health: outcome assertions over a real run. Distinct from the two
+    # gates below, which measure reproducibility rather than playability --
+    # test_determinism was GREEN throughout the period when every game ended
+    # with all civs eliminated and the winner logged as "Player 255", because
+    # it only ever compares a run against itself. This one asserts that a game
+    # is playable: somebody survives, the era clock advances, civs expand and
+    # meet each other, trade routes form, and the income breakdown reconciles.
+    #
+    # The selftest is not optional decoration. A health gate that cannot go red
+    # reads as evidence while asserting nothing, and this repo has already been
+    # burned by a broken instrument invalidating eight worldgen baselines (see
+    # the mapgen_metrics selftest above). It feeds the checker a healthy
+    # synthetic run plus one perturbation per assertion and requires each to be
+    # detected. Runs everywhere and takes milliseconds.
+    if(Python3_FOUND)
+        add_test(NAME test_sim_health_selftest
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/scripts/sim_health.py --selftest)
+    endif()
+
+    # Release-only: the 200-turn run is far too slow under ASan to be worth it,
+    # and the turn-loop smoke already covers debug builds for crashes.
+    if(TARGET aoc_simulate AND Python3_FOUND AND CMAKE_BUILD_TYPE STREQUAL "Release")
+        add_test(NAME test_sim_health
+                 COMMAND ${CMAKE_COMMAND}
+                         -DSIM=$<TARGET_FILE:aoc_simulate>
+                         -DPY=${Python3_EXECUTABLE}
+                         -DSCRIPT=${CMAKE_SOURCE_DIR}/scripts/sim_health.py
+                         -DOUT=${CMAKE_BINARY_DIR}/sim_health.csv
+                         -P ${CMAKE_SOURCE_DIR}/scripts/run_sim_health.cmake
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+        set_tests_properties(test_sim_health PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")
+    endif()
+
     # Sim behavior gates -- release builds only (under ASan these multi-run
     # sims take many minutes and add no memory-safety value beyond the smoke).
     #   test_determinism : same seed twice -> byte-identical CSVs. Never
