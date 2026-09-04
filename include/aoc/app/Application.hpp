@@ -42,6 +42,7 @@
 #include "aoc/ui/Encyclopedia.hpp"
 #include "aoc/ui/GreatPeopleScreen.hpp"
 #include "aoc/ui/DemographicsScreen.hpp"
+#include "aoc/ui/WorldCongressScreen.hpp"
 #include "aoc/ui/EventLog.hpp"
 #include "aoc/ui/MainMenu.hpp"
 #include "aoc/ui/SettingsMenu.hpp"
@@ -321,6 +322,7 @@ private:
     aoc::ui::EncyclopediaScreen m_encyclopediaScreen;
     aoc::ui::GreatPeopleScreen m_greatPeopleScreen;
     aoc::ui::DemographicsScreen m_demographicsScreen;
+    aoc::ui::WorldCongressScreen m_worldCongressScreen;
     aoc::ui::ScoreScreen m_scoreScreen;
 
     /// Central registry for all modal screens + menus. Populated once in
