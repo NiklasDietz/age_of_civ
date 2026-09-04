@@ -3795,33 +3795,54 @@ bool Application::spectatorRestoreSnapshot(int32_t turn) {
         return false;
     }
     // Load replaced the grid + every Player (and their units) wholesale.
+    this->recoverAfterLoad();
+    LOG_INFO("Spectator: restored snapshot from turn %d", snapTurn);
+    this->m_spectatorPaused = wasPaused;
+    return true;
+}
+
+void Application::recoverAfterLoad() {
+    // Shared post-load recovery for all four load paths (spectator restore,
+    // PauseMenu slot load, QuickLoad hotkey, HUD dropdown).  loadGame restores
+    // GameState but leaves several derived containers stale; this rebuilds them.
+
     this->publishDebugGridSnapshot();
     this->clearEntitySelection();
 
-    // Full post-load reinit: loadGame restores the GameState but Application
-    // keeps several derived containers (AIControllers, BarbarianController,
-    // GoodyHuts, TurnManager readiness) that the serializer leaves untouched.
-    // Rebuild them from the freshly-loaded player roster so stale pointers
-    // from the pre-restore session cannot produce the dist=999 supply loops
-    // and segfault we hit on the first backward-seek attempt.
+    // Rebuild production chain from the freshly-loaded city/building state.
+    this->m_economy.initialize();
+
+    // Rebuild AI controllers from the loaded player roster.
+    // AI difficulty is not serialised; use Normal until Phase 6 adds that.
+    // Spectator: every slot is AI.  Normal game: player 0 is human, 1..n-1 are AI.
     this->m_aiControllers.clear();
     const int32_t pc = this->m_gameState.playerCount();
-    for (int32_t p = 0; p < pc; ++p) {
-        this->m_aiControllers.emplace_back(static_cast<aoc::PlayerId>(p),
-                                           aoc::ui::AIDifficulty::Normal);
+    if (this->m_spectatorMode) {
+        for (int32_t p = 0; p < pc; ++p) {
+            this->m_aiControllers.emplace_back(static_cast<aoc::PlayerId>(p),
+                                               aoc::ui::AIDifficulty::Normal);
+        }
+        this->m_turnManager.setPlayerCount(0, static_cast<uint8_t>(pc));
+    } else {
+        for (int32_t p = 1; p < pc; ++p) {
+            this->m_aiControllers.emplace_back(static_cast<aoc::PlayerId>(p),
+                                               aoc::ui::AIDifficulty::Normal);
+        }
+        const uint8_t humanCount = (pc > 0) ? 1u : 0u;
+        const uint8_t aiCount    = static_cast<uint8_t>(pc > 0 ? pc - 1 : 0);
+        this->m_turnManager.setPlayerCount(humanCount, aiCount);
     }
-    // In spectator mode no slot is human; controllers cover all players.
-    // Reset turn-manager readiness so the next advance cycles cleanly.
-    this->m_turnManager.setPlayerCount(0, static_cast<uint8_t>(pc));
+    // Reset readiness so the next turn cycles cleanly from the loaded state.
     this->m_turnManager.beginNewTurn();
 
-    // Barbarian + goody huts: clear and let the sim reseed / rediscover via
-    // tile scan next turn.  Cheaper than trying to serialize their state.
+    // Barbarian + goody huts are not serialised; clear so they reseed next turn.
     this->m_barbarianController = aoc::sim::BarbarianController{};
     this->m_goodyHuts.hutLocations.clear();
 
-    // Fog: spectator mode reveals all.
-    if (!this->m_spectatorFogEnabled) {
+    // Fog is not serialised (the section is skipped on load); recompute from
+    // current unit/city positions for every player.
+    this->m_fogOfWar.initialize(this->m_hexGrid.tileCount(), MAX_PLAYERS);
+    if (this->m_spectatorMode && !this->m_spectatorFogEnabled) {
         this->spectatorRevealAll();
     } else {
         for (int32_t p = 0; p < pc; ++p) {
@@ -3830,10 +3851,8 @@ bool Application::spectatorRestoreSnapshot(int32_t turn) {
         }
     }
 
-    LOG_INFO("Spectator: restored snapshot from turn %d (reinitialized %d AI controllers)",
-             snapTurn, pc);
-    this->m_spectatorPaused = wasPaused;
-    return true;
+    LOG_INFO("recoverAfterLoad: %d players, %zu AI controllers, spectator=%s", pc,
+             this->m_aiControllers.size(), this->m_spectatorMode ? "yes" : "no");
 }
 
 void Application::run() {
@@ -4415,14 +4434,7 @@ void Application::run() {
                             this->m_notificationManager.push("Load failed (no save in slot?)", 3.0f,
                                                              0.9f, 0.3f, 0.3f);
                         } else {
-                            // Load replaced the grid + every Player
-                            // (and their units) wholesale.
-                            this->publishDebugGridSnapshot();
-                            this->clearEntitySelection();
-                            this->m_economy.initialize();
-                            this->m_fogOfWar.initialize(this->m_hexGrid.tileCount(), MAX_PLAYERS);
-                            this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid,
-                                                              0);
+                            this->recoverAfterLoad();
                             LOG_INFO("PauseMenu: loaded from %s", fname.c_str());
                             this->m_pauseMenu.destroy(this->m_uiManager);
                         }
@@ -4604,21 +4616,7 @@ void Application::run() {
                           static_cast<int>(describeError(loadResult).size()),
                           describeError(loadResult).data());
             } else {
-                // Load replaced the grid + every Player (and their
-                // units) wholesale.
-                this->publishDebugGridSnapshot();
-                this->clearEntitySelection();
-
-                // Re-initialize economy (rebuild production chain from loaded state)
-                this->m_economy.initialize();
-
-                // Re-initialize fog of war from loaded state for all players
-                this->m_fogOfWar.initialize(this->m_hexGrid.tileCount(), MAX_PLAYERS);
-                this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, 0);
-                for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
-                    this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid,
-                                                      ai.player());
-                }
+                this->recoverAfterLoad();
             }
         }
 

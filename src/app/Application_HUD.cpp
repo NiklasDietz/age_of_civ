@@ -348,8 +348,8 @@ void Application::buildHUD() {
                     "quicksave.aoc", this->m_gameState, this->m_hexGrid, this->m_turnManager,
                     this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
                 if (result == ErrorCode::Ok) {
+                    this->recoverAfterLoad();
                     LOG_INFO("Game loaded");
-                    this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, 0);
                 } else {
                     LOG_ERROR("Load failed");
                 }

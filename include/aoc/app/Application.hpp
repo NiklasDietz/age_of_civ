@@ -830,6 +830,11 @@ private:
     /// replaying turns from there to the exact requested turn.
     [[nodiscard]] bool spectatorRestoreSnapshot(int32_t turn);
 
+    /// Shared post-load recovery: rebuilds economy, AI controllers, turn-manager
+    /// readiness, barbarian state, and fog from the freshly-loaded GameState.
+    /// Called by every load path so none of those derived containers stay stale.
+    void recoverAfterLoad();
+
     /**
      * @brief Advance one spectator turn: run processTurn, update fog, check victory.
      *
