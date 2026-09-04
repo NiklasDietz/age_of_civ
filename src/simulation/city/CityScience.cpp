@@ -5,6 +5,7 @@
 
 #include "aoc/game/GameState.hpp"
 #include "aoc/simulation/city/CityScience.hpp"
+#include "aoc/simulation/city/DistrictAdjacency.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/government/Government.hpp"
@@ -95,28 +96,11 @@ float computePlayerScience(const aoc::game::Player& player,
             // subset of computeAdjacencyBonus so Campus districts contribute
             // science from adjacent mountains/rainforests/natural wonders.
             if (district.type == DistrictType::Campus && grid.isValid(district.location)) {
-                const aoc::hex::AxialCoord center = district.location;
-                const std::array<aoc::hex::AxialCoord, 6> neighbors =
-                    aoc::hex::neighbors(center);
-                int32_t adjMountains = 0;
-                int32_t adjRainforests = 0;
-                int32_t adjWonders = 0;
-                for (const aoc::hex::AxialCoord& nbr : neighbors) {
-                    if (!grid.isValid(nbr)) { continue; }
-                    const int32_t nbrIdx = grid.toIndex(nbr);
-                    if (grid.terrain(nbrIdx) == aoc::map::TerrainType::Mountain) {
-                        ++adjMountains;
-                    }
-                    if (grid.feature(nbrIdx) == aoc::map::FeatureType::Jungle) {
-                        ++adjRainforests;
-                    }
-                    if (grid.naturalWonder(nbrIdx) != aoc::map::NaturalWonderType::None) {
-                        ++adjWonders;
-                    }
-                }
-                cityScience += static_cast<float>(adjMountains) * 1.0f;
-                cityScience += static_cast<float>(adjRainforests) * 0.5f;
-                cityScience += static_cast<float>(adjWonders) * 2.0f;
+                const NeighborTerrainCounts adj =
+                    countNeighborTerrain(grid, district.location);
+                cityScience += static_cast<float>(adj.mountains) * 1.0f;
+                cityScience += static_cast<float>(adj.rainforests) * 0.5f;
+                cityScience += static_cast<float>(adj.wonders) * 2.0f;
             }
         }
 

@@ -32,8 +32,11 @@
 #include "aoc/core/ErrorCodes.hpp"
 #include "aoc/simulation/city/District.hpp"
 
+#include "aoc/map/HexCoord.hpp"
+
 #include <array>
 #include <cstdint>
+#include <unordered_map>
 
 namespace aoc::map { class HexGrid; }
 namespace aoc::game { class GameState; }
@@ -73,25 +76,67 @@ struct AdjacencyBonus {
     int32_t tileIndex);
 
 // ============================================================================
-// Appeal system
+// Shared adjacency primitives
 // ============================================================================
 
-/**
- * @brief Compute the appeal rating for a tile.
- *
- * Positive appeal: +1 Coast adjacent, +1 Mountain adjacent, +2 Natural Wonder,
- *                  +1 Forest, +1 Holy Site adjacent
- * Negative appeal: -1 Industrial Zone adjacent, -1 Encampment adjacent,
- *                  -1 Rainforest, -1 Marsh, -1 Mine
- *
- * @param grid       Hex grid.
- * @param world      ECS world.
- * @param tileIndex  Tile to compute appeal for.
- * @return Appeal rating (can be negative).
- */
-[[nodiscard]] int32_t computeTileAppeal(const aoc::map::HexGrid& grid,
-                                        const aoc::game::GameState& gameState,
-                                        int32_t tileIndex);
+/// Traits counted among a tile's six neighbours. One walk serves the district
+/// bonus, Campus science, Holy Site faith and Harbor gold, which each used to
+/// open-code the same loop over their own subset of these predicates.
+struct NeighborTerrainCounts {
+    int32_t mountains        = 0;
+    int32_t forests          = 0;
+    int32_t rainforests      = 0;
+    int32_t hills            = 0;
+    int32_t mines            = 0;
+    int32_t quarries         = 0;
+    int32_t wonders          = 0;
+    int32_t coastalResources = 0;
+};
+
+/// Count the traits of the six tiles around `center`. Off-map neighbours are
+/// skipped. Counters are integers, so the result does not depend on the order
+/// the neighbours are visited.
+[[nodiscard]] NeighborTerrainCounts countNeighborTerrain(const aoc::map::HexGrid& grid,
+                                                          aoc::hex::AxialCoord center);
+
+/// Every player's placed districts keyed by tile, so an adjacency check is a
+/// hash lookup instead of a walk over every district of every city.
+///
+/// Determinism: the map is only ever queried by key and never iterated, so its
+/// bucket order cannot reach a result. Do not add an iterating accessor without
+/// sorting the keys first.
+class DistrictIndex {
+public:
+    /// Districts standing on one tile. Counts, not flags: two districts may
+    /// legitimately share a tile and the bonus counts each.
+    struct TileDistricts {
+        int32_t total      = 0;
+        int32_t harbor     = 0;
+        int32_t industrial = 0;
+        int32_t cityCenter = 0;
+        int32_t campus     = 0;
+    };
+
+    /// Rebuild from the current world. Cheap enough to call once per city.
+    void build(const aoc::game::GameState& gameState);
+
+    /// Districts on `location`; all-zero when none.
+    [[nodiscard]] TileDistricts at(aoc::hex::AxialCoord location) const;
+
+private:
+    [[nodiscard]] static int64_t key(aoc::hex::AxialCoord c) {
+        return (static_cast<int64_t>(c.q) << 32) ^ static_cast<uint32_t>(c.r);
+    }
+    std::unordered_map<int64_t, TileDistricts> m_byTile;
+};
+
+/// Adjacency bonus using a prebuilt index. The four-argument overload builds a
+/// throwaway index per call; prefer this one when scoring several districts.
+[[nodiscard]] AdjacencyBonus computeAdjacencyBonus(
+    const aoc::map::HexGrid& grid,
+    const DistrictIndex& districts,
+    DistrictType districtType,
+    int32_t tileIndex);
 
 // ============================================================================
 // City Projects

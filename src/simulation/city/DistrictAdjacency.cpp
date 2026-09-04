@@ -24,83 +24,96 @@ namespace aoc::sim {
 // Adjacency bonuses
 // ============================================================================
 
-AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
-                                      const aoc::game::GameState& gameState,
-                                      DistrictType districtType,
-                                      int32_t tileIndex) {
-    AdjacencyBonus bonus{};
-    hex::AxialCoord center = grid.toAxial(tileIndex);
-    std::array<hex::AxialCoord, 6> neighbors = hex::neighbors(center);
-
-    // Count adjacent features and district types
-    int32_t adjMountains = 0;
-    int32_t adjForests = 0;
-    int32_t adjRainforests = 0;
-    int32_t adjDistricts = 0;
-    int32_t adjRiverEdges = 0;
-    int32_t adjCoastalResources = 0;
-    int32_t adjMines = 0;
-    int32_t adjQuarries = 0;
-    int32_t adjHills = 0;
-    int32_t adjWonders = 0;
-    int32_t adjHarborDistricts = 0;
-    int32_t adjIndustrialDistricts = 0;
-    int32_t adjCityCenters = 0;
-    int32_t adjCampusDistricts = 0;
-
-    (void)adjHills;
-
+NeighborTerrainCounts countNeighborTerrain(const aoc::map::HexGrid& grid,
+                                            hex::AxialCoord center) {
+    NeighborTerrainCounts counts{};
+    const std::array<hex::AxialCoord, 6> neighbors = hex::neighbors(center);
     for (const hex::AxialCoord& nbr : neighbors) {
         if (!grid.isValid(nbr)) { continue; }
         const int32_t nbrIdx = grid.toIndex(nbr);
 
-        aoc::map::TerrainType terrain = grid.terrain(nbrIdx);
-        aoc::map::FeatureType feature = grid.feature(nbrIdx);
+        const aoc::map::TerrainType terrain = grid.terrain(nbrIdx);
+        const aoc::map::FeatureType feature = grid.feature(nbrIdx);
 
-        if (terrain == aoc::map::TerrainType::Mountain) { ++adjMountains; }
-        if (feature == aoc::map::FeatureType::Forest)   { ++adjForests; }
-        if (feature == aoc::map::FeatureType::Jungle)   { ++adjRainforests; }
-        if (feature == aoc::map::FeatureType::Hills)    { ++adjHills; }
-        if (grid.improvement(nbrIdx) == aoc::map::ImprovementType::Mine)   { ++adjMines; }
-        if (grid.improvement(nbrIdx) == aoc::map::ImprovementType::Quarry) { ++adjQuarries; }
+        if (terrain == aoc::map::TerrainType::Mountain) { ++counts.mountains; }
+        if (feature == aoc::map::FeatureType::Forest)   { ++counts.forests; }
+        if (feature == aoc::map::FeatureType::Jungle)   { ++counts.rainforests; }
+        if (feature == aoc::map::FeatureType::Hills)    { ++counts.hills; }
+        if (grid.improvement(nbrIdx) == aoc::map::ImprovementType::Mine)   { ++counts.mines; }
+        if (grid.improvement(nbrIdx) == aoc::map::ImprovementType::Quarry) { ++counts.quarries; }
+        if (aoc::map::isWater(terrain) && grid.resource(nbrIdx).isValid()) {
+            ++counts.coastalResources;
+        }
+        if (grid.naturalWonder(nbrIdx) != aoc::map::NaturalWonderType::None) {
+            ++counts.wonders;
+        }
+    }
+    return counts;
+}
 
-        // Check for adjacent districts across all cities of all players
-        for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
-            for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
-                for (const CityDistrictsComponent::PlacedDistrict& pd : city->districts().districts) {
-                    if (pd.location == nbr) {
-                        ++adjDistricts;
-                        if (pd.type == DistrictType::Harbor)     { ++adjHarborDistricts; }
-                        if (pd.type == DistrictType::Industrial) { ++adjIndustrialDistricts; }
-                        if (pd.type == DistrictType::CityCenter) { ++adjCityCenters; }
-                        if (pd.type == DistrictType::Campus)     { ++adjCampusDistricts; }
-                    }
-                }
+void DistrictIndex::build(const aoc::game::GameState& gameState) {
+    this->m_byTile.clear();
+    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+        if (p == nullptr) { continue; }
+        for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
+            if (city == nullptr) { continue; }
+            for (const CityDistrictsComponent::PlacedDistrict& pd : city->districts().districts) {
+                TileDistricts& entry = this->m_byTile[DistrictIndex::key(pd.location)];
+                ++entry.total;
+                if (pd.type == DistrictType::Harbor)     { ++entry.harbor; }
+                if (pd.type == DistrictType::Industrial) { ++entry.industrial; }
+                if (pd.type == DistrictType::CityCenter) { ++entry.cityCenter; }
+                if (pd.type == DistrictType::Campus)     { ++entry.campus; }
             }
         }
+    }
+}
 
-        // Coastal resources
-        if (aoc::map::isWater(terrain) && grid.resource(nbrIdx).isValid()) {
-            ++adjCoastalResources;
-        }
+DistrictIndex::TileDistricts DistrictIndex::at(hex::AxialCoord location) const {
+    const std::unordered_map<int64_t, TileDistricts>::const_iterator it =
+        this->m_byTile.find(DistrictIndex::key(location));
+    if (it == this->m_byTile.end()) {
+        return TileDistricts{};
+    }
+    return it->second;
+}
 
-        // Natural wonders
-        if (grid.naturalWonder(nbrIdx) != aoc::map::NaturalWonderType::None) {
-            ++adjWonders;
-        }
+AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
+                                      const DistrictIndex& districts,
+                                      DistrictType districtType,
+                                      int32_t tileIndex) {
+    AdjacencyBonus bonus{};
+    const hex::AxialCoord center = grid.toAxial(tileIndex);
+    const NeighborTerrainCounts terrain = countNeighborTerrain(grid, center);
+
+    // Adjacent districts, one hash lookup per neighbour. This used to re-walk
+    // every district of every city of every player once per neighbour.
+    int32_t adjDistricts           = 0;
+    int32_t adjHarborDistricts     = 0;
+    int32_t adjIndustrialDistricts = 0;
+    int32_t adjCityCenters         = 0;
+    int32_t adjCampusDistricts     = 0;
+    const std::array<hex::AxialCoord, 6> neighbors = hex::neighbors(center);
+    for (const hex::AxialCoord& nbr : neighbors) {
+        if (!grid.isValid(nbr)) { continue; }
+        const DistrictIndex::TileDistricts here = districts.at(nbr);
+        adjDistricts           += here.total;
+        adjHarborDistricts     += here.harbor;
+        adjIndustrialDistricts += here.industrial;
+        adjCityCenters         += here.cityCenter;
+        adjCampusDistricts     += here.campus;
     }
 
     // River edges on the district's own tile
-    adjRiverEdges = __builtin_popcount(grid.riverEdges(tileIndex));
+    const int32_t adjRiverEdges = __builtin_popcount(grid.riverEdges(tileIndex));
 
     // Apply bonuses based on district type (Civ 6 adjacency rules)
     switch (districtType) {
         case DistrictType::Campus:
-            bonus.science += static_cast<float>(adjMountains) * 1.0f;
-            bonus.science += static_cast<float>(adjRainforests) * 0.5f;
-            bonus.science += static_cast<float>(adjWonders) * 2.0f;
+            bonus.science += static_cast<float>(terrain.mountains) * 1.0f;
+            bonus.science += static_cast<float>(terrain.rainforests) * 0.5f;
+            bonus.science += static_cast<float>(terrain.wonders) * 2.0f;
             // Adjacent Campus districts cluster research (research-park effect).
-            // Previously counted but never applied — the bonus was dead code.
             bonus.science += static_cast<float>(adjCampusDistricts) * 1.0f;
             break;
 
@@ -111,22 +124,22 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
             break;
 
         case DistrictType::Industrial:
-            bonus.production += static_cast<float>(adjMines) * 1.0f;
-            bonus.production += static_cast<float>(adjQuarries) * 1.0f;
+            bonus.production += static_cast<float>(terrain.mines) * 1.0f;
+            bonus.production += static_cast<float>(terrain.quarries) * 1.0f;
             bonus.production += static_cast<float>(adjDistricts) * 0.5f;
             bonus.production += static_cast<float>(adjIndustrialDistricts) * 1.0f;
             break;
 
         case DistrictType::Harbor:
-            bonus.gold += static_cast<float>(adjCoastalResources) * 2.0f;
+            bonus.gold += static_cast<float>(terrain.coastalResources) * 2.0f;
             bonus.gold += static_cast<float>(adjDistricts) * 1.0f;
             bonus.gold += static_cast<float>(adjCityCenters) * 2.0f;
             break;
 
         case DistrictType::HolySite:
-            bonus.faith += static_cast<float>(adjMountains) * 1.0f;
-            bonus.faith += static_cast<float>(adjForests) * 0.5f;
-            bonus.faith += static_cast<float>(adjWonders) * 2.0f;
+            bonus.faith += static_cast<float>(terrain.mountains) * 1.0f;
+            bonus.faith += static_cast<float>(terrain.forests) * 0.5f;
+            bonus.faith += static_cast<float>(terrain.wonders) * 2.0f;
             break;
 
         case DistrictType::Encampment:
@@ -140,54 +153,13 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
     return bonus;
 }
 
-// ============================================================================
-// Appeal
-// ============================================================================
-
-int32_t computeTileAppeal(const aoc::map::HexGrid& grid,
-                          const aoc::game::GameState& gameState,
-                          int32_t tileIndex) {
-    int32_t appeal = 0;
-    hex::AxialCoord center = grid.toAxial(tileIndex);
-    std::array<hex::AxialCoord, 6> neighbors = hex::neighbors(center);
-
-    // Own tile features
-    aoc::map::FeatureType ownFeature = grid.feature(tileIndex);
-    if (ownFeature == aoc::map::FeatureType::Forest) { appeal += 1; }
-    if (ownFeature == aoc::map::FeatureType::Jungle) { appeal -= 1; }
-    if (ownFeature == aoc::map::FeatureType::Marsh)  { appeal -= 1; }
-    if (ownFeature == aoc::map::FeatureType::Oasis)  { appeal += 2; }
-
-    if (grid.naturalWonder(tileIndex) != aoc::map::NaturalWonderType::None) { appeal += 4; }
-
-    for (const hex::AxialCoord& nbr : neighbors) {
-        if (!grid.isValid(nbr)) { continue; }
-        const int32_t nbrIdx = grid.toIndex(nbr);
-
-        aoc::map::TerrainType terrain = grid.terrain(nbrIdx);
-        if (terrain == aoc::map::TerrainType::Coast)    { appeal += 1; }
-        if (terrain == aoc::map::TerrainType::Mountain) { appeal += 1; }
-
-        if (grid.naturalWonder(nbrIdx) != aoc::map::NaturalWonderType::None) { appeal += 2; }
-
-        aoc::map::ImprovementType imp = grid.improvement(nbrIdx);
-        if (imp == aoc::map::ImprovementType::Mine) { appeal -= 1; }
-
-        // Adjacent districts
-        for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
-            for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
-                for (const CityDistrictsComponent::PlacedDistrict& pd : city->districts().districts) {
-                    if (pd.location == nbr) {
-                        if (pd.type == DistrictType::Industrial) { appeal -= 1; }
-                        if (pd.type == DistrictType::Encampment) { appeal -= 1; }
-                        if (pd.type == DistrictType::HolySite)   { appeal += 1; }
-                    }
-                }
-            }
-        }
-    }
-
-    return appeal;
+AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
+                                      const aoc::game::GameState& gameState,
+                                      DistrictType districtType,
+                                      int32_t tileIndex) {
+    DistrictIndex districts;
+    districts.build(gameState);
+    return computeAdjacencyBonus(grid, districts, districtType, tileIndex);
 }
 
 // ============================================================================

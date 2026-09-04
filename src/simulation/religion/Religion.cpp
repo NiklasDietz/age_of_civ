@@ -7,6 +7,7 @@
  */
 
 #include "aoc/simulation/religion/Religion.hpp"
+#include "aoc/simulation/city/DistrictAdjacency.hpp"
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -110,27 +111,11 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
             if (d.type != DistrictType::HolySite) { continue; }
             faithGain += 2.0f;
             if (!grid.isValid(d.location)) { continue; }
-            const std::array<aoc::hex::AxialCoord, 6> neighbors =
-                aoc::hex::neighbors(d.location);
-            int32_t adjMountains = 0;
-            int32_t adjForests   = 0;
-            int32_t adjWonders   = 0;
-            for (const aoc::hex::AxialCoord& nbr : neighbors) {
-                if (!grid.isValid(nbr)) { continue; }
-                const int32_t nbrIdx = grid.toIndex(nbr);
-                if (grid.terrain(nbrIdx) == aoc::map::TerrainType::Mountain) {
-                    ++adjMountains;
-                }
-                if (grid.feature(nbrIdx) == aoc::map::FeatureType::Forest) {
-                    ++adjForests;
-                }
-                if (grid.naturalWonder(nbrIdx) != aoc::map::NaturalWonderType::None) {
-                    ++adjWonders;
-                }
-            }
-            faithGain += static_cast<float>(adjMountains) * 1.0f;
-            faithGain += static_cast<float>(adjForests) * 0.5f;
-            faithGain += static_cast<float>(adjWonders) * 2.0f;
+            const aoc::sim::NeighborTerrainCounts adj =
+                aoc::sim::countNeighborTerrain(grid, d.location);
+            faithGain += static_cast<float>(adj.mountains) * 1.0f;
+            faithGain += static_cast<float>(adj.forests) * 0.5f;
+            faithGain += static_cast<float>(adj.wonders) * 2.0f;
         }
 
         // Faith from buildings (Shrine/Temple/Cathedral).

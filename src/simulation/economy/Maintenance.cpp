@@ -7,6 +7,7 @@
  */
 
 #include "aoc/simulation/economy/Maintenance.hpp"
+#include "aoc/simulation/city/DistrictAdjacency.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
@@ -100,19 +101,9 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
                     bd.incomeCommercial += 2;
                 }
                 if (d.type == DistrictType::Harbor) {
-                    const std::array<aoc::hex::AxialCoord, 6> neighbors =
-                        aoc::hex::neighbors(d.location);
-                    int32_t adjCoastalResources = 0;
-                    for (const aoc::hex::AxialCoord& nbr : neighbors) {
-                        if (!grid.isValid(nbr)) { continue; }
-                        const int32_t nbrIdx = grid.toIndex(nbr);
-                        if (aoc::map::isWater(grid.terrain(nbrIdx))
-                            && grid.resource(nbrIdx).isValid()) {
-                            ++adjCoastalResources;
-                        }
-                    }
+                    const NeighborTerrainCounts adj = countNeighborTerrain(grid, d.location);
                     bd.incomeCommercial +=
-                        static_cast<CurrencyAmount>(adjCoastalResources * 2);
+                        static_cast<CurrencyAmount>(adj.coastalResources * 2);
                 }
             }
         }

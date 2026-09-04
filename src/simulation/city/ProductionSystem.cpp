@@ -140,8 +140,14 @@ static float computeCityProductionGS(const aoc::game::Player& player,
         }
     }
 
-    // Building production bonuses + district adjacency
+    // Building production bonuses + district adjacency. The district index is
+    // built once per city; computeAdjacencyBonus used to re-walk every district
+    // of every city of every player once per neighbour of every district here.
     const CityDistrictsComponent& districts = city.districts();
+    DistrictIndex districtIndex;
+    if (!districts.districts.empty()) {
+        districtIndex.build(gameState);
+    }
     for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
         for (BuildingId bid : district.buildings) {
             totalProduction += static_cast<float>(buildingDef(bid).productionBonus);
@@ -151,10 +157,10 @@ static float computeCityProductionGS(const aoc::game::Player& player,
                 totalProduction += static_cast<float>(civSpec.uniqueBuilding.productionBonus);
             }
         }
-        // Adjacency bonus (still uses legacy world for cross-city district lookup)
+        // Adjacency bonus, including districts owned by other players.
         if (grid.isValid(district.location)) {
             AdjacencyBonus adj = computeAdjacencyBonus(
-                grid, gameState, district.type, grid.toIndex(district.location));
+                grid, districtIndex, district.type, grid.toIndex(district.location));
             totalProduction += adj.production;
         }
     }
