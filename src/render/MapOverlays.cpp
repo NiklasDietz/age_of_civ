@@ -113,7 +113,7 @@ void renderInfrastructureOverlay(vulkan_app::renderer::Renderer2D& renderer,
 
 void renderPollutionOverlay(vulkan_app::renderer::Renderer2D& renderer,
                             const aoc::game::GameState& gameState,
-                            const aoc::map::HexGrid& grid,
+                            const aoc::map::HexGrid& /*grid*/,
                             float cameraX, float cameraY, float zoom) {
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
@@ -136,7 +136,7 @@ void renderPollutionOverlay(vulkan_app::renderer::Renderer2D& renderer,
 
 void renderTradeRouteOverlay(vulkan_app::renderer::Renderer2D& renderer,
                              const aoc::game::GameState& gameState,
-                             const aoc::map::HexGrid& grid,
+                             const aoc::map::HexGrid& /*grid*/,
                              float cameraX, float cameraY, float zoom,
                              PlayerId player) {
     for (const aoc::sim::TradeRouteComponent& route : gameState.tradeRoutes()) {

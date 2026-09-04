@@ -1057,7 +1057,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         seedLat[static_cast<std::size_t>(i)] = c.latIdx;
                         return true;
                     };
-                    for (int32_t attempt = 0; attempt < 64 && !ok; ++attempt) {
+                    for (int32_t placeAttempt = 0; placeAttempt < 64 && !ok; ++placeAttempt) {
                         ok = tryPlace(MIN_SEP_RAD);
                     }
                     if (!ok) {
@@ -1066,7 +1066,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                  "retrying with relaxed 0.5x separation",
                                  i, static_cast<double>(MIN_SEP_RAD));
                         constexpr float RELAXED = 0.5f * MIN_SEP_RAD;
-                        for (int32_t attempt = 0; attempt < 64 && !ok; ++attempt) {
+                        for (int32_t placeAttempt = 0; placeAttempt < 64 && !ok;
+                             ++placeAttempt) {
                             ok = tryPlace(RELAXED);
                         }
                     }
@@ -1117,7 +1118,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         std::sqrt(targetSolidAngle * static_cast<double>(aniso) / 3.14159265358979);
                     const aoc::map::gen::LatLon seedPos = SF::cellCenter(sLon, sLat);
                     const double sLatR   = static_cast<double>(seedPos.latDeg) * 0.01745329252;
-                    const double sLonR   = static_cast<double>(seedPos.lonDeg) * 0.01745329252;
                     const double sinSLat = std::sin(sLatR);
                     const double cosSLat = std::cos(sLatR);
                     claimed[startIdx]    = 1;
@@ -1882,7 +1882,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
                     const float latDeg =
                         -90.0f + (static_cast<float>(latIdx) + 0.5f) * SF::CELL_DEG;
-                    const double w = std::max(0.0f, std::cos(latDeg * 0.01745329252f));
+                    const double w = static_cast<double>(std::max(0.0f, std::cos(latDeg * 0.01745329252f)));
                     for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
                         const std::size_t idx = SF::cellIndex(lonIdx, latIdx);
                         const float rel       = sphereField.surfaceElevationM[idx] - zsea;
@@ -1969,7 +1969,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
                         const float latDeg =
                             -90.0f + (static_cast<float>(latIdx) + 0.5f) * SF::CELL_DEG;
-                        const double w = std::max(0.0f, std::cos(latDeg * 0.01745329252f));
+                        const double w = static_cast<double>(std::max(0.0f, std::cos(latDeg * 0.01745329252f)));
                         for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
                             const std::size_t idx = SF::cellIndex(lonIdx, latIdx);
                             if (sphereField.continentalFraction[idx] < 0.5f) continue;

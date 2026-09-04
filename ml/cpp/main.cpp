@@ -355,7 +355,7 @@ void saveSummary(const aoc::ga::DifficultyTiers& tiers, const char* path) {
         for (int32_t i = 0; i < aoc::ga::NUM_PARAMS; ++i) {
             std::size_t idx = static_cast<std::size_t>(i);
             // Pad name to 30 chars for alignment
-            std::string nameStr(PARAM_NAMES[i]);
+            std::string nameStr(PARAM_NAMES[idx]);
             while (nameStr.size() < 30) { nameStr += ' '; }
             file << "  " << nameStr << " = "
                  << entry.individual->genes[idx] << "\n";

@@ -511,9 +511,10 @@ void Application::buildHUD() {
             bannerPanel->isVisible    = false; // Hidden by default
         }
     }
-    this->m_uiManager.createLabel(
+    // The label is a child of the banner panel and is freed with it.
+    static_cast<void>(this->m_uiManager.createLabel(
         this->m_lastPlayerBanner, {4.0f, 2.0f, 142.0f, 20.0f},
-        aoc::ui::LabelData{"Waiting for you!", {1.0f, 1.0f, 1.0f, 1.0f}, 12.0f});
+        aoc::ui::LabelData{"Waiting for you!", {1.0f, 1.0f, 1.0f, 1.0f}, 12.0f}));
 
     // Victory announcement panel (hidden until game over, centered on screen)
     this->m_victoryPanel = this->m_uiManager.createPanel(
@@ -977,7 +978,6 @@ void Application::rebuildUnitActionPanel() {
         ++buttonCount; // Upgrade
     }
 
-    constexpr float BTN_W       = 90.0f;
     constexpr float BTN_H       = 24.0f;
     constexpr float BTN_SPACING = 3.0f;
     constexpr float PAD         = 8.0f;
@@ -1075,7 +1075,7 @@ void Application::rebuildUnitActionPanel() {
     };
 
     // -- Skip button (all units) --
-    makeActionBtn("Skip", {0.25f, 0.25f, 0.30f, 0.9f}, [this, selectedUnitPtr]() {
+    makeActionBtn("Skip", {0.25f, 0.25f, 0.30f, 0.9f}, [selectedUnitPtr]() {
         if (selectedUnitPtr == nullptr) {
             return;
         }
@@ -1084,7 +1084,7 @@ void Application::rebuildUnitActionPanel() {
     });
 
     // -- Sleep button (all units) --
-    makeActionBtn("Sleep", {0.25f, 0.25f, 0.30f, 0.9f}, [this, selectedUnitPtr]() {
+    makeActionBtn("Sleep", {0.25f, 0.25f, 0.30f, 0.9f}, [selectedUnitPtr]() {
         if (selectedUnitPtr == nullptr) {
             return;
         }
@@ -1094,7 +1094,7 @@ void Application::rebuildUnitActionPanel() {
 
     // -- Auto-Explore button (Scout units) --
     if (def.unitClass == aoc::sim::UnitClass::Scout) {
-        makeActionBtn("Auto-Explore", {0.20f, 0.25f, 0.35f, 0.9f}, [this, selectedUnitPtr]() {
+        makeActionBtn("Auto-Explore", {0.20f, 0.25f, 0.35f, 0.9f}, [selectedUnitPtr]() {
             if (selectedUnitPtr == nullptr) {
                 return;
             }
@@ -1109,7 +1109,7 @@ void Application::rebuildUnitActionPanel() {
 
     // -- Fortify button (military units) --
     if (aoc::sim::isMilitary(def.unitClass)) {
-        makeActionBtn("Fortify", {0.20f, 0.30f, 0.20f, 0.9f}, [this, selectedUnitPtr]() {
+        makeActionBtn("Fortify", {0.20f, 0.30f, 0.20f, 0.9f}, [selectedUnitPtr]() {
             if (selectedUnitPtr == nullptr) {
                 return;
             }
@@ -1427,7 +1427,7 @@ void Application::rebuildUnitActionPanel() {
         });
 
         // -- Auto-Improve toggle (Civilian units) --
-        makeActionBtn("Auto-Improve", {0.20f, 0.28f, 0.30f, 0.9f}, [this, selectedUnitPtr]() {
+        makeActionBtn("Auto-Improve", {0.20f, 0.28f, 0.30f, 0.9f}, [selectedUnitPtr]() {
             if (selectedUnitPtr == nullptr) {
                 return;
             }
@@ -1449,7 +1449,7 @@ void Application::rebuildUnitActionPanel() {
         const PlayerId owner                = unit.owner();
         const aoc::hex::AxialCoord unitPos  = unit.position();
         makeActionBtn(upgLabel, {0.30f, 0.20f, 0.30f, 0.9f},
-                      [this, gsPtr, selectedUnitPtr, upgTo, owner, unitPos]() {
+                      [gsPtr, selectedUnitPtr, upgTo, owner, unitPos]() {
                           if (selectedUnitPtr == nullptr) {
                               return;
                           }

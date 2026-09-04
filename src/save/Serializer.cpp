@@ -122,21 +122,17 @@ constexpr std::size_t MAX_PATH         = 1000;
 constexpr std::size_t MAX_QUEUE        = 50;
 // Additional caps for file-controlled counts reserved/looped on load
 // (audit 2026-05-10, WP-01). Conservative upper bounds:
-//   - map is at most MAX_MAP_DIM x MAX_MAP_DIM tiles
-//   - districts per city ~10, buildings per district ~10
-//   - relation/grievance modifiers and wonders are small per-pair/per-city
+//   - districts per city ~10
+//   - grievances are small per pair
 //   - bonds/hoards/equity positions bounded by player/good counts
-constexpr std::size_t MAX_MAP_DIM     = 512;
+// That audit's map-dimension, building, modifier, wonder, hoard-position and
+// agreement caps were superseded by the 2026-06-06 block below (which guards
+// every one of those counts) and have been removed.
 constexpr std::size_t MAX_DISTRICTS   = 64;
-constexpr std::size_t MAX_BUILDINGS   = 64;
-constexpr std::size_t MAX_MODIFIERS   = 1000;
-constexpr std::size_t MAX_WONDERS     = 256;
 constexpr std::size_t MAX_BONDS       = 10000;
 constexpr std::size_t MAX_HOARDS      = 200;
-constexpr std::size_t MAX_HOARD_POS   = 1000;
 constexpr std::size_t MAX_GRIEVANCES  = 1000;
 constexpr std::size_t MAX_INVESTMENTS = 10000;
-constexpr std::size_t MAX_AGREEMENTS  = 1000;
 
 // Additional caps for the remaining unbounded reserve() sites and the map
 // dimensions (audit 2026-06-06). Same rationale as above: conservative
