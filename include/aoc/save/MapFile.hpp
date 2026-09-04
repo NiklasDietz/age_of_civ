@@ -9,12 +9,19 @@
  * loaded from it plays exactly like the freshly generated one (headless
  * `--map-cache`). Layers are matched by name: a newer file's unknown layers
  * are skipped, an older file's missing layers stay in their fresh state.
+ *
+ * The game save (SectionId::MapLayers, v12) writes the same block restricted
+ * to isGameGridLayer(): the 16 layers HexGrid::initialize() sizes, which is
+ * all the simulation ever reads back. The other ~170 layers are worldgen
+ * products (about 15 MB on a 400x200 map, 1 MB of it the fixed-size sphere
+ * snapshot); they stay in the map file only.
  */
 
 #include "aoc/core/ErrorCodes.hpp"
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace aoc::map {
 class HexGrid;
@@ -29,6 +36,16 @@ class WriteBuffer;
 /// count, then per record a string name, u8 element kind, u32 element count and
 /// the elements. Array layers become one record per slice ("name[i]").
 void writeGridLayers(WriteBuffer& out, const aoc::map::HexGrid& grid);
+
+/// True for the per-tile state layers HexGrid::initialize() sizes (terrain,
+/// feature, elevation, riverEdges, resource, reserves, prospectCooldown, owner,
+/// improvement, road, tileInfra, greenhouseCrop, naturalWonder, chokepoint,
+/// falloutTurns, preFalloutFeature). Everything else is worldgen output.
+[[nodiscard]] bool isGameGridLayer(std::string_view name);
+
+/// writeGridLayers() restricted to isGameGridLayer(): the body of the save
+/// format's SectionId::MapLayers since v12.
+void writeGameGridLayers(WriteBuffer& out, const aoc::map::HexGrid& grid);
 
 /// Reads a writeGridLayers() block into an initialised grid. Unknown names are
 /// skipped, every count is checked against the buffer before it allocates.

@@ -23,6 +23,11 @@
  * (MapFile.hpp), so natural wonders, soil, ore grades and the rest survive a
  * load; TurnState carries the human player id. Saves grew by the layer dump
  * (about 3.4 MB for a 140x90 map).
+ *
+ * v12 (2026-09-04): MapLayers carries only the 16 game-state layers
+ * (MapFile.hpp isGameGridLayer). The ~170 worldgen-only layers were 90% of a
+ * 17 MB Tutorial save and are never read by the simulation; they remain in
+ * the headless map cache (.aocmap), which is lossless.
  */
 
 #include <cstdint>
@@ -30,6 +35,6 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 11;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 12;
 
 } // namespace aoc::save

@@ -24,6 +24,7 @@
 #include "aoc/game/Unit.hpp"
 #include "aoc/map/FogOfWar.hpp"
 #include "aoc/map/HexGrid.hpp"
+#include "aoc/save/MapFile.hpp"
 #include "aoc/save/Serializer.hpp"
 #include "GridLayerCompare.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
@@ -35,9 +36,21 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
+
+/// Forwards only the layers the save carries (aoc::save::isGameGridLayer).
+struct GameLayersOnly {
+    aoc::test::LayerCompare& inner;
+
+    template <class Container> void operator()(std::string_view name, const Container& c) {
+        if (aoc::save::isGameGridLayer(name)) {
+            this->inner(name, c);
+        }
+    }
+};
 
 struct World {
     aoc::game::GameState gameState;
@@ -56,8 +69,17 @@ void buildWorld(World& w) {
     for (int32_t i = 0; i < w.grid.tileCount(); i += 3) {
         w.grid.setTerrain(i, aoc::map::TerrainType::Grassland);
     }
-    // v11: layers outside the six-field MapGrid section must survive too.
+    // v12: game layers outside the six-field MapGrid section must survive.
     w.grid.setNaturalWonder(17, static_cast<aoc::map::NaturalWonderType>(2));
+    w.grid.setReserves(17, 300);
+    w.grid.setProspectCooldown(18, 4);
+    w.grid.setImprovement(19, static_cast<aoc::map::ImprovementType>(1));
+    w.grid.setChokepoint(20, static_cast<aoc::map::ChokepointType>(1));
+    w.grid.setGreenhouseCrop(21, 7);
+    w.grid.applyFallout(22, 5);
+    w.grid.setAqueduct(23, true);
+    // Worldgen-only layers are deliberately NOT saved (v12); populate them so
+    // the load below can prove they come back in their fresh, empty state.
     w.grid.setRowLatitudes(std::vector<float>(16, 12.5f));
     std::vector<float> fertility(static_cast<std::size_t>(w.grid.tileCount()), 0.4f);
     fertility[17] = 0.95f;
@@ -152,18 +174,27 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(lp0.warWeariness().turnsAtWar.at(2) == 12);
     CHECK(loaded.grid.width() == 24);
     CHECK(loaded.grid.height() == 16);
-    // v11: the human seat and every grid layer.
+    // v11: the human seat. v12: every game layer, and only those.
     CHECK(loaded.gameState.humanPlayerId() == aoc::PlayerId{2});
     CHECK(loaded.gameState.players()[2]->isHuman());
     CHECK_FALSE(loaded.gameState.players()[0]->isHuman());
     CHECK(loaded.grid.naturalWonder(17) == static_cast<aoc::map::NaturalWonderType>(2));
+    CHECK(loaded.grid.reserves(17) == 300);
+    CHECK(loaded.grid.greenhouseCrop(21) == 7);
+    CHECK(loaded.grid.hasFallout(22));
+    CHECK(loaded.grid.hasAqueduct(23));
     aoc::test::LayerSnapshot layers;
     original.grid.visitLayers(layers);
     aoc::test::LayerCompare layerCompare{layers};
-    loaded.grid.visitLayers(layerCompare);
-    CHECK(layerCompare.seen > 150);
+    GameLayersOnly gameLayers{layerCompare};
+    loaded.grid.visitLayers(gameLayers);
+    CHECK(layerCompare.seen == 16);
     CHECK_MESSAGE(layerCompare.mismatched == 0,
-                  "first grid layer lost by save/load: " << layerCompare.firstMismatch);
+                  "first game layer lost by save/load: " << layerCompare.firstMismatch);
+    // v12: worldgen-only layers are not in the save; the loaded grid holds them
+    // in the fresh state HexGrid::initialize() leaves (empty), not stale data.
+    CHECK(loaded.grid.soilFertility().empty());
+    CHECK(loaded.grid.rowLatitudes().empty());
 
     // Resave the loaded state: byte-identical to the first save.
     REQUIRE(aoc::save::saveGame(fileB, loaded.gameState, loaded.grid,

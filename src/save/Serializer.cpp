@@ -415,11 +415,12 @@ void writeMapSection(WriteBuffer& out, const aoc::map::HexGrid& grid) {
     writeSection(out, SectionId::MapGrid, section);
 }
 
-/// v11: MapGrid keeps the six core layers; this section, read after it,
-/// carries every HexGrid layer so a loaded map equals the generated one.
+/// v12: MapGrid keeps the six core layers; this section, read after it,
+/// carries the remaining game-state layers (isGameGridLayer). Worldgen-only
+/// layers live in the headless map cache, not in the save.
 void writeMapLayersSection(WriteBuffer& out, const aoc::map::HexGrid& grid) {
     WriteBuffer section;
-    writeGridLayers(section, grid);
+    writeGameGridLayers(section, grid);
     writeSection(out, SectionId::MapLayers, section);
 }
 

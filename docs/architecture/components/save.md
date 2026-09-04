@@ -12,7 +12,9 @@ format.
   `saveGame()` / `loadGame()`: free functions that write/read the entire game. Format:
   `[Header: magic "AOC\0" + version(4) + flags(4) + dataSize(4)]` followed by
   self-describing sections (`sectionId(2) + sectionSize(4) + data`). Current version:
-  `SAVE_VERSION = 10`. Currently 38 named `SectionId` values covering map grid,
+  `CURRENT_SAVE_VERSION = 12` (v12: `MapLayers` carries only the 16 game-state grid
+  layers, see `MapFile.hpp` `isGameGridLayer`; worldgen-only layers live in the
+  headless `.aocmap` cache). Currently 38 named `SectionId` values covering map grid,
   entities, diplomacy, market, fog of war, PRNG state, per-player tech/civic/monetary/
   government/production/religion/tourism/space-race/prestige state, and global
   wonder/barbarian/city-state trackers.
@@ -23,8 +25,8 @@ format.
   guards large-reserve loops before allocation.
 
 - [include/aoc/save/SaveVersioning.hpp](../../../include/aoc/save/SaveVersioning.hpp)
-  — Migration chain: `CURRENT_SAVE_VERSION` constant and per-version `migrate()`
-  functions (v1→v2→…→v10). Each step defaults missing sections. Unknown sections
+  — `CURRENT_SAVE_VERSION` and the pinned no-migration policy (2026-09-04): a file
+  loads only when its header version equals the current one. Unknown sections
   (from newer versions) are skipped via their stored `sectionSize`.
 
 ## Public surface

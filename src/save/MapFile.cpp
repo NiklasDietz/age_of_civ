@@ -4,8 +4,9 @@
  *
  * Layout: u32 magic "AOCM", u32 version, i32 width, i32 height, u8 topology,
  * u64 generator seed, then the writeGridLayers() block (u32 record count, per
- * record: string name, u8 element kind, u32 element count, elements). The same
- * block is the save format's SectionId::MapLayers. Little-endian via WriteBuffer.
+ * record: string name, u8 element kind, u32 element count, elements). The save
+ * format's SectionId::MapLayers is the same block restricted to the game layers
+ * (writeGameGridLayers). Little-endian via WriteBuffer.
  */
 
 #include "aoc/save/MapFile.hpp"
@@ -135,11 +136,17 @@ std::string indexedName(std::string_view name, std::size_t index) {
 /// record per slice, "name[i]").
 struct LayerWriter {
     WriteBuffer& out;
-    uint32_t layerCount = 0;
+    bool gameLayersOnly;
+    uint32_t layerCount   = 0;
     uint64_t m_totalBytes = 0;
     std::vector<std::pair<std::string, uint64_t>> m_tally;
 
+    LayerWriter(WriteBuffer& target, bool gameOnly) : out(target), gameLayersOnly(gameOnly) {}
+
     template <class T> void operator()(std::string_view name, const std::vector<T>& values) {
+        if (this->gameLayersOnly && !isGameGridLayer(name)) {
+            return;
+        }
         this->out.writeString(name);
         this->out.writeU8(static_cast<uint8_t>(kindOf<T>()));
         this->out.writeU32(static_cast<uint32_t>(values.size()));
@@ -154,12 +161,18 @@ struct LayerWriter {
 
     template <class T, std::size_t N>
     void operator()(std::string_view name, const std::array<std::vector<T>, N>& slices) {
+        if (this->gameLayersOnly && !isGameGridLayer(name)) {
+            return;
+        }
         for (std::size_t i = 0; i < N; ++i) {
             (*this)(indexedName(name, i), slices[i]);
         }
     }
 
     void operator()(std::string_view name, const std::unordered_map<int32_t, uint16_t>& sparse) {
+        if (this->gameLayersOnly && !isGameGridLayer(name)) {
+            return;
+        }
         std::vector<std::pair<int32_t, uint16_t>> sorted(sparse.begin(), sparse.end());
         std::sort(sorted.begin(), sorted.end());
         this->out.writeString(name);
@@ -225,15 +238,24 @@ struct LayerBinder {
     }
 };
 
-} // namespace
+/// The per-tile state HexGrid::initialize() sizes. Every other layer is a
+/// worldgen product with an absent-layer fallback (HexGrid.cpp), so the save
+/// omits it: 17 MB -> about 2 MB for a 400x200 map (Block 0.2, 2026-09-04).
+constexpr std::array<std::string_view, 16> GAME_GRID_LAYERS = {
+    "terrain",     "feature",       "elevation",      "riverEdges",
+    "resource",    "reserves",      "prospectCooldown", "owner",
+    "improvement", "road",          "tileInfra",      "greenhouseCrop",
+    "naturalWonder", "chokepoint",  "falloutTurns",   "preFalloutFeature",
+};
 
-void writeGridLayers(WriteBuffer& out, const aoc::map::HexGrid& grid) {
+void writeLayerBlock(WriteBuffer& out, const aoc::map::HexGrid& grid, bool gameLayersOnly) {
     WriteBuffer records;
-    LayerWriter writer{records};
+    LayerWriter writer{records, gameLayersOnly};
     grid.visitLayers(writer);
     out.writeU32(writer.layerCount);
     out.writeBytes(records.data().data(), records.size());
-    // Per-layer byte tally (debug builds only; LOG_DEBUG compiled out under NDEBUG)
+#ifndef NDEBUG
+    // Per-layer byte tally, largest first (LOG_DEBUG is compiled out under NDEBUG).
     std::sort(writer.m_tally.begin(), writer.m_tally.end(),
               [](const std::pair<std::string, uint64_t>& a,
                  const std::pair<std::string, uint64_t>& b) { return a.second > b.second; });
@@ -241,9 +263,26 @@ void writeGridLayers(WriteBuffer& out, const aoc::map::HexGrid& grid) {
         LOG_DEBUG("[MapFile] layer %-40s %7llu KB", entry.first.c_str(),
                   static_cast<unsigned long long>(entry.second / 1024));
     }
-    LOG_INFO("[MapFile] writeGridLayers: %zu records, total payload %.1f MB",
+#endif
+    LOG_INFO("[MapFile] %s: %zu records, total payload %.1f MB",
+             gameLayersOnly ? "game layers" : "all layers",
              static_cast<std::size_t>(writer.m_tally.size()),
              static_cast<double>(writer.m_totalBytes) / (1024.0 * 1024.0));
+}
+
+} // namespace
+
+bool isGameGridLayer(std::string_view name) {
+    return std::find(GAME_GRID_LAYERS.begin(), GAME_GRID_LAYERS.end(), name) !=
+           GAME_GRID_LAYERS.end();
+}
+
+void writeGridLayers(WriteBuffer& out, const aoc::map::HexGrid& grid) {
+    writeLayerBlock(out, grid, false);
+}
+
+void writeGameGridLayers(WriteBuffer& out, const aoc::map::HexGrid& grid) {
+    writeLayerBlock(out, grid, true);
 }
 
 ErrorCode readGridLayers(ReadBuffer& in, aoc::map::HexGrid& grid, const char* source) {
