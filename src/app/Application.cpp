@@ -4671,6 +4671,13 @@ void Application::run() {
                 LOG_ERROR("Quick save failed: %.*s",
                           static_cast<int>(describeError(saveResult).size()),
                           describeError(saveResult).data());
+                this->m_notificationManager.push("Quick save failed: " +
+                                                     std::string(describeError(saveResult)),
+                                                 3.0f, 0.9f, 0.3f, 0.3f);
+            } else {
+                this->m_notificationManager.push(std::string("Quick-saved to ") +
+                                                     aoc::save::QUICKSAVE_FILENAME,
+                                                 3.0f, 0.4f, 0.9f, 0.4f);
             }
         }
         if (!this->m_spectatorMode &&
@@ -4683,8 +4690,14 @@ void Application::run() {
                 LOG_ERROR("Quick load failed: %.*s",
                           static_cast<int>(describeError(loadResult).size()),
                           describeError(loadResult).data());
+                this->m_notificationManager.push("Quick load failed: " +
+                                                     std::string(describeError(loadResult)),
+                                                 3.0f, 0.9f, 0.3f, 0.3f);
             } else {
                 this->recoverAfterLoad();
+                this->m_notificationManager.push(std::string("Quick-loaded ") +
+                                                     aoc::save::QUICKSAVE_FILENAME,
+                                                 3.0f, 0.4f, 0.9f, 0.4f);
             }
         }
 
@@ -5238,8 +5251,8 @@ void Application::showReturnToMenuConfirm() {
         dp->childSpacing    = 12.0f;
     }
 
-    // Question text
-    [[maybe_unused]] aoc::ui::WidgetId questionLabel = this->m_uiManager.createLabel(
+    // Question text; doubles as the error line if the save fails.
+    const aoc::ui::WidgetId questionLabel = this->m_uiManager.createLabel(
         dlgPanel, {0.0f, 0.0f, 310.0f, 20.0f},
         aoc::ui::LabelData{"Save before returning to menu?", aoc::ui::tokens::TEXT_HEADER, 15.0f});
 
@@ -5269,8 +5282,10 @@ void Application::showReturnToMenuConfirm() {
             this->m_uiManager.createButton(parent, {0.0f, 0.0f, 95.0f, 34.0f}, std::move(btn));
     };
 
-    // "Save & Exit" button
-    makeDlgBtn(btnRow, "Save", aoc::ui::tokens::STATE_SUCCESS, [this]() {
+    // "Save & Exit" button. A failed save keeps the dialog (and the session)
+    // open with the error in the question line; toasts are not drawn on the
+    // main menu, so this label is the only channel the player would see.
+    makeDlgBtn(btnRow, "Save", aoc::ui::tokens::STATE_SUCCESS, [this, questionLabel]() {
         const ErrorCode saveResult = aoc::save::saveGame(
             aoc::save::QUICKSAVE_FILENAME, this->m_gameState, this->m_hexGrid, this->m_turnManager,
             this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
@@ -5278,9 +5293,11 @@ void Application::showReturnToMenuConfirm() {
             LOG_ERROR("Save before returning to menu failed: %.*s",
                       static_cast<int>(describeError(saveResult).size()),
                       describeError(saveResult).data());
-        } else {
-            LOG_INFO("Game saved to %s before returning to menu", aoc::save::QUICKSAVE_FILENAME);
+            this->m_uiManager.setLabelText(
+                questionLabel, "Save failed: " + std::string(describeError(saveResult)));
+            return;
         }
+        LOG_INFO("Game saved to %s before returning to menu", aoc::save::QUICKSAVE_FILENAME);
         this->m_uiManager.removeWidget(this->m_confirmDialog);
         this->m_confirmDialog = aoc::ui::INVALID_WIDGET;
         this->returnToMainMenu();
