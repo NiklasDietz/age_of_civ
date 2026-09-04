@@ -362,6 +362,10 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
     constexpr int32_t STUCK_TURNS_LIMIT = 5;
     // Search radius for best city location.
     constexpr int32_t SEARCH_RADIUS     = 15;
+    // ... but before the first city the settler may not wander: the site 14
+    // hexes away that scored best on the Tutorial map cost the AI its whole
+    // civilization (2026-09-04, finding 1). Two hexes is one turn's walk.
+    constexpr int32_t FIRST_CITY_RADIUS = 2;
     // Minimum score for a tile to be considered a valid founding site.
     constexpr float   FOUND_SCORE_MIN   = -500.0f;
     // If the target is farther than this and the settler has no movement,
@@ -413,7 +417,9 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
 
             std::vector<aoc::hex::AxialCoord> candidates;
             candidates.reserve(750);
-            aoc::hex::spiral(snap.position, SEARCH_RADIUS, std::back_inserter(candidates));
+            const int32_t firstSearchRadius =
+                (gsPlayer->ownedCityCount() == 0) ? FIRST_CITY_RADIUS : SEARCH_RADIUS;
+            aoc::hex::spiral(snap.position, firstSearchRadius, std::back_inserter(candidates));
 
             for (const aoc::hex::AxialCoord& candidate : candidates) {
                 if (!grid.isValid(candidate)) {

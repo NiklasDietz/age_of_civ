@@ -703,6 +703,16 @@ void processBuildingMaintenance(aoc::game::Player& player) {
 void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
                                      const aoc::map::HexGrid& grid,
                                      aoc::game::Player& player) {
+    // A civilization without a city forages: no demand, no desertion. The
+    // escort of a still-walking settler used to desert on turn 5 (2026-09-04
+    // Tutorial, finding 1), leaving the settler alone to die of attrition.
+    if (player.cities().empty()) {
+        for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+            if (unit->turnsStarving() > 0) { unit->setTurnsStarving(0); }
+        }
+        return;
+    }
+
     // WP-P1: aggregate food demand across all military / mounted / armor units.
     // WP-Q: only units OUTSIDE owned territory drain stockpile. Garrison
     // forages locally (zero cost). Expeditionary forces need supply lines.

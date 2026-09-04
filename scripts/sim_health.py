@@ -52,6 +52,9 @@ def load(path: str) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
+FOUND_BY_TURN = 5
+
+
 def evaluate(rows: list[dict[str, str]], quiet: bool = False) -> int:
     """Run every health assertion over `rows`. Returns 0 if all pass."""
     if not rows:
@@ -158,6 +161,20 @@ def evaluate(rows: list[dict[str, str]], quiet: bool = False) -> int:
         f"players with a trade partner: {sorted(traders)}",
     )
 
+    # H9  Every civ founds a city early. A settler that walked to a far site
+    #     bled to death from supply attrition before founding (Tutorial,
+    #     2026-09-04) and the civ played on as a ghost with 0 cities and 0 units.
+    def founded_early(series: list[dict[str, str]]) -> bool:
+        early = [r for r in series if int(r["Turn"]) <= FOUND_BY_TURN] or series[:1]
+        return any(int(r["Cities"]) > 0 for r in early)
+
+    late = [p for p, series in sorted(by_player.items()) if not founded_early(series)]
+    check(
+        f"every player founds a city by turn {FOUND_BY_TURN}",
+        not late,
+        f"players without a city by turn {FOUND_BY_TURN}: {late}" if late else "all founded",
+    )
+
     # H8  The income breakdown reconciles with its own total. The CSV used to
     #     omit IncomeCapital, so the channels never summed to TotalIncome.
     channels = (
@@ -261,6 +278,13 @@ def selftest() -> int:
     for r in rows:
         r["TradePartners"] = "0"
     cases.append(("no trade", rows))
+
+    # H9: a player never founds a city (its settler died on the walk).
+    rows = _healthy()
+    for r in rows:
+        if r["Player"] == "3" and int(r["Turn"]) <= FOUND_BY_TURN:
+            r["Cities"] = "0"
+    cases.append(("H9 never founded", rows))
 
     # H8: the income breakdown does not reconcile.
     rows = _healthy()

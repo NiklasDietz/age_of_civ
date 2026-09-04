@@ -46,10 +46,13 @@ void computeSupplyLines(aoc::game::GameState& gameState,
     }
 
     if (supplySources.empty()) {
-        // No supply sources: all units unsupplied
+        // No city and no fort: the civilization has not founded yet and lives
+        // off the land. Marking everything unsupplied here bled a walking
+        // settler to death at 10 HP a turn (2026-09-04 Tutorial, finding 1); a
+        // player who LOST every city is removed by the conquest rule instead.
         if (gsPlayer != nullptr) {
             for (const std::unique_ptr<aoc::game::Unit>& unit : gsPlayer->units()) {
-                unit->supply().isSupplied = false;
+                unit->supply().isSupplied = true;
             }
         }
         return;

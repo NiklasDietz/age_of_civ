@@ -935,6 +935,7 @@ if(AOC_BUILD_TESTS)
         test_json_parser_depth
         test_save_roundtrip
         test_combat_kills
+        test_found_or_die
         test_economy_invariants
         test_path_guard
         test_save_hostile

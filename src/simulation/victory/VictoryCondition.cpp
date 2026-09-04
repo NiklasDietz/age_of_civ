@@ -477,6 +477,8 @@ static constexpr int32_t COLLAPSE_TURNS_REQUIRED = 30;
 // No player can be eliminated before this turn, preventing early-game accidents
 // from snowballing into immediate game-overs.
 static constexpr TurnNumber COLLAPSE_MIN_TURN = 100;
+/// A player with no city ever and no unit left is gone from this turn on.
+static constexpr TurnNumber NEVER_FOUNDED_MIN_TURN = 5;
 
 void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber currentTurn) {
     for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
@@ -562,6 +564,18 @@ void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber current
                 tracker.isEliminated = true;
                 LOG_INFO("Player %u ELIMINATED: conquest (capital lost, %d cities remaining)",
                          static_cast<unsigned>(gsPlayer->id()), cities);
+                continue;
+            }
+            // 3b. Never founded and nothing left. A settler that died on the way
+            //     to its first site left a player with no city and no unit that
+            //     the rule above never touched: it kept taking turns and voting in
+            //     the World Congress for 130 turns (2026-09-04 Tutorial, finding 2).
+            if (!tracker.hasEverFoundedCity && cities == 0 && gsPlayer->unitCount() == 0
+                && currentTurn >= NEVER_FOUNDED_MIN_TURN) {
+                tracker.activeCollapse = CollapseType::NeverFounded;
+                tracker.isEliminated   = true;
+                LOG_INFO("Player %u ELIMINATED: never founded a city and has no units left",
+                         static_cast<unsigned>(gsPlayer->id()));
                 continue;
             }
         }

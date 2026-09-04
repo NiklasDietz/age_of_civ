@@ -129,6 +129,7 @@ enum class CollapseType : uint8_t {
     Revolution        = 2,  ///< Average loyalty < 30 for 5 turns
     Conquest          = 3,  ///< Lost capital + 75% of cities
     DebtSpiral        = 4,  ///< Default + hyperinflation simultaneously
+    NeverFounded      = 5,  ///< No city ever and no unit left (settler died on the walk)
 
     Count
 };
