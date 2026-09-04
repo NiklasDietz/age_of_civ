@@ -296,6 +296,17 @@ void Application::buildHUD() {
         }
     });
 
+    makeTopBtn(this->m_topBar, "Spies", aoc::ui::theme().scaled(50.0f), [this]() {
+        if (!this->m_espionageScreen.isOpen()) {
+            this->m_espionageScreen.setContext(&this->m_gameState, &this->m_hexGrid,
+                                               this->m_gameState.humanPlayerId(),
+                                               &this->m_diplomacy);
+            this->m_espionageScreen.open(this->m_uiManager);
+        } else {
+            this->m_espionageScreen.close(this->m_uiManager);
+        }
+    });
+
     // Overtake: takes control of currently-followed civ in spectator mode.
     // Click any civ in scoreboard / press digit 1-9 to set follow target,
     // then click Overtake (or press T).
@@ -704,6 +715,7 @@ void Application::updateHUD() {
     this->m_tradeScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_diplomacyScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_religionScreen.setScreenSize(hudScreenW, hudScreenH);
+    this->m_espionageScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_scoreScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_cityDetailScreen.setScreenSize(hudScreenW, hudScreenH);
 

@@ -21,6 +21,18 @@ namespace aoc::sim {
 class DiplomacyManager;
 
 /**
+ * @brief Best counter-intelligence level defending @p location for @p targetPlayer.
+ *
+ * A counter-spy counts when it runs CounterIntelligence within one tile of
+ * @p location. Shared by the turn resolver and the espionage screen so both
+ * quote the same success chance. Returns 0 when nobody defends.
+ */
+[[nodiscard]] int32_t counterSpyLevel(const aoc::game::GameState& gameState,
+                                      const aoc::map::HexGrid& grid,
+                                      PlayerId targetPlayer,
+                                      aoc::hex::AxialCoord location);
+
+/**
  * @brief Process all active spy missions. Called each turn.
  *
  * Iterates all units in the GameState object model. Units with an active spy

@@ -364,4 +364,16 @@ inline constexpr std::array<SpyMissionDef, static_cast<std::size_t>(SpyMission::
     return "Unknown";
 }
 
+[[nodiscard]] inline std::string_view intelligenceLevelName(IntelligenceLevel level) {
+    switch (level) {
+        case IntelligenceLevel::None:          return "None";
+        case IntelligenceLevel::Basic:         return "Basic";
+        case IntelligenceLevel::Military:      return "Military";
+        case IntelligenceLevel::Economic:      return "Economic";
+        case IntelligenceLevel::Comprehensive: return "Comprehensive";
+        case IntelligenceLevel::Complete:      return "Complete";
+    }
+    return "Unknown";
+}
+
 } // namespace aoc::sim

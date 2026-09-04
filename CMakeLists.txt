@@ -214,6 +214,7 @@ set(AOC_GFX_ONLY_SOURCES
     src/ui/PauseMenu.cpp
     src/ui/LoadGameMenu.cpp
     src/ui/ReligionScreen.cpp
+    src/ui/EspionageScreen.cpp
     src/ui/ScoreScreen.cpp
     src/ui/ScreenRegistry.cpp
     src/ui/SettingsMenu.cpp
@@ -445,6 +446,7 @@ set(AOC_LIB_SOURCES
     src/ui/Tooltip.cpp
     src/ui/MainMenu.cpp
     src/ui/ReligionScreen.cpp
+    src/ui/EspionageScreen.cpp
     src/ui/ScoreScreen.cpp
     src/ui/ScreenRegistry.cpp
     src/ui/SettingsMenu.cpp
@@ -968,6 +970,7 @@ if(AOC_BUILD_TESTS)
         list(APPEND AOC_SMOKE_TESTS test_ui_game_setup_layout)
         list(APPEND AOC_SMOKE_TESTS test_ui_control_api)
         list(APPEND AOC_SMOKE_TESTS test_screen_registry)
+        list(APPEND AOC_SMOKE_TESTS test_espionage_screen)
     endif()
 
     # The debug preset builds with ASan/LSan; known suppressions live in

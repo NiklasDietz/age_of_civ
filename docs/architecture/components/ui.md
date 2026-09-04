@@ -51,7 +51,7 @@ screen lifecycle registry. Interactive only; not compiled in headless builds.
 All located in `src/ui/` and `include/aoc/ui/`:
 
 `MainMenu`, `LoadingScreen`, `GameScreens` (in-game HUD), `PauseMenu`, `DiplomacyScreen`,
-`ReligionScreen`, `TradeScreen`, `TradeRouteSetupScreen`, `ScoreScreen`, `Encyclopedia`,
+`ReligionScreen`, `EspionageScreen` (read-only spies, missions, rival intel), `TradeScreen`, `TradeRouteSetupScreen`, `ScoreScreen`, `Encyclopedia`,
 `MapEditor`, `SettingsMenu`, `SpectatorHUD`, `Tutorial`, `AdvancedTutorial`,
 `CityDetailTabs`.
 

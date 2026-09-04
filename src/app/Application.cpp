@@ -1419,6 +1419,7 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_screenRegistry.add(&this->m_tradeRouteSetupScreen);
     this->m_screenRegistry.add(&this->m_diplomacyScreen);
     this->m_screenRegistry.add(&this->m_religionScreen);
+    this->m_screenRegistry.add(&this->m_espionageScreen);
     this->m_screenRegistry.add(&this->m_scoreScreen);
     this->m_screenRegistry.add(&this->m_settingsMenu);
     this->m_screenRegistry.add(&this->m_loadGameMenu);
@@ -4946,6 +4947,7 @@ void Application::run() {
         }
         this->m_diplomacyScreen.refresh(this->m_uiManager);
         this->m_religionScreen.refresh(this->m_uiManager);
+        this->m_espionageScreen.refresh(this->m_uiManager);
         this->m_scoreScreen.refresh(this->m_uiManager);
 
         // Tooltip dispatch. Three cases:

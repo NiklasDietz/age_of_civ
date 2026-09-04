@@ -56,7 +56,7 @@ static aoc::game::Player* findCityOwner(aoc::game::GameState& gameState,
 }
 
 /// Check if any counter-spy is defending a location.
-static int32_t counterSpyLevel(const aoc::game::GameState& gameState,
+int32_t counterSpyLevel(const aoc::game::GameState& gameState,
                                 const aoc::map::HexGrid& grid,
                                 PlayerId targetPlayer,
                                 aoc::hex::AxialCoord location) {
