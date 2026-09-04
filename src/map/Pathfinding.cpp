@@ -8,41 +8,13 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
+#include "aoc/game/ZoneOfControl.hpp"
 
 #include <algorithm>
 #include <queue>
 #include <unordered_map>
 
 namespace aoc::map {
-
-// ============================================================================
-// Zone-of-control helper (local to this TU)
-// ============================================================================
-
-/// Check if a tile is in an enemy military unit's zone of control.
-static bool isInEnemyZoC(const aoc::game::GameState& gameState,
-                           hex::AxialCoord tile,
-                           PlayerId movingPlayer) {
-    const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(tile);
-
-    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr->id() == movingPlayer) {
-            continue;
-        }
-        for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerPtr->units()) {
-            const aoc::game::Unit& other = *unitPtr;
-            if (!other.isMilitary()) {
-                continue;
-            }
-            for (const hex::AxialCoord& nbr : nbrs) {
-                if (other.position() == nbr) {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
-}
 
 // ============================================================================
 // A* pathfinding
@@ -149,7 +121,7 @@ std::optional<PathResult> findPath(const HexGrid& grid,
 
             // ZoC-aware costing: tiles in enemy zone of control cost +3
             if (gameState != nullptr && movingPlayer != INVALID_PLAYER) {
-                if (isInEnemyZoC(*gameState, neighbor, movingPlayer)) {
+                if (aoc::game::isInEnemyZoneOfControl(*gameState, neighbor, movingPlayer)) {
                     moveCost += 3;
                 }
             }

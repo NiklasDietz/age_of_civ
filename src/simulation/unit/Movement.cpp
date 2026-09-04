@@ -10,6 +10,7 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
+#include "aoc/game/ZoneOfControl.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/map/Pathfinding.hpp"
@@ -60,39 +61,6 @@ static bool canOccupyTile(const aoc::game::GameState& gameState,
         }
     }
     return true;
-}
-
-// ============================================================================
-// Zone of control helpers
-// ============================================================================
-
-/**
- * @brief Check if a tile is in an enemy military unit's zone of control.
- *
- * A tile is in enemy ZoC if any of its 6 hex neighbours is occupied by an
- * enemy military unit belonging to a player other than movingPlayer.
- */
-static bool isInEnemyZoneOfControl(const aoc::game::GameState& gameState,
-                                    aoc::hex::AxialCoord tile,
-                                    PlayerId movingPlayer) {
-    const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(tile);
-
-    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
-        if (player->id() == movingPlayer) {
-            continue;
-        }
-        for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
-            if (!unit->isMilitary()) {
-                continue;
-            }
-            for (const aoc::hex::AxialCoord& nbr : nbrs) {
-                if (unit->position() == nbr) {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
 }
 
 // ============================================================================
@@ -349,13 +317,12 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
         // guarantee defensive ZoC is meant to provide.
         //
         // Civilians (settlers, builders, traders) and embarked land units
-        // bypass ZoC — otherwise a non-hostile neighbour's patrol would
-        // freeze civilian travel across open terrain, which the dedicated
-        // zone-of-control check below already
-        // documents as the intended rule.
+        // bypass ZoC: otherwise a non-hostile neighbour's patrol would freeze
+        // civilian travel across open terrain. Only military, non-embarked
+        // units are subject to it; the shared test lives in aoc::game.
         if (unitIsMilitary
             && unit.state() != aoc::sim::UnitState::Embarked
-            && isInEnemyZoneOfControl(gameState, nextTile, unit.owner())) {
+            && aoc::game::isInEnemyZoneOfControl(gameState, nextTile, unit.owner())) {
             unit.setMovementRemaining(0);
             break;
         }

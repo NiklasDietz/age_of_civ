@@ -238,6 +238,7 @@ set(AOC_LIB_SOURCES
     # Game object model
     src/game/GameState.cpp
     src/game/Player.cpp
+    src/game/ZoneOfControl.cpp
     src/game/City.cpp
     src/game/Unit.cpp
 
