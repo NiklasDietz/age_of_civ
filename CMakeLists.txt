@@ -929,6 +929,7 @@ if(AOC_BUILD_TESTS)
         test_game_control_validation
         test_leader_agendas
         test_great_people_names
+        test_culture_victory_paths
     )
 
     # UI tests link against src/ui/UIManager.cpp and src/ui/ScreenRegistry.cpp,
