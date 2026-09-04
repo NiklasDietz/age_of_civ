@@ -7,6 +7,7 @@
  */
 
 #include "aoc/simulation/economy/Maintenance.hpp"
+#include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/city/DistrictAdjacency.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
@@ -167,6 +168,15 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
             bd.incomeCommercial += static_cast<CurrencyAmount>(
                 static_cast<float>(moneySupply) * MONEY_VELOCITY
                 * player.monetary().taxRate * collectionEfficiency);
+        }
+    }
+
+    // Mirror of the per-route civ gold credited in processGoldIncome.
+    {
+        const int32_t perRoute = civDef(player.civId()).modifiers.goldFromTradeRoute;
+        if (perRoute > 0) {
+            bd.incomeCommercial +=
+                static_cast<CurrencyAmount>(player.activeTradeRouteCount() * perRoute);
         }
     }
 
@@ -391,6 +401,16 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
         GovernmentModifiers gov = computeGovernmentModifiers(player.government());
         goldIncome = static_cast<CurrencyAmount>(
             static_cast<float>(goldIncome) * gov.goldMultiplier);
+    }
+
+    // Civ ability: +N gold per active trade route. Flat, after the multipliers,
+    // exactly like the science and culture siblings in CityScience.cpp. Authored
+    // for seven civs and never read until 2026-09-04.
+    {
+        const int32_t perRoute = civDef(player.civId()).modifiers.goldFromTradeRoute;
+        if (perRoute > 0) {
+            goldIncome += static_cast<CurrencyAmount>(player.activeTradeRouteCount() * perRoute);
+        }
     }
 
     // Apply gold allocation slider: only the gold fraction goes to treasury.

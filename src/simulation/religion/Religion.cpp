@@ -147,6 +147,16 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
         faithGain *= gov.faithMultiplier;
     }
 
+    // Civ ability: +N faith per active trade route. Flat, after the multipliers,
+    // like the science and culture siblings. Authored for three civs and never
+    // read until 2026-09-04.
+    {
+        const int32_t perRoute = aoc::sim::civDef(player.civId()).modifiers.faithFromTradeRoute;
+        if (perRoute > 0) {
+            faithGain += static_cast<float>(player.activeTradeRouteCount() * perRoute);
+        }
+    }
+
     playerFaith.faith += faithGain;
 }
 

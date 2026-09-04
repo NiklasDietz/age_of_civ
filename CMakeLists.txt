@@ -930,6 +930,7 @@ if(AOC_BUILD_TESTS)
         test_leader_agendas
         test_great_people_names
         test_culture_victory_paths
+        test_civ_route_bonuses
     )
 
     # UI tests link against src/ui/UIManager.cpp and src/ui/ScreenRegistry.cpp,
