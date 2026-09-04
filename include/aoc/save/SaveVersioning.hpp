@@ -2,55 +2,32 @@
 
 /**
  * @file SaveVersioning.hpp
- * @brief Save file version migration system.
+ * @brief Save format version and the deliberately absent migration policy.
  *
- * Each save file has a version number. When the game loads an older save,
- * it applies migration steps to convert the data to the current format.
+ * Policy (pinned 2026-09-04): there is no save migration. A file loads only
+ * when its header version equals CURRENT_SAVE_VERSION; loadGame rejects
+ * anything older or newer with SaveVersionMismatch instead of half-loading
+ * it. Unknown sections inside a current-version file are skipped by size,
+ * which is the only forward compatibility the format offers.
  *
- * Version history:
- *   v1: Initial save format (base game)
- *   v2: Added diplomacy, market, wonder sections
- *   v3: Added stockpiles, player state, misc entities
- *   v4: Added monetary coin reserves, debasement, trust
- *   v5: Added currency crisis, bonds, devaluation, hoards
- *   v6: Added production experience, building levels, pollution, automation
- *   v7: Added industrial revolution, expanded content
+ * Bumping the version (any change to a section's byte layout):
+ *   1. Raise CURRENT_SAVE_VERSION here. SAVE_VERSION in Serializer.hpp is an
+ *      alias, so the header saveGame writes follows automatically.
+ *   2. Regenerate the known-good corpus that test_save_roundtrip loads and
+ *      that also seeds the save fuzzer, then delete the previous file:
+ *        AOC_WRITE_CORPUS=tests/data/saves/basic_v<N>.sav build/release/test_save_roundtrip
+ *   3. State in the commit message that every existing save becomes
+ *      unloadable.
  *
- * Migration approach:
- *   - Each version step has a migrate() function that reads the old format
- *     and writes default values for new fields.
- *   - Migrations are chained: v3 -> v4 -> v5 -> v6 -> v7 (current)
- *   - If a section is missing (not in older save), it's created with defaults.
+ * Known gap: natural wonders are not serialized (the per-tile record is a
+ * fixed 9 bytes); adding them is a version bump.
  */
 
 #include <cstdint>
 
 namespace aoc::save {
 
-/// Current save format version.
+/// Current save format version. Bump only per the procedure above.
 inline constexpr uint32_t CURRENT_SAVE_VERSION = 10;
-
-/// Minimum supported save version (older saves cannot be loaded).
-inline constexpr uint32_t MIN_SUPPORTED_VERSION = 1;
-
-/**
- * @brief Check if a save file version can be loaded.
- *
- * @param version  The version number from the save file header.
- * @return true if the version is supported (can be migrated to current).
- */
-[[nodiscard]] constexpr bool isVersionSupported(uint32_t version) {
-    return version >= MIN_SUPPORTED_VERSION && version <= CURRENT_SAVE_VERSION;
-}
-
-/**
- * @brief Check if a save file needs migration.
- *
- * @param version  The version number from the save file header.
- * @return true if the version is older than current and needs migration.
- */
-[[nodiscard]] constexpr bool needsMigration(uint32_t version) {
-    return version < CURRENT_SAVE_VERSION;
-}
 
 } // namespace aoc::save

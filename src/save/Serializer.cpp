@@ -1663,18 +1663,11 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                   version, aoc::save::CURRENT_SAVE_VERSION);
         return ErrorCode::SaveVersionMismatch;
     }
-    if (version < aoc::save::MIN_SUPPORTED_VERSION) {
-        LOG_ERROR("Save version %u is too old to load (minimum supported %u)", version,
-                  aoc::save::MIN_SUPPORTED_VERSION);
-        return ErrorCode::SaveVersionMismatch;
-    }
-    if (version != aoc::save::CURRENT_SAVE_VERSION) {
-        // Per-version migrate() hooks are declared in SaveVersioning.hpp but
-        // not implemented; an in-range older save is not field-compatible, so
-        // reject it explicitly rather than half-loading it. Hook migration in
-        // here when a real need to load an old save arises.
-        LOG_ERROR("Save version %u predates the current format %u and save "
-                  "migration is not implemented; cannot load",
+    if (version < aoc::save::CURRENT_SAVE_VERSION) {
+        // No migration exists (policy in SaveVersioning.hpp): an older save is
+        // not field-compatible, so reject it outright rather than half-load it.
+        LOG_ERROR("Save version %u predates the current format %u and no save "
+                  "migration exists; cannot load",
                   version, aoc::save::CURRENT_SAVE_VERSION);
         return ErrorCode::SaveVersionMismatch;
     }
