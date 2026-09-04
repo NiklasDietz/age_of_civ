@@ -7022,18 +7022,7 @@ bool Application::anyScreenOpen() const {
 bool Application::onlyCityDetailScreenOpen() const {
     // The city-detail screen is a right-side panel that leaves the map
     // clickable; callers special-case it so HUD input still works.
-    if (!this->m_cityDetailScreen.isOpen()) {
-        return false;
-    }
-    // Any OTHER registered screen being open disqualifies the state.
-    if (this->m_productionScreen.isOpen() || this->m_techScreen.isOpen() ||
-        this->m_governmentScreen.isOpen() || this->m_economyScreen.isOpen() ||
-        this->m_tradeScreen.isOpen() || this->m_tradeRouteSetupScreen.isOpen() ||
-        this->m_diplomacyScreen.isOpen() || this->m_religionScreen.isOpen() ||
-        this->m_scoreScreen.isOpen() || this->m_settingsMenu.isOpen()) {
-        return false;
-    }
-    return true;
+    return this->m_screenRegistry.onlyOpen(&this->m_cityDetailScreen);
 }
 
 void Application::closeAllScreens() {

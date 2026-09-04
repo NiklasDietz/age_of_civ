@@ -10,6 +10,7 @@
  * registered participates automatically in:
  *
  *   - `anyOpen()` — gates game input when a screen is modal.
+ *   - `onlyOpen(s)` — exclusivity test for a side panel that keeps the map live.
  *   - `closeAll()` — Esc-to-close handler.
  *   - `onResize()` — viewport change fanout so every screen can reflow.
  *
@@ -36,6 +37,12 @@ public:
 
     /// True if any registered screen is open.
     [[nodiscard]] bool anyOpen() const;
+
+    /// True if `screen` is registered, open, and no other registered screen is
+    /// open. Unregistered or null `screen` yields false, so a forgotten `add()`
+    /// shows up as a dead panel rather than as map clicks leaking under
+    /// another screen.
+    [[nodiscard]] bool onlyOpen(const IScreen* screen) const;
 
     /// Close every open screen.
     void closeAll(UIManager& ui);

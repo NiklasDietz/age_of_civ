@@ -31,6 +31,19 @@ bool ScreenRegistry::anyOpen() const {
     return false;
 }
 
+bool ScreenRegistry::onlyOpen(const IScreen* screen) const {
+    if (screen == nullptr || !screen->isOpen()) { return false; }
+    bool registered = false;
+    for (const IScreen* s : this->m_screens) {
+        if (s == screen) {
+            registered = true;
+        } else if (s != nullptr && s->isOpen()) {
+            return false;
+        }
+    }
+    return registered;
+}
+
 void ScreenRegistry::closeAll(UIManager& ui) {
     for (IScreen* s : this->m_screens) {
         if (s != nullptr && s->isOpen()) {

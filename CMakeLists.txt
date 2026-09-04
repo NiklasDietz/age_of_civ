@@ -961,12 +961,13 @@ if(AOC_BUILD_TESTS)
         test_game_control_validation
     )
 
-    # UI tests link against src/ui/UIManager.cpp, which is only compiled into
-    # aoc_lib in the non-headless configuration.
+    # UI tests link against src/ui/UIManager.cpp and src/ui/ScreenRegistry.cpp,
+    # which are only compiled into aoc_lib in the non-headless configuration.
     if(NOT AOC_HEADLESS)
         list(APPEND AOC_SMOKE_TESTS test_ui_layout_floating)
         list(APPEND AOC_SMOKE_TESTS test_ui_game_setup_layout)
         list(APPEND AOC_SMOKE_TESTS test_ui_control_api)
+        list(APPEND AOC_SMOKE_TESTS test_screen_registry)
     endif()
 
     # The debug preset builds with ASan/LSan; known suppressions live in

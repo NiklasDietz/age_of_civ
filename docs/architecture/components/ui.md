@@ -17,11 +17,13 @@ screen lifecycle registry. Interactive only; not compiled in headless builds.
   type tag, bounds `Rect`, per-type data union, children indices, enabled/visible flags.
   `WidgetId` is an index into `UIManager`'s flat vector.
 - [include/aoc/ui/IScreen.hpp](../../../include/aoc/ui/IScreen.hpp) — `IScreen`:
-  abstract interface for a full-screen UI mode (`onEnter`, `onExit`, `onUpdate`,
-  `onRender`).
+  the contract every modal screen or menu implements (`isOpen`, `close`, `onResize`,
+  optional `themeOverride`). `ScreenBase` supplies the defaults for in-game screens.
 - [include/aoc/ui/ScreenRegistry.hpp](../../../include/aoc/ui/ScreenRegistry.hpp) —
-  `ScreenRegistry`: maps `ScreenId` enums to `IScreen` instances and drives push/pop
-  navigation (e.g. Main Menu → New Game → Loading → In-Game → Pause Menu).
+  `ScreenRegistry`: the one list of registered `IScreen`s. `anyOpen` gates game
+  input, `onlyOpen(screen)` is the exclusivity test for the non-blocking city panel,
+  `closeAll` backs Esc, `onResize` fans out viewport changes; a small modal stack
+  (`pushModal` / `popModal`) remembers the back path.
 - [include/aoc/ui/LayoutBuilder.hpp](../../../include/aoc/ui/LayoutBuilder.hpp) —
   Fluent builder for programmatic widget layout.
 - [include/aoc/ui/BitmapFont.hpp](../../../include/aoc/ui/BitmapFont.hpp) — Rasterizes
