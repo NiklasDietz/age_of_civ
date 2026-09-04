@@ -59,9 +59,9 @@ void LoadGameMenu::build(UIManager& ui, float screenW, float screenH, const Slot
     constexpr float SLOT_H   = 36.0f;
     constexpr float STATUS_H = 24.0f;
     constexpr float BACK_H   = 32.0f;
-    constexpr int CHILDREN = 6 + aoc::save::SAVE_SLOT_COUNT; // title, rule, 2 spacers, status, back
+    constexpr int CHILDREN = 6 + ROW_COUNT; // title, rule, 2 spacers, status, back
     constexpr float PANEL_W = 440.0f;
-    constexpr float BODY_H  = TITLE_H + RULE_H + tokens::S2 + SLOT_H * aoc::save::SAVE_SLOT_COUNT +
+    constexpr float BODY_H  = TITLE_H + RULE_H + tokens::S2 + SLOT_H * ROW_COUNT +
                               tokens::S2 + STATUS_H + BACK_H + tokens::S2 * (CHILDREN - 1) +
                               2.0f * tokens::S5;
     constexpr float PANEL_H = BODY_H + tokens::BORDER_RAIL;
@@ -94,9 +94,12 @@ void LoadGameMenu::build(UIManager& ui, float screenW, float screenH, const Slot
     [[maybe_unused]] WidgetId spacer1 =
         ui.createPanel(panel, {0.0f, 0.0f, innerW, tokens::S2}, PanelData{NO_FILL, 0.0f});
 
-    for (int slot = 0; slot < aoc::save::SAVE_SLOT_COUNT; ++slot) {
+    for (int slot = 0; slot < ROW_COUNT; ++slot) {
         const bool present = this->m_occupied[static_cast<std::size_t>(slot)];
-        std::string label  = "Slot " + std::to_string(slot + 1) + (present ? "" : "  (empty)");
+        std::string label  = slot == aoc::save::QUICKSAVE_SLOT
+                                 ? std::string("Quicksave")
+                                 : "Slot " + std::to_string(slot + 1);
+        label += present ? "" : "  (empty)";
         [[maybe_unused]] WidgetId id =
             ui.createButton(panel, {0.0f, 0.0f, innerW, SLOT_H},
                             makeParchmentButton(std::move(label), present, [this, slot]() {
@@ -120,7 +123,7 @@ void LoadGameMenu::build(UIManager& ui, float screenW, float screenH, const Slot
                                                        }));
 
     this->m_isBuilt = true;
-    LOG_INFO("Load game menu built (%d slots)", aoc::save::SAVE_SLOT_COUNT);
+    LOG_INFO("Load game menu built (%d slots + quicksave)", aoc::save::SAVE_SLOT_COUNT);
 }
 
 void LoadGameMenu::destroy(UIManager& ui) {

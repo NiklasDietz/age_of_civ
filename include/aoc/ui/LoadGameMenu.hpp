@@ -19,7 +19,9 @@ class UIManager;
 
 class LoadGameMenu : public IScreen {
 public:
-    using SlotFlags = std::array<bool, aoc::save::SAVE_SLOT_COUNT>;
+    /// Numbered slots followed by the quicksave row (index aoc::save::QUICKSAVE_SLOT).
+    static constexpr int ROW_COUNT = aoc::save::SAVE_SLOT_COUNT + 1;
+    using SlotFlags                = std::array<bool, ROW_COUNT>;
 
     /// Empty slots (occupied[i] == false) render disabled with an "(empty)" label.
     void build(UIManager& ui, float screenW, float screenH, const SlotFlags& occupied,

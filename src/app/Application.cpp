@@ -3834,7 +3834,8 @@ void Application::showLoadGameMenu(float screenW, float screenH) {
     this->m_settingsMenu.destroy(this->m_uiManager);
 
     aoc::ui::LoadGameMenu::SlotFlags occupied{};
-    for (int slot = 0; slot < aoc::save::SAVE_SLOT_COUNT; ++slot) {
+    // Numbered slots first, then the load-only quicksave row.
+    for (int slot = 0; slot <= aoc::save::QUICKSAVE_SLOT; ++slot) {
         occupied[static_cast<std::size_t>(slot)] = aoc::save::saveSlotExists(slot);
     }
     this->m_loadGameMenu.build(
@@ -3865,7 +3866,7 @@ void Application::loadGameFromMainMenu(int slot) {
         aoc::save::loadGame(fname.c_str(), this->m_gameState, this->m_hexGrid, this->m_turnManager,
                             this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
     if (result != aoc::ErrorCode::Ok) {
-        LOG_ERROR("Main menu load slot %d failed: %.*s", slot + 1,
+        LOG_ERROR("Main menu load of %s failed: %.*s", fname.c_str(),
                   static_cast<int>(describeError(result).size()), describeError(result).data());
         this->m_loadGameMenu.setStatus(this->m_uiManager,
                                        "Load failed: " + std::string(describeError(result)));
