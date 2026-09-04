@@ -423,6 +423,7 @@ set(AOC_LIB_SOURCES
 
     # Save
     src/save/Serializer.cpp
+    src/save/MapFile.cpp
 
     # UI
     src/ui/BitmapFont.cpp
@@ -945,6 +946,7 @@ if(AOC_BUILD_TESTS)
         test_save_finite
         test_random_fork
         test_start_placement
+        test_map_file
         test_decision_log_io
         test_deterministic_argmax
         test_tuned_leader_io
@@ -1052,6 +1054,16 @@ if(AOC_BUILD_TESTS)
                          ${CMAKE_SOURCE_DIR}/scripts/sim_health.py --selftest)
     endif()
 
+    # HexGrid::visitLayers() must list every container member of HexGrid; the
+    # map file (and the headless map cache) is only as complete as that list.
+    if(Python3_FOUND)
+        add_test(NAME test_grid_layer_list
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/scripts/check_grid_layers.py
+                         ${CMAKE_SOURCE_DIR}/include/aoc/map/HexGrid.hpp
+                         ${CMAKE_SOURCE_DIR}/include/aoc/map/HexGridLayers.hpp)
+    endif()
+
     # Release-only: the 200-turn run is far too slow under ASan to be worth it,
     # and the turn-loop smoke already covers debug builds for crashes.
     if(TARGET aoc_simulate AND Python3_FOUND AND CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -1064,6 +1076,19 @@ if(AOC_BUILD_TESTS)
                          -P ${CMAKE_SOURCE_DIR}/scripts/run_sim_health.cmake
                  WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
         set_tests_properties(test_sim_health PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")
+    endif()
+
+    # Release-only: a cached map must replay exactly like the generated one. Two
+    # 30-turn runs of one seed, the second loading the map the first wrote; any
+    # layer the map file misses shows up as a CSV difference.
+    if(TARGET aoc_simulate AND CMAKE_BUILD_TYPE STREQUAL "Release")
+        add_test(NAME test_map_cache_equivalence
+                 COMMAND ${CMAKE_COMMAND}
+                         -DSIM=$<TARGET_FILE:aoc_simulate>
+                         -DOUT=${CMAKE_BINARY_DIR}/map_cache_check
+                         -P ${CMAKE_SOURCE_DIR}/scripts/run_map_cache_check.cmake
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+        set_tests_properties(test_map_cache_equivalence PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")
     endif()
 
     # Sim behavior gates -- release builds only (under ASan these multi-run

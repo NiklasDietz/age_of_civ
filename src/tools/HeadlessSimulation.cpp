@@ -18,6 +18,7 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/StartPlacement.hpp"
+#include "aoc/save/MapFile.hpp"
 #include "aoc/map/MapGenerator.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/core/Random.hpp"
@@ -79,6 +80,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <unordered_map>
@@ -320,7 +322,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                               = aoc::map::ResourcePlacementMode::Realistic,
                           int32_t mapWidthOverride = 0,
                           int32_t mapHeightOverride = 0,
-                          uint32_t seedOverride = 0) {
+                          uint32_t seedOverride = 0,
+                          const std::string& mapCachePath = std::string{}) {
     LOG_INFO("=== HEADLESS SIMULATION: %d turns, %d AI players, victoryMask=0x%x ===",
              maxTurns, playerCount, victoryMask);
 
@@ -364,10 +367,40 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     mapConfig.seed = rng.next();
     mapConfig.mapType = mapType;
     mapConfig.placement = placement;
-    aoc::map::MapGenerator generator;
-    generator.generate(mapConfig, grid);
-
-    LOG_INFO("Map generated: %dx%d", mapConfig.width, mapConfig.height);
+    // --map-cache: reuse a previously generated world. Worldgen costs ~45 s
+    // regardless of map size (A11), all of it in the tectonic simulation.
+    // The seed draw above happens either way, so a cached run and a generated
+    // run consume the master RNG identically.
+    bool mapFromCache = false;
+    if (!mapCachePath.empty() && !std::filesystem::exists(mapCachePath)) {
+        LOG_INFO("No map cache at '%s' yet; generating and writing it", mapCachePath.c_str());
+    } else if (!mapCachePath.empty()) {
+        aoc::save::MapFileInfo cacheInfo;
+        if (aoc::save::loadMapFile(mapCachePath, grid, &cacheInfo) == aoc::ErrorCode::Ok) {
+            mapFromCache = true;
+            if (cacheInfo.generatorSeed != mapConfig.seed || grid.width() != mapConfig.width ||
+                grid.height() != mapConfig.height) {
+                LOG_WARN("Map cache '%s' holds seed %llu at %dx%d; this run asked for seed "
+                         "%llu at %dx%d",
+                         mapCachePath.c_str(),
+                         static_cast<unsigned long long>(cacheInfo.generatorSeed), grid.width(),
+                         grid.height(), static_cast<unsigned long long>(mapConfig.seed),
+                         mapConfig.width, mapConfig.height);
+            }
+        }
+    }
+    if (!mapFromCache) {
+        aoc::map::MapGenerator generator;
+        generator.generate(mapConfig, grid);
+        LOG_INFO("Map generated: %dx%d", mapConfig.width, mapConfig.height);
+        if (!mapCachePath.empty()) {
+            aoc::save::MapFileInfo cacheInfo;
+            cacheInfo.generatorSeed = mapConfig.seed;
+            if (aoc::save::saveMapFile(mapCachePath, grid, cacheInfo) != aoc::ErrorCode::Ok) {
+                LOG_WARN("Map cache '%s' could not be written", mapCachePath.c_str());
+            }
+        }
+    }
 
     // Load JSON game definitions (falls back to constexpr defaults).
     if (!aoc::data::DataLoader::instance().initialize("data")) {
@@ -1129,6 +1162,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::string tunedDir;
+    std::string mapCachePath;
     int32_t mapWidth = 0;   // 0 = use runHeadlessSimulation default
     int32_t mapHeight = 0;
     if (!loadedConfig) {
@@ -1157,6 +1191,8 @@ int main(int argc, char* argv[]) {
                     mapWidth = std::atoi(sizeStr.substr(0, xPos).c_str());
                     mapHeight = std::atoi(sizeStr.substr(xPos + 1).c_str());
                 }
+            } else if (arg == "--map-cache" && i + 1 < argc) {
+                mapCachePath = argv[++i];
             } else if (arg == "--log-level" && i + 1 < argc) {
                 ++i;
             } else if (arg == "--seed" && i + 1 < argc) {
@@ -1201,7 +1237,7 @@ int main(int argc, char* argv[]) {
 
     std::fprintf(stderr, "  Map:     %s\n", mapTypeLabel(mapType));
     std::fprintf(stderr, "  Placement: %s\n", placementLabel(placement));
-    int result = runHeadlessSimulation(turns, players, outputPath, victoryMask, tracePath, mapType, placement, mapWidth, mapHeight, seedArg);
+    int result = runHeadlessSimulation(turns, players, outputPath, victoryMask, tracePath, mapType, placement, mapWidth, mapHeight, seedArg, mapCachePath);
 
     std::fprintf(stderr, "\n\n");
     return result;

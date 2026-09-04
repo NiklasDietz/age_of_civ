@@ -27,3 +27,6 @@ claude-code-tweaks
 /data/plate_statistics.csv
 /matrix_logs/
 /matrix_summary.tsv
+
+# headless map cache files (aoc_simulate --map-cache)
+*.aocmap

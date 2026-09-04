@@ -128,6 +128,12 @@ public:
      */
     void initialize(int32_t width, int32_t height, MapTopology topology = MapTopology::Flat);
 
+    /// Calls `visitor(name, container)` for every layer in declaration order.
+    /// The list lives in HexGridLayers.hpp; ctest test_grid_layer_list keeps it
+    /// complete. Include that header wherever this is instantiated.
+    template <class Visitor> void visitLayers(Visitor&& visitor);
+    template <class Visitor> void visitLayers(Visitor&& visitor) const;
+
     [[nodiscard]] int32_t width() const { return this->m_width; }
     [[nodiscard]] int32_t height() const { return this->m_height; }
     [[nodiscard]] int32_t tileCount() const { return this->m_width * this->m_height; }
@@ -602,6 +608,9 @@ private:
     void assertIndex([[maybe_unused]] int32_t index) const {
         assert(index >= 0 && index < this->tileCount());
     }
+
+    template <class Self, class Visitor>
+    static void visitLayersImpl(Self& self, Visitor&& visitor);
 
     int32_t m_width        = 0;
     int32_t m_height       = 0;
