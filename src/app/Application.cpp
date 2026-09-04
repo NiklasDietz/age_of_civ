@@ -3915,6 +3915,59 @@ void Application::loadGameFromMainMenu(int slot) {
              static_cast<unsigned>(this->m_turnManager.currentTurn()));
 }
 
+void Application::showPauseMenu() {
+    if (this->m_pauseMenu.isBuilt()) {
+        return;
+    }
+    const std::pair<uint32_t, uint32_t> sz = this->m_window.framebufferSize();
+    this->m_pauseMenu.build(
+        this->m_uiManager, static_cast<float>(sz.first), static_cast<float>(sz.second),
+        [this]() { this->m_pauseMenu.destroy(this->m_uiManager); },
+        [this](int slot) {
+            const std::string fname = aoc::save::saveSlotFilename(slot);
+            const aoc::ErrorCode r  = aoc::save::saveGame(
+                fname.c_str(), this->m_gameState, this->m_hexGrid, this->m_turnManager,
+                this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
+            if (r != aoc::ErrorCode::Ok) {
+                LOG_ERROR("PauseMenu save slot %d failed: %.*s", slot + 1,
+                          static_cast<int>(describeError(r).size()), describeError(r).data());
+                this->m_notificationManager.push("Save failed", 3.0f, 0.9f, 0.3f, 0.3f);
+            } else {
+                LOG_INFO("PauseMenu: saved to %s", fname.c_str());
+                this->m_notificationManager.push(("Saved to " + fname).c_str(), 3.0f, 0.4f, 0.9f,
+                                                 0.4f);
+            }
+        },
+        [this](int slot) {
+            const std::string fname = aoc::save::saveSlotFilename(slot);
+            const aoc::ErrorCode r  = aoc::save::loadGame(
+                fname.c_str(), this->m_gameState, this->m_hexGrid, this->m_turnManager,
+                this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
+            if (r != aoc::ErrorCode::Ok) {
+                LOG_ERROR("PauseMenu load slot %d failed: %.*s", slot + 1,
+                          static_cast<int>(describeError(r).size()), describeError(r).data());
+                this->m_notificationManager.push("Load failed (no save in slot?)", 3.0f, 0.9f, 0.3f,
+                                                 0.3f);
+            } else {
+                this->recoverAfterLoad();
+                LOG_INFO("PauseMenu: loaded from %s", fname.c_str());
+                this->m_pauseMenu.destroy(this->m_uiManager);
+            }
+        },
+        [this]() {
+            // Leaving a session loses unsaved progress, so route through the
+            // Save / Don't Save / Cancel dialog rather than tearing down at once.
+            this->m_pauseMenu.destroy(this->m_uiManager);
+            this->showReturnToMenuConfirm();
+        },
+        [this]() {
+            // "Quit Game" also lands on the main menu (not app exit) so a
+            // misclick can never discard a session outright.
+            this->m_pauseMenu.destroy(this->m_uiManager);
+            this->showReturnToMenuConfirm();
+        });
+}
+
 void Application::run() {
     if (!this->m_initialized) {
         return;
@@ -4455,10 +4508,8 @@ void Application::run() {
             }
         }
 
-        // -- Escape: close any open screen, else open Settings as pause menu.
-        // Was: `break` (quit game). User feedback: ESC should not kill game —
-        // it should pause + offer save/load/main-menu options. Settings menu
-        // doubles as pause menu for now (Save/Load via F5/F9).
+        // -- Escape: close the pause menu or any open screen, else open the pause menu.
+        // ESC must never quit the game outright (user feedback).
         if (this->m_inputManager.isActionPressed(InputAction::Cancel)) {
             LOG_INFO("ESC pressed in-game (pauseBuilt=%d, anyScreen=%d)",
                      this->m_pauseMenu.isBuilt() ? 1 : 0, this->anyScreenOpen() ? 1 : 0);
@@ -4467,57 +4518,7 @@ void Application::run() {
             } else if (this->anyScreenOpen()) {
                 this->closeAllScreens();
             } else {
-                const std::pair<uint32_t, uint32_t> sz = this->m_window.framebufferSize();
-                this->m_pauseMenu.build(
-                    this->m_uiManager, static_cast<float>(sz.first), static_cast<float>(sz.second),
-                    [this]() { this->m_pauseMenu.destroy(this->m_uiManager); },
-                    [this](int slot) {
-                        const std::string fname = aoc::save::saveSlotFilename(slot);
-                        ErrorCode r             = aoc::save::saveGame(
-                            fname.c_str(), this->m_gameState, this->m_hexGrid, this->m_turnManager,
-                            this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
-                        if (r != ErrorCode::Ok) {
-                            LOG_ERROR("PauseMenu save slot %d failed: %.*s", slot + 1,
-                                      static_cast<int>(describeError(r).size()),
-                                      describeError(r).data());
-                            this->m_notificationManager.push("Save failed", 3.0f, 0.9f, 0.3f, 0.3f);
-                        } else {
-                            LOG_INFO("PauseMenu: saved to %s", fname.c_str());
-                            this->m_notificationManager.push(("Saved to " + fname).c_str(), 3.0f,
-                                                             0.4f, 0.9f, 0.4f);
-                        }
-                    },
-                    [this](int slot) {
-                        const std::string fname = aoc::save::saveSlotFilename(slot);
-                        ErrorCode r             = aoc::save::loadGame(
-                            fname.c_str(), this->m_gameState, this->m_hexGrid, this->m_turnManager,
-                            this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
-                        if (r != ErrorCode::Ok) {
-                            LOG_ERROR("PauseMenu load slot %d failed: %.*s", slot + 1,
-                                      static_cast<int>(describeError(r).size()),
-                                      describeError(r).data());
-                            this->m_notificationManager.push("Load failed (no save in slot?)", 3.0f,
-                                                             0.9f, 0.3f, 0.3f);
-                        } else {
-                            this->recoverAfterLoad();
-                            LOG_INFO("PauseMenu: loaded from %s", fname.c_str());
-                            this->m_pauseMenu.destroy(this->m_uiManager);
-                        }
-                    },
-                    [this]() {
-                        // Leaving a session loses unsaved progress, so route
-                        // through the Save / Don't Save / Cancel dialog rather
-                        // than tearing the game down immediately.
-                        this->m_pauseMenu.destroy(this->m_uiManager);
-                        this->showReturnToMenuConfirm();
-                    },
-                    [this]() {
-                        // "Quit Game" also lands on the main menu (not app
-                        // exit) so a misclick can never discard a session
-                        // outright. Use the main menu's Quit to exit.
-                        this->m_pauseMenu.destroy(this->m_uiManager);
-                        this->showReturnToMenuConfirm();
-                    });
+                this->showPauseMenu();
             }
         }
 
@@ -4662,9 +4663,10 @@ void Application::run() {
         // -- Quick save/load (human mode only) --
         if (!this->m_spectatorMode &&
             this->m_inputManager.isActionPressed(InputAction::QuickSave)) {
-            ErrorCode saveResult = aoc::save::saveGame(
-                "quicksave.aoc", this->m_gameState, this->m_hexGrid, this->m_turnManager,
-                this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
+            ErrorCode saveResult =
+                aoc::save::saveGame(aoc::save::QUICKSAVE_FILENAME, this->m_gameState,
+                                    this->m_hexGrid, this->m_turnManager, this->m_economy,
+                                    this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
             if (saveResult != ErrorCode::Ok) {
                 LOG_ERROR("Quick save failed: %.*s",
                           static_cast<int>(describeError(saveResult).size()),
@@ -4673,9 +4675,10 @@ void Application::run() {
         }
         if (!this->m_spectatorMode &&
             this->m_inputManager.isActionPressed(InputAction::QuickLoad)) {
-            ErrorCode loadResult = aoc::save::loadGame(
-                "quicksave.aoc", this->m_gameState, this->m_hexGrid, this->m_turnManager,
-                this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
+            ErrorCode loadResult =
+                aoc::save::loadGame(aoc::save::QUICKSAVE_FILENAME, this->m_gameState,
+                                    this->m_hexGrid, this->m_turnManager, this->m_economy,
+                                    this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
             if (loadResult != ErrorCode::Ok) {
                 LOG_ERROR("Quick load failed: %.*s",
                           static_cast<int>(describeError(loadResult).size()),
@@ -5268,10 +5271,16 @@ void Application::showReturnToMenuConfirm() {
 
     // "Save & Exit" button
     makeDlgBtn(btnRow, "Save", aoc::ui::tokens::STATE_SUCCESS, [this]() {
-        [[maybe_unused]] ErrorCode saveResult = aoc::save::saveGame(
-            "quicksave.aoc", this->m_gameState, this->m_hexGrid, this->m_turnManager,
+        const ErrorCode saveResult = aoc::save::saveGame(
+            aoc::save::QUICKSAVE_FILENAME, this->m_gameState, this->m_hexGrid, this->m_turnManager,
             this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
-        LOG_INFO("Game saved before returning to menu");
+        if (saveResult != ErrorCode::Ok) {
+            LOG_ERROR("Save before returning to menu failed: %.*s",
+                      static_cast<int>(describeError(saveResult).size()),
+                      describeError(saveResult).data());
+        } else {
+            LOG_INFO("Game saved to %s before returning to menu", aoc::save::QUICKSAVE_FILENAME);
+        }
         this->m_uiManager.removeWidget(this->m_confirmDialog);
         this->m_confirmDialog = aoc::ui::INVALID_WIDGET;
         this->returnToMainMenu();

@@ -330,31 +330,18 @@ void Application::buildHUD() {
                     std::move(btn));
             };
 
+            // Save / Load open the pause menu, which owns the numbered slot rows;
+            // the single quick-save file stays on the F5 / F9 hotkeys.
             makeDropBtn(this->m_menuDropdown, "Save Game", [this]() {
-                ErrorCode result = aoc::save::saveGame(
-                    "quicksave.aoc", this->m_gameState, this->m_hexGrid, this->m_turnManager,
-                    this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
-                if (result == ErrorCode::Ok) {
-                    LOG_INFO("Game saved");
-                } else {
-                    LOG_ERROR("Save failed");
-                }
                 this->m_uiManager.removeWidget(this->m_menuDropdown);
                 this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
+                this->showPauseMenu();
             });
 
             makeDropBtn(this->m_menuDropdown, "Load Game", [this]() {
-                ErrorCode result = aoc::save::loadGame(
-                    "quicksave.aoc", this->m_gameState, this->m_hexGrid, this->m_turnManager,
-                    this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
-                if (result == ErrorCode::Ok) {
-                    this->recoverAfterLoad();
-                    LOG_INFO("Game loaded");
-                } else {
-                    LOG_ERROR("Load failed");
-                }
                 this->m_uiManager.removeWidget(this->m_menuDropdown);
                 this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
+                this->showPauseMenu();
             });
 
             makeDropBtn(this->m_menuDropdown, "Settings", [this]() {

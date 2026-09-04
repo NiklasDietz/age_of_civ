@@ -843,6 +843,9 @@ private:
     /// Replace the main menu with the save-slot picker.
     void showLoadGameMenu(float screenW, float screenH);
 
+    /// Open the in-game pause menu (save/load slots, main menu, quit); no-op if already open.
+    void showPauseMenu();
+
     /// Load `slot` from the main menu and enter the game; on failure the picker stays up.
     void loadGameFromMainMenu(int slot);
 
