@@ -351,7 +351,7 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
         // Civilians (settlers, builders, traders) and embarked land units
         // bypass ZoC — otherwise a non-hostile neighbour's patrol would
         // freeze civilian travel across open terrain, which the dedicated
-        // shouldConsumeMovementByZoC() helper in ZoneOfControl.cpp already
+        // zone-of-control check below already
         // documents as the intended rule.
         if (unitIsMilitary
             && unit.state() != aoc::sim::UnitState::Embarked

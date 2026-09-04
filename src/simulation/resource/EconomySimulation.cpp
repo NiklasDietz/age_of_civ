@@ -614,7 +614,7 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
     // building levels, power, and strike are all owned by City objects.
 
     // 2026-05-03: clear last-turn production map for every player. Recipes
-    // re-fill it as they fire. ResourceCurse + ComparativeAdvantage read this
+    // re-fill it as they fire. ResourceCurse reads this
     // BEFORE production runs (so they see the previous turn's totals -- a
     // one-turn-stale rate signal). The cumulative-ever boolean gate
     // `everSupplied` is intentionally NOT cleared.

@@ -18,8 +18,8 @@ Lua-based mod scripting is handled by the **scripting** subsystem; `LuaEngine` l
 
 ## Public surface
 
-- `ModLoader::loadUnitDefs(path)` etc. — intended to be called from `Application` after
-  `DataLoader::load()`, to overlay mod definitions on top of the base game data.
+- `ModLoader::loadUnitDefs(path)` etc. — intended to be called from `Application` at
+  startup, to overlay mod definitions on top of the base game's constexpr tables.
 
 ## Internal structure
 

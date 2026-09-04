@@ -145,7 +145,7 @@ bool checkIndustrialRevolution(aoc::game::GameState& gameState, PlayerId player,
     // gates capability; goods check now confirms the chain ran at least
     // once. The boolean-set semantic replaces the older totalSupply integer
     // map which accidentally accumulated forever and was renamed to
-    // lastTurnProduction for ComparativeAdvantage / ResourceCurse use.
+    // lastTurnProduction for ResourceCurse use.
     const aoc::sim::PlayerEconomyComponent& econ = playerObj->economy();
     for (int32_t i = 0; i < 3; ++i) {
         uint16_t reqGood = rev.requirements.requiredGoods[i];

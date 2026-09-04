@@ -109,7 +109,7 @@ struct PlayerEconomyComponent {
     /// Last-turn production volume per good. Cleared at the top of
     /// EconomySimulation::executeProduction and populated as recipes fire,
     /// so on any other turn-step it holds the PREVIOUS turn's totals (stale
-    /// by one tick). Used by ComparativeAdvantage and ResourceCurse as a
+    /// by one tick). Used by ResourceCurse as a
     /// rate signal. Was named `totalSupply` -- the old semantics
     /// accidentally accumulated forever and inflated rate readings after
     /// many turns. Renamed 2026-05-03; the cumulative-ever boolean gate

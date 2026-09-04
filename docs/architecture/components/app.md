@@ -12,8 +12,8 @@ selection, and drives the server/client tick and the render pipeline. Built only
 - `src/app/Application.cpp` /
   [include/aoc/app/Application.hpp](../../../include/aoc/app/Application.hpp) —
   `Application`: owns `Window`, `GameServer`, `GameClient`, `LocalTransport`,
-  `GameRenderer`, `UIManager`, `ScreenRegistry`, `LuaEngine`, `DataLoader`,
-  `InputManager`, `HotkeyManager`, `DebugServer` (optional). `run()` is the main loop:
+  `GameRenderer`, `UIManager`, `ScreenRegistry`, `LuaEngine`,
+  `InputManager`, `DebugServer` (optional). `run()` is the main loop:
   poll GLFW events → `GameClient::pollUpdates()` → per-frame logic → `GameServer::tick()`
   → `GameRenderer::render()`.
 - `src/app/Application_HUD.cpp` — HUD overlay rendering helpers split from the main
@@ -22,8 +22,6 @@ selection, and drives the server/client tick and the render pipeline. Built only
   callbacks.
 - `src/app/InputManager.cpp` — Mouse click → tile coordinate conversion via
   `CameraController`, dispatches move/attack/found-city commands to `GameClient`.
-- `src/app/HotkeyManager.cpp` — Key binding table; dispatches hotkey actions to the
-  active screen.
 - `src/app/UnitSelection.cpp` — Tracks the currently selected unit and city, drives
   move-preview overlays.
 - `src/app/DebugCommandFile.cpp` — Reads a text file of debug commands at startup for

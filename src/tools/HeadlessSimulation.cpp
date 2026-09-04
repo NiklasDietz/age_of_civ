@@ -39,7 +39,6 @@
 #include "aoc/simulation/ai/TunedLeaderIO.hpp"
 #include "aoc/simulation/barbarian/BarbarianController.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
-#include "aoc/data/DataLoader.hpp"
 #include "aoc/simulation/city/CityGrowth.hpp"
 #include "aoc/simulation/city/CityScience.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
@@ -400,11 +399,6 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 LOG_WARN("Map cache '%s' could not be written", mapCachePath.c_str());
             }
         }
-    }
-
-    // Load JSON game definitions (falls back to constexpr defaults).
-    if (!aoc::data::DataLoader::instance().initialize("data")) {
-        LOG_WARN("DataLoader fell back to constexpr defaults for one or more definition files");
     }
 
     // Initialize simulation subsystems

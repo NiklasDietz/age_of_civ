@@ -12,7 +12,6 @@
 #include <sstream>
 #include "aoc/ui/Theme.hpp"
 #include "aoc/ui/IconAtlas.hpp"
-#include "aoc/data/DataLoader.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/game/Unit.hpp"
@@ -299,14 +298,6 @@ Application::~Application() {
 }
 
 ErrorCode Application::initialize(const Config& config) {
-    // -- Game definitions (JSON data files with constexpr fallbacks) --
-    // Must run before any subsystem reads building / unit / tech / recipe
-    // tables. Falls back silently to hardcoded defaults per file if any JSON
-    // is missing or unparseable.
-    if (!aoc::data::DataLoader::instance().initialize("data")) {
-        LOG_WARN("DataLoader fell back to constexpr defaults for one or more definition files");
-    }
-
     // -- Window --
     ErrorCode result = this->m_window.create(config.window);
     if (result != ErrorCode::Ok) {

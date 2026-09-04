@@ -25,15 +25,12 @@ scheduled | main | hook. This project has no queue consumers or scheduled jobs.
 sequenceDiagram
   participant main as main.cpp
   participant app as Application
-  participant dl as DataLoader
   participant srv as GameServer
   participant lua as LuaEngine
   participant cli as GameClient
   participant rnd as GameRenderer
 
   main->>app: Application()
-  app->>dl: load("data/definitions/")
-  dl-->>app: building/unit/tech defs
   app->>srv: initialize(GameConfig)
   srv->>srv: MapGenerator::generate(config, rng)
   srv->>srv: spawn AIControllers

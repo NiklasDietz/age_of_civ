@@ -32,12 +32,12 @@ inline constexpr BuildingId BUILDING_MINT{24};
 // ---------------------------------------------------------------------------
 
 /// Settler — civilian unit that founds a new city. AI sites: settler
-/// production candidate cost (AIController, BehaviorTree), settler purchase
+/// production candidate cost (AIController), settler purchase
 /// cost (AIController::considerPurchases).
 inline constexpr UnitTypeId UNIT_SETTLER{3};
 
 /// Builder — civilian unit that improves tiles. AI sites: builder production
-/// candidate cost (AIController, BehaviorTree), builder filtering
+/// candidate cost (AIController), builder filtering
 /// (AIController::countPlayerUnits, AIBuilderController), comments in same.
 inline constexpr UnitTypeId UNIT_BUILDER{5};
 

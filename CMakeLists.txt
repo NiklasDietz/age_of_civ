@@ -190,7 +190,6 @@ set(AOC_GFX_ONLY_SOURCES
     src/app/Application_HUD.cpp
     src/app/Window.cpp
     src/app/InputManager.cpp
-    src/app/HotkeyManager.cpp
     src/app/UnitSelection.cpp
     # All ui/ except GameNotifications pull in Renderer2D
     src/ui/BitmapFont.cpp
@@ -199,17 +198,12 @@ set(AOC_GFX_ONLY_SOURCES
     src/ui/DiplomacyScreen.cpp
     src/ui/Encyclopedia.cpp
     src/ui/EventLog.cpp
-    src/ui/LayoutBuilder.cpp
     src/ui/WidgetInspector.cpp
     src/ui/LoadingScreen.cpp
     src/ui/IconAtlas.cpp
     src/ui/IconPainter.cpp
-    src/ui/UITestHarness.cpp
-    src/ui/Localization.cpp
-    src/ui/UIPersistence.cpp
     src/ui/GameScreens.cpp
     src/ui/MainMenu.cpp
-    src/ui/MapEditor.cpp
     src/ui/Notifications.cpp
     src/ui/PauseMenu.cpp
     src/ui/LoadGameMenu.cpp
@@ -240,7 +234,6 @@ set(AOC_LIB_SOURCES
     src/core/Selectable.cpp
 
     # Data loading
-    src/data/DataLoader.cpp
 
     # Game object model
     src/game/GameState.cpp
@@ -309,12 +302,10 @@ set(AOC_LIB_SOURCES
     src/simulation/city/CityBombardment.cpp
     src/simulation/culture/Tourism.cpp
     src/simulation/map/Improvement.cpp
-    src/simulation/map/Infrastructure.cpp
     src/simulation/map/TerrainModification.cpp
     src/simulation/map/Chokepoint.cpp
     src/simulation/map/GoodyHuts.cpp
     src/simulation/unit/SupplyLines.cpp
-    src/simulation/unit/ZoneOfControl.cpp
     src/simulation/unit/Promotion.cpp
     src/simulation/event/WorldEvents.cpp
     src/simulation/event/VisibilityEvents.cpp
@@ -348,7 +339,6 @@ set(AOC_LIB_SOURCES
     src/simulation/ai/AIEconomicStrategy.cpp
     src/simulation/ai/LeaderPersonality.cpp
     src/simulation/ai/TunedLeaderIO.cpp
-    src/simulation/ai/BehaviorTree.cpp
     src/simulation/ai/UtilityScoring.cpp
     src/simulation/ai/UtilityAI.cpp
     src/simulation/ai/AIAdvisors.cpp
@@ -360,7 +350,6 @@ set(AOC_LIB_SOURCES
     src/simulation/resource/ProductionChain.cpp
     src/simulation/resource/EconomySimulation.cpp
     src/simulation/economy/Market.cpp
-    src/simulation/economy/ComparativeAdvantage.cpp
     src/simulation/economy/ResourceCurse.cpp
     src/simulation/monetary/Inflation.cpp
     src/simulation/monetary/CentralBank.cpp
@@ -435,14 +424,10 @@ set(AOC_LIB_SOURCES
     src/ui/TradeRouteSetupScreen.cpp
     src/ui/DiplomacyScreen.cpp
     src/ui/EventLog.cpp
-    src/ui/LayoutBuilder.cpp
     src/ui/WidgetInspector.cpp
     src/ui/LoadingScreen.cpp
     src/ui/IconAtlas.cpp
     src/ui/IconPainter.cpp
-    src/ui/UITestHarness.cpp
-    src/ui/Localization.cpp
-    src/ui/UIPersistence.cpp
     src/ui/Tooltip.cpp
     src/ui/MainMenu.cpp
     src/ui/ReligionScreen.cpp
@@ -452,7 +437,6 @@ set(AOC_LIB_SOURCES
     src/ui/SettingsMenu.cpp
     src/ui/Theme.cpp
     src/ui/Notifications.cpp
-    src/ui/MapEditor.cpp
     src/ui/Tutorial.cpp
     src/ui/Encyclopedia.cpp
     src/ui/DebugConsole.cpp
@@ -469,7 +453,6 @@ set(AOC_LIB_SOURCES
     src/app/Window.cpp
     src/app/InputManager.cpp
     src/app/UnitSelection.cpp
-    src/app/HotkeyManager.cpp
     src/app/Application.cpp
     src/app/DebugCommandFile.cpp
     src/debug/DebugServer.cpp
@@ -826,25 +809,9 @@ foreach(GLSL_FILE ${AOC_GAME_GLSL_SOURCES})
     )
 endforeach()
 
-# Copy game data files (JSON definitions) to the build directory
+# Copy game data files (YAML config) to the build directory
 set(AOC_DATA_SOURCE_DIR "${CMAKE_SOURCE_DIR}/data")
 set(AOC_DATA_OUTPUT_DIR "$<TARGET_FILE_DIR:age_of_civ>/data")
-
-add_custom_command(TARGET age_of_civ POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${AOC_DATA_OUTPUT_DIR}/definitions"
-    COMMENT "Creating data output directory"
-)
-
-file(GLOB AOC_DATA_JSON_FILES "${AOC_DATA_SOURCE_DIR}/definitions/*.json")
-foreach(JSON_FILE ${AOC_DATA_JSON_FILES})
-    get_filename_component(JSON_FILENAME "${JSON_FILE}" NAME)
-    add_custom_command(TARGET age_of_civ POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${JSON_FILE}"
-            "${AOC_DATA_OUTPUT_DIR}/definitions/${JSON_FILENAME}"
-        COMMENT "Copying data file: ${JSON_FILENAME}"
-    )
-endforeach()
 
 # Also copy YAML config files
 file(GLOB AOC_DATA_YAML_FILES "${AOC_DATA_SOURCE_DIR}/*.yaml")
@@ -934,7 +901,6 @@ if(AOC_BUILD_TESTS)
         test_unemployment
         test_building_capacity
         test_production_efficiency
-        test_json_parser_depth
         test_save_roundtrip
         test_combat_kills
         test_found_or_die
@@ -942,7 +908,6 @@ if(AOC_BUILD_TESTS)
         test_path_guard
         test_save_hostile
         test_lua_sandbox
-        test_behavior_tree
         test_deal_atomicity
         test_diplomatic_favor
         test_iou_term_expiry

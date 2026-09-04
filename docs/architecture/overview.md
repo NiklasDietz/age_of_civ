@@ -44,9 +44,6 @@ adapter.
 **scripting** wraps LuaJIT (or Lua 5.4) to let Lua scripts define victory conditions, world
 events, AI overrides, and map rules. Compiles to a no-op stub when Lua is absent.
 
-**data** loads JSON definitions for buildings, units, techs, recipes, goods, and leader
-personalities from `data/definitions/` at startup, with compile-time constexpr fallbacks.
-
 **debug** provides a single-file localhost HTTP server (cpp-httplib) for live game-state
 inspection during development.
 

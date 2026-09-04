@@ -30,11 +30,11 @@ that sequences them all.
 
 | Sub-module | Key files | What it does |
 |---|---|---|
-| `ai/` | `AIController.hpp`, `BehaviorTree.cpp`, `UtilityAI.cpp`, `LeaderPersonality.cpp` | Orchestrates 15 focused controllers (research, settler, builder, military, diplomacy, economy, government, investment, trade routes, …) via utility scoring |
+| `ai/` | `AIController.hpp`, `UtilityAI.cpp`, `LeaderPersonality.cpp` | Orchestrates 15 focused controllers (research, settler, builder, military, diplomacy, economy, government, investment, trade routes, …) via utility scoring |
 | `economy/` | `Market.cpp`, `AdvancedEconomics.cpp`, `CommodityExchange.cpp`, `SpeculationBubble.cpp`, `Sanctions.cpp`, `BlackMarket.cpp`, … | Global commodity market, supply/demand pricing, futures trading, speculation, sanctions, colonial/naval trade |
 | `diplomacy/` | `DiplomacyState.cpp`, `EspionageSystem.cpp`, `WorldCongress.cpp`, `Grievance.cpp`, `WarWeariness.cpp`, `AllianceObligations.cpp`, … | Pairwise relations, espionage, World Congress votes, grievances, war weariness, alliances, border violations |
 | `city/` | `CityGrowth.cpp`, `CityScience.cpp`, `CityLoyalty.cpp`, `CityBombardment.cpp`, `Governor.cpp`, `ProductionSystem.cpp`, `DistrictAdjacency.cpp`, `Happiness.cpp`, `Secession.cpp`, … | City lifecycle: growth, science, loyalty, bombardment, district bonuses, governor assignments, production queue processing |
-| `unit/` | `Combat.cpp`, `Movement.cpp`, `Naval.cpp`, `Promotion.cpp`, `UnitUpgrade.cpp`, `ZoneOfControl.cpp`, `SupplyLines.cpp`, `CombatExtensions.cpp` | Unit combat resolution, movement costs, naval rules, promotion trees, upgrade paths, ZoC |
+| `unit/` | `Combat.cpp`, `Movement.cpp`, `Naval.cpp`, `Promotion.cpp`, `UnitUpgrade.cpp`, `SupplyLines.cpp`, `CombatExtensions.cpp` | Unit combat resolution, movement costs, naval rules, promotion trees, upgrade paths, ZoC |
 | `tech/` | `TechTree.cpp`, `CivicTree.cpp`, `EurekaBoost.cpp`, `TechGating.cpp`, `EraScore.cpp` | Research tree, civic tree, Eureka triggers, era transitions, tech-gated unit/building unlocks |
 | `religion/` | `Religion.cpp`, `TheologicalCombat.cpp` | Faith generation, religion founding/spread, theological combat between missionaries |
 | `culture/` | `Tourism.cpp` | Tourism accumulation and the culture victory counter |
@@ -49,7 +49,7 @@ that sequences them all.
 | `wonder/` | `Wonder.cpp` | Wonder construction tracking and global effects |
 | `victory/` | `VictoryCondition.cpp`, `Prestige.cpp`, `SpaceRace.cpp` | Domination, science, culture, prestige, and space-race victory evaluation |
 | `greatpeople/` | `GreatPeople.cpp`, `GreatPeopleExpanded.cpp` | Great person accumulation, recruitment, and abilities |
-| `map/` | `Improvement.cpp`, `Infrastructure.cpp`, `TerrainModification.cpp`, `Chokepoint.cpp`, `GoodyHuts.cpp` | Builder improvements, road/railway networks, terrain conversion, chokepoint marking |
+| `map/` | `Improvement.cpp`, `TerrainModification.cpp`, `Chokepoint.cpp`, `GoodyHuts.cpp` | Builder improvements, road/railway networks, terrain conversion, chokepoint marking |
 | `empire/` | — | Empire-level effects (confederation, colonial relationships) |
 | `turn/` | `TurnProcessor.cpp`, `TurnManager.cpp` | Turn sequencing and the turn-counter state machine |
 | `automation/` | `Automation.cpp` | City automation directives |
