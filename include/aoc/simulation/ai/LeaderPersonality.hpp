@@ -211,6 +211,14 @@ enum class AgendaCondition : uint8_t {
     HasNuclearWeapons,     ///< Target has nukes
     HasColonies,           ///< Target has economic zones in other civs
     IsReserveCurrency,     ///< Target holds reserve currency status
+    // Imported with the civ 12-35 agendas (2026-09-04). The old JSON also
+    // spelled two of these HasMoreCulture / HasMoreScience; those are the
+    // existing HasHigherCulture / HasHigherScience and map onto them.
+    HasFounderReligion,    ///< Target founded a religion
+    HasNoReligion,         ///< Target has neither religion nor pantheon
+    HasLessScience,        ///< Target has fewer techs researched
+    HasNoNavy,             ///< Target owns no naval units
+    IsAtPeaceForLong,      ///< Target has avoided war for many turns
 };
 
 // ============================================================================
@@ -367,9 +375,256 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.40f, 0.5f, 0.8f, 1.80f, 1.8f, 0.5f, 0.8f,
       3.5f, 0.2f, 1.5f,
       0.6f, 1.8f, 1.0f, 1.8f, 0.7f, 0.9f, 1.1f}},
+
+    // 12: Mongol Horde (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{12}, "Mongol Horde",
+     "Respects strong militaries. Conquers neighbors with cavalry swarms.",
+     AgendaCondition::HasMoreMilitary, AgendaCondition::HasMoreMilitary,
+     {2.00f, 1.40f, 0.70f, 0.50f, 0.80f, 0.40f, 0.30f, 0.60f, 0.50f, 1.00f,
+      2.00f, 0.60f, 0.90f, 0.40f, 0.50f,
+      0.80f, 2.20f, 0.70f, 0.70f, 0.30f, 0.40f, 0.20f,
+      0.80f, 0.90f, 0.30f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 13: Last Prophet (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{13}, "Last Prophet",
+     "Respects civilizations with strong religion. Hostile to atheists.",
+     AgendaCondition::HasFounderReligion, AgendaCondition::HasNoReligion,
+     {1.00f, 1.00f, 1.30f, 1.00f, 1.30f, 1.00f, 2.00f, 0.10f, 0.80f, 0.60f,
+      1.00f, 1.30f, 1.00f, 0.90f, 1.00f,
+      1.00f, 1.00f, 1.00f, 1.20f, 1.40f, 0.70f, 2.00f,
+      1.50f, 0.50f, 0.90f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 14: Impi Strike (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{14}, "Impi Strike",
+     "Respects highly trained corps. Bullies civs with weak militaries.",
+     AgendaCondition::HasMoreMilitary, AgendaCondition::HasLessMilitary,
+     {1.90f, 1.20f, 0.80f, 0.70f, 0.90f, 0.50f, 0.50f, 0.30f, 0.70f, 0.80f,
+      1.80f, 0.80f, 1.00f, 0.50f, 0.60f,
+      0.90f, 2.00f, 0.80f, 1.00f, 0.50f, 0.50f, 0.40f,
+      1.00f, 0.80f, 0.40f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 15: People of the Steppe (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{15}, "People of the Steppe",
+     "Respects horse-rich cultures. Hostile to civs with weak cavalry.",
+     AgendaCondition::HasMoreMilitary, AgendaCondition::HasLessMilitary,
+     {1.50f, 1.50f, 0.90f, 0.80f, 1.00f, 0.70f, 0.60f, 0.20f, 0.70f, 0.80f,
+      1.60f, 1.00f, 0.90f, 0.50f, 0.70f,
+      1.00f, 1.70f, 0.90f, 1.00f, 0.60f, 0.40f, 0.50f,
+      1.20f, 0.60f, 0.60f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 16: To World's End (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{16}, "To World's End",
+     "Respects bold conquerors. Despises passive civs.",
+     AgendaCondition::HasMoreCities, AgendaCondition::IsAtPeaceForLong,
+     {1.80f, 1.70f, 1.10f, 1.00f, 1.00f, 0.60f, 0.60f, 0.40f, 0.70f, 0.70f,
+      1.70f, 0.90f, 1.10f, 1.00f, 0.80f,
+      1.30f, 1.80f, 1.00f, 1.00f, 1.00f, 0.80f, 0.40f,
+      1.00f, 0.70f, 0.50f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 17: Songs of the Jeli (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{17}, "Songs of the Jeli",
+     "Respects wealthy civs. Dislikes those that resort to war.",
+     AgendaCondition::HasStrongEconomy, AgendaCondition::IsAtWarWithAnyone,
+     {0.40f, 0.90f, 1.10f, 1.40f, 2.00f, 1.60f, 0.90f, 0.00f, 1.00f, 0.30f,
+      0.50f, 2.00f, 0.90f, 1.20f, 1.10f,
+      1.10f, 0.50f, 1.00f, 1.40f, 1.30f, 1.00f, 0.70f,
+      2.80f, 0.30f, 1.50f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 18: Epic Quest (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{18}, "Epic Quest",
+     "Loves civs at war with barbarians. Hostile to others' allies.",
+     AgendaCondition::HasMoreCities, AgendaCondition::HasMoreCities,
+     {1.40f, 1.30f, 0.90f, 1.20f, 0.90f, 1.00f, 0.70f, 0.20f, 0.70f, 0.60f,
+      1.20f, 0.90f, 1.00f, 0.60f, 0.80f,
+      1.20f, 1.40f, 0.90f, 1.00f, 1.00f, 0.50f, 0.50f,
+      1.40f, 0.60f, 0.70f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 19: Enuma Anu Enlil (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{19}, "Enuma Anu Enlil",
+     "Pursues science via eurekas. Avoids combat.",
+     AgendaCondition::HasHigherScience, AgendaCondition::HasLessScience,
+     {0.40f, 0.90f, 2.00f, 1.00f, 1.00f, 1.20f, 0.40f, 0.10f, 0.90f, 0.40f,
+      0.60f, 1.20f, 1.50f, 0.70f, 1.80f,
+      0.90f, 0.40f, 0.90f, 1.60f, 1.40f, 0.50f, 0.40f,
+      2.50f, 0.30f, 1.20f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 20: Grand Barays (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{20}, "Grand Barays",
+     "Likes wonders, religious neighbours.",
+     AgendaCondition::HasHigherCulture, AgendaCondition::IsAtWarWithAnyone,
+     {0.70f, 1.10f, 1.00f, 1.40f, 1.00f, 1.20f, 1.40f, 0.00f, 0.90f, 0.40f,
+      0.80f, 1.00f, 1.00f, 0.70f, 1.00f,
+      1.10f, 0.70f, 1.10f, 1.30f, 1.60f, 0.60f, 1.40f,
+      2.00f, 0.40f, 1.20f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 21: Nihithaw (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{21}, "Nihithaw",
+     "Trade-focused. Hostile to civs that block trade routes.",
+     AgendaCondition::HasStrongEconomy, AgendaCondition::IsAtWarWithAnyone,
+     {0.50f, 1.20f, 1.00f, 1.00f, 1.60f, 1.40f, 0.60f, 0.00f, 1.00f, 0.30f,
+      0.70f, 1.60f, 1.00f, 0.80f, 1.10f,
+      1.20f, 0.60f, 1.00f, 1.20f, 1.00f, 0.70f, 0.50f,
+      2.40f, 0.30f, 1.30f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 22: Toqui (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{22}, "Toqui",
+     "Despises golden-age civs. Pillages relentlessly.",
+     AgendaCondition::HasMoreMilitary, AgendaCondition::HasHigherCulture,
+     {1.70f, 1.00f, 0.70f, 0.60f, 0.90f, 0.50f, 0.50f, 0.40f, 0.60f, 0.90f,
+      1.60f, 0.80f, 1.00f, 0.60f, 0.70f,
+      0.90f, 1.80f, 0.80f, 0.90f, 0.40f, 0.50f, 0.40f,
+      1.10f, 0.70f, 0.50f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 23: Great Turkish Bombard (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{23}, "Great Turkish Bombard",
+     "Sieges enemy cities. Loves vassal-like relationships.",
+     AgendaCondition::HasMoreCities, AgendaCondition::HasLessMilitary,
+     {1.50f, 1.30f, 1.00f, 1.00f, 1.00f, 0.80f, 1.00f, 0.40f, 0.70f, 0.70f,
+      1.50f, 1.00f, 1.20f, 1.00f, 0.90f,
+      1.10f, 1.50f, 0.90f, 1.10f, 1.00f, 0.80f, 0.90f,
+      1.30f, 0.60f, 0.70f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 24: Mediterranean Colonies (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{24}, "Mediterranean Colonies",
+     "Maritime expansionist. Coast/water focused.",
+     AgendaCondition::HasStrongEconomy, AgendaCondition::HasNoNavy,
+     {0.90f, 1.60f, 1.00f, 1.00f, 1.50f, 1.00f, 0.60f, 0.10f, 0.90f, 0.40f,
+      0.80f, 1.40f, 0.90f, 2.00f, 1.00f,
+      1.40f, 0.90f, 1.00f, 1.10f, 1.00f, 2.00f, 0.50f,
+      1.80f, 0.40f, 1.00f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 25: Knarr (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{25}, "Knarr",
+     "Coastal raider. Despises pacifists.",
+     AgendaCondition::HasMoreMilitary, AgendaCondition::IsAtPeaceForLong,
+     {1.40f, 1.20f, 0.90f, 0.90f, 1.00f, 0.70f, 0.50f, 0.20f, 0.80f, 0.70f,
+      1.30f, 0.90f, 0.90f, 1.80f, 0.80f,
+      1.00f, 1.40f, 0.90f, 1.00f, 0.70f, 1.60f, 0.40f,
+      1.40f, 0.60f, 0.70f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 26: El Escorial (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{26}, "El Escorial",
+     "Religious zealot. Hostile to other faiths.",
+     AgendaCondition::HasFounderReligion, AgendaCondition::HasNoReligion,
+     {1.10f, 1.30f, 1.00f, 1.10f, 1.20f, 0.80f, 1.60f, 0.20f, 0.70f, 0.70f,
+      1.10f, 1.10f, 1.00f, 1.40f, 0.90f,
+      1.30f, 1.10f, 1.00f, 1.20f, 1.20f, 1.10f, 1.50f,
+      1.50f, 0.50f, 0.90f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 27: Three Kingdoms (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{27}, "Three Kingdoms",
+     "Loves science. Hates civs with poor education.",
+     AgendaCondition::HasHigherScience, AgendaCondition::HasLessScience,
+     {0.70f, 1.00f, 1.80f, 1.20f, 1.10f, 1.00f, 0.60f, 0.10f, 0.90f, 0.50f,
+      0.80f, 1.10f, 1.40f, 0.80f, 1.70f,
+      1.00f, 0.70f, 1.00f, 1.40f, 1.20f, 0.70f, 0.50f,
+      2.20f, 0.30f, 1.10f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 28: Great Nusantara (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{28}, "Great Nusantara",
+     "Coastal/island specialist. Loves naval allies.",
+     AgendaCondition::HasStrongEconomy, AgendaCondition::HasMoreMilitary,
+     {0.70f, 1.20f, 1.10f, 1.10f, 1.40f, 1.20f, 0.80f, 0.00f, 0.90f, 0.40f,
+      0.80f, 1.30f, 1.00f, 1.60f, 1.00f,
+      1.20f, 0.70f, 1.00f, 1.20f, 1.10f, 1.60f, 0.70f,
+      2.00f, 0.30f, 1.20f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 29: Nine Dragon River (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{29}, "Nine Dragon River",
+     "Defends jungles fiercely. Forest/jungle adapted.",
+     AgendaCondition::HasHigherCulture, AgendaCondition::HasMoreMilitary,
+     {0.90f, 1.00f, 1.00f, 1.50f, 1.00f, 1.00f, 0.70f, 0.10f, 0.90f, 0.60f,
+      1.00f, 1.00f, 1.00f, 0.80f, 1.00f,
+      1.00f, 1.00f, 1.10f, 1.20f, 1.20f, 0.60f, 0.70f,
+      1.80f, 0.40f, 1.00f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 30: Mana (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{30}, "Mana",
+     "Maritime adventurer. Values pristine land.",
+     AgendaCondition::HasHigherCulture, AgendaCondition::HasMoreCities,
+     {0.80f, 0.90f, 1.00f, 1.40f, 1.00f, 1.10f, 1.00f, 0.00f, 0.90f, 0.50f,
+      0.90f, 1.00f, 0.90f, 1.50f, 0.90f,
+      0.90f, 0.90f, 1.00f, 1.20f, 1.20f, 1.40f, 1.00f,
+      2.00f, 0.30f, 1.10f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 31: Founding Fathers (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{31}, "Founding Fathers",
+     "Defensive industrialist. Distrusts unstable governments.",
+     AgendaCondition::HasStrongEconomy, AgendaCondition::IsAtWarWithAnyone,
+     {1.00f, 1.20f, 1.30f, 1.10f, 1.40f, 1.00f, 0.50f, 0.50f, 0.90f, 0.50f,
+      1.20f, 1.30f, 1.40f, 1.00f, 1.30f,
+      1.20f, 1.10f, 1.10f, 1.30f, 1.00f, 1.00f, 0.40f,
+      1.60f, 0.50f, 1.00f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 32: Black Queen (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{32}, "Black Queen",
+     "Cultured spy. Loves wonders, despises industrial sprawl.",
+     AgendaCondition::HasHigherCulture, AgendaCondition::HasLessMilitary,
+     {0.80f, 1.00f, 1.20f, 1.60f, 1.10f, 0.90f, 0.60f, 0.20f, 0.60f, 0.70f,
+      1.00f, 1.10f, 1.00f, 0.90f, 1.30f,
+      1.00f, 0.80f, 1.00f, 1.30f, 1.70f, 0.80f, 0.50f,
+      1.80f, 0.40f, 0.90f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 33: Radio Oranje (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{33}, "Radio Oranje",
+     "Coastal trader. Diplomacy via gold.",
+     AgendaCondition::HasStrongEconomy, AgendaCondition::IsAtWarWithAnyone,
+     {0.60f, 1.00f, 1.00f, 1.10f, 1.70f, 1.40f, 0.50f, 0.00f, 1.00f, 0.30f,
+      0.80f, 1.70f, 1.00f, 1.40f, 1.10f,
+      1.00f, 0.60f, 1.00f, 1.40f, 1.20f, 1.20f, 0.40f,
+      2.40f, 0.30f, 1.40f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 34: Land Down Under (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{34}, "Land Down Under",
+     "Prefers peaceful expansion. Hostile to invaders.",
+     AgendaCondition::HasHigherCulture, AgendaCondition::HasMoreMilitary,
+     {0.70f, 1.30f, 1.10f, 1.00f, 1.20f, 1.20f, 0.50f, 0.10f, 0.90f, 0.50f,
+      0.90f, 1.20f, 1.10f, 1.00f, 1.20f,
+      1.30f, 0.80f, 1.10f, 1.20f, 1.00f, 0.90f, 0.40f,
+      2.00f, 0.40f, 1.20f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+
+    // 35: Four Faces of Peace (imported from leaders.json; strategic weights 25-31 default)
+    {CivId{35}, "Four Faces of Peace",
+     "True pacifist. Refuses surprise wars.",
+     AgendaCondition::HasHigherCulture, AgendaCondition::IsAtWarWithAnyone,
+     {0.30f, 1.10f, 1.20f, 1.20f, 1.20f, 1.60f, 0.70f, 0.00f, 1.00f, 0.20f,
+      0.60f, 1.20f, 1.10f, 0.90f, 1.30f,
+      1.10f, 0.40f, 1.10f, 1.30f, 1.20f, 0.70f, 0.70f,
+      3.50f, 0.20f, 1.60f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
 };
 
-inline constexpr int32_t LEADER_PERSONALITY_COUNT = 12;
+/// One entry per civ. Civs 12-35 were ported from the old
+/// `data/definitions/leaders.json` on 2026-09-04. Before that the lookup
+/// clamped them all to entry 0, so 24 of 36 civs shared Rome's agenda and
+/// behaviour, and the GA indexed this table with `civId % CIV_COUNT` past its end.
+inline constexpr int32_t LEADER_PERSONALITY_COUNT =
+    static_cast<int32_t>(sizeof(LEADER_PERSONALITIES) / sizeof(LEADER_PERSONALITIES[0]));
+static_assert(LEADER_PERSONALITY_COUNT == static_cast<int32_t>(CIV_COUNT),
+              "every civ needs its own leader personality");
 
 // ============================================================================
 // Diplomatic dialogue

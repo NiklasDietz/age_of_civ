@@ -961,6 +961,7 @@ if(AOC_BUILD_TESTS)
         test_mapgen_regenerate
         test_game_snapshot
         test_game_control_validation
+        test_leader_agendas
     )
 
     # UI tests link against src/ui/UIManager.cpp and src/ui/ScreenRegistry.cpp,

@@ -11,6 +11,7 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/CombatExtensions.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
@@ -174,6 +175,49 @@ static bool checkCondition(const aoc::game::GameState& gameState,
 
         case AgendaCondition::HasColonies:
             return false;  // Would need economic zone check
+
+        case AgendaCondition::HasFounderReligion: {
+            const aoc::game::Player* targetPlayer = gameState.player(target);
+            if (targetPlayer == nullptr) { return false; }
+            return targetPlayer->faith().foundedReligion != aoc::sim::NO_RELIGION;
+        }
+
+        case AgendaCondition::HasNoReligion: {
+            const aoc::game::Player* targetPlayer = gameState.player(target);
+            if (targetPlayer == nullptr) { return false; }
+            return targetPlayer->faith().foundedReligion == aoc::sim::NO_RELIGION
+                && !targetPlayer->faith().hasPantheon;
+        }
+
+        case AgendaCondition::HasLessScience: {
+            int32_t targetTechs = 0;
+            int32_t leaderTechs = 0;
+            for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+                if (playerPtr == nullptr) { continue; }
+                const bool isLeader = (playerPtr->id() == leader);
+                const bool isTarget = (playerPtr->id() == target);
+                if (!isLeader && !isTarget) { continue; }
+                int32_t count = 0;
+                for (std::size_t b = 0; b < playerPtr->tech().completedTechs.size(); ++b) {
+                    if (playerPtr->tech().completedTechs[b]) { ++count; }
+                }
+                if (isTarget) { targetTechs = count; }
+                if (isLeader) { leaderTechs = count; }
+            }
+            return targetTechs < leaderTechs;
+        }
+
+        case AgendaCondition::HasNoNavy: {
+            const aoc::game::Player* targetPlayer = gameState.player(target);
+            if (targetPlayer == nullptr) { return false; }
+            for (const std::unique_ptr<aoc::game::Unit>& unitPtr : targetPlayer->units()) {
+                if (unitPtr != nullptr && unitPtr->isNaval()) { return false; }
+            }
+            return true;
+        }
+
+        case AgendaCondition::IsAtPeaceForLong:
+            return false;  // Would need DiplomacyManager access, like IsAtWarWithAnyone
 
         case AgendaCondition::IsReserveCurrency: {
             const aoc::game::Player* targetPlayer = gameState.player(target);
