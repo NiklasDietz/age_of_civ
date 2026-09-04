@@ -66,4 +66,16 @@ void processSpyMissions(aoc::game::GameState& gameState,
                                          aoc::game::Unit& spyUnit,
                                          SpyMission mission);
 
+/**
+ * @brief Validate and assign a mission to the spy `owner` has standing on `unitAt`.
+ *
+ * The shared action behind the espionage screen and the debug route. The spy
+ * operates where it stands: its espionage location is set to the tile first.
+ * @return Ok; InvalidArgument (unknown player or mission); InvalidUnitAction (no
+ *         spy on the tile, or one still on a timed mission); InvalidState (an
+ *         offensive mission with no rival city under the spy).
+ */
+[[nodiscard]] ErrorCode requestSpyMission(aoc::game::GameState& gameState, PlayerId owner,
+                                          aoc::hex::AxialCoord unitAt, SpyMission mission);
+
 } // namespace aoc::sim

@@ -23,10 +23,12 @@
 #include <string>
 #include <variant>
 
+using aoc::ui::ButtonData;
 using aoc::ui::EspionageScreen;
 using aoc::ui::LabelData;
 using aoc::ui::UIManager;
 using aoc::ui::Widget;
+using aoc::ui::WidgetId;
 
 namespace {
 
@@ -76,6 +78,36 @@ struct World {
         return n;
     }
 
+    [[nodiscard]] int32_t buttonsContaining(const std::string& needle, bool disabled) const {
+        int32_t n = 0;
+        for (const Widget& w : this->ui.widgets()) {
+            if (w.id == aoc::ui::INVALID_WIDGET) {
+                continue;
+            }
+            const ButtonData* btn = std::get_if<ButtonData>(&w.data);
+            if (btn != nullptr && btn->disabled == disabled &&
+                btn->label.find(needle) != std::string::npos) {
+                ++n;
+            }
+        }
+        return n;
+    }
+
+    /// Click the first button whose label contains `needle`; false when none.
+    bool clickButton(const std::string& needle) {
+        for (const Widget& w : this->ui.widgets()) {
+            if (w.id == aoc::ui::INVALID_WIDGET) {
+                continue;
+            }
+            const ButtonData* btn = std::get_if<ButtonData>(&w.data);
+            if (btn != nullptr && btn->label.find(needle) != std::string::npos) {
+                const WidgetId id = w.id;
+                return this->ui.clickWidget(id);
+            }
+        }
+        return false;
+    }
+
     [[nodiscard]] int32_t labelsContaining(const std::string& needle) const {
         int32_t n = 0;
         for (const Widget& w : this->ui.widgets()) {
@@ -101,7 +133,7 @@ TEST_CASE("open lists the spy, its mission, and all 18 missions with a chance") 
     CHECK(w.labelsContaining("Spies: 1   Counter-intelligence: 0   Revealed: 0") == 1);
     CHECK(w.labelsContaining("Agent at Thebes (") == 1);
     CHECK(w.labelsContaining("Steal Technology, 3 turns left") == 1);
-    CHECK(w.labelsContaining("Missions here (counter-spy level ") == 1);
+    CHECK(w.labelsContaining("(busy until this one resolves) (counter-spy level ") == 1);
     for (const aoc::sim::SpyMissionDef& def : aoc::sim::SPY_MISSION_DEFS) {
         CHECK(w.labelsContaining("      " + std::string(def.name) + "  ") >= 1);
     }
@@ -115,7 +147,7 @@ TEST_CASE("rivals section shows the intelligence level and the stationed spy") {
 
     CHECK(w.labelsContaining("|  Intel: Economic") == 1);
     CHECK(w.labelsContaining("Thebes (12,9)  |  your spies: 1  |  counter-spy level ") == 1);
-    CHECK(w.labelsContaining("Not recorded yet.") == 1);
+    CHECK(w.labelsContaining("No missions resolved yet.") == 1);
 }
 
 TEST_CASE("without spies the screen says so instead of listing missions") {
@@ -150,4 +182,71 @@ TEST_CASE("refresh rebuilds only when spy state changes; close removes everythin
     w.screen.close(w.ui);
     CHECK_FALSE(w.screen.isOpen());
     CHECK(w.liveWidgets() == before);
+}
+
+TEST_CASE("an idle spy gets one button per mission; a click assigns through the action path") {
+    World w;
+    aoc::game::Unit& spy     = *w.gs.players()[0]->units().front();
+    spy.spy().turnsRemaining = 0;
+    w.screen.open(w.ui);
+
+    CHECK(w.buttonsContaining("%  ", false) == 18);
+    CHECK(w.labelsContaining("%  ") == 0);
+    CHECK(w.labelsContaining("click one to assign") == 1);
+
+    REQUIRE(w.clickButton("Steal Technology  "));
+    CHECK(spy.spy().currentMission == aoc::sim::SpyMission::StealTechnology);
+    CHECK(spy.spy().turnsRemaining > 0);
+    CHECK(spy.spy().location == spy.position());
+
+    w.screen.refresh(w.ui);
+    CHECK(w.buttonsContaining("%  ", false) == 0);
+    CHECK(w.labelsContaining("%  ") == 18);
+    CHECK(w.labelsContaining("Steal Technology, ") == 1);
+}
+
+TEST_CASE("outside a rival city only Counter-Intelligence is enabled") {
+    World w;
+    aoc::game::Player& human = *w.gs.players()[0];
+    aoc::game::Unit& homeSpy = human.addUnit(SPY, {3, 3});
+    w.screen.open(w.ui);
+
+    // The Thebes spy is busy (label rows); the home spy contributes the buttons.
+    CHECK(w.buttonsContaining("%  ", true) == 17);
+    CHECK(w.buttonsContaining("%  ", false) == 1);
+    CHECK(w.buttonsContaining("Counter-Intelligence", false) == 1);
+
+    // A disabled button never reaches the action.
+    static_cast<void>(w.clickButton("Steal Technology  "));
+    CHECK(homeSpy.spy().currentMission == aoc::sim::SpyMission::GatherIntelligence);
+    REQUIRE(w.clickButton("Counter-Intelligence"));
+    CHECK(homeSpy.spy().currentMission == aoc::sim::SpyMission::CounterIntelligence);
+}
+
+TEST_CASE("history lists own outcomes and enemy spies caught at home, never escaped ones") {
+    World w;
+    aoc::game::GameState::SpyMissionRecord own{};
+    own.spyOwner    = aoc::PlayerId{0};
+    own.targetOwner = aoc::PlayerId{1};
+    own.location    = {12, 9};
+    own.mission     = aoc::sim::SpyMission::StealTechnology;
+    own.success     = true;
+    w.gs.recordSpyMission(own);
+    aoc::game::GameState::SpyMissionRecord caught{};
+    caught.spyOwner    = aoc::PlayerId{1};
+    caught.targetOwner = aoc::PlayerId{0};
+    caught.location    = {3, 3};
+    caught.mission     = aoc::sim::SpyMission::SiphonFunds;
+    caught.success     = false;
+    caught.outcome     = aoc::sim::SpyFailureOutcome::Captured;
+    w.gs.recordSpyMission(caught);
+    aoc::game::GameState::SpyMissionRecord unseen = caught;
+    unseen.outcome = aoc::sim::SpyFailureOutcome::EscapedUndetected;
+    w.gs.recordSpyMission(unseen);
+    w.screen.open(w.ui);
+
+    CHECK(w.labelsContaining("T0  Steal Technology at Thebes: success") == 1);
+    CHECK(w.labelsContaining("spy in Home (Captured)") == 1);
+    CHECK(w.labelsContaining("(Escaped)") == 0);
+    CHECK(w.labelsContaining("No missions resolved yet.") == 0);
 }

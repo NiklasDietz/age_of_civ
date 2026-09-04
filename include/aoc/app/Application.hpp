@@ -624,6 +624,7 @@ private:
     void executeGameControlCommand(const aoc::debug::FoundCityCommand& cmd);
     void executeGameControlCommand(const aoc::debug::SetProductionCommand& cmd);
     void executeGameControlCommand(const aoc::debug::SetResearchCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::AssignSpyMissionCommand& cmd);
 
     /// UI-control commands (widget clicks/scrolls) queued by debug-server
     /// HTTP handlers. Deliberately a SEPARATE queue from

@@ -34,6 +34,7 @@
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/event/VisibilityEvents.hpp"
+#include "aoc/simulation/diplomacy/Espionage.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -134,6 +135,30 @@ public:
     }
     [[nodiscard]] const std::vector<TileEvent>& tileEvents() const { return this->m_tileEvents; }
 
+    /// One resolved spy mission. Not serialized: a UI convenience rebuilt from play,
+    /// capped at MAX_SPY_MISSION_RECORDS (oldest dropped first).
+    struct SpyMissionRecord {
+        int32_t                    turn        = 0;
+        PlayerId                   spyOwner    = INVALID_PLAYER;
+        PlayerId                   targetOwner = INVALID_PLAYER; ///< owner of the city under the spy, if any
+        aoc::hex::AxialCoord       location;
+        aoc::sim::SpyMission       mission = aoc::sim::SpyMission::GatherIntelligence;
+        bool                       success = false;
+        aoc::sim::SpyFailureOutcome outcome = aoc::sim::SpyFailureOutcome::EscapedUndetected;
+    };
+    static constexpr std::size_t MAX_SPY_MISSION_RECORDS = 32;
+    /// Append a record stamped with the current turn, dropping the oldest past the cap.
+    void recordSpyMission(SpyMissionRecord record) {
+        record.turn = this->m_currentTurn;
+        if (this->m_spyMissionRecords.size() >= MAX_SPY_MISSION_RECORDS) {
+            this->m_spyMissionRecords.erase(this->m_spyMissionRecords.begin());
+        }
+        this->m_spyMissionRecords.push_back(record);
+    }
+    [[nodiscard]] const std::vector<SpyMissionRecord>& spyMissionRecords() const {
+        return this->m_spyMissionRecords;
+    }
+
     // ========================================================================
     // Global state (singletons)
     // ========================================================================
@@ -200,6 +225,7 @@ private:
     std::vector<std::unique_ptr<Player>> m_cityStatePlayers;
     int32_t m_currentTurn = 0;
     std::vector<TileEvent> m_tileEvents;
+    std::vector<SpyMissionRecord> m_spyMissionRecords;
     /// WP-H takeover: which player the UI follows. Persists across turns.
     PlayerId m_humanPlayerId = PlayerId{0};
 

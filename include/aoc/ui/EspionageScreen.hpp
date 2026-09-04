@@ -35,6 +35,7 @@ private:
     void buildRows(UIManager& ui);
     void addSpyRows(UIManager& ui, const aoc::game::Unit& unit);
     void addTargetRows(UIManager& ui);
+    void addHistoryRows(UIManager& ui);
     void addHeader(UIManager& ui, const std::string& text);
     void addLine(UIManager& ui, std::string text, bool dim);
 

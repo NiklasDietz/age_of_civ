@@ -1182,6 +1182,45 @@ ErrorCode Application::initialize(const Config& config) {
             return std::string("{\"queued\":true}");
         });
 
+    // POST /game/spy/mission?player=&q=&r=&mission=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/spy/mission",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player  = 0;
+            int32_t posQ    = 0;
+            int32_t posR    = 0;
+            int32_t mission = 0;
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "q", posQ, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "r", posR, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "mission", mission, err)) {
+                return err;
+            }
+            if (mission < 0 || mission >= static_cast<int32_t>(aoc::sim::SpyMission::Count)) {
+                return std::string("{\"error\":\"mission out of range\"}");
+            }
+            aoc::debug::AssignSpyMissionCommand cmd{};
+            cmd.player  = static_cast<aoc::PlayerId>(player);
+            cmd.at      = aoc::hex::AxialCoord{posQ, posR};
+            cmd.mission = static_cast<aoc::sim::SpyMission>(mission);
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
     // POST /game/research?player=&techId=
     this->m_debugServer->routeJson(
         DSM::Post, "/game/research",
@@ -1369,6 +1408,7 @@ ErrorCode Application::initialize(const Config& config) {
                 "{\"method\":\"POST\",\"path\":\"/game/city/"
                 "production?player=&q=&r=&type=&itemId=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/research?player=&techId=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/spy/mission?player=&q=&r=&mission=\"},"
                 "{\"method\":\"GET\",\"path\":\"/ui/tree\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click?widgetId=N\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click-at?x=&y=\"},"
@@ -2292,6 +2332,17 @@ void Application::executeGameControlCommand(const aoc::debug::SetResearchCommand
     const aoc::TechId techId{cmd.techId};
     player->tech().currentResearch  = techId;
     player->tech().researchProgress = 0.0f;
+}
+
+void Application::executeGameControlCommand(const aoc::debug::AssignSpyMissionCommand& cmd) {
+    const ErrorCode result =
+        aoc::sim::requestSpyMission(this->m_gameState, cmd.player, cmd.at, cmd.mission);
+    if (result != ErrorCode::Ok) {
+        LOG_WARN("Spy mission %d for player %u at (%d,%d) rejected: %.*s",
+                 static_cast<int>(cmd.mission), static_cast<unsigned>(cmd.player), cmd.at.q,
+                 cmd.at.r, static_cast<int>(describeError(result).size()),
+                 describeError(result).data());
+    }
 }
 
 void Application::drainPendingCommands() {

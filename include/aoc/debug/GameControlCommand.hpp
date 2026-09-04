@@ -3,6 +3,7 @@
 #include "aoc/core/Types.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
+#include "aoc/simulation/diplomacy/Espionage.hpp"
 
 #include <cstdint>
 #include <string>
@@ -52,7 +53,15 @@ struct SetResearchCommand {
 /// moves/attacks/production/research queued in the same frame.
 struct EndTurnCommand {};
 
+/// Assign a spy mission to the spy unit standing at `at`.
+struct AssignSpyMissionCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+    aoc::sim::SpyMission mission;
+};
+
 using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, FoundCityCommand,
-                                        SetProductionCommand, SetResearchCommand, EndTurnCommand>;
+                                        SetProductionCommand, SetResearchCommand,
+                                        AssignSpyMissionCommand, EndTurnCommand>;
 
 } // namespace aoc::debug

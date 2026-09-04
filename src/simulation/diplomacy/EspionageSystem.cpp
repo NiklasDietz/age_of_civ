@@ -445,7 +445,15 @@ void processSpyMissions(aoc::game::GameState& gameState,
         const float successChance = missionSuccessRate(spy, spy.currentMission, counterLvl);
         const bool success = rng.chance(successChance);
 
+        aoc::game::GameState::SpyMissionRecord record{};
+        record.spyOwner    = spy.owner;
+        record.targetOwner = (targetPlayer != nullptr) ? targetPlayer->id() : INVALID_PLAYER;
+        record.location    = spy.location;
+        record.mission     = spy.currentMission;
+        record.success     = success;
+
         if (success) {
+            gameState.recordSpyMission(record);
             aoc::game::Player* ownerPlayer = gameState.player(spy.owner);
             if (ownerPlayer != nullptr) {
                 executeMissionSuccess(gameState, *ownerPlayer, spy, rng, diplomacy);
@@ -463,6 +471,8 @@ void processSpyMissions(aoc::game::GameState& gameState,
         } else {
             // Graduated failure outcome
             const SpyFailureOutcome outcome = rollFailureOutcome(spy, rng.nextFloat());
+            record.outcome                  = outcome;
+            gameState.recordSpyMission(record);
 
             LOG_WARN("Spy (P%u, %.*s) failed %.*s at (%d,%d) — %.*s",
                      static_cast<unsigned>(spy.owner),
@@ -591,6 +601,31 @@ ErrorCode assignSpyMission(aoc::game::GameState& /*gameState*/,
              spy.turnsRemaining);
 
     return ErrorCode::Ok;
+}
+
+ErrorCode requestSpyMission(aoc::game::GameState& gameState, PlayerId owner,
+                            aoc::hex::AxialCoord unitAt, SpyMission mission) {
+    if (static_cast<uint8_t>(mission) >= static_cast<uint8_t>(SpyMission::Count)) {
+        return ErrorCode::InvalidArgument;
+    }
+    aoc::game::Player* player = gameState.player(owner);
+    if (player == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+    aoc::game::Unit* unit = player->unitAt(unitAt);
+    if (unit == nullptr || unit->spy().owner == INVALID_PLAYER) {
+        return ErrorCode::InvalidUnitAction;
+    }
+    SpyComponent& spy = unit->spy();
+    if (spy.turnsRemaining > 0) {
+        return ErrorCode::InvalidUnitAction;
+    }
+    spy.location = unit->position();
+    if (spyMissionDef(mission).isOffensive
+        && findCityOwner(gameState, owner, spy.location) == nullptr) {
+        return ErrorCode::InvalidState;
+    }
+    return assignSpyMission(gameState, *unit, mission);
 }
 
 } // namespace aoc::sim

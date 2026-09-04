@@ -15,6 +15,7 @@
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/Espionage.hpp"
 #include "aoc/simulation/diplomacy/EspionageSystem.hpp"
+#include "aoc/core/Log.hpp"
 
 #include <array>
 #include <memory>
@@ -31,9 +32,16 @@ constexpr float LIST_W  = PANEL_W - 30.0f;
 constexpr float LIST_H  = PANEL_H - 130.0f;
 constexpr float ROW_W   = LIST_W - 10.0f;
 constexpr float ROW_H   = 16.0f;
+constexpr int32_t MAX_HISTORY_ROWS = 10;
 
 [[nodiscard]] bool isSpy(const aoc::game::Unit& unit) {
     return unit.spy().owner != INVALID_PLAYER;
+}
+
+/// A timed mission is bound to the spy's espionage location; otherwise the spy
+/// operates where the unit stands (the tile `requestSpyMission` will use).
+[[nodiscard]] aoc::hex::AxialCoord operatingTile(const aoc::game::Unit& unit) {
+    return unit.spy().turnsRemaining > 0 ? unit.spy().location : unit.position();
 }
 
 [[nodiscard]] std::string coordText(aoc::hex::AxialCoord c) {
@@ -177,23 +185,24 @@ void EspionageScreen::buildRows(UIManager& ui) {
     this->addTargetRows(ui);
 
     this->addHeader(ui, "MISSION HISTORY");
-    this->addLine(ui, "Not recorded yet.", true);
+    this->addHistoryRows(ui);
 }
 
 void EspionageScreen::addSpyRows(UIManager& ui, const aoc::game::Unit& unit) {
     const aoc::sim::SpyComponent& spy = unit.spy();
+    const aoc::hex::AxialCoord at     = operatingTile(unit);
     const aoc::game::Player* host     = nullptr;
-    const aoc::game::City* city =
-        rivalCityAt(*this->m_gameState, this->m_player, spy.location, host);
+    const aoc::game::City* city = rivalCityAt(*this->m_gameState, this->m_player, at, host);
 
-    std::string where = coordText(spy.location);
+    std::string where = coordText(at);
     if (city != nullptr && host != nullptr) {
         where = city->name() + " (" + civName(*host) + ")";
     }
+    const bool busy                        = spy.turnsRemaining > 0;
     const aoc::sim::SpyMissionDef& current = aoc::sim::spyMissionDef(spy.currentMission);
     std::string head = std::string(aoc::sim::spyLevelName(spy.level)) + " at " + where +
                        "  |  " + std::string(current.name);
-    if (spy.turnsRemaining > 0) {
+    if (busy) {
         head += ", " + std::to_string(spy.turnsRemaining) + " turns left";
     }
     if (spy.isRevealed) {
@@ -222,10 +231,10 @@ void EspionageScreen::addSpyRows(UIManager& ui, const aoc::game::Unit& unit) {
     // Counter-spies defending the host city lower every chance below.
     int32_t counter = 0;
     if (host != nullptr && this->m_grid != nullptr) {
-        counter = aoc::sim::counterSpyLevel(*this->m_gameState, *this->m_grid, host->id(),
-                                            spy.location);
+        counter = aoc::sim::counterSpyLevel(*this->m_gameState, *this->m_grid, host->id(), at);
     }
-    std::string label = "    Missions here";
+    std::string label = busy ? "    Missions here (busy until this one resolves)"
+                             : "    Missions here: click one to assign";
     if (counter > 0) {
         label += " (counter-spy level " + std::to_string(counter) + ")";
     }
@@ -233,12 +242,41 @@ void EspionageScreen::addSpyRows(UIManager& ui, const aoc::game::Unit& unit) {
     for (const aoc::sim::SpyMissionDef& def : aoc::sim::SPY_MISSION_DEFS) {
         const float chance  = aoc::sim::missionSuccessRate(spy, def.id, counter);
         const int32_t turns = aoc::sim::adjustedMissionDuration(spy, def.id);
-        std::string row = "      " + std::string(def.name) + "  " + percentText(chance) + "  " +
-                          std::to_string(turns) + " turns";
+        std::string text = std::string(def.name) + "  " + percentText(chance) + "  " +
+                           std::to_string(turns) + " turns";
         if (def.isPassive) {
-            row += "  (ongoing)";
+            text += "  (ongoing)";
         }
-        this->addLine(ui, std::move(row), false);
+        if (busy) {
+            this->addLine(ui, "      " + text, false);
+            continue;
+        }
+        // The button invokes the same action the debug route uses; the next
+        // refresh sees the changed fingerprint and rebuilds the rows.
+        ButtonData btn;
+        btn.label        = std::move(text);
+        btn.fontSize     = 11.0f;
+        btn.normalColor  = tokens::BRONZE_BASE;
+        btn.hoverColor   = tokens::BRONZE_LIGHT;
+        btn.pressedColor = tokens::STATE_PRESSED;
+        btn.labelColor   = tokens::TEXT_GILT;
+        btn.cornerRadius = tokens::CORNER_BUTTON;
+        btn.disabled     = def.isOffensive && city == nullptr;
+        aoc::game::GameState* gs        = this->m_gameState;
+        const PlayerId owner            = this->m_player;
+        const aoc::hex::AxialCoord tile = unit.position();
+        const aoc::sim::SpyMission id   = def.id;
+        btn.onClick                     = [gs, owner, tile, id]() {
+            const ErrorCode result = aoc::sim::requestSpyMission(*gs, owner, tile, id);
+            if (result != ErrorCode::Ok) {
+                LOG_WARN("Espionage screen: mission %d at (%d,%d) rejected: %.*s",
+                         static_cast<int>(id), tile.q, tile.r,
+                         static_cast<int>(describeError(result).size()),
+                         describeError(result).data());
+            }
+        };
+        static_cast<void>(
+            ui.createButton(this->m_list, {0.0f, 0.0f, ROW_W - 12.0f, 22.0f}, std::move(btn)));
     }
 }
 
@@ -265,7 +303,7 @@ void EspionageScreen::addTargetRows(UIManager& ui) {
         for (const std::unique_ptr<aoc::game::City>& city : rival->cities()) {
             int32_t stationed = 0;
             for (const std::unique_ptr<aoc::game::Unit>& unit : self->units()) {
-                if (isSpy(*unit) && unit->spy().location == city->location()) {
+                if (isSpy(*unit) && operatingTile(*unit) == city->location()) {
                     ++stationed;
                 }
             }
@@ -282,6 +320,45 @@ void EspionageScreen::addTargetRows(UIManager& ui) {
     }
     if (!any) {
         this->addLine(ui, "No rival cities known.", true);
+    }
+}
+
+void EspionageScreen::addHistoryRows(UIManager& ui) {
+    const std::vector<aoc::game::GameState::SpyMissionRecord>& records =
+        this->m_gameState->spyMissionRecords();
+    int32_t shown = 0;
+    for (std::size_t i = records.size(); i > 0 && shown < MAX_HISTORY_ROWS; --i) {
+        const aoc::game::GameState::SpyMissionRecord& rec = records[i - 1];
+        const bool mine = rec.spyOwner == this->m_player;
+        // The victim only learns of a failed enemy spy that did not slip away.
+        const bool caught = rec.targetOwner == this->m_player && !rec.success &&
+                            rec.outcome != aoc::sim::SpyFailureOutcome::EscapedUndetected;
+        if (!mine && !caught) {
+            continue;
+        }
+        std::string where                = coordText(rec.location);
+        const aoc::game::Player* cityOwner = this->m_gameState->player(rec.targetOwner);
+        if (cityOwner != nullptr) {
+            const aoc::game::City* city = cityOwner->cityAt(rec.location);
+            if (city != nullptr) {
+                where = city->name();
+            }
+        }
+        const std::string outcome = std::string(aoc::sim::spyFailureOutcomeName(rec.outcome));
+        std::string row = "T" + std::to_string(rec.turn) + "  ";
+        if (mine) {
+            row += std::string(aoc::sim::spyMissionDef(rec.mission).name) + " at " + where + ": ";
+            row += rec.success ? std::string("success") : "failed, " + outcome;
+        } else {
+            const aoc::game::Player* enemy = this->m_gameState->player(rec.spyOwner);
+            row += "Caught " + (enemy != nullptr ? civName(*enemy) : std::string("an enemy")) +
+                   " spy in " + where + " (" + outcome + ")";
+        }
+        this->addLine(ui, std::move(row), !mine);
+        ++shown;
+    }
+    if (shown == 0) {
+        this->addLine(ui, "No missions resolved yet.", true);
     }
 }
 
@@ -311,6 +388,7 @@ uint64_t EspionageScreen::stateFingerprint() const {
     }
     uint64_t hash = 14695981039346656037ULL;
     mixHash(hash, static_cast<uint64_t>(this->m_gameState->currentTurn()));
+    mixHash(hash, static_cast<uint64_t>(this->m_gameState->spyMissionRecords().size()));
     for (const std::unique_ptr<aoc::game::Unit>& unit : self->units()) {
         if (!isSpy(*unit)) {
             continue;
@@ -323,6 +401,8 @@ uint64_t EspionageScreen::stateFingerprint() const {
         mixHash(hash, static_cast<uint64_t>(spy.experience));
         mixHash(hash, static_cast<uint64_t>(spy.location.q));
         mixHash(hash, static_cast<uint64_t>(spy.location.r));
+        mixHash(hash, static_cast<uint64_t>(unit->position().q));
+        mixHash(hash, static_cast<uint64_t>(unit->position().r));
     }
     return hash;
 }

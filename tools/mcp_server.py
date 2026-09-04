@@ -236,6 +236,21 @@ def aoc_found_city(player: int, q: int, r: int, name: str) -> dict:
 
 
 @mcp.tool()
+def aoc_assign_spy_mission(player: int, q: int, r: int, mission: int) -> dict:
+    """Assign mission id `mission` to the Spy unit owned by `player` standing at hex (q, r).
+
+    Mission ids: 0 GatherIntelligence, 1 CounterIntelligence, 2 MonitorTreasury,
+    3 MonitorResearch, 4 StealTechnology, 5 SabotageProduction, 6 SiphonFunds,
+    7 MarketManipulation, 8 CurrencyCounterfeit, 9 SupplyChainDisrupt, 10 InsiderTrading,
+    11 StealTradeSecrets, 12 RecruitPartisans, 13 FomentUnrest, 14 NeutralizeGovernor,
+    15 SiphonTourism, 16 RecruitDoubleAgent, 17 EstablishEmbassy. Every mission except
+    CounterIntelligence needs a rival city under the spy. Queues the request; a spy
+    already on a timed mission is rejected in the game log.
+    """
+    return _post("/game/spy/mission", player=player, q=q, r=r, mission=mission)
+
+
+@mcp.tool()
 def aoc_set_production(player: int, q: int, r: int, item_type: str, item_id: int) -> dict:
     """Queue a production item onto the city owned by `player` at hex (q, r).
 
