@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
+#include "aoc/simulation/greatpeople/GreatPeopleExpanded.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
@@ -210,9 +211,15 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
         // Earlier code used UnitTypeId{50} which collides with Stealth Fighter
         // and caused unitTypeDef() lookups to return the Air unit for GPs.
         aoc::game::Unit& gpUnit = playerObj->addUnit(UnitTypeId{102}, spawnPos);
+        // The nth person of a type takes the nth historical name of the matching
+        // roster category; MAX_GP_PER_TYPE equals the per-category count, so the
+        // twelve names of a category are used exactly once each.
+        const NamedGreatPersonDef& named = namedGreatPersonForCategory(
+            categoryForGreatPersonType(type), gpComp.recruited[typeIdx]);
         GreatPersonComponent& comp = gpUnit.greatPerson();
         comp.owner       = player;
         comp.defId       = defIdU;
+        comp.namedId     = named.id;
         comp.position    = spawnPos;
         comp.isActivated = false;
 
@@ -221,7 +228,8 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
             ev.type = VisibilityEventType::GreatPersonSpawned;
             ev.location = spawnPos;
             ev.actor = player;
-            ev.payload = static_cast<int32_t>(defIdU);
+            // The notification names the person, so carry the roster id, not defId.
+            ev.payload = static_cast<int32_t>(named.id);
             gameState.visibilityBus().emit(ev);
         }
 
@@ -229,10 +237,11 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
         gpComp.points[typeIdx]    -= thresh;
         gpComp.recruited[typeIdx] += 1;
 
-        LOG_INFO("Player %u recruited Great Person: %.*s",
+        LOG_INFO("Player %u recruited %s %.*s (%.*s)",
                  static_cast<unsigned>(player),
-                 static_cast<int>(defs[defIdU].name.size()),
-                 defs[defIdU].name.data());
+                 greatPersonCategoryName(categoryForGreatPersonType(type)),
+                 static_cast<int>(named.name.size()), named.name.data(),
+                 static_cast<int>(named.abilityName.size()), named.abilityName.data());
     }
 }
 

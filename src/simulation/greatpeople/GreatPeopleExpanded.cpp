@@ -22,7 +22,7 @@ constexpr std::array<NamedGreatPersonDef, NAMED_GP_COUNT> NAMED_GP_DEFS = {{
     { 4, GreatPersonCategory::Scientist, "Galileo Galilei",   "Telescopic Observation","+100% science for 5 turns", EraId{3}},
     { 5, GreatPersonCategory::Scientist, "Isaac Newton",      "Principia Mathematica","Free Campus Research Lab", EraId{3}},
     { 6, GreatPersonCategory::Scientist, "Charles Darwin",    "On the Origin of Species","+500 science", EraId{4}},
-    { 7, GreatPersonCategory::Scientist, "Nikola Tesla",      "Alternating Current","Free power plant in 1 city", EraId{4}},
+    { 7, GreatPersonCategory::Scientist, "Michael Faraday",   "Electromagnetic Induction","Free power plant in 1 city", EraId{4}},
     { 8, GreatPersonCategory::Scientist, "Albert Einstein",   "Theory of Relativity","Free eureka on 3 techs", EraId{5}},
     { 9, GreatPersonCategory::Scientist, "Marie Curie",       "Radioactivity",      "+100% science for 10 turns", EraId{5}},
     {10, GreatPersonCategory::Scientist, "Alan Turing",       "Computing Machine",  "Free tech: Computers", EraId{5}},
@@ -146,6 +146,29 @@ constexpr std::array<NamedGreatPersonDef, NAMED_GP_COUNT> NAMED_GP_DEFS = {{
 const NamedGreatPersonDef& namedGreatPersonDef(uint8_t id) {
     assert(id < NAMED_GP_COUNT);
     return NAMED_GP_DEFS[id];
+}
+
+const char* greatPersonCategoryName(GreatPersonCategory category) {
+    switch (category) {
+        case GreatPersonCategory::Scientist: return "Scientist";
+        case GreatPersonCategory::Engineer:  return "Engineer";
+        case GreatPersonCategory::General:   return "General";
+        case GreatPersonCategory::Artist:    return "Artist";
+        case GreatPersonCategory::Merchant:  return "Merchant";
+        case GreatPersonCategory::Admiral:   return "Admiral";
+        case GreatPersonCategory::Prophet:   return "Prophet";
+        case GreatPersonCategory::Writer:    return "Writer";
+        case GreatPersonCategory::Musician:  return "Musician";
+        case GreatPersonCategory::Count:     break;
+    }
+    return "Unknown";
+}
+
+const NamedGreatPersonDef& namedGreatPersonForCategory(GreatPersonCategory category, int32_t nth) {
+    const int32_t base = static_cast<int32_t>(category) * NAMED_GP_PER_CATEGORY;
+    const int32_t idx  = base + (nth % NAMED_GP_PER_CATEGORY);
+    assert(idx >= 0 && idx < NAMED_GP_COUNT);
+    return NAMED_GP_DEFS[static_cast<std::size_t>(idx)];
 }
 
 const NamedGreatPersonDef* allNamedGreatPeople() {

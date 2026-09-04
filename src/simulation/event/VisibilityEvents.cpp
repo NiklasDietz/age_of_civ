@@ -1,4 +1,5 @@
 #include "aoc/simulation/event/VisibilityEvents.hpp"
+#include "aoc/simulation/greatpeople/GreatPeopleExpanded.hpp"
 
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -136,13 +137,19 @@ void processVisibilityEvents(aoc::game::GameState& gameState,
                 note.priority = 6;
                 aoc::sim::event::pushNotification(note);
                 break;
-            case VisibilityEventType::GreatPersonSpawned:
+            case VisibilityEventType::GreatPersonSpawned: {
+                // payload is the index into the named roster.
+                const NamedGreatPersonDef& person =
+                    namedGreatPersonDef(static_cast<uint8_t>(event.payload));
                 note.category = aoc::sim::event::NotificationCategory::City;
-                note.title = "Great Person Arrived";
-                note.body = actorStr + " recruited a Great Person at " + locStr + ".";
+                note.title    = "Great Person Arrived";
+                note.body     = actorStr + " recruited " +
+                            greatPersonCategoryName(person.category) + " " +
+                            std::string(person.name) + " at " + locStr + ".";
                 note.priority = 5;
                 aoc::sim::event::pushNotification(note);
                 break;
+            }
         }
     });
 }

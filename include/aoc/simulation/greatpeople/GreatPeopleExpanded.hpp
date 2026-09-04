@@ -23,6 +23,7 @@
  */
 
 #include "aoc/core/Types.hpp"
+#include "aoc/simulation/greatpeople/GreatPeople.hpp"
 
 #include <cstdint>
 #include <string_view>
@@ -30,7 +31,7 @@
 namespace aoc::sim {
 
 // ============================================================================
-// Named Great People (20 per type, 9 types = 180 total)
+// Named Great People (12 per category, 9 categories = 108 total)
 // ============================================================================
 
 enum class GreatPersonCategory : uint8_t {
@@ -65,38 +66,22 @@ inline constexpr int32_t NAMED_GP_COUNT = 108;
 /// Get all named great people.
 [[nodiscard]] const NamedGreatPersonDef* allNamedGreatPeople();
 
-// ============================================================================
-// Spy Promotions
-// ============================================================================
+/// Display name of a roster category.
+[[nodiscard]] const char* greatPersonCategoryName(GreatPersonCategory category);
 
-enum class SpyPromotion : uint8_t {
-    None      = 0,
-    Veteran   = 1,  ///< +10% success rate (3 missions)
-    Expert    = 2,  ///< -1 turn mission duration (6 missions)
-    Master    = 3,  ///< +25% success, immune to detection (10 missions)
-};
+/// Named people per category. The roster is grouped by category, twelve each.
+inline constexpr int32_t NAMED_GP_PER_CATEGORY = NAMED_GP_COUNT / static_cast<int32_t>(GreatPersonCategory::Count);
 
-/// Mission count thresholds for spy promotions.
-[[nodiscard]] constexpr SpyPromotion spyPromotionForMissions(int32_t missionCount) {
-    if (missionCount >= 10) { return SpyPromotion::Master; }
-    if (missionCount >= 6)  { return SpyPromotion::Expert; }
-    if (missionCount >= 3)  { return SpyPromotion::Veteran; }
-    return SpyPromotion::None;
-}
+/// The `nth` named person of `category`, wrapping if `nth` exceeds the roster.
+/// `MAX_GP_PER_TYPE` equals the per-category count, so recruitment never wraps.
+[[nodiscard]] const NamedGreatPersonDef& namedGreatPersonForCategory(GreatPersonCategory category,
+                                                                     int32_t nth);
 
-/// Success rate modifier from spy promotion.
-[[nodiscard]] constexpr float spySuccessModifier(SpyPromotion promo) {
-    switch (promo) {
-        case SpyPromotion::Veteran: return 0.10f;
-        case SpyPromotion::Expert:  return 0.10f;
-        case SpyPromotion::Master:  return 0.25f;
-        default:                    return 0.0f;
-    }
-}
-
-/// Mission duration reduction from spy promotion.
-[[nodiscard]] constexpr int32_t spyDurationReduction(SpyPromotion promo) {
-    return (promo >= SpyPromotion::Expert) ? 1 : 0;
+/// The roster category matching a live `GreatPersonType`. The first five
+/// categories are declared in the same order as the five types; Admiral,
+/// Prophet, Writer and Musician have no type and are never recruited today.
+[[nodiscard]] constexpr GreatPersonCategory categoryForGreatPersonType(GreatPersonType type) {
+    return static_cast<GreatPersonCategory>(static_cast<uint8_t>(type));
 }
 
 } // namespace aoc::sim

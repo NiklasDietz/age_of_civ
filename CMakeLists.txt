@@ -927,6 +927,7 @@ if(AOC_BUILD_TESTS)
         test_game_snapshot
         test_game_control_validation
         test_leader_agendas
+        test_great_people_names
     )
 
     # UI tests link against src/ui/UIManager.cpp and src/ui/ScreenRegistry.cpp,
@@ -950,7 +951,7 @@ if(AOC_BUILD_TESTS)
         target_link_libraries(${aoc_test} PRIVATE aoc_lib)
         # doctest: header-only; CHECK() stays live under -DNDEBUG, unlike
         # assert(), so release-preset test runs actually assert.
-        target_include_directories(${aoc_test} PRIVATE third_party/doctest)
+        target_include_directories(${aoc_test} PRIVATE third_party/doctest tests)
         add_test(NAME ${aoc_test} COMMAND ${aoc_test})
         set_tests_properties(${aoc_test} PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")
     endforeach()
@@ -970,7 +971,7 @@ if(AOC_BUILD_TESTS)
         foreach(aoc_test ${AOC_EVOLVE_TESTS})
             add_executable(${aoc_test} tests/${aoc_test}.cpp)
             target_link_libraries(${aoc_test} PRIVATE aoc_evolve_lib)
-            target_include_directories(${aoc_test} PRIVATE third_party/doctest)
+            target_include_directories(${aoc_test} PRIVATE third_party/doctest tests)
             add_test(NAME ${aoc_test} COMMAND ${aoc_test}
                      WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
             set_tests_properties(${aoc_test} PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")

@@ -43,6 +43,10 @@ inline constexpr uint8_t GREAT_PERSON_COUNT = 18;
 struct GreatPersonComponent {
     PlayerId owner = INVALID_PLAYER;
     uint8_t  defId = 0;        ///< Index into allGreatPersonDefs()
+    /// Index into the 108-entry named roster (`allNamedGreatPeople()`), assigned
+    /// at recruitment so each person has a historical name. Not serialized: the
+    /// save writes this list as count 0 and skips it on read.
+    uint8_t  namedId = 0;
     hex::AxialCoord position;
     bool     isActivated = false;
 };
