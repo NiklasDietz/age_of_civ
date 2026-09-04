@@ -302,13 +302,7 @@ struct CLIArgs {
                 args.tuneMode = val;
             } else if (std::strcmp(argv[i], "--log-level") == 0) {
                 const char* val = argv[++i];
-                if      (std::strcmp(val, "debug") == 0) { args.logLevel = aoc::log::Severity::Debug; }
-                else if (std::strcmp(val, "info")  == 0) { args.logLevel = aoc::log::Severity::Info;  }
-                else if (std::strcmp(val, "warn")  == 0) { args.logLevel = aoc::log::Severity::Warn;  }
-                else if (std::strcmp(val, "error") == 0) { args.logLevel = aoc::log::Severity::Error; }
-                else if (std::strcmp(val, "quiet") == 0
-                      || std::strcmp(val, "fatal") == 0) { args.logLevel = aoc::log::Severity::Fatal; }
-                else {
+                if (!aoc::log::parseSeverity(val, args.logLevel)) {
                     std::fprintf(stderr,
                         "[Error] Invalid --log-level '%s' "
                         "(expected: debug|info|warn|error|quiet)\n", val);

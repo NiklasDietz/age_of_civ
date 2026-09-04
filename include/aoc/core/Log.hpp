@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <string_view>
 
 namespace aoc::log {
 
@@ -42,6 +43,25 @@ inline void setMinSeverity(Severity s) noexcept {
 [[nodiscard]] inline bool shouldLog(Severity s) noexcept {
     return static_cast<uint8_t>(s) >=
            static_cast<uint8_t>(g_minSeverity.load(std::memory_order_relaxed));
+}
+
+/// CLI spelling of a severity ("debug", "info", "warn"/"warning", "error",
+/// "fatal"/"quiet"). Returns false and leaves `out` untouched otherwise.
+[[nodiscard]] inline bool parseSeverity(std::string_view name, Severity& out) noexcept {
+    if (name == "debug") {
+        out = Severity::Debug;
+    } else if (name == "info") {
+        out = Severity::Info;
+    } else if (name == "warn" || name == "warning") {
+        out = Severity::Warn;
+    } else if (name == "error") {
+        out = Severity::Error;
+    } else if (name == "fatal" || name == "quiet") {
+        out = Severity::Fatal;
+    } else {
+        return false;
+    }
+    return true;
 }
 
 [[nodiscard]] constexpr const char* severityTag(Severity severity) {

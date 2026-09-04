@@ -45,6 +45,7 @@
 #include <array>
 #include <map>
 #include <chrono>
+#include <string>
 #include <cmath>
 #include <vector>
 
@@ -110,14 +111,28 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
 
     aoc::Random rng(config.seed);
 
-    // Coarse-grained per-stage timing for profiling. Logs at DEBUG.
-    using PerfClock = std::chrono::steady_clock;
-    const auto t0   = PerfClock::now();
-    auto logStage   = [&t0]([[maybe_unused]] const char* name) {
-        [[maybe_unused]] const auto now = PerfClock::now();
-        [[maybe_unused]] const auto ms =
-            std::chrono::duration_cast<std::chrono::milliseconds>(now - t0).count();
-        LOG_DEBUG("[mapgen] %lld ms total — stage: %s", static_cast<long long>(ms), name);
+    // Coarse-grained per-stage timing. Each stage logs at DEBUG; one INFO
+    // summary at the end of generate() shows release builds where the ~45 s
+    // go (assign-terrain, i.e. the tectonic sphere simulation).
+    using PerfClock                    = std::chrono::steady_clock;
+    const PerfClock::time_point tStart = PerfClock::now();
+    PerfClock::time_point tPrev        = tStart;
+    std::string stageSummary;
+    auto logStage = [&tStart, &tPrev, &stageSummary](const char* name) {
+        const PerfClock::time_point now = PerfClock::now();
+        const long long stageMs         = static_cast<long long>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - tPrev).count());
+        [[maybe_unused]] const long long totalMs = static_cast<long long>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - tStart).count());
+        tPrev = now;
+        LOG_DEBUG("[mapgen] %lld ms total, stage %s: %lld ms", totalMs, name, stageMs);
+        if (!stageSummary.empty()) {
+            stageSummary += ", ";
+        }
+        stageSummary += name;
+        stageSummary += ' ';
+        stageSummary += std::to_string(stageMs);
+        stageSummary += " ms";
     };
 
     // 2026-05-03: LandWithSeas removed. Only Continents path remains; it
@@ -240,6 +255,8 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
 
     // Detect strategic chokepoints after all terrain is finalized
     aoc::sim::detectChokepoints(outGrid);
+    logStage("fish-chokepoints");
+    LOG_INFO("[mapgen] stages: %s", stageSummary.c_str());
 }
 
 void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Random& rng,

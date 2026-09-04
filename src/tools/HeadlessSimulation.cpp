@@ -1194,7 +1194,16 @@ int main(int argc, char* argv[]) {
             } else if (arg == "--map-cache" && i + 1 < argc) {
                 mapCachePath = argv[++i];
             } else if (arg == "--log-level" && i + 1 < argc) {
-                ++i;
+                const char* level                = argv[++i];
+                aoc::log::Severity minSeverity   = aoc::log::Severity::Debug;
+                if (aoc::log::parseSeverity(level, minSeverity)) {
+                    aoc::log::setMinSeverity(minSeverity);
+                } else {
+                    std::fprintf(stderr,
+                                 "  Unknown --log-level '%s' (debug|info|warn|error|quiet); "
+                                 "keeping the default\n",
+                                 level);
+                }
             } else if (arg == "--seed" && i + 1 < argc) {
                 seedArg = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
             } else {
