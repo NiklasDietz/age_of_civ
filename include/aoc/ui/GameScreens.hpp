@@ -123,6 +123,9 @@ private:
     PlayerId m_player = INVALID_PLAYER;
     WidgetId m_currentLabel = INVALID_WIDGET;
     WidgetId m_techList = INVALID_WIDGET;
+    /// What the cards were built for; a change rebuilds them in refresh().
+    int32_t m_shownResearchedCount = -1;
+    aoc::TechId m_shownResearch{};
 };
 
 /// Government and policy management screen.

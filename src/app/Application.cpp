@@ -6363,16 +6363,10 @@ void Application::handleEndTurn() {
         const aoc::game::Player* humanPost = this->m_gameState.humanPlayer();
         bool techCompleted = prevResearch.isValid() && !humanPost->tech().currentResearch.isValid();
         if (techCompleted) {
-            std::string techName                      = "Unknown";
-            const aoc::sim::PlayerTechComponent& tech = humanPost->tech();
-            const uint16_t count                      = aoc::sim::techCount();
-            for (uint16_t t = count; t > 0; --t) {
-                if (tech.hasResearched(TechId{static_cast<uint16_t>(t - 1)})) {
-                    techName =
-                        std::string(aoc::sim::techDef(TechId{static_cast<uint16_t>(t - 1)}).name);
-                    break;
-                }
-            }
+            // The tech that finished is the one that was current before the
+            // turn. Scanning for the highest researched id named "Astrology"
+            // when Pottery (id 2) completed later (2026-09-04, finding 4).
+            const std::string techName(aoc::sim::techDef(prevResearch).name);
             LOG_INFO("Research completed: %s", techName.c_str());
             this->m_eventLog.addEvent("Researched " + techName);
             this->m_notificationManager.push("Research complete: " + techName, 4.0f, 0.3f, 0.7f,

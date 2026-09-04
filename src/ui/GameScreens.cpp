@@ -3,6 +3,7 @@
  * @brief Implementation of modal game screens (production, tech, government, economy, city detail).
  */
 
+#include "aoc/simulation/city/CityScience.hpp"
 #include "aoc/ui/GameScreens.hpp"
 #include "aoc/ui/StyleTokens.hpp"
 #include "aoc/ui/Theme.hpp"
@@ -770,6 +771,25 @@ void TechScreen::setContext(aoc::game::GameState* gameState, PlayerId player) {
     this->m_player    = player;
 }
 
+namespace {
+
+/// Number of techs the player has finished; the cards depend on nothing else.
+int32_t countResearchedTechs(const aoc::sim::PlayerTechComponent* playerTech) {
+    if (playerTech == nullptr) {
+        return 0;
+    }
+    int32_t researched   = 0;
+    const uint16_t count = aoc::sim::techCount();
+    for (uint16_t t = 0; t < count; ++t) {
+        if (playerTech->hasResearched(aoc::TechId{t})) {
+            ++researched;
+        }
+    }
+    return researched;
+}
+
+} // namespace
+
 void TechScreen::open(UIManager& ui) {
     if (this->m_isOpen) {
         return;
@@ -817,8 +837,13 @@ void TechScreen::open(UIManager& ui) {
     // while the modal is open. No grid available → 0 → labels show "?".
     float sciencePerTurn = 0.0f;
     if (owningPlayer != nullptr && this->m_grid != nullptr) {
-        sciencePerTurn = owningPlayer->sciencePerTurn(*this->m_grid);
+        sciencePerTurn = aoc::sim::computePlayerScience(*owningPlayer, *this->m_grid);
     }
+    // Remember what the cards were built for; refresh() rebuilds on change.
+    this->m_shownResearchedCount =
+        countResearchedTechs((owningPlayer != nullptr) ? &owningPlayer->tech() : nullptr);
+    this->m_shownResearch =
+        (owningPlayer != nullptr) ? owningPlayer->tech().currentResearch : aoc::TechId{};
 
     // ----- Current research banner -----
     std::string currentText = "No active research";
@@ -1312,6 +1337,18 @@ void TechScreen::refresh(UIManager& ui) {
     const aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
     const aoc::sim::PlayerTechComponent* playerTech =
         (owningPlayer != nullptr) ? &owningPlayer->tech() : nullptr;
+
+    // The cards are built once in open(); rebuild them when a tech completed
+    // or the research target changed, otherwise the screen kept offering
+    // "Research" on techs finished 80 turns earlier (2026-09-04, finding 5).
+    const int32_t researchedNow = countResearchedTechs(playerTech);
+    const aoc::TechId researchNow =
+        (playerTech != nullptr) ? playerTech->currentResearch : aoc::TechId{};
+    if (researchedNow != this->m_shownResearchedCount || researchNow != this->m_shownResearch) {
+        this->close(ui);
+        this->open(ui);
+        return;
+    }
 
     std::string currentText = "No active research";
     if (playerTech != nullptr && playerTech->currentResearch.isValid()) {

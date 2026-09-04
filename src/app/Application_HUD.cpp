@@ -724,10 +724,14 @@ void Application::updateHUD() {
             CurrencyAmount goldIncome   = humanHud->incomePerTurn();
             goldText           = std::to_string(goldTreasury) + (goldIncome >= 0 ? "  (+" : "  (") +
                                  std::to_string(goldIncome) + ")";
-            float totalScience = humanHud->sciencePerTurn(this->m_hexGrid);
-            sciText            = "+" + std::to_string(static_cast<int32_t>(totalScience));
-            float totalCulture = humanHud->culturePerTurn(this->m_hexGrid);
-            culText            = "+" + std::to_string(static_cast<int32_t>(totalCulture));
+            // Same formulas the turn uses (TurnProcessor), not the worked-tile
+            // yields alone: those read "+0" while techs completed (2026-09-04).
+            const float totalScience =
+                aoc::sim::computePlayerScience(*humanHud, this->m_hexGrid);
+            sciText = "+" + std::to_string(static_cast<int32_t>(totalScience));
+            const float totalCulture =
+                aoc::sim::computePlayerCulture(*humanHud, this->m_hexGrid);
+            culText = "+" + std::to_string(static_cast<int32_t>(totalCulture));
             faithText          = std::to_string(static_cast<int32_t>(humanHud->faith().faith));
         } else {
             goldText  = "0  (+0)";
