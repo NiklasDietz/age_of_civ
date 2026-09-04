@@ -32,6 +32,7 @@
 #include "aoc/ui/WidgetInspector.hpp"
 #include "aoc/ui/LoadingScreen.hpp"
 #include "aoc/ui/PauseMenu.hpp"
+#include "aoc/ui/LoadGameMenu.hpp"
 #include "aoc/ui/GameScreens.hpp"
 #include "aoc/ui/TradeScreen.hpp"
 #include "aoc/ui/TradeRouteSetupScreen.hpp"
@@ -365,6 +366,7 @@ private:
     aoc::ui::GameSetupScreen m_gameSetupScreen;
     aoc::ui::SettingsMenu m_settingsMenu;
     aoc::ui::PauseMenu m_pauseMenu;
+    aoc::ui::LoadGameMenu m_loadGameMenu;
 
     /// Build the main menu with all its callbacks. Used by initialize() and returnToMainMenu().
     void buildMainMenu(float screenW, float screenH);
@@ -834,6 +836,15 @@ private:
     /// readiness, barbarian state, and fog from the freshly-loaded GameState.
     /// Called by every load path so none of those derived containers stay stale.
     void recoverAfterLoad();
+
+    /// Set camera world bounds and the fit-to-screen zoom floor for the current grid.
+    void fitCameraToGrid();
+
+    /// Replace the main menu with the save-slot picker.
+    void showLoadGameMenu(float screenW, float screenH);
+
+    /// Load `slot` from the main menu and enter the game; on failure the picker stays up.
+    void loadGameFromMainMenu(int slot);
 
     /**
      * @brief Advance one spectator turn: run processTurn, update fog, check victory.

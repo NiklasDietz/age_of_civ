@@ -53,6 +53,7 @@
 #include "aoc/simulation/city/CityLoyalty.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/turn/TurnProcessor.hpp"
+#include "aoc/save/SaveSlots.hpp"
 #include "aoc/save/Serializer.hpp"
 #include "aoc/ui/BitmapFont.hpp"
 #include "aoc/ui/SpectatorHUD.hpp"
@@ -1419,6 +1420,7 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_screenRegistry.add(&this->m_religionScreen);
     this->m_screenRegistry.add(&this->m_scoreScreen);
     this->m_screenRegistry.add(&this->m_settingsMenu);
+    this->m_screenRegistry.add(&this->m_loadGameMenu);
     this->m_screenRegistry.add(&this->m_loadingScreen);
 
     // Seed the icon atlas with built-in placeholders so any widget
@@ -1589,56 +1591,7 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     }
     phase("Recording world snapshot...", 0.55f);
     this->publishDebugGridSnapshot();
-
-    // Set camera world width for cylindrical wrapping + world height
-    // for vertical pan clamp. Without setting these the camera can pan
-    // off into infinite empty space.
-    {
-        constexpr float SQRT3   = 1.7320508075688772f;
-        const float hexSize     = this->m_gameRenderer.mapRenderer().hexSize();
-        const float worldHeight = static_cast<float>(this->m_hexGrid.height()) * 1.5f * hexSize;
-        this->m_cameraController.setWorldHeight(worldHeight);
-        if (this->m_hexGrid.topology() == aoc::map::MapTopology::Cylindrical) {
-            const float worldWidth = static_cast<float>(this->m_hexGrid.width()) * SQRT3 * hexSize;
-            this->m_cameraController.setWorldWidth(worldWidth);
-        } else {
-            this->m_cameraController.setWorldWidth(0.0f);
-        }
-    }
-
-    // Fit-to-screen minimum zoom: compute the zoom level at which the
-    // entire map fits inside the framebuffer, and use it as the floor.
-    // Default 0.1f minZoom let the user zoom out so far that the map
-    // turned into a thin sliver in the centre and most of the world
-    // appeared blank. Now the lowest zoom shows the whole map filling
-    // the screen, with a small padding factor so borders stay visible.
-    {
-        constexpr float SQRT3 = 1.7320508075688772f;
-        const float hexSize   = this->m_gameRenderer.mapRenderer().hexSize();
-        const float mapWWorld = static_cast<float>(this->m_hexGrid.width()) * SQRT3 * hexSize;
-        const float mapHWorld = static_cast<float>(this->m_hexGrid.height()) * 1.5f * hexSize;
-        const std::pair<uint32_t, uint32_t> fb = this->m_window.framebufferSize();
-        const float fbW                        = static_cast<float>(fb.first);
-        const float fbH                        = static_cast<float>(fb.second);
-        if (mapWWorld > 0.0f && mapHWorld > 0.0f && fbW > 0.0f && fbH > 0.0f) {
-            const float fitZoom = std::min(fbW / mapWWorld, fbH / mapHWorld) * 0.95f;
-            // Hard floor: hex must remain at least 6 pixels on screen so
-            // it stays readable. Without this even fitZoom can push hexes
-            // to ~1 px on huge maps and the world looks like coloured
-            // noise. The floor wins when the map is too big to ever fit
-            // entirely on screen at a useful zoom level.
-            constexpr float MIN_HEX_PIXELS = 6.0f;
-            const float pxFloor            = MIN_HEX_PIXELS / hexSize;
-            const float minZoom            = std::max(fitZoom, pxFloor);
-            this->m_cameraController.setMinZoom(minZoom);
-            // Snap current zoom up if the new floor is stricter, so the
-            // first frame after game start doesn't render at a stale
-            // sub-floor zoom.
-            if (this->m_cameraController.zoom() < minZoom) {
-                this->m_cameraController.setZoom(minZoom);
-            }
-        }
-    }
+    this->fitCameraToGrid();
 
     // -- Count human and AI players --
     uint8_t humanCount = 0;
@@ -3855,6 +3808,113 @@ void Application::recoverAfterLoad() {
              this->m_aiControllers.size(), this->m_spectatorMode ? "yes" : "no");
 }
 
+void Application::fitCameraToGrid() {
+    constexpr float SQRT3 = 1.7320508075688772f;
+    const float hexSize   = this->m_gameRenderer.mapRenderer().hexSize();
+    const float mapWWorld = static_cast<float>(this->m_hexGrid.width()) * SQRT3 * hexSize;
+    const float mapHWorld = static_cast<float>(this->m_hexGrid.height()) * 1.5f * hexSize;
+
+    // World bounds: height clamps vertical pan; width enables cylindrical wrap.
+    // Without them the camera can pan off into infinite empty space.
+    this->m_cameraController.setWorldHeight(mapHWorld);
+    if (this->m_hexGrid.topology() == aoc::map::MapTopology::Cylindrical) {
+        this->m_cameraController.setWorldWidth(mapWWorld);
+    } else {
+        this->m_cameraController.setWorldWidth(0.0f);
+    }
+
+    // Zoom floor: the whole map fills the framebuffer (with a little padding),
+    // never below 6 px per hex so huge maps do not degrade to coloured noise.
+    const std::pair<uint32_t, uint32_t> fb = this->m_window.framebufferSize();
+    const float fbW                        = static_cast<float>(fb.first);
+    const float fbH                        = static_cast<float>(fb.second);
+    if (mapWWorld <= 0.0f || mapHWorld <= 0.0f || fbW <= 0.0f || fbH <= 0.0f) {
+        return;
+    }
+    constexpr float MIN_HEX_PIXELS = 6.0f;
+    const float fitZoom            = std::min(fbW / mapWWorld, fbH / mapHWorld) * 0.95f;
+    const float minZoom            = std::max(fitZoom, MIN_HEX_PIXELS / hexSize);
+    this->m_cameraController.setMinZoom(minZoom);
+    // Snap up so the first frame never renders at a stale sub-floor zoom.
+    if (this->m_cameraController.zoom() < minZoom) {
+        this->m_cameraController.setZoom(minZoom);
+    }
+}
+
+void Application::showLoadGameMenu(float screenW, float screenH) {
+    this->m_mainMenu.destroy(this->m_uiManager);
+    this->m_settingsMenu.destroy(this->m_uiManager);
+
+    aoc::ui::LoadGameMenu::SlotFlags occupied{};
+    for (int slot = 0; slot < aoc::save::SAVE_SLOT_COUNT; ++slot) {
+        occupied[static_cast<std::size_t>(slot)] = aoc::save::saveSlotExists(slot);
+    }
+    this->m_loadGameMenu.build(
+        this->m_uiManager, screenW, screenH, occupied,
+        [this](int slot) { this->loadGameFromMainMenu(slot); },
+        [this, screenW, screenH]() {
+            this->m_loadGameMenu.destroy(this->m_uiManager);
+            this->buildMainMenu(screenW, screenH);
+        });
+}
+
+void Application::loadGameFromMainMenu(int slot) {
+    const std::string fname = aoc::save::saveSlotFilename(slot);
+
+    // Same clean slate startGame begins from, so nothing from an earlier
+    // session in this process leaks into the loaded one.
+    this->m_aiControllers.clear();
+    this->m_gameOver = false;
+    this->clearEntitySelection();
+    this->m_spectatorMode            = false;
+    this->m_spectatorPaused          = false;
+    this->m_spectatorTurnAccumulator = 0.0f;
+    this->m_spectatorFollowPlayer    = -1;
+    this->m_victoryResult            = {};
+    aoc::sim::clearAllRallyPoints();
+
+    const aoc::ErrorCode result =
+        aoc::save::loadGame(fname.c_str(), this->m_gameState, this->m_hexGrid, this->m_turnManager,
+                            this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
+    if (result != aoc::ErrorCode::Ok) {
+        LOG_ERROR("Main menu load slot %d failed: %.*s", slot + 1,
+                  static_cast<int>(describeError(result).size()), describeError(result).data());
+        this->m_loadGameMenu.setStatus(this->m_uiManager,
+                                       "Load failed: " + std::string(describeError(result)));
+        return;
+    }
+    this->m_loadGameMenu.destroy(this->m_uiManager);
+
+    // The menu had no grid, so the camera has no bounds yet; set them before
+    // the shared recovery so any fog/camera consumers see a valid world.
+    this->fitCameraToGrid();
+    this->recoverAfterLoad();
+    this->m_replayRecorder.clear();
+    this->m_soundQueue.clear();
+
+    // Centre on the human player's capital, or the first unit before a capital exists.
+    const aoc::game::Player* human = this->m_gameState.player(0);
+    if (human != nullptr) {
+        const bool hasCity = !human->cities().empty();
+        const bool hasUnit = !human->units().empty();
+        if (hasCity || hasUnit) {
+            const aoc::hex::AxialCoord focus =
+                hasCity ? human->cities().front()->location() : human->units().front()->position();
+            float cx = 0.0f;
+            float cy = 0.0f;
+            aoc::hex::axialToPixel(focus, this->m_gameRenderer.mapRenderer().hexSize(), cx, cy);
+            this->m_cameraController.setPosition(cx, cy);
+        }
+    }
+
+    const std::pair<uint32_t, uint32_t> fb = this->m_window.framebufferSize();
+    this->m_uiManager.setScreenSize(static_cast<float>(fb.first), static_cast<float>(fb.second));
+    this->buildHUD();
+    this->m_appState = AppState::InGame;
+    LOG_INFO("Loaded %s from main menu (turn %u)", fname.c_str(),
+             static_cast<unsigned>(this->m_turnManager.currentTurn()));
+}
+
 void Application::run() {
     if (!this->m_initialized) {
         return;
@@ -3977,6 +4037,11 @@ void Application::run() {
             if (this->m_inputManager.isActionPressed(InputAction::Cancel)) {
                 if (this->m_settingsMenu.isBuilt()) {
                     this->m_settingsMenu.destroy(this->m_uiManager);
+                } else if (this->m_loadGameMenu.isBuilt()) {
+                    this->m_loadGameMenu.destroy(this->m_uiManager);
+                    const std::pair<uint32_t, uint32_t> menuSize = this->m_window.framebufferSize();
+                    this->buildMainMenu(static_cast<float>(menuSize.first),
+                                        static_cast<float>(menuSize.second));
                 } else if (this->m_gameSetupScreen.isBuilt()) {
                     this->m_gameSetupScreen.destroy(this->m_uiManager);
                     const std::pair<uint32_t, uint32_t> menuSize = this->m_window.framebufferSize();
@@ -4407,7 +4472,7 @@ void Application::run() {
                     this->m_uiManager, static_cast<float>(sz.first), static_cast<float>(sz.second),
                     [this]() { this->m_pauseMenu.destroy(this->m_uiManager); },
                     [this](int slot) {
-                        const std::string fname = "save_slot_" + std::to_string(slot + 1) + ".aoc";
+                        const std::string fname = aoc::save::saveSlotFilename(slot);
                         ErrorCode r             = aoc::save::saveGame(
                             fname.c_str(), this->m_gameState, this->m_hexGrid, this->m_turnManager,
                             this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
@@ -4423,7 +4488,7 @@ void Application::run() {
                         }
                     },
                     [this](int slot) {
-                        const std::string fname = "save_slot_" + std::to_string(slot + 1) + ".aoc";
+                        const std::string fname = aoc::save::saveSlotFilename(slot);
                         ErrorCode r             = aoc::save::loadGame(
                             fname.c_str(), this->m_gameState, this->m_hexGrid, this->m_turnManager,
                             this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
@@ -5577,7 +5642,8 @@ void Application::buildMainMenu(float screenW, float screenH) {
             this->m_editorBrush   = aoc::map::TerrainType::Grassland;
             this->buildMapEditorControls(screenW, screenH);
             LOG_INFO("Map Editor opened");
-        });
+        },
+        [this, screenW, screenH]() { this->showLoadGameMenu(screenW, screenH); });
 }
 
 void Application::applySettings() {

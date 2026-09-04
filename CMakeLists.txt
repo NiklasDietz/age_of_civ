@@ -212,6 +212,7 @@ set(AOC_GFX_ONLY_SOURCES
     src/ui/MapEditor.cpp
     src/ui/Notifications.cpp
     src/ui/PauseMenu.cpp
+    src/ui/LoadGameMenu.cpp
     src/ui/ReligionScreen.cpp
     src/ui/ScoreScreen.cpp
     src/ui/ScreenRegistry.cpp
@@ -453,6 +454,7 @@ set(AOC_LIB_SOURCES
     src/ui/DebugConsole.cpp
     src/ui/SpectatorHUD.cpp
     src/ui/PauseMenu.cpp
+    src/ui/LoadGameMenu.cpp
 
     # Networking / Server-Client
     src/net/Transport.cpp

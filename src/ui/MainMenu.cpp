@@ -69,7 +69,8 @@ static void setButtonSelected(UIManager& ui, WidgetId id, bool selected) {
 void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<void()> onStartGame,
                      std::function<void()> onQuit, std::function<void()> onSettings,
                      std::function<void()> onTutorial, std::function<void()> onSpectate,
-                     std::function<void()> onContinentCreator, std::function<void()> onMapEditor) {
+                     std::function<void()> onContinentCreator, std::function<void()> onMapEditor,
+                     std::function<void()> onLoadGame) {
     assert(!this->m_isBuilt);
 
     this->m_onStartGame        = std::move(onStartGame);
@@ -79,6 +80,7 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<
     this->m_onSpectate         = std::move(onSpectate);
     this->m_onContinentCreator = std::move(onContinentCreator);
     this->m_onMapEditor        = std::move(onMapEditor);
+    this->m_onLoadGame         = std::move(onLoadGame);
 
     // Full-screen dark background
     this->m_rootPanel = ui.createPanel({0.0f, 0.0f, screenW, screenH}, PanelData{BG_DARK, 0.0f});
@@ -112,6 +114,7 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<
             ++rowCount;
         }
     };
+    countRow(static_cast<bool>(this->m_onLoadGame));
     countRow(static_cast<bool>(this->m_onTutorial));
     countRow(static_cast<bool>(this->m_onSpectate));
     countRow(static_cast<bool>(this->m_onMapEditor));
@@ -125,6 +128,9 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<
 
     const float panelX = (screenW - PANEL_W) * 0.5f;
     const float panelY = (screenH - PANEL_H) * 0.5f;
+
+    this->m_panelW = PANEL_W;
+    this->m_panelH = PANEL_H;
 
     WidgetId contentPanel = ui.createPanel(this->m_rootPanel, {panelX, panelY, PANEL_W, PANEL_H},
                                            PanelData{PANEL_BG, 8.0f});
@@ -173,6 +179,25 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<
         };
         [[maybe_unused]] WidgetId startBtn =
             ui.createButton(contentPanel, {0.0f, 0.0f, innerW, PRIMARY_BTN_H}, std::move(btn));
+    }
+
+    // --- Load Game button ---
+    if (this->m_onLoadGame) {
+        ButtonData btn;
+        btn.label        = "Load Game";
+        btn.fontSize     = 14.0f;
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick      = [this]() {
+            if (this->m_onLoadGame) {
+                this->m_onLoadGame();
+            }
+        };
+        [[maybe_unused]] WidgetId loadBtn =
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, BTN_H}, std::move(btn));
     }
 
     // --- Settings button ---
@@ -301,14 +326,12 @@ void MainMenu::updateLayout(UIManager& ui, float screenW, float screenH) {
     root->requestedBounds.w = screenW;
     root->requestedBounds.h = screenH;
 
-    // Re-center the content panel (first child of root)
+    // Re-center the content panel (first child of root) using its built size.
     if (!root->children.empty()) {
-        constexpr float PANEL_W = 420.0f;
-        constexpr float PANEL_H = 362.0f;
-        Widget* content         = ui.getWidget(root->children[0]);
+        Widget* content = ui.getWidget(root->children[0]);
         if (content != nullptr) {
-            content->requestedBounds.x = (screenW - PANEL_W) * 0.5f;
-            content->requestedBounds.y = (screenH - PANEL_H) * 0.5f;
+            content->requestedBounds.x = (screenW - this->m_panelW) * 0.5f;
+            content->requestedBounds.y = (screenH - this->m_panelH) * 0.5f;
         }
     }
 }
@@ -318,13 +341,16 @@ void MainMenu::destroy(UIManager& ui) {
         return;
     }
     ui.removeWidget(this->m_rootPanel);
-    this->m_rootPanel   = INVALID_WIDGET;
-    this->m_onStartGame = nullptr;
-    this->m_onQuit      = nullptr;
-    this->m_onSettings  = nullptr;
-    this->m_onTutorial  = nullptr;
-    this->m_onSpectate  = nullptr;
-    this->m_isBuilt     = false;
+    this->m_rootPanel          = INVALID_WIDGET;
+    this->m_onStartGame        = nullptr;
+    this->m_onQuit             = nullptr;
+    this->m_onSettings         = nullptr;
+    this->m_onTutorial         = nullptr;
+    this->m_onSpectate         = nullptr;
+    this->m_onContinentCreator = nullptr;
+    this->m_onMapEditor        = nullptr;
+    this->m_onLoadGame         = nullptr;
+    this->m_isBuilt            = false;
     LOG_INFO("Main menu destroyed");
 }
 
