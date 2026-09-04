@@ -124,75 +124,58 @@ struct PolicyCardDef {
     GovernmentModifiers modifiers;
 };
 
-// Helper: default modifiers with overrides
-inline constexpr GovernmentModifiers defaultMods() { return {}; }
-
 inline constexpr std::array<PolicyCardDef, POLICY_CARD_COUNT> POLICY_CARD_DEFS = {{
     // === Military (0-5) ===
-    { 0, "Discipline",       PolicySlotType::Military,    5, {1.0f, 1.0f, 8.0f, 1.0f, 1.0f}},
-    { 1, "Survey",           PolicySlotType::Military,    1, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                              0.0f, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // Movement handled in unit system
-    { 2, "Conscription",     PolicySlotType::Military,   11, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                              0.0f, 1.0f, 0.0f, 0, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // -1 unit maintenance
-    { 3, "Levee en Masse",   PolicySlotType::Military,   14, {1.10f, 1.0f, 3.0f, 1.0f, 1.0f,
-                                                              0.0f, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, -0.20f, 1.0f}}, // +10% prod, +3 combat, -20% war weariness
-    { 4, "Military Research",PolicySlotType::Military,    8, {1.0f, 1.0f, 0.0f, 1.10f, 1.0f}}, // +10% science
-    { 5, "Fortification",    PolicySlotType::Military,    6, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                              0.0f, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.0f, 5.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // +5 loyalty
+    { 0, "Discipline",        PolicySlotType::Military,      5, {.combatStrengthBonus=8.0f}},
+    { 1, "Survey",            PolicySlotType::Military,      1, {}}, // Movement handled in unit system
+    { 2, "Conscription",      PolicySlotType::Military,     11, {.unitMaintenanceReduction=1.0f}}, // -1 unit maintenance
+    { 3, "Levee en Masse",    PolicySlotType::Military,     14, {.productionMultiplier=1.10f,
+                                                               .combatStrengthBonus=3.0f,
+                                                               .warWearinessReduction=-0.20f}}, // +10% prod, +3 combat, -20% war weariness
+    { 4, "Military Research", PolicySlotType::Military,      8, {.scienceMultiplier=1.10f}}, // +10% science
+    { 5, "Fortification",     PolicySlotType::Military,      6, {.loyaltyBonus=5.0f}}, // +5 loyalty
 
     // === Economic (6-11) ===
-    { 6, "Urban Planning",   PolicySlotType::Economic,    0, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                              0.0f, 0.0f, 1.0f, 0, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // +1 production per city
-    { 7, "Caravansaries",    PolicySlotType::Economic,    4, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                              2.0f, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // +2 gold per trade route
-    { 8, "Rationalism",      PolicySlotType::Economic,   10, {1.0f, 1.0f, 0.0f, 1.10f, 1.0f}}, // +10% science
-    { 9, "Free Market",      PolicySlotType::Economic,    8, {1.0f, 1.10f, 0.0f, 1.0f, 1.0f}}, // +10% gold
-    {10, "Mercantilism",     PolicySlotType::Economic,    6, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                              0.0f, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.15f, 0.0f, 1.0f}}, // +15% tariff efficiency
-    {11, "Industrial Policy",PolicySlotType::Economic,   11, {1.15f, 1.0f, 0.0f, 1.0f, 1.0f}}, // +15% production
+    { 6, "Urban Planning",    PolicySlotType::Economic,      0, {.productionPerCity=1.0f}}, // +1 production per city
+    { 7, "Caravansaries",     PolicySlotType::Economic,      4, {.tradeRouteBonus=2.0f}}, // +2 gold per trade route
+    { 8, "Rationalism",       PolicySlotType::Economic,     10, {.scienceMultiplier=1.10f}}, // +10% science
+    { 9, "Free Market",       PolicySlotType::Economic,      8, {.goldMultiplier=1.10f}}, // +10% gold
+    {10, "Mercantilism",      PolicySlotType::Economic,      6, {.tariffEfficiency=0.15f}}, // +15% tariff efficiency
+    {11, "Industrial Policy", PolicySlotType::Economic,     11, {.productionMultiplier=1.15f}}, // +15% production
 
     // === Diplomatic (12-16) ===
-    {12, "Charismatic Leader",PolicySlotType::Diplomatic,  3, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                               0.0f, 0.0f, 0.0f, 0, 2.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // +2 diplomatic influence
-    {13, "Diplomatic League",PolicySlotType::Diplomatic,   2, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                               0.0f, 0.0f, 0.0f, 1, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // +1 trade route
-    {14, "Foreign Trade",    PolicySlotType::Diplomatic,   4, {1.0f, 1.05f, 0.0f, 1.0f, 1.0f,
-                                                               1.0f, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // +5% gold, +1 gold per trade route
-    {15, "Espionage Network",PolicySlotType::Diplomatic,  10, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                               0.0f, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.0f, 0.0f, 0.15f, 0.0f, 0.0f, 1.0f}}, // +15% espionage defense
-    {16, "Anti-Corruption",  PolicySlotType::Diplomatic,   8, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                               0.0f, 0.0f, 0.0f, 0, 0.0f, 0.03f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // -3% corruption
+    {12, "Charismatic Leader",PolicySlotType::Diplomatic,    3, {.diplomaticInfluence=2.0f}}, // +2 diplomatic influence
+    {13, "Diplomatic League", PolicySlotType::Diplomatic,    2, {.extraTradeRoutes=1}}, // +1 trade route
+    {14, "Foreign Trade",     PolicySlotType::Diplomatic,    4, {.goldMultiplier=1.05f, .tradeRouteBonus=1.0f}}, // +5% gold, +1 gold per trade route
+    {15, "Espionage Network", PolicySlotType::Diplomatic,   10, {.espionageDefense=0.15f}}, // +15% espionage defense
+    {16, "Anti-Corruption",   PolicySlotType::Diplomatic,    8, {.corruptionReduction=0.03f}}, // -3% corruption
 
     // === Wildcard (17-21) ===
-    {17, "Inspiration",      PolicySlotType::Wildcard,     0, {1.0f, 1.0f, 0.0f, 1.0f, 1.10f}}, // +10% culture
-    {18, "Religious Zeal",   PolicySlotType::Wildcard,     3, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                               0.0f, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.25f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // +25% faith
-    {19, "Public Works",     PolicySlotType::Wildcard,     6, {1.05f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                               0.0f, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.0f, 3.0f, 0.0f, 0.0f, 0.0f, 1.05f}}, // +5% prod, +3 loyalty, +5% growth
-    {20, "Propaganda",       PolicySlotType::Wildcard,    11, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                               0.0f, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.0f, 10.0f, 0.0f, 0.0f, -0.30f, 1.0f}}, // +10 loyalty, -30% war weariness
-    {21, "Laissez-Faire",    PolicySlotType::Wildcard,     8, {1.0f, 1.15f, 0.0f, 1.0f, 1.0f,
-                                                               0.0f, 0.0f, 0.0f, 0, 0.0f, -0.02f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.10f}}, // +15% gold, -2% corruption red (more corruption), +10% growth
+    {17, "Inspiration",       PolicySlotType::Wildcard,      0, {.cultureMultiplier=1.10f}}, // +10% culture
+    {18, "Religious Zeal",    PolicySlotType::Wildcard,      3, {.faithMultiplier=1.25f}}, // +25% faith
+    {19, "Public Works",      PolicySlotType::Wildcard,      6, {.productionMultiplier=1.05f,
+                                                               .loyaltyBonus=3.0f,
+                                                               .growthMultiplier=1.05f}}, // +5% prod, +3 loyalty, +5% growth
+    {20, "Propaganda",        PolicySlotType::Wildcard,     11, {.loyaltyBonus=10.0f, .warWearinessReduction=-0.30f}}, // +10 loyalty, -30% war weariness
+    {21, "Laissez-Faire",     PolicySlotType::Wildcard,      8, {.goldMultiplier=1.15f,
+                                                               .corruptionReduction=-0.02f,
+                                                               .growthMultiplier=1.10f}}, // +15% gold, -2% corruption red (more corruption), +10% growth
 
     // === 2026-05-03: 14 new policy cards tied to expanded civics (14-46) ===
-    {22, "Logistics",        PolicySlotType::Economic,    14, {1.05f, 1.0f, 0.0f, 1.0f, 1.0f}}, // State Workforce: +5% prod
-    {23, "Imperialism",      PolicySlotType::Military,    15, {1.0f, 1.0f, 4.0f, 1.0f, 1.0f}}, // Early Empire: +4 combat
-    {24, "Religious Order",  PolicySlotType::Wildcard,    16, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                               0.0f, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.15f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // Mysticism: +15% faith
-    {25, "Drama Festivals",  PolicySlotType::Wildcard,    17, {1.0f, 1.0f, 0.0f, 1.0f, 1.10f}}, // Drama: +10% culture
-    {26, "Naval Patrols",    PolicySlotType::Military,    22, {1.0f, 1.0f, 3.0f, 1.0f, 1.0f}}, // Naval Tradition: +3 combat
-    {27, "Bureaucracy",      PolicySlotType::Economic,    23, {1.0f, 1.05f, 0.0f, 1.0f, 1.0f}}, // Civil Service: +5% gold
-    {28, "Dual Monarchy",    PolicySlotType::Diplomatic,  24, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                               0.0f, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.0f, 2.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // Divine Right: +2 loyalty
-    {29, "Public Schools",   PolicySlotType::Wildcard,    27, {1.0f, 1.0f, 0.0f, 1.10f, 1.0f}}, // Humanism: +10% science
-    {30, "International Law",PolicySlotType::Diplomatic,  28, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
-                                                               0.0f, 0.0f, 0.0f, 1, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // Dipl Service: +1 trade route, +1 dipl
-    {31, "Total War",        PolicySlotType::Military,    37, {1.05f, 1.0f, 5.0f, 1.0f, 1.0f}}, // Mobilization: +5% prod, +5 combat
-    {32, "Five-Year Plan",   PolicySlotType::Economic,    38, {1.15f, 1.0f, 0.0f, 1.0f, 1.0f}}, // Ideology: +15% prod
-    {33, "Space Cooperation",PolicySlotType::Diplomatic,  42, {1.0f, 1.0f, 0.0f, 1.05f, 1.0f,
-                                                               0.0f, 0.0f, 0.0f, 1, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // Space Race: +5% science, +1 trade route
-    {34, "New Deal",         PolicySlotType::Economic,    35, {1.0f, 1.05f, 0.0f, 1.0f, 1.0f}}, // Conservation: +5% gold
-    {35, "Information Society",PolicySlotType::Wildcard,  43, {1.0f, 1.0f, 0.0f, 1.05f, 1.05f}}, // Social Media: +5% sci, +5% culture
+    {22, "Logistics",         PolicySlotType::Economic,     14, {.productionMultiplier=1.05f}}, // State Workforce: +5% prod
+    {23, "Imperialism",       PolicySlotType::Military,     15, {.combatStrengthBonus=4.0f}}, // Early Empire: +4 combat
+    {24, "Religious Order",   PolicySlotType::Wildcard,     16, {.faithMultiplier=1.15f}}, // Mysticism: +15% faith
+    {25, "Drama Festivals",   PolicySlotType::Wildcard,     17, {.cultureMultiplier=1.10f}}, // Drama: +10% culture
+    {26, "Naval Patrols",     PolicySlotType::Military,     22, {.combatStrengthBonus=3.0f}}, // Naval Tradition: +3 combat
+    {27, "Bureaucracy",       PolicySlotType::Economic,     23, {.goldMultiplier=1.05f}}, // Civil Service: +5% gold
+    {28, "Dual Monarchy",     PolicySlotType::Diplomatic,   24, {.loyaltyBonus=2.0f}}, // Divine Right: +2 loyalty
+    {29, "Public Schools",    PolicySlotType::Wildcard,     27, {.scienceMultiplier=1.10f}}, // Humanism: +10% science
+    {30, "International Law", PolicySlotType::Diplomatic,   28, {.extraTradeRoutes=1, .diplomaticInfluence=1.0f}}, // Dipl Service: +1 trade route, +1 dipl
+    {31, "Total War",         PolicySlotType::Military,     37, {.productionMultiplier=1.05f, .combatStrengthBonus=5.0f}}, // Mobilization: +5% prod, +5 combat
+    {32, "Five-Year Plan",    PolicySlotType::Economic,     38, {.productionMultiplier=1.15f}}, // Ideology: +15% prod
+    {33, "Space Cooperation", PolicySlotType::Diplomatic,   42, {.scienceMultiplier=1.05f, .extraTradeRoutes=1}}, // Space Race: +5% science, +1 trade route
+    {34, "New Deal",          PolicySlotType::Economic,     35, {.goldMultiplier=1.05f}}, // Conservation: +5% gold
+    {35, "Information Society",PolicySlotType::Wildcard,     43, {.scienceMultiplier=1.05f, .cultureMultiplier=1.05f}}, // Social Media: +5% sci, +5% culture
 }};
 
 [[nodiscard]] inline constexpr const PolicyCardDef& policyCardDef(uint8_t id) {
