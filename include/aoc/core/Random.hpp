@@ -28,7 +28,7 @@ public:
     /// Generate a uniform random uint64_t.
     [[nodiscard]] constexpr uint64_t next() {
         const uint64_t result = rotl(this->m_state[1] * 5, 7) * 9;
-        const uint64_t t = this->m_state[1] << 17;
+        const uint64_t t      = this->m_state[1] << 17;
 
         this->m_state[2] ^= this->m_state[0];
         this->m_state[3] ^= this->m_state[1];
@@ -45,7 +45,9 @@ public:
     /// without consuming a draw (the wrapped range would be 0 -> division by
     /// zero). min == max still consumes a draw to keep the stream stable.
     [[nodiscard]] constexpr int32_t nextInt(int32_t min, int32_t max) {
-        if (min > max) { return min; }
+        if (min > max) {
+            return min;
+        }
         // 64-bit range/offset math: max - min overflows int32 on the full
         // span, and min + roll can overflow int32 at the extremes. Results
         // are bit-identical to 32-bit math wherever that math was defined.
@@ -69,20 +71,19 @@ public:
         return this->nextFloat() < probability;
     }
 
+    /// Spawn an independent stream from one draw of this generator. Hand the
+    /// result to a subsystem so the number of draws it makes can no longer
+    /// shift the sequence every other consumer of this generator sees.
+    [[nodiscard]] constexpr Random fork() { return Random(this->next()); }
+
     /// Get the full state for serialization.
-    [[nodiscard]] constexpr std::array<uint64_t, 4> state() const {
-        return this->m_state;
-    }
+    [[nodiscard]] constexpr std::array<uint64_t, 4> state() const { return this->m_state; }
 
     /// Restore state from serialization.
-    constexpr void setState(const std::array<uint64_t, 4>& state) {
-        this->m_state = state;
-    }
+    constexpr void setState(const std::array<uint64_t, 4>& state) { this->m_state = state; }
 
 private:
-    static constexpr uint64_t rotl(uint64_t x, int k) {
-        return (x << k) | (x >> (64 - k));
-    }
+    static constexpr uint64_t rotl(uint64_t x, int k) { return (x << k) | (x >> (64 - k)); }
 
     static constexpr uint64_t splitmix64(uint64_t x) {
         x += 0x9e3779b97f4a7c15ULL;

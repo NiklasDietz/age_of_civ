@@ -942,6 +942,7 @@ if(AOC_BUILD_TESTS)
         test_diplomatic_favor
         test_iou_term_expiry
         test_save_finite
+        test_random_fork
         test_decision_log_io
         test_deterministic_argmax
         test_tuned_leader_io

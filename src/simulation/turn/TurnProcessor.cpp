@@ -803,7 +803,8 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     processProductionQueues(*turnContext.gameState, grid, player);
 
     // City bombardment
-    processCityBombardment(*turnContext.gameState, grid, player, *turnContext.rng);
+    aoc::Random bombardRng = turnContext.rng->fork();
+    processCityBombardment(*turnContext.gameState, grid, player, bombardRng);
 
     // Border expansion
     processBorderExpansion(*gsPlayer, grid);
@@ -936,7 +937,8 @@ void processGlobalSystems(TurnContext& turnContext) {
 
     // Barbarians
     if (turnContext.barbarians != nullptr) {
-        turnContext.barbarians->executeTurn(gameState, grid, *turnContext.rng);
+        aoc::Random barbarianRng = turnContext.rng->fork();
+        turnContext.barbarians->executeTurn(gameState, grid, barbarianRng);
     }
 
     // Communication speed (affects all players)
@@ -995,7 +997,8 @@ void processGlobalSystems(TurnContext& turnContext) {
 
         // Industrial pollution CO2
         climate.addCO2(static_cast<float>(totalIndustrialCO2(gameState)));
-        climate.processTurn(grid, *turnContext.rng);
+        aoc::Random climateRng = turnContext.rng->fork();
+        climate.processTurn(grid, climateRng);
 
         // Climate thresholds push narrative events into the per-player queue.
         // The per-event cooldown (WORLD_EVENT_COOLDOWN_TURNS) prevents spam.
@@ -1321,8 +1324,9 @@ void processTurn(TurnContext& turnContext) {
         const PlayerId pid = ai->player();
         const aoc::game::Player* gsPlayer = turnContext.gameState->player(pid);
         if (gsPlayer != nullptr && gsPlayer->isHuman()) { continue; }
+        aoc::Random aiRng = turnContext.rng->fork();
         ai->executeTurn(*turnContext.gameState, *turnContext.grid, turnContext.fogOfWar,
-                       *turnContext.diplomacy, turnContext.economy->market(), *turnContext.rng,
+                       *turnContext.diplomacy, turnContext.economy->market(), aiRng,
                        turnContext.dealTracker);
     }
 
@@ -1433,8 +1437,9 @@ void processTurn(TurnContext& turnContext) {
 
     // Espionage: resolve spy mission outcomes for all players.
     if (turnContext.rng != nullptr && turnContext.grid != nullptr) {
-        processSpyMissions(*turnContext.gameState, *turnContext.grid,
-                           *turnContext.rng, turnContext.diplomacy);
+        aoc::Random espionageRng = turnContext.rng->fork();
+        processSpyMissions(*turnContext.gameState, *turnContext.grid, espionageRng,
+                           turnContext.diplomacy);
     }
 
     // Grievance decay per player. Moved here so grievances accumulated above
@@ -1445,9 +1450,9 @@ void processTurn(TurnContext& turnContext) {
 
     // World Congress: propose / vote / resolve resolutions.
     if (turnContext.rng != nullptr) {
+        aoc::Random congressRng = turnContext.rng->fork();
         processWorldCongress(*turnContext.gameState,
-                              static_cast<TurnNumber>(turnContext.currentTurn),
-                              *turnContext.rng,
+                              static_cast<TurnNumber>(turnContext.currentTurn), congressRng,
                               turnContext.diplomacy);
     }
 
