@@ -60,7 +60,37 @@ using aoc::app::detail::turnToYear;
 // HUD
 // ============================================================================
 
+void Application::destroyHUD() {
+    // Every root widget buildHUD creates, so a rebuild or a return to the
+    // menu can never leave a second copy behind. Children die with parents.
+    const std::array<aoc::ui::WidgetId*, 8> roots = {
+        &this->m_topBar,           &this->m_infoPanel,    &this->m_endTurnButton,
+        &this->m_lastPlayerBanner, &this->m_victoryPanel, &this->m_menuDropdown,
+        &this->m_unitActionPanel,  &this->m_helpOverlay,
+    };
+    for (aoc::ui::WidgetId* root : roots) {
+        if (*root != aoc::ui::INVALID_WIDGET) {
+            this->m_uiManager.removeWidget(*root);
+            *root = aoc::ui::INVALID_WIDGET;
+        }
+    }
+    this->m_endTurnInnerBtn   = aoc::ui::INVALID_WIDGET;
+    this->m_turnLabel         = aoc::ui::INVALID_WIDGET;
+    this->m_selectionLabel    = aoc::ui::INVALID_WIDGET;
+    this->m_economyLabel      = aoc::ui::INVALID_WIDGET;
+    this->m_resourceLabel     = aoc::ui::INVALID_WIDGET;
+    this->m_victoryLabel      = aoc::ui::INVALID_WIDGET;
+    this->m_researchLabel     = aoc::ui::INVALID_WIDGET;
+    this->m_researchBar       = aoc::ui::INVALID_WIDGET;
+    this->m_researchBarFill   = aoc::ui::INVALID_WIDGET;
+    this->m_productionLabel   = aoc::ui::INVALID_WIDGET;
+    this->m_productionBar     = aoc::ui::INVALID_WIDGET;
+    this->m_productionBarFill = aoc::ui::INVALID_WIDGET;
+    this->m_actionPanelUnit   = nullptr;
+}
+
 void Application::buildHUD() {
+    this->destroyHUD();
     const std::pair<uint32_t, uint32_t> hudFbSize = this->m_window.framebufferSize();
     float screenW                                 = static_cast<float>(hudFbSize.first);
 
@@ -384,8 +414,9 @@ void Application::buildHUD() {
     infoBg.accentBarColor  = aoc::ui::tokens::BRONZE_BASE;
     infoBg.accentBarWidth  = 2.0f;
     infoBg.cornerRadius    = aoc::ui::tokens::CORNER_PANEL;
-    aoc::ui::WidgetId infoPanel =
+    this->m_infoPanel =
         this->m_uiManager.createPanel({10.0f, 42.0f, 250.0f, 170.0f}, std::move(infoBg));
+    const aoc::ui::WidgetId infoPanel = this->m_infoPanel;
     {
         aoc::ui::Widget* panel = this->m_uiManager.getWidget(infoPanel);
         panel->padding         = {8.0f, 10.0f, 8.0f, 10.0f};
@@ -485,9 +516,10 @@ void Application::buildHUD() {
         aoc::ui::LabelData{"Waiting for you!", {1.0f, 1.0f, 1.0f, 1.0f}, 12.0f});
 
     // Victory announcement panel (hidden until game over, centered on screen)
-    aoc::ui::WidgetId victoryPanel = this->m_uiManager.createPanel(
+    this->m_victoryPanel = this->m_uiManager.createPanel(
         {0.0f, 0.0f, aoc::ui::theme().scaled(500.0f), aoc::ui::theme().scaled(50.0f)},
         aoc::ui::PanelData{{0.1f, 0.1f, 0.15f, 0.9f}, 6.0f});
+    const aoc::ui::WidgetId victoryPanel = this->m_victoryPanel;
     this->m_victoryLabel =
         this->m_uiManager.createLabel(victoryPanel, {10.0f, 10.0f, 480.0f, 30.0f},
                                       aoc::ui::LabelData{"", {1.0f, 0.85f, 0.2f, 1.0f}, 24.0f});

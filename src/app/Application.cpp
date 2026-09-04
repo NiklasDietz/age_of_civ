@@ -5388,41 +5388,8 @@ void Application::returnToMainMenu() {
         this->m_settingsMenu.destroy(this->m_uiManager);
     }
 
-    // Remove all HUD widgets by clearing the entire UI
-    // (the main menu will rebuild its own widgets)
-    // Remove known HUD widgets
-    if (this->m_topBar != aoc::ui::INVALID_WIDGET) {
-        this->m_uiManager.removeWidget(this->m_topBar);
-        this->m_topBar = aoc::ui::INVALID_WIDGET;
-    }
-    if (this->m_endTurnButton != aoc::ui::INVALID_WIDGET) {
-        this->m_uiManager.removeWidget(this->m_endTurnButton);
-        this->m_endTurnButton   = aoc::ui::INVALID_WIDGET;
-        this->m_endTurnInnerBtn = aoc::ui::INVALID_WIDGET;
-    }
-    // The info panel and victory panel are root widgets too
-    // Simplest: just remove all widgets and rebuild
-    // Reset all stored widget IDs
-    this->m_turnLabel         = aoc::ui::INVALID_WIDGET;
-    this->m_selectionLabel    = aoc::ui::INVALID_WIDGET;
-    this->m_economyLabel      = aoc::ui::INVALID_WIDGET;
-    this->m_resourceLabel     = aoc::ui::INVALID_WIDGET;
-    this->m_victoryLabel      = aoc::ui::INVALID_WIDGET;
-    this->m_researchLabel     = aoc::ui::INVALID_WIDGET;
-    this->m_researchBar       = aoc::ui::INVALID_WIDGET;
-    this->m_researchBarFill   = aoc::ui::INVALID_WIDGET;
-    this->m_productionLabel   = aoc::ui::INVALID_WIDGET;
-    this->m_productionBar     = aoc::ui::INVALID_WIDGET;
-    this->m_productionBarFill = aoc::ui::INVALID_WIDGET;
-    if (this->m_unitActionPanel != aoc::ui::INVALID_WIDGET) {
-        this->m_uiManager.removeWidget(this->m_unitActionPanel);
-        this->m_unitActionPanel = aoc::ui::INVALID_WIDGET;
-    }
-    this->m_actionPanelUnit = nullptr;
-    if (this->m_helpOverlay != aoc::ui::INVALID_WIDGET) {
-        this->m_uiManager.removeWidget(this->m_helpOverlay);
-        this->m_helpOverlay = aoc::ui::INVALID_WIDGET;
-    }
+    // Tear down every HUD root widget; the main menu rebuilds its own.
+    this->destroyHUD();
 
     // Reset game state
     this->m_hexGrid = aoc::map::HexGrid{};

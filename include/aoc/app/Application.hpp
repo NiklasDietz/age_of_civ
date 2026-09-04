@@ -218,6 +218,8 @@ private:
         aoc::ui::INVALID_WIDGET; ///< Inner button child for label/onClick mutation
     aoc::ui::WidgetId m_lastPlayerBanner = aoc::ui::INVALID_WIDGET; ///< "Waiting for you" glow
     aoc::ui::WidgetId m_topBar           = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_infoPanel        = aoc::ui::INVALID_WIDGET; ///< Turn/selection/research box
+    aoc::ui::WidgetId m_victoryPanel     = aoc::ui::INVALID_WIDGET; ///< Parent of m_victoryLabel
     aoc::ui::WidgetId m_resourceLabel    = aoc::ui::INVALID_WIDGET;
     /// Civ-6-style yield strip in the HUD top bar. Each yield gets its
     /// own (icon + value) pair so updateHUD can refresh just the
@@ -352,6 +354,8 @@ private:
     void closeAllScreens();
 
     void buildHUD();
+    /// Remove every HUD root widget and reset their ids; safe when none exist.
+    void destroyHUD();
     void updateHUD();
     /// Rebuild the diplo strip children from the current met/at-war
     /// state. Cheap — drops existing children + adds one icon per
