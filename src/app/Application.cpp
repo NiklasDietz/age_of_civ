@@ -1451,6 +1451,7 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_screenRegistry.add(&this->m_diplomacyScreen);
     this->m_screenRegistry.add(&this->m_religionScreen);
     this->m_screenRegistry.add(&this->m_espionageScreen);
+    this->m_screenRegistry.add(&this->m_encyclopediaScreen);
     this->m_screenRegistry.add(&this->m_scoreScreen);
     this->m_screenRegistry.add(&this->m_settingsMenu);
     this->m_screenRegistry.add(&this->m_loadGameMenu);
@@ -4588,6 +4589,11 @@ void Application::run() {
             this->m_religionScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0);
             this->m_religionScreen.toggle(this->m_uiManager);
         }
+        // The Civilopedia builds from static tables, so it needs no context and
+        // is available to spectators too.
+        if (this->m_inputManager.isActionPressed(InputAction::OpenEncyclopedia)) {
+            this->m_encyclopediaScreen.toggle(this->m_uiManager);
+        }
         if (!this->m_spectatorMode &&
             this->m_inputManager.isActionPressed(InputAction::OpenProductionPicker)) {
             // Only open if an own city is selected
@@ -4990,6 +4996,7 @@ void Application::run() {
         this->m_diplomacyScreen.refresh(this->m_uiManager);
         this->m_religionScreen.refresh(this->m_uiManager);
         this->m_espionageScreen.refresh(this->m_uiManager);
+        this->m_encyclopediaScreen.refresh(this->m_uiManager);
         this->m_scoreScreen.refresh(this->m_uiManager);
 
         // Tooltip dispatch. Three cases:

@@ -937,6 +937,7 @@ if(AOC_BUILD_TESTS)
         list(APPEND AOC_SMOKE_TESTS test_ui_control_api)
         list(APPEND AOC_SMOKE_TESTS test_screen_registry)
         list(APPEND AOC_SMOKE_TESTS test_espionage_screen)
+        list(APPEND AOC_SMOKE_TESTS test_encyclopedia_screen)
     endif()
 
     # The debug preset builds with ASan/LSan; known suppressions live in

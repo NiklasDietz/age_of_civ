@@ -36,6 +36,7 @@ enum class InputAction : uint8_t {
     OpenProductionPicker,
     OpenGovernment,
     OpenReligion,
+    OpenEncyclopedia,
 
     // Save/Load
     QuickSave,

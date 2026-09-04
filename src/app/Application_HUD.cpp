@@ -343,7 +343,7 @@ void Application::buildHUD() {
             float dropY = 34.0f;
 
             this->m_menuDropdown =
-                this->m_uiManager.createPanel({dropX, dropY, 110.0f, 150.0f},
+                this->m_uiManager.createPanel({dropX, dropY, 110.0f, 200.0f},
                                               aoc::ui::PanelData{aoc::ui::tokens::SURFACE_PARCHMENT,
                                                                  aoc::ui::tokens::CORNER_PANEL});
             {
@@ -370,6 +370,12 @@ void Application::buildHUD() {
                     {0.0f, 0.0f, aoc::ui::theme().scaled(98.0f), aoc::ui::theme().scaled(28.0f)},
                     std::move(btn));
             };
+
+            makeDropBtn(this->m_menuDropdown, "Civilopedia [F2]", [this]() {
+                this->m_uiManager.removeWidget(this->m_menuDropdown);
+                this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
+                this->m_encyclopediaScreen.open(this->m_uiManager);
+            });
 
             // Save / Load open the pause menu, which owns the numbered slot rows;
             // the single quick-save file stays on the F5 / F9 hotkeys.
@@ -716,6 +722,7 @@ void Application::updateHUD() {
     this->m_diplomacyScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_religionScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_espionageScreen.setScreenSize(hudScreenW, hudScreenH);
+    this->m_encyclopediaScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_scoreScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_cityDetailScreen.setScreenSize(hudScreenW, hudScreenH);
 

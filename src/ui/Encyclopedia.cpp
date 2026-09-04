@@ -45,7 +45,7 @@ const char* wikiCategoryName(WikiCategory cat) {
         case WikiCategory::Buildings:     return "Buildings";
         case WikiCategory::Improvements:  return "Improvements";
         case WikiCategory::Resources:     return "Resources & Goods";
-        case WikiCategory::Goods:         return "Production Recipes";
+        case WikiCategory::Goods:         return "Goods";
         case WikiCategory::Recipes:       return "Recipes";
         case WikiCategory::Technologies:  return "Technologies";
         case WikiCategory::Governments:   return "Governments";
@@ -782,11 +782,13 @@ void EncyclopediaScreen::setCategory(WikiCategory cat) {
     this->m_currentCategory = cat;
     this->m_searchQuery.clear();
     this->m_selectedEntry = -1;
+    this->m_listDirty     = true;
 }
 
 void EncyclopediaScreen::search(const std::string& query) {
     this->m_searchQuery = query;
     this->m_selectedEntry = -1;
+    this->m_listDirty     = true;
 }
 
 void EncyclopediaScreen::open(UIManager& ui) {
@@ -800,23 +802,26 @@ void EncyclopediaScreen::open(UIManager& ui) {
         this->m_allEntries = buildEncyclopedia();
     }
 
-    constexpr float PANEL_W = 700.0f;
-    constexpr float PANEL_H = 520.0f;
+    constexpr float PANEL_W  = 700.0f;
+    constexpr float PANEL_H  = 560.0f;
+    constexpr float CONTENT_W = PANEL_W - 24.0f;
     WidgetId innerPanel = this->createScreenFrame(ui, "Encyclopedia",
                                                    PANEL_W, PANEL_H,
                                                    this->m_screenW, this->m_screenH);
 
-    // Category buttons (horizontal row)
+    // Category buttons. Twelve tabs at 78px do not fit one 676px row, so this
+    // wraps onto a second line instead of spilling outside the panel border
+    // (which put the last two categories out of reach until 2026-09-04).
     this->m_categoryPanel = ui.createPanel(innerPanel,
-        {0.0f, 0.0f, PANEL_W - 24.0f, 28.0f},
+        {0.0f, 0.0f, CONTENT_W, 52.0f},
         PanelData{tokens::SURFACE_INK, 2.0f});
     Widget* catPanel = ui.getWidget(this->m_categoryPanel);
     if (catPanel != nullptr) {
-        catPanel->layoutDirection = LayoutDirection::Horizontal;
+        catPanel->layoutDirection = LayoutDirection::HorizontalWrap;
         catPanel->childSpacing = 2.0f;
     }
 
-    constexpr float BTN_W = 78.0f;
+    constexpr float BTN_W = 104.0f;
     for (uint8_t c = 0; c < static_cast<uint8_t>(WikiCategory::Count); ++c) {
         WikiCategory cat = static_cast<WikiCategory>(c);
         ButtonData btn;
@@ -831,13 +836,22 @@ void EncyclopediaScreen::open(UIManager& ui) {
         ui.createButton(this->m_categoryPanel, {0.0f, 0.0f, BTN_W, 22.0f}, std::move(btn));
     }
 
+    // List and detail sit side by side; the inner panel flows vertically, so
+    // they need their own horizontal row or the detail text lands under the list.
+    const WidgetId body = ui.createPanel(innerPanel, {0.0f, 0.0f, CONTENT_W, 400.0f},
+                                         PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    if (Widget* bodyPanel = ui.getWidget(body); bodyPanel != nullptr) {
+        bodyPanel->layoutDirection = LayoutDirection::Horizontal;
+        bodyPanel->childSpacing    = 10.0f;
+        bodyPanel->padding         = {0.0f, 0.0f, 0.0f, 0.0f};
+    }
+
     // Entry list (left side, scrollable)
-    this->m_entryList = ui.createScrollList(innerPanel,
-        {0.0f, 0.0f, 220.0f, 400.0f});
+    this->m_entryList = ui.createScrollList(body, {0.0f, 0.0f, 220.0f, 400.0f});
 
     // Detail panel (right side)
-    this->m_detailLabel = ui.createLabel(innerPanel,
-        {230.0f, 30.0f, 430.0f, 400.0f},
+    this->m_detailLabel = ui.createLabel(body,
+        {0.0f, 0.0f, CONTENT_W - 240.0f, 400.0f},
         LabelData{"Select an entry from the list.", {0.7f, 0.8f, 0.7f, 1.0f}, 11.0f});
 
     this->rebuildEntryList(ui);
@@ -857,11 +871,18 @@ void EncyclopediaScreen::close(UIManager& ui) {
     this->m_detailLabel = INVALID_WIDGET;
 }
 
-void EncyclopediaScreen::refresh(UIManager& /*ui*/) {
-    // Static content, no per-frame refresh needed
+void EncyclopediaScreen::refresh(UIManager& ui) {
+    // Content is static, so this only applies navigation that arrived from
+    // outside the screen's own buttons (`setCategory` / `search`), which have
+    // no UIManager of their own to rebuild with.
+    if (this->m_isOpen && this->m_listDirty) {
+        this->m_listDirty = false;
+        this->rebuildEntryList(ui);
+    }
 }
 
 void EncyclopediaScreen::rebuildEntryList(UIManager& ui) {
+    this->m_listDirty = false;
     // Filter entries by current category and search query
     this->m_filteredEntries.clear();
     for (const WikiEntry& entry : this->m_allEntries) {

@@ -98,6 +98,10 @@ private:
     std::vector<const WikiEntry*> m_filteredEntries;  ///< Current view (after category/search filter)
     WikiCategory m_currentCategory = WikiCategory::Mechanics;
     std::string m_searchQuery;
+    /// Set by `setCategory` / `search`; `refresh` applies it. Those setters are
+    /// public API with no UIManager, so without this an external caller silently
+    /// changed nothing on screen.
+    bool m_listDirty = false;
 
     // Widget IDs
     WidgetId m_categoryPanel = INVALID_WIDGET;
