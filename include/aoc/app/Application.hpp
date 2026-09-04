@@ -40,6 +40,7 @@
 #include "aoc/ui/ReligionScreen.hpp"
 #include "aoc/ui/EspionageScreen.hpp"
 #include "aoc/ui/Encyclopedia.hpp"
+#include "aoc/ui/GreatPeopleScreen.hpp"
 #include "aoc/ui/EventLog.hpp"
 #include "aoc/ui/MainMenu.hpp"
 #include "aoc/ui/SettingsMenu.hpp"
@@ -317,6 +318,7 @@ private:
     aoc::ui::ReligionScreen m_religionScreen;
     aoc::ui::EspionageScreen m_espionageScreen;
     aoc::ui::EncyclopediaScreen m_encyclopediaScreen;
+    aoc::ui::GreatPeopleScreen m_greatPeopleScreen;
     aoc::ui::ScoreScreen m_scoreScreen;
 
     /// Central registry for all modal screens + menus. Populated once in
