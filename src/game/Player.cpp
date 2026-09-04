@@ -117,6 +117,17 @@ const City* Player::cityAt(aoc::hex::AxialCoord location) const {
     return nullptr;
 }
 
+int32_t Player::activeTradeRouteCount() const {
+    int32_t routes = 0;
+    for (const std::unique_ptr<Unit>& unit : this->m_units) {
+        if (unit->typeDef().unitClass == aoc::sim::UnitClass::Trader
+            && unit->trader().owner != INVALID_PLAYER) {
+            ++routes;
+        }
+    }
+    return routes;
+}
+
 int32_t Player::ownedCityCount() const {
     int32_t count = 0;
     for (const std::unique_ptr<City>& city : this->m_cities) {

@@ -317,6 +317,10 @@ public:
     /// happiness, score, victory checks, etc.).
     [[nodiscard]] int32_t ownedCityCount() const;
 
+    /// Trader units currently running a route. Four civ abilities pay per route
+    /// (science, culture, gold, faith); they all count routes this one way.
+    [[nodiscard]] int32_t activeTradeRouteCount() const;
+
     // ========================================================================
     // Per-tile city assignment
     //

@@ -138,11 +138,7 @@ float computePlayerScience(const aoc::game::Player& player,
     {
         const aoc::sim::CivilizationDef& cs = aoc::sim::civDef(player.civId());
         if (cs.modifiers.scienceFromTradeRoute > 0) {
-            int32_t routes = 0;
-            for (const std::unique_ptr<aoc::game::Unit>& u : player.units()) {
-                if (u->typeDef().unitClass == aoc::sim::UnitClass::Trader
-                 && u->trader().owner != INVALID_PLAYER) { ++routes; }
-            }
+            const int32_t routes = player.activeTradeRouteCount();
             totalScience += static_cast<float>(routes * cs.modifiers.scienceFromTradeRoute);
         }
     }
@@ -227,11 +223,7 @@ float computePlayerCulture(const aoc::game::Player& player,
     {
         const aoc::sim::CivilizationDef& cs = aoc::sim::civDef(player.civId());
         if (cs.modifiers.cultureFromTradeRoute > 0) {
-            int32_t routes = 0;
-            for (const std::unique_ptr<aoc::game::Unit>& u : player.units()) {
-                if (u->typeDef().unitClass == aoc::sim::UnitClass::Trader
-                 && u->trader().owner != INVALID_PLAYER) { ++routes; }
-            }
+            const int32_t routes = player.activeTradeRouteCount();
             totalCulture += static_cast<float>(routes * cs.modifiers.cultureFromTradeRoute);
         }
     }
