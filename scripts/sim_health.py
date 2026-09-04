@@ -136,8 +136,9 @@ def evaluate(rows: list[dict[str, str]], quiet: bool = False) -> int:
         f"turn {mid} Gini = {spread:.3f}",
     )
 
-    # H6  Civs find each other. With the default 2-player start both spawn on
-    #     separate continents with no land path, so diplomacy has no counterparty.
+    # H6  Civs find each other. Before the shared start placement (2026-09-04)
+    #     a default 2-player start could put both civs on separate continents
+    #     with no land path, so diplomacy had no counterparty.
     unmet = [
         p for p, series in by_player.items()
         if all(int(r["MetPlayersMask"]) == 0 for r in series)

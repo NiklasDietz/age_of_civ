@@ -250,6 +250,7 @@ set(AOC_LIB_SOURCES
     # Map
     src/map/HexGrid.cpp
     src/map/LandmassMetrics.cpp
+    src/map/StartPlacement.cpp
     src/map/MapGenerator.cpp
     src/map/gen/Biogeography.cpp
     src/map/gen/ClimateBiome.cpp
@@ -943,6 +944,7 @@ if(AOC_BUILD_TESTS)
         test_iou_term_expiry
         test_save_finite
         test_random_fork
+        test_start_placement
         test_decision_log_io
         test_deterministic_argmax
         test_tuned_leader_io

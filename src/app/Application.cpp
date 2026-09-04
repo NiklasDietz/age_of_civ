@@ -17,6 +17,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/map/MapGenerator.hpp"
+#include "aoc/map/StartPlacement.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Pathfinding.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
@@ -1631,15 +1632,28 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     }
     LOG_INFO("GameState initialized for %u players", static_cast<unsigned>(config.playerCount));
 
-    // Spawn human player (always slot 0)
+    // Start tiles for everyone at once: largest landmass first, so a 2-player
+    // game has a land path between the rivals (shared with the headless sim).
     phase("Settling the first peoples...", 0.86f);
-    this->spawnStartingEntities(config.players[0].civId);
+    std::vector<aoc::hex::AxialCoord> starts = aoc::map::chooseStartPositions(
+        this->m_hexGrid, static_cast<int32_t>(config.playerCount), this->m_gameRng);
+    if (starts.size() < config.playerCount) {
+        LOG_WARN("Start placement found land for %zu of %u players; the rest start at the map "
+                 "centre",
+                 starts.size(), static_cast<unsigned>(config.playerCount));
+        const aoc::hex::AxialCoord centre =
+            aoc::hex::offsetToAxial({this->m_hexGrid.width() / 2, this->m_hexGrid.height() / 2});
+        starts.resize(config.playerCount, centre);
+    }
+
+    // Spawn human player (always slot 0)
+    this->spawnStartingEntities(config.players[0].civId, starts[0]);
 
     // Spawn AI players (pass difficulty setting)
     for (uint8_t i = 1; i < config.playerCount; ++i) {
         const PlayerId playerId = static_cast<PlayerId>(i);
         this->m_aiControllers.emplace_back(playerId, config.aiDifficulty);
-        this->spawnAIPlayer(playerId, config.players[i].civId);
+        this->spawnAIPlayer(playerId, config.players[i].civId, starts[i]);
     }
 
     // -- War weariness, era score, religion, grievance per-player initialization --
@@ -6728,24 +6742,10 @@ void Application::handleEndTurn() {
 // Game setup
 // ============================================================================
 
-void Application::spawnStartingEntities(aoc::sim::CivId civId) {
-    // Place human player (player 0) using same circular layout as AI players.
-    // Player 0 gets angle 0 (east side of map center).
-    const int32_t mapW  = this->m_hexGrid.width();
-    const int32_t mapH  = this->m_hexGrid.height();
-    const float radiusX = static_cast<float>(mapW) * 0.35f;
-    // Small random offset for human player too (deterministic from map seed)
-    const uint32_t humanHash = 42u * 2654435761u;
-    const float humanOffX =
-        (static_cast<float>(humanHash % 1000u) / 1000.0f - 0.5f) * static_cast<float>(mapW) * 0.10f;
-    const float humanOffY = (static_cast<float>((humanHash >> 10) % 1000u) / 1000.0f - 0.5f) *
-                            static_cast<float>(mapH) * 0.10f;
-    const int32_t spawnX  = mapW / 2 + static_cast<int32_t>(radiusX + humanOffX);
-    const int32_t spawnY  = mapH / 2 + static_cast<int32_t>(humanOffY);
-    aoc::hex::AxialCoord mapCenter =
-        aoc::hex::offsetToAxial({std::clamp(spawnX, 2, mapW - 3), std::clamp(spawnY, 2, mapH - 3)});
-
-    hex::AxialCoord capitalPos = this->findNearbyLandTile(mapCenter);
+void Application::spawnStartingEntities(aoc::sim::CivId civId, hex::AxialCoord start) {
+    // The start tile comes from chooseStartPositions() in startGame(), which
+    // already guarantees land on a landmass shared with the rivals.
+    const hex::AxialCoord capitalPos = start;
 
     // Initialise all player state directly on the GameState object model.
     aoc::game::Player* humanPlayer = this->m_gameState.humanPlayer();
@@ -6906,33 +6906,10 @@ hex::AxialCoord Application::findNearbyLandTile(hex::AxialCoord target) const {
 // AI player spawning
 // ============================================================================
 
-void Application::spawnAIPlayer(PlayerId player, aoc::sim::CivId civId) {
-    // Distribute AI players evenly across the map using a grid pattern.
-    // Player 0 is human (spawned separately). AI players 1..N get spread positions.
-    // Use a circular layout: each player gets an angle, placed at 35% map radius from center.
-    const int32_t mapW         = this->m_hexGrid.width();
-    const int32_t mapH         = this->m_hexGrid.height();
-    const int32_t totalPlayers = static_cast<int32_t>(this->m_aiControllers.size()) + 1;
-    const float angle =
-        2.0f * 3.14159f * static_cast<float>(player) / static_cast<float>(totalPlayers);
-    const float radiusX = static_cast<float>(mapW) * 0.35f;
-    const float radiusY = static_cast<float>(mapH) * 0.35f;
-
-    // Add randomization: +/- 15% of map size so players aren't on a perfect circle
-    // Use deterministic hash from player ID for reproducibility
-    const uint32_t rngHash = static_cast<uint32_t>(player) * 2654435761u;
-    const float offsetX =
-        (static_cast<float>(rngHash % 1000u) / 1000.0f - 0.5f) * static_cast<float>(mapW) * 0.15f;
-    const float offsetY = (static_cast<float>((rngHash >> 10) % 1000u) / 1000.0f - 0.5f) *
-                          static_cast<float>(mapH) * 0.15f;
-
-    const int32_t spawnX = mapW / 2 + static_cast<int32_t>(radiusX * std::cos(angle) + offsetX);
-    const int32_t spawnY = mapH / 2 + static_cast<int32_t>(radiusY * std::sin(angle) + offsetY);
-    aoc::hex::AxialCoord aiSpawn =
-        aoc::hex::offsetToAxial({std::clamp(spawnX, 2, mapW - 3), std::clamp(spawnY, 2, mapH - 3)});
-
-    hex::AxialCoord settlerPos = this->findNearbyLandTile(aiSpawn);
-    hex::AxialCoord warriorPos = this->findNearbyLandTile({settlerPos.q + 1, settlerPos.r});
+void Application::spawnAIPlayer(PlayerId player, aoc::sim::CivId civId, hex::AxialCoord start) {
+    // The start tile comes from chooseStartPositions() in startGame().
+    const hex::AxialCoord settlerPos = start;
+    const hex::AxialCoord warriorPos = this->findNearbyLandTile({settlerPos.q + 1, settlerPos.r});
 
     // Initialise all AI player state directly on the GameState object model.
     aoc::game::Player* aiPlayer = this->m_gameState.player(player);

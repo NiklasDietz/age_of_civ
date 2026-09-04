@@ -1,6 +1,6 @@
 /**
  * @file LandmassMetrics.cpp
- * @brief Connected land-component size map implementation.
+ * @brief Connected land-component labelling.
  */
 
 #include "aoc/map/LandmassMetrics.hpp"
@@ -9,47 +9,62 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
 
+#include <cstddef>
+
 namespace aoc::map {
 
-std::vector<int32_t> computeLandmassSizes(const HexGrid& grid) {
+LandmassMap computeLandmasses(const HexGrid& grid) {
     const int32_t width  = grid.width();
     const int32_t height = grid.height();
     const int32_t total  = width * height;
-    std::vector<int32_t> compId(static_cast<std::size_t>(total), -1);
-    std::vector<int32_t> compSize;
+    LandmassMap out;
+    out.componentId.assign(static_cast<std::size_t>(total), -1);
     std::vector<int32_t> stack;
     stack.reserve(static_cast<std::size_t>(total));
     for (int32_t i = 0; i < total; ++i) {
-        if (compId[static_cast<std::size_t>(i)] >= 0) { continue; }
-        if (isWater(grid.terrain(i))) { continue; }
-        const int32_t cid = static_cast<int32_t>(compSize.size());
-        compId[static_cast<std::size_t>(i)] = cid;
-        int32_t size = 0;
+        if (out.componentId[static_cast<std::size_t>(i)] >= 0) {
+            continue;
+        }
+        if (isWater(grid.terrain(i))) {
+            continue;
+        }
+        const int32_t cid = static_cast<int32_t>(out.componentSize.size());
+        out.componentId[static_cast<std::size_t>(i)] = cid;
+        int32_t size                                 = 0;
         stack.clear();
         stack.push_back(i);
         while (!stack.empty()) {
             const int32_t idx = stack.back();
             stack.pop_back();
             ++size;
-            const hex::AxialCoord ax = hex::offsetToAxial(
-                {idx % width, idx / width});
+            const hex::AxialCoord ax = hex::offsetToAxial({idx % width, idx / width});
             for (const hex::AxialCoord& n : hex::neighbors(ax)) {
-                if (!grid.isValid(n)) { continue; }
+                if (!grid.isValid(n)) {
+                    continue;
+                }
                 const int32_t ni = grid.toIndex(n);
-                if (compId[static_cast<std::size_t>(ni)] >= 0) { continue; }
-                if (isWater(grid.terrain(ni))) { continue; }
-                compId[static_cast<std::size_t>(ni)] = cid;
+                if (out.componentId[static_cast<std::size_t>(ni)] >= 0) {
+                    continue;
+                }
+                if (isWater(grid.terrain(ni))) {
+                    continue;
+                }
+                out.componentId[static_cast<std::size_t>(ni)] = cid;
                 stack.push_back(ni);
             }
         }
-        compSize.push_back(size);
+        out.componentSize.push_back(size);
     }
-    std::vector<int32_t> out(static_cast<std::size_t>(total), 0);
-    for (int32_t i = 0; i < total; ++i) {
-        const int32_t cid = compId[static_cast<std::size_t>(i)];
+    return out;
+}
+
+std::vector<int32_t> computeLandmassSizes(const HexGrid& grid) {
+    const LandmassMap landmasses = computeLandmasses(grid);
+    std::vector<int32_t> out(landmasses.componentId.size(), 0);
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        const int32_t cid = landmasses.componentId[i];
         if (cid >= 0) {
-            out[static_cast<std::size_t>(i)] =
-                compSize[static_cast<std::size_t>(cid)];
+            out[i] = landmasses.componentSize[static_cast<std::size_t>(cid)];
         }
     }
     return out;

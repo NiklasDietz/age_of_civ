@@ -8,12 +8,12 @@ calls (no curl, no direct HTTP). Exercises all six mutation routes plus the
 screenshot route.
 
 Bootstrap deliberately selects a SMALL map with TWELVE players rather than
-accepting the defaults, because the attack route is otherwise untestable:
-with the default 2 players, both spawn on separate continents (measured 76-114
-hexes apart), no land path exists between them, so orderUnitMove() finds no
-path and every move is a silent no-op. Twelve players on a small map reliably
-puts several starts on a shared landmass within a few tiles. The small map
-also generates faster than Standard.
+accepting the defaults, because the attack route needs two starts within a
+few tiles of each other. (Before the shared start placement of 2026-09-04 the
+default 2 players could also land on separate continents, 76-114 hexes apart
+with no land path; that is fixed, but twelve players on a small map is still
+what puts rivals within reach.) The small map also generates faster than
+Standard.
 """
 
 import asyncio

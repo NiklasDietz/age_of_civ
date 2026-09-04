@@ -17,7 +17,7 @@
 
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
-#include "aoc/map/LandmassMetrics.hpp"
+#include "aoc/map/StartPlacement.hpp"
 #include "aoc/map/MapGenerator.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/core/Random.hpp"
@@ -391,9 +391,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     std::vector<aoc::sim::ai::AIController> aiControllers;
     aiControllers.reserve(static_cast<std::size_t>(playerCount));
 
-    // Track placed starting positions for minimum distance enforcement
+    // Starting positions, also fed to goody-hut placement below.
     std::vector<aoc::hex::AxialCoord> startPositions;
-    constexpr int32_t MIN_START_DISTANCE = 8;
 
     // Initialize GameState before the spawning loop so foundCity can populate it.
     aoc::game::GameState gameState;
@@ -417,74 +416,21 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         }
     }
 
-    // Minimum landmass size for a capital. Small islands survive the
-    // generator's softened purge (>= 4 tiles), but a start needs room
-    // for early expansion.
-    constexpr int32_t MIN_START_LANDMASS_TILES = 12;
-    const std::vector<int32_t> landmassSizes =
-        aoc::map::computeLandmassSizes(grid);
+    // Shared with the graphical game: largest landmass first, so a 2-player
+    // game always has a land path between the rivals.
+    const std::vector<aoc::hex::AxialCoord> chosenStarts =
+        aoc::map::chooseStartPositions(grid, playerCount, rng);
 
     // Spawn each AI player with a starting city and scout
     for (int32_t p = 0; p < playerCount; ++p) {
         aoc::PlayerId player = static_cast<aoc::PlayerId>(p);
 
-        // Score candidate tiles by food potential, rejecting bad starts
         aoc::hex::AxialCoord startPos{0, 0};
-        float bestScore = -1.0f;
-        for (int32_t attempts = 0; attempts < 2000; ++attempts) {
-            int32_t rx = rng.nextInt(5, mapConfig.width - 5);
-            int32_t ry = rng.nextInt(5, mapConfig.height - 5);
-            int32_t idx = ry * mapConfig.width + rx;
-            if (aoc::map::isWater(grid.terrain(idx))
-                || aoc::map::isImpassable(grid.terrain(idx))) {
-                continue;
-            }
-            if (landmassSizes[static_cast<std::size_t>(idx)]
-                    < MIN_START_LANDMASS_TILES) {
-                continue;
-            }
-            aoc::hex::AxialCoord candidate = aoc::hex::offsetToAxial({rx, ry});
-
-            bool tooClose = false;
-            for (const aoc::hex::AxialCoord& existing : startPositions) {
-                if (grid.distance(candidate, existing) < MIN_START_DISTANCE) {
-                    tooClose = true;
-                    break;
-                }
-            }
-            if (tooClose) { continue; }
-
-            float score = 0.0f;
-            aoc::map::TileYield centerYield = grid.tileYield(idx);
-            score += static_cast<float>(std::max(centerYield.food, static_cast<int8_t>(2))) * 2.0f;
-            score += static_cast<float>(centerYield.production);
-
-            std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(candidate);
-            int32_t landNeighbors = 0;
-            for (const aoc::hex::AxialCoord& nbr : nbrs) {
-                if (!grid.isValid(nbr)) { continue; }
-                int32_t nbrIdx = grid.toIndex(nbr);
-                if (aoc::map::isWater(grid.terrain(nbrIdx))
-                    || aoc::map::isImpassable(grid.terrain(nbrIdx))) {
-                    continue;
-                }
-                ++landNeighbors;
-                aoc::map::TileYield nbrYield = grid.tileYield(nbrIdx);
-                score += static_cast<float>(nbrYield.food) * 1.5f;
-                score += static_cast<float>(nbrYield.production);
-                if (grid.resource(nbrIdx).isValid()) {
-                    score += 3.0f;
-                }
-            }
-
-            if (landNeighbors < 3) { continue; }
-
-            if (score > bestScore) {
-                bestScore = score;
-                startPos = candidate;
-            }
+        if (p < static_cast<int32_t>(chosenStarts.size())) {
+            startPos = chosenStarts[static_cast<std::size_t>(p)];
+        } else {
+            LOG_WARN("HeadlessSimulation: no start for player %d (map has no land?)", p);
         }
-
         startPositions.push_back(startPos);
 
         // Found starting city (creates City in player's city list via GameState).

@@ -142,13 +142,13 @@ private:
     void handleEndTurn();
 
     /// Spawn initial units and cities for the human player.
-    void spawnStartingEntities(aoc::sim::CivId civId);
+    void spawnStartingEntities(aoc::sim::CivId civId, hex::AxialCoord start);
 
     /// Scatter resources on the generated map.
     void placeMapResources();
 
     /// Spawn starting entities for an AI player with specified civilization.
-    void spawnAIPlayer(PlayerId player, aoc::sim::CivId civId);
+    void spawnAIPlayer(PlayerId player, aoc::sim::CivId civId, hex::AxialCoord start);
 
     /// Find a valid land tile near a target for spawning.
     hex::AxialCoord findNearbyLandTile(hex::AxialCoord target) const;
