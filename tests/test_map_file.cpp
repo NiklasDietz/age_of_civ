@@ -13,8 +13,8 @@
 #include "aoc/map/HexGridLayers.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/save/MapFile.hpp"
+#include "GridLayerCompare.hpp"
 
-#include <any>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -55,39 +55,6 @@ aoc::map::HexGrid sampleGrid() {
     return grid;
 }
 
-/// Copies every layer by name so a second grid can be compared layer by layer.
-struct LayerSnapshot {
-    std::unordered_map<std::string, std::any> layers;
-
-    template <class Container> void operator()(std::string_view name, const Container& c) {
-        this->layers.emplace(std::string(name), c);
-    }
-};
-
-/// Counts layers that differ from a snapshot. A layer added to HexGrid later is
-/// covered without touching this test.
-struct LayerCompare {
-    const LayerSnapshot& reference;
-    int32_t seen       = 0;
-    int32_t mismatched = 0;
-    std::string firstMismatch;
-
-    template <class Container> void operator()(std::string_view name, const Container& c) {
-        ++this->seen;
-        const std::unordered_map<std::string, std::any>::const_iterator it =
-            this->reference.layers.find(std::string(name));
-        const Container* other = (it == this->reference.layers.end())
-                                     ? nullptr
-                                     : std::any_cast<Container>(&it->second);
-        if (other == nullptr || !(*other == c)) {
-            if (this->mismatched == 0) {
-                this->firstMismatch = std::string(name);
-            }
-            ++this->mismatched;
-        }
-    }
-};
-
 } // namespace
 
 TEST_CASE("every layer survives a save/load round trip") {
@@ -108,9 +75,9 @@ TEST_CASE("every layer survives a save/load round trip") {
     CHECK(loaded.terrain(0) == aoc::map::TerrainType::Grassland);
     CHECK(loaded.naturalWonder(5) == static_cast<aoc::map::NaturalWonderType>(1));
 
-    LayerSnapshot snapshot;
+    aoc::test::LayerSnapshot snapshot;
     original.visitLayers(snapshot);
-    LayerCompare compare{snapshot};
+    aoc::test::LayerCompare compare{snapshot};
     loaded.visitLayers(compare);
     CHECK(compare.seen > 150);
     CHECK_MESSAGE(compare.mismatched == 0, "first differing layer: " << compare.firstMismatch);

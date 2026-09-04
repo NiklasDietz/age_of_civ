@@ -3,8 +3,9 @@
  * @brief Full-fidelity HexGrid file (see MapFile.hpp).
  *
  * Layout: u32 magic "AOCM", u32 version, i32 width, i32 height, u8 topology,
- * u64 generator seed, u32 layer count, then per layer: string name, u8 element
- * kind, u32 element count, elements. Little-endian through WriteBuffer.
+ * u64 generator seed, then the writeGridLayers() block (u32 record count, per
+ * record: string name, u8 element kind, u32 element count, elements). The same
+ * block is the save format's SectionId::MapLayers. Little-endian via WriteBuffer.
  */
 
 #include "aoc/save/MapFile.hpp"
@@ -34,7 +35,7 @@ namespace {
 
 constexpr uint32_t MAP_FILE_MAGIC   = 0x4D434F41u; // "AOCM"
 constexpr uint32_t MAP_FILE_VERSION = 1;
-constexpr std::size_t HEADER_BYTES  = 4 + 4 + 4 + 4 + 1 + 8 + 4;
+constexpr std::size_t HEADER_BYTES  = 4 + 4 + 4 + 4 + 1 + 8;
 
 enum class LayerKind : uint8_t { U8 = 1, I8, U16, I16, I32, F32, PairF32, MapI32U16 };
 
@@ -218,12 +219,57 @@ struct LayerBinder {
 
 } // namespace
 
+void writeGridLayers(WriteBuffer& out, const aoc::map::HexGrid& grid) {
+    WriteBuffer records;
+    LayerWriter writer{records};
+    grid.visitLayers(writer);
+    out.writeU32(writer.layerCount);
+    out.writeBytes(records.data().data(), records.size());
+}
+
+ErrorCode readGridLayers(ReadBuffer& in, aoc::map::HexGrid& grid, const char* source) {
+    if (!in.hasRemaining(4)) {
+        LOG_ERROR("MapFile: '%s' ends before the layer count", source);
+        return ErrorCode::SaveCorrupted;
+    }
+    const uint32_t layerCount = in.readU32();
+    LayerBinder binder;
+    grid.visitLayers(binder);
+
+    uint32_t applied = 0;
+    uint32_t skipped = 0;
+    for (uint32_t i = 0; i < layerCount; ++i) {
+        const std::string name     = in.readString();
+        const LayerKind kind       = static_cast<LayerKind>(in.readU8());
+        const uint32_t count       = in.readU32();
+        const std::size_t perEntry = elementBytes(kind);
+        if (in.isCorrupt() || perEntry == 0 || !in.canReadRecords(count, perEntry)) {
+            LOG_ERROR("MapFile: layer '%s' (%u entries) exceeds '%s'", name.c_str(), count,
+                      source);
+            return ErrorCode::SaveCorrupted;
+        }
+        const std::unordered_map<std::string, LayerReader>::iterator reader =
+            binder.readers.find(name);
+        if (reader == binder.readers.end() || !reader->second(in, kind, count)) {
+            in.skip(static_cast<std::size_t>(count) * perEntry);
+            ++skipped;
+            continue;
+        }
+        ++applied;
+    }
+    if (in.isCorrupt()) {
+        LOG_ERROR("MapFile: '%s' ended inside a layer", source);
+        return ErrorCode::SaveCorrupted;
+    }
+    if (skipped > 0) {
+        LOG_WARN("MapFile: %u unknown or mismatched layers skipped in '%s'", skipped, source);
+    }
+    LOG_INFO("MapFile: %u layers read from '%s'", applied, source);
+    return ErrorCode::Ok;
+}
+
 ErrorCode saveMapFile(const std::string& filepath, const aoc::map::HexGrid& grid,
                       const MapFileInfo& info) {
-    WriteBuffer layers;
-    LayerWriter writer{layers};
-    grid.visitLayers(writer);
-
     WriteBuffer out;
     out.writeU32(MAP_FILE_MAGIC);
     out.writeU32(MAP_FILE_VERSION);
@@ -231,8 +277,7 @@ ErrorCode saveMapFile(const std::string& filepath, const aoc::map::HexGrid& grid
     out.writeI32(grid.height());
     out.writeU8(static_cast<uint8_t>(grid.topology()));
     out.writeU64(info.generatorSeed);
-    out.writeU32(writer.layerCount);
-    out.writeBytes(layers.data().data(), layers.size());
+    writeGridLayers(out, grid);
 
     const std::string tmpPath = filepath + ".tmp";
     {
@@ -255,8 +300,8 @@ ErrorCode saveMapFile(const std::string& filepath, const aoc::map::HexGrid& grid
         std::remove(tmpPath.c_str());
         return ErrorCode::SaveFailed;
     }
-    LOG_INFO("MapFile: wrote %dx%d, %u layers, %zu bytes to '%s'", grid.width(), grid.height(),
-             writer.layerCount, out.size(), filepath.c_str());
+    LOG_INFO("MapFile: wrote %dx%d, %zu bytes to '%s'", grid.width(), grid.height(), out.size(),
+             filepath.c_str());
     return ErrorCode::Ok;
 }
 
@@ -298,7 +343,6 @@ ErrorCode loadMapFile(const std::string& filepath, aoc::map::HexGrid& grid, MapF
     const int32_t height                 = in.readI32();
     const aoc::map::MapTopology topology = static_cast<aoc::map::MapTopology>(in.readU8());
     const uint64_t seed                  = in.readU64();
-    const uint32_t layerCount            = in.readU32();
     if (width <= 0 || height <= 0 || width > aoc::map::HexGrid::MAX_MAP_DIMENSION ||
         height > aoc::map::HexGrid::MAX_MAP_DIMENSION) {
         LOG_ERROR("MapFile: dimensions %dx%d outside (0, %d]", width, height,
@@ -308,45 +352,16 @@ ErrorCode loadMapFile(const std::string& filepath, aoc::map::HexGrid& grid, MapF
 
     aoc::map::HexGrid loaded;
     loaded.initialize(width, height, topology);
-    LayerBinder binder;
-    loaded.visitLayers(binder);
-
-    uint32_t applied = 0;
-    uint32_t skipped = 0;
-    for (uint32_t i = 0; i < layerCount; ++i) {
-        const std::string name     = in.readString();
-        const LayerKind kind       = static_cast<LayerKind>(in.readU8());
-        const uint32_t count       = in.readU32();
-        const std::size_t perEntry = elementBytes(kind);
-        if (in.isCorrupt() || perEntry == 0 || !in.canReadRecords(count, perEntry)) {
-            LOG_ERROR("MapFile: layer '%s' (%u entries) exceeds '%s'", name.c_str(), count,
-                      filepath.c_str());
-            return ErrorCode::SaveCorrupted;
-        }
-        const std::unordered_map<std::string, LayerReader>::iterator reader =
-            binder.readers.find(name);
-        if (reader == binder.readers.end() || !reader->second(in, kind, count)) {
-            in.skip(static_cast<std::size_t>(count) * perEntry);
-            ++skipped;
-            continue;
-        }
-        ++applied;
-    }
-    if (in.isCorrupt()) {
-        LOG_ERROR("MapFile: '%s' ended inside a layer", filepath.c_str());
-        return ErrorCode::SaveCorrupted;
-    }
-    if (skipped > 0) {
-        LOG_WARN("MapFile: %u unknown or mismatched layers skipped in '%s'", skipped,
-                 filepath.c_str());
+    const ErrorCode layers = readGridLayers(in, loaded, filepath.c_str());
+    if (layers != ErrorCode::Ok) {
+        return layers;
     }
 
     grid = std::move(loaded);
     if (info != nullptr) {
         info->generatorSeed = seed;
     }
-    LOG_INFO("MapFile: loaded %dx%d, %u layers from '%s'", width, height, applied,
-             filepath.c_str());
+    LOG_INFO("MapFile: loaded %dx%d from '%s'", width, height, filepath.c_str());
     return ErrorCode::Ok;
 }
 

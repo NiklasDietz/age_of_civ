@@ -19,8 +19,10 @@
  *   3. State in the commit message that every existing save becomes
  *      unloadable.
  *
- * Known gap: natural wonders are not serialized (the per-tile record is a
- * fixed 9 bytes); adding them is a version bump.
+ * v11 (2026-09-04): SectionId::MapLayers carries every HexGrid layer by name
+ * (MapFile.hpp), so natural wonders, soil, ore grades and the rest survive a
+ * load; TurnState carries the human player id. Saves grew by the layer dump
+ * (about 3.4 MB for a 140x90 map).
  */
 
 #include <cstdint>
@@ -28,6 +30,6 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 10;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 11;
 
 } // namespace aoc::save

@@ -86,6 +86,8 @@ enum class SectionId : uint16_t {
     // v8 sections ---------------------------------------------------------
     ConfederationState        = 0x0025, ///< Active multi-player confederations
     ElectricityAgreementState = 0x0026, ///< Bilateral electricity import contracts
+    // v11 sections --------------------------------------------------------
+    MapLayers = 0x0027, ///< Every HexGrid layer by name (MapFile.hpp); read after MapGrid
 };
 
 /// Low-level binary write buffer.

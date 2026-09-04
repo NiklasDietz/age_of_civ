@@ -8,6 +8,8 @@
  */
 
 #include "aoc/save/Serializer.hpp"
+
+#include "aoc/save/MapFile.hpp"
 #include "aoc/save/SaveVersioning.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/game/GameState.hpp"
@@ -413,10 +415,20 @@ void writeMapSection(WriteBuffer& out, const aoc::map::HexGrid& grid) {
     writeSection(out, SectionId::MapGrid, section);
 }
 
-void writeTurnSection(WriteBuffer& out, const aoc::sim::TurnManager& tm) {
+/// v11: MapGrid keeps the six core layers; this section, read after it,
+/// carries every HexGrid layer so a loaded map equals the generated one.
+void writeMapLayersSection(WriteBuffer& out, const aoc::map::HexGrid& grid) {
+    WriteBuffer section;
+    writeGridLayers(section, grid);
+    writeSection(out, SectionId::MapLayers, section);
+}
+
+void writeTurnSection(WriteBuffer& out, const aoc::sim::TurnManager& tm,
+                      PlayerId humanPlayerId) {
     WriteBuffer section;
     section.writeU32(tm.currentTurn());
     section.writeU8(static_cast<uint8_t>(tm.currentPhase()));
+    section.writeU8(humanPlayerId); // v11: the human seat, moved by a WP-H takeover
     writeSection(out, SectionId::TurnState, section);
 }
 
@@ -1487,7 +1499,8 @@ ErrorCode saveGame(const std::string& filepath, const aoc::game::GameState& game
 
     // Sections
     writeMapSection(buf, grid);
-    writeTurnSection(buf, turnManager);
+    writeMapLayersSection(buf, grid);
+    writeTurnSection(buf, turnManager, gameState.humanPlayerId());
     writeEntitySection(buf, gameState);
     writeRandomSection(buf, rng);
     writeImprovementsSection(buf, grid);
@@ -1678,6 +1691,8 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
     // Later sections (queues, districts, stockpiles, etc.) reference these by index.
     std::vector<aoc::game::City*> loadedCities;
     std::vector<aoc::game::Unit*> loadedUnits;
+    // v11 human seat; applied after every section so the player it names exists.
+    PlayerId savedHumanPlayer = INVALID_PLAYER;
 
     // Read sections (skip unknown ones). A corrupt read never advances the
     // buffer offset, so the loop must also stop on isCorrupt() or a
@@ -1728,6 +1743,20 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
             uint8_t phase    = buf.readU8();
             turnManager.setTurnNumber(turnNum);
             turnManager.setPhase(static_cast<aoc::sim::TurnPhase>(phase));
+            savedHumanPlayer = buf.readU8();
+            break;
+        }
+        case SectionId::MapLayers: {
+            const std::size_t before     = buf.remaining();
+            const ErrorCode layersResult = readGridLayers(buf, grid, filepath.c_str());
+            if (layersResult != ErrorCode::Ok) {
+                return layersResult;
+            }
+            if (before - buf.remaining() != sectionSize) {
+                LOG_ERROR("Serializer: MapLayers section size %u does not match its records",
+                          sectionSize);
+                return ErrorCode::SaveCorrupted;
+            }
             break;
         }
         case SectionId::Entities: {
@@ -2953,6 +2982,10 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
     if (buf.isCorrupt()) {
         LOG_ERROR("Serializer: read underflow while loading '%s'", filepath.c_str());
         return ErrorCode::SaveCorrupted;
+    }
+
+    if (savedHumanPlayer != INVALID_PLAYER && gameState.player(savedHumanPlayer) != nullptr) {
+        gameState.setHumanPlayerId(savedHumanPlayer);
     }
 
     LOG_INFO("Game loaded from %s", filepath.c_str());

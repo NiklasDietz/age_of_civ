@@ -25,6 +25,7 @@
 #include "aoc/map/FogOfWar.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/save/Serializer.hpp"
+#include "GridLayerCompare.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/simulation/turn/TurnManager.hpp"
@@ -55,8 +56,16 @@ void buildWorld(World& w) {
     for (int32_t i = 0; i < w.grid.tileCount(); i += 3) {
         w.grid.setTerrain(i, aoc::map::TerrainType::Grassland);
     }
+    // v11: layers outside the six-field MapGrid section must survive too.
+    w.grid.setNaturalWonder(17, static_cast<aoc::map::NaturalWonderType>(2));
+    w.grid.setRowLatitudes(std::vector<float>(16, 12.5f));
+    std::vector<float> fertility(static_cast<std::size_t>(w.grid.tileCount()), 0.4f);
+    fertility[17] = 0.95f;
+    w.grid.setSoilFertility(std::move(fertility));
+    w.grid.setCropSuitability(2, std::vector<uint8_t>(static_cast<std::size_t>(w.grid.tileCount()), 9));
 
     w.gameState.initialize(3);
+    w.gameState.setHumanPlayerId(aoc::PlayerId{2}); // v11: a takeover moved the seat
     w.diplomacy.initialize(3);
     w.economy.initialize();
     w.turnManager.setPlayerCount(0, 3);
@@ -143,6 +152,18 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(lp0.warWeariness().turnsAtWar.at(2) == 12);
     CHECK(loaded.grid.width() == 24);
     CHECK(loaded.grid.height() == 16);
+    // v11: the human seat and every grid layer.
+    CHECK(loaded.gameState.humanPlayerId() == aoc::PlayerId{2});
+    CHECK(loaded.gameState.players()[2]->isHuman());
+    CHECK_FALSE(loaded.gameState.players()[0]->isHuman());
+    CHECK(loaded.grid.naturalWonder(17) == static_cast<aoc::map::NaturalWonderType>(2));
+    aoc::test::LayerSnapshot layers;
+    original.grid.visitLayers(layers);
+    aoc::test::LayerCompare layerCompare{layers};
+    loaded.grid.visitLayers(layerCompare);
+    CHECK(layerCompare.seen > 150);
+    CHECK_MESSAGE(layerCompare.mismatched == 0,
+                  "first grid layer lost by save/load: " << layerCompare.firstMismatch);
 
     // Resave the loaded state: byte-identical to the first save.
     REQUIRE(aoc::save::saveGame(fileB, loaded.gameState, loaded.grid,
