@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "vx": {
+      "args": [
+        "serve",
+        "--repo",
+        "/home/ndietz/Repositories/private/home/games/age_of_civ"
+      ],
+      "command": "/home/ndietz/.local/bin/vx"
+    }
+  }
+}
