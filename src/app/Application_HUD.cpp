@@ -13,6 +13,7 @@
  */
 
 #include "aoc/app/Application.hpp"
+#include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "ApplicationHelpers.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -1147,6 +1148,21 @@ void Application::rebuildUnitActionPanel() {
             }
             selectedUnitPtr->setState(aoc::sim::UnitState::Fortified);
             LOG_INFO("Unit fortified (+25%% defense)");
+        });
+    }
+
+    // -- Activate button (Great Person) --
+    if (selectedUnitPtr->typeId() == aoc::UnitTypeId{102}) {
+        makeActionBtn("Activate", {0.55f, 0.45f, 0.15f, 0.9f}, [this, selectedUnitPtr]() {
+            if (selectedUnitPtr == nullptr) {
+                return;
+            }
+            const ErrorCode result = aoc::sim::requestGreatPersonActivation(
+                this->m_gameState, this->m_hexGrid, selectedUnitPtr->owner(),
+                selectedUnitPtr->position());
+            if (result == ErrorCode::Ok) {
+                this->m_selectedUnit = nullptr;  // the unit was removed
+            }
         });
     }
 

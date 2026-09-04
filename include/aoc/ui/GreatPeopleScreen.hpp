@@ -23,7 +23,8 @@ namespace aoc::ui {
 class GreatPeopleScreen final : public ScreenBase {
 public:
     /// All pointers are non-owning and must outlive the open screen.
-    void setContext(aoc::game::GameState* gameState, const aoc::map::HexGrid* grid,
+    /// The grid is mutable because activation can claim tiles (Artist).
+    void setContext(aoc::game::GameState* gameState, aoc::map::HexGrid* grid,
                     PlayerId humanPlayer);
 
     void open(UIManager& ui) override;
@@ -41,7 +42,7 @@ private:
     [[nodiscard]] uint64_t stateFingerprint() const;
 
     aoc::game::GameState*    m_gameState        = nullptr;
-    const aoc::map::HexGrid* m_grid             = nullptr;
+    aoc::map::HexGrid*       m_grid             = nullptr;
     PlayerId                 m_player           = INVALID_PLAYER;
     WidgetId                 m_summaryLabel     = INVALID_WIDGET;
     WidgetId                 m_list             = INVALID_WIDGET;

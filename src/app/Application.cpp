@@ -1212,6 +1212,37 @@ ErrorCode Application::initialize(const Config& config) {
             return std::string("{\"queued\":true}");
         });
 
+    // POST /game/greatperson/activate?player=&q=&r=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/greatperson/activate",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t posQ   = 0;
+            int32_t posR   = 0;
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "q", posQ, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "r", posR, err)) {
+                return err;
+            }
+            aoc::debug::ActivateGreatPersonCommand cmd{};
+            cmd.player = static_cast<aoc::PlayerId>(player);
+            cmd.at     = aoc::hex::AxialCoord{posQ, posR};
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
     // POST /game/research?player=&techId=
     this->m_debugServer->routeJson(
         DSM::Post, "/game/research",
@@ -1400,6 +1431,7 @@ ErrorCode Application::initialize(const Config& config) {
                 "production?player=&q=&r=&type=&itemId=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/research?player=&techId=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/spy/mission?player=&q=&r=&mission=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/greatperson/activate?player=&q=&r=\"},"
                 "{\"method\":\"GET\",\"path\":\"/ui/tree\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click?widgetId=N\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click-at?x=&y=\"},"
@@ -2335,6 +2367,18 @@ void Application::executeGameControlCommand(const aoc::debug::AssignSpyMissionCo
                  static_cast<int>(cmd.mission), static_cast<unsigned>(cmd.player), cmd.at.q,
                  cmd.at.r, static_cast<int>(describeError(result).size()),
                  describeError(result).data());
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::ActivateGreatPersonCommand& cmd) {
+    const ErrorCode result = aoc::sim::requestGreatPersonActivation(
+        this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
+    if (result != ErrorCode::Ok) {
+        LOG_WARN("Great Person activation for player %u at (%d,%d) rejected: %.*s",
+                 static_cast<unsigned>(cmd.player), cmd.at.q, cmd.at.r,
+                 static_cast<int>(describeError(result).size()), describeError(result).data());
+    } else if (this->m_selectedUnit != nullptr && this->m_selectedUnit->position() == cmd.at) {
+        this->m_selectedUnit = nullptr;  // the unit was removed by the activation
     }
 }
 
@@ -6064,15 +6108,15 @@ void Application::handleContextAction() {
     }
     aoc::game::Unit& unit = *this->m_selectedUnit;
 
-    // Activate Great Person on right-click at their own tile
-    {
-        aoc::sim::GreatPersonComponent& gp = unit.greatPerson();
-        if (gp.position == targetTile && !gp.isActivated &&
-            gp.defId < aoc::sim::GREAT_PERSON_COUNT) {
-            aoc::sim::activateGreatPerson(this->m_gameState, this->m_hexGrid, unit);
-            this->m_selectedUnit = nullptr;
-            return;
+    // Activate a Great Person on right-click at its own tile. The shared request
+    // validates and refreshes the recorded position, so a moved person can act.
+    if (unit.typeId() == aoc::UnitTypeId{102} && unit.position() == targetTile) {
+        const ErrorCode result = aoc::sim::requestGreatPersonActivation(
+            this->m_gameState, this->m_hexGrid, unit.owner(), targetTile);
+        if (result == ErrorCode::Ok) {
+            this->m_selectedUnit = nullptr;  // the unit was removed
         }
+        return;
     }
 
     // Religious unit actions: right-click on a city

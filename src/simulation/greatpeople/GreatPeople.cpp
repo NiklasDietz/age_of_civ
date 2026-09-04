@@ -249,6 +249,23 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
 // Activation
 // ============================================================================
 
+ErrorCode requestGreatPersonActivation(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
+                                       PlayerId owner, hex::AxialCoord unitAt) {
+    aoc::game::Player* player = gameState.player(owner);
+    if (player == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+    aoc::game::Unit* unit = player->unitAt(unitAt);
+    if (unit == nullptr || unit->typeId() != UnitTypeId{102}
+        || unit->greatPerson().owner != owner || unit->greatPerson().isActivated) {
+        return ErrorCode::InvalidUnitAction;
+    }
+    // The person acts where it stands, not where it appeared.
+    unit->greatPerson().position = unit->position();
+    activateGreatPerson(gameState, grid, *unit);
+    return ErrorCode::Ok;
+}
+
 void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                           aoc::game::Unit& gpUnit) {
     GreatPersonComponent& gp = gpUnit.greatPerson();

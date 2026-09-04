@@ -23,10 +23,12 @@
 using aoc::PlayerId;
 using aoc::sim::DistrictType;
 using aoc::sim::GreatPersonType;
+using aoc::ui::ButtonData;
 using aoc::ui::GreatPeopleScreen;
 using aoc::ui::LabelData;
 using aoc::ui::UIManager;
 using aoc::ui::Widget;
+using aoc::ui::WidgetId;
 
 namespace {
 
@@ -62,6 +64,19 @@ struct Fixture {
             if (w.id != aoc::ui::INVALID_WIDGET) { ++n; }
         }
         return n;
+    }
+
+    /// Click the first button whose label contains `needle`; false when none.
+    bool clickButton(const std::string& needle) {
+        for (const Widget& w : this->ui.widgets()) {
+            if (w.id == aoc::ui::INVALID_WIDGET) { continue; }
+            const ButtonData* btn = std::get_if<ButtonData>(&w.data);
+            if (btn != nullptr && btn->label.find(needle) != std::string::npos) {
+                const WidgetId id = w.id;
+                return this->ui.clickWidget(id);
+            }
+        }
+        return false;
     }
 
     [[nodiscard]] int32_t labelsContaining(const std::string& needle) const {
@@ -132,4 +147,21 @@ TEST_CASE("close removes every widget") {
     f.screen.close(f.ui);
     CHECK_FALSE(f.screen.isOpen());
     CHECK(f.liveWidgets() == before);
+}
+
+TEST_CASE("the Activate button consumes the person through the shared request") {
+    Fixture f;
+    aoc::game::Player& p = *f.world.gameState.players()[0];
+    p.greatPeople().points[static_cast<uint8_t>(GreatPersonType::Scientist)] =
+        p.greatPeople().threshold(GreatPersonType::Scientist) + 1.0f;
+    aoc::sim::checkGreatPeopleRecruitment(f.world.gameState, PlayerId{0});
+    f.screen.open(f.ui);
+    CHECK(f.labelsContaining("Waiting to act: 1") == 1);
+
+    REQUIRE(f.clickButton("Activate "));
+    CHECK(p.unitCount() == 0);            // consumed
+    f.screen.refresh(f.ui);               // fingerprint changed: rows rebuilt
+    CHECK(f.labelsContaining("Waiting to act: 0") == 1);
+    CHECK(f.labelsContaining("recruited 1 of 12") == 1);
+    CHECK(f.labelsContaining("None yet.") == 1);
 }

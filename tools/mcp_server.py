@@ -251,6 +251,15 @@ def aoc_assign_spy_mission(player: int, q: int, r: int, mission: int) -> dict:
 
 
 @mcp.tool()
+def aoc_activate_great_person(player: int, q: int, r: int) -> dict:
+    """Activate the Great Person unit owned by `player` standing at hex (q, r), where it
+    stands. Queues the request; a unit that is not an unused Great Person is rejected in the
+    game log. The unit is consumed on success.
+    """
+    return _post("/game/greatperson/activate", player=player, q=q, r=r)
+
+
+@mcp.tool()
 def aoc_set_production(player: int, q: int, r: int, item_type: str, item_id: int) -> dict:
     """Queue a production item onto the city owned by `player` at hex (q, r).
 

@@ -60,8 +60,15 @@ struct AssignSpyMissionCommand {
     aoc::sim::SpyMission mission;
 };
 
+/// Activate the Great Person unit standing at `at`.
+struct ActivateGreatPersonCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+};
+
 using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, FoundCityCommand,
                                         SetProductionCommand, SetResearchCommand,
-                                        AssignSpyMissionCommand, EndTurnCommand>;
+                                        AssignSpyMissionCommand, ActivateGreatPersonCommand,
+                                        EndTurnCommand>;
 
 } // namespace aoc::debug

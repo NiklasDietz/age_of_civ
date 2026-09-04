@@ -13,6 +13,7 @@
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/greatpeople/GreatPeopleExpanded.hpp"
+#include "aoc/core/Log.hpp"
 
 #include <array>
 #include <cmath>
@@ -91,7 +92,7 @@ void mixHash(uint64_t& hash, uint64_t value) {
 
 } // namespace
 
-void GreatPeopleScreen::setContext(aoc::game::GameState* gameState, const aoc::map::HexGrid* grid,
+void GreatPeopleScreen::setContext(aoc::game::GameState* gameState, aoc::map::HexGrid* grid,
                                    PlayerId humanPlayer) {
     this->m_gameState = gameState;
     this->m_grid      = grid;
@@ -233,6 +234,33 @@ void GreatPeopleScreen::addRecruitedRows(UIManager& ui, const aoc::game::Player&
             does += "unknown";
         }
         this->addLine(ui, std::move(does), true);
+        if (!gp.isActivated && this->m_grid != nullptr) {
+            // Same request as the unit panel, the right-click and the debug route;
+            // the fingerprint sees the unit disappear and rebuilds the rows.
+            ButtonData btn;
+            btn.label        = "Activate " + std::string(named.name);
+            btn.fontSize     = 11.0f;
+            btn.normalColor  = tokens::BRONZE_BASE;
+            btn.hoverColor   = tokens::BRONZE_LIGHT;
+            btn.pressedColor = tokens::STATE_PRESSED;
+            btn.labelColor   = tokens::TEXT_GILT;
+            btn.cornerRadius = tokens::CORNER_BUTTON;
+            aoc::game::GameState* gs        = this->m_gameState;
+            aoc::map::HexGrid* grid         = this->m_grid;
+            const PlayerId owner            = this->m_player;
+            const aoc::hex::AxialCoord tile = unit->position();
+            btn.onClick                     = [gs, grid, owner, tile]() {
+                const ErrorCode result =
+                    aoc::sim::requestGreatPersonActivation(*gs, *grid, owner, tile);
+                if (result != ErrorCode::Ok) {
+                    LOG_WARN("Great People screen: activation at (%d,%d) rejected: %.*s", tile.q,
+                             tile.r, static_cast<int>(describeError(result).size()),
+                             describeError(result).data());
+                }
+            };
+            static_cast<void>(
+                ui.createButton(this->m_list, {0.0f, 0.0f, ROW_W - 12.0f, 22.0f}, std::move(btn)));
+        }
         ++shown;
     }
     if (shown == 0) {

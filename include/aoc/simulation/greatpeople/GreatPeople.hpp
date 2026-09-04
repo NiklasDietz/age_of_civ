@@ -4,6 +4,7 @@
 /// @brief Great Person types, definitions, point accumulation, and activation.
 
 #include "aoc/core/Types.hpp"
+#include "aoc/core/ErrorCodes.hpp"
 #include "aoc/map/HexCoord.hpp"
 
 #include <array>
@@ -94,8 +95,18 @@ void accumulateGreatPeoplePoints(aoc::game::GameState& gameState, PlayerId playe
 /// Check if any GP thresholds are met and recruit. Called each turn.
 void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId player);
 
-/// Activate a Great Person's one-time ability.
+/// Activate a Great Person's one-time ability. Checks nothing beyond
+/// `isActivated`; callers go through `requestGreatPersonActivation`.
 void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                           aoc::game::Unit& gpUnit);
+
+/// Validate and activate the Great Person `owner` has standing on `unitAt`, where it
+/// stands (its recorded position is refreshed first, so a moved person can act).
+/// The one action behind the screen button, the unit panel, the right-click and the
+/// debug route. @return Ok; InvalidArgument (unknown player); InvalidUnitAction (no
+/// unit there, not a Great Person, or already used).
+[[nodiscard]] ErrorCode requestGreatPersonActivation(aoc::game::GameState& gameState,
+                                                     aoc::map::HexGrid& grid, PlayerId owner,
+                                                     hex::AxialCoord unitAt);
 
 } // namespace aoc::sim
