@@ -2488,52 +2488,19 @@ void Application::applyNewHexGridFixups(int32_t timeMy) {
     // sets every tile visible against the freshly sized fog.
     this->m_fogOfWar.initialize(this->m_hexGrid.tileCount(), aoc::MAX_PLAYERS);
 
-    // Update camera world width and minZoom for the new dimensions.
-    // Without this the camera retains the previous map's world bounds
-    // and zoom floor, so larger grids appear cropped (only the original
-    // map's tile area is visible) even though the minimap shows the full
-    // new map.
+    // Refit the camera to the new dimensions (world bounds + zoom floor), but
+    // only recentre when the camera now sits outside the map: scrubbing
+    // through epochs must not snap the view away from the region being
+    // watched.
+    this->fitCameraToGrid();
     {
-        constexpr float SQRT3 = 1.7320508075688772f;
-        const float hexSize   = this->m_gameRenderer.mapRenderer().hexSize();
-        const float worldH    = static_cast<float>(this->m_hexGrid.height()) * 1.5f * hexSize;
-        this->m_cameraController.setWorldHeight(worldH);
-        if (this->m_hexGrid.topology() == aoc::map::MapTopology::Cylindrical) {
-            const float worldWidth = static_cast<float>(this->m_hexGrid.width()) * SQRT3 * hexSize;
-            this->m_cameraController.setWorldWidth(worldWidth);
-        } else {
-            this->m_cameraController.setWorldWidth(0.0f);
-        }
-    }
-    {
-        constexpr float SQRT3 = 1.7320508075688772f;
-        const float hexSize   = this->m_gameRenderer.mapRenderer().hexSize();
-        const float mapWWorld = static_cast<float>(this->m_hexGrid.width()) * SQRT3 * hexSize;
-        const float mapHWorld = static_cast<float>(this->m_hexGrid.height()) * 1.5f * hexSize;
-        const std::pair<uint32_t, uint32_t> fb = this->m_window.framebufferSize();
-        const float fbW                        = static_cast<float>(fb.first);
-        const float fbH                        = static_cast<float>(fb.second);
-        if (mapWWorld > 0.0f && mapHWorld > 0.0f && fbW > 0.0f && fbH > 0.0f) {
-            const float fitZoom            = std::min(fbW / mapWWorld, fbH / mapHWorld) * 0.95f;
-            constexpr float MIN_HEX_PIXELS = 6.0f;
-            const float pxFloor            = MIN_HEX_PIXELS / hexSize;
-            const float minZoom            = std::max(fitZoom, pxFloor);
-            this->m_cameraController.setMinZoom(minZoom);
-            // Only re-fit + re-centre if the camera is currently
-            // OUTSIDE the new map bounds. Scrubbing through epochs
-            // shouldn't snap the view back to the centre — the user
-            // is probably looking at a specific region and wants to
-            // watch it evolve in place.
-            const float cx          = this->m_cameraController.cameraX();
-            const float cy          = this->m_cameraController.cameraY();
-            const bool outOfBoundsX = cx < 0.0f || cx > mapWWorld;
-            const bool outOfBoundsY = cy < 0.0f || cy > mapHWorld;
-            if (this->m_cameraController.zoom() < minZoom) {
-                this->m_cameraController.setZoom(minZoom);
-            }
-            if (outOfBoundsX || outOfBoundsY) {
-                this->m_cameraController.setPosition(mapWWorld * 0.5f, mapHWorld * 0.5f);
-            }
+        const std::pair<float, float> mapWorld = this->mapWorldSize();
+        const float cx                         = this->m_cameraController.cameraX();
+        const float cy                         = this->m_cameraController.cameraY();
+        const bool outOfBounds =
+            cx < 0.0f || cx > mapWorld.first || cy < 0.0f || cy > mapWorld.second;
+        if (mapWorld.first > 0.0f && mapWorld.second > 0.0f && outOfBounds) {
+            this->m_cameraController.setPosition(mapWorld.first * 0.5f, mapWorld.second * 0.5f);
         }
     }
 
@@ -3822,11 +3789,18 @@ void Application::recoverAfterLoad() {
              this->m_aiControllers.size(), this->m_spectatorMode ? "yes" : "no");
 }
 
-void Application::fitCameraToGrid() {
+std::pair<float, float> Application::mapWorldSize() {
     constexpr float SQRT3 = 1.7320508075688772f;
     const float hexSize   = this->m_gameRenderer.mapRenderer().hexSize();
-    const float mapWWorld = static_cast<float>(this->m_hexGrid.width()) * SQRT3 * hexSize;
-    const float mapHWorld = static_cast<float>(this->m_hexGrid.height()) * 1.5f * hexSize;
+    return {static_cast<float>(this->m_hexGrid.width()) * SQRT3 * hexSize,
+            static_cast<float>(this->m_hexGrid.height()) * 1.5f * hexSize};
+}
+
+void Application::fitCameraToGrid() {
+    const std::pair<float, float> mapWorld = this->mapWorldSize();
+    const float hexSize                    = this->m_gameRenderer.mapRenderer().hexSize();
+    const float mapWWorld                  = mapWorld.first;
+    const float mapHWorld                  = mapWorld.second;
 
     // World bounds: height clamps vertical pan; width enables cylindrical wrap.
     // Without them the camera can pan off into infinite empty space.

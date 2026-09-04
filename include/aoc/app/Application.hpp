@@ -66,6 +66,7 @@
 #include <mutex>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 
 namespace vulkan_app {
 class GraphicsDevice;
@@ -843,6 +844,9 @@ private:
 
     /// Set camera world bounds and the fit-to-screen zoom floor for the current grid.
     void fitCameraToGrid();
+
+    /// Map extent in world units (width, height) at the renderer's hex size.
+    [[nodiscard]] std::pair<float, float> mapWorldSize();
 
     /// Replace the main menu with the save-slot picker.
     void showLoadGameMenu(float screenW, float screenH);
