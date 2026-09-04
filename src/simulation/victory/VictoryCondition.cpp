@@ -993,42 +993,4 @@ void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexG
     }
 }
 
-/**
- * @brief Backwards-compatible overload: minimal scoring without full CSI.
- *
- * Used when economy data is unavailable (e.g., early-game or test contexts).
- * Updates tech progress, culture accumulation, and a basic composite score.
- */
-void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid) {
-    for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
-        VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
-
-        // Techs: count completed bits
-        {
-            int32_t count = 0;
-            for (std::size_t bit = 0; bit < gsPlayer->tech().completedTechs.size(); ++bit) {
-                if (gsPlayer->tech().completedTechs[bit]) { ++count; }
-            }
-            tracker.scienceProgress = count;
-        }
-
-        // Culture
-        tracker.totalCultureAccumulated +=
-            computePlayerCulture(gameState, grid, gsPlayer->id());
-
-        // Basic score: population + science + cities + culture.
-        // Only currently-owned cities feed pop/score; otherwise a player
-        // keeps banking pop from cities they no longer control.
-        int32_t pop = 0;
-        for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
-            if (city == nullptr) { continue; }
-            if (city->owner() != gsPlayer->id()) { continue; }
-            pop += city->population();
-        }
-        const int32_t cityCount = gsPlayer->ownedCityCount();
-        tracker.score = pop * 5 + tracker.scienceProgress * 10 + cityCount * 20
-                      + static_cast<int32_t>(tracker.totalCultureAccumulated);
-    }
-}
-
 } // namespace aoc::sim

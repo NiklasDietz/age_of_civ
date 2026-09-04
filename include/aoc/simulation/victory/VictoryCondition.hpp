@@ -246,7 +246,4 @@ void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexG
                            const EconomySimulation& economy, TurnNumber currentTurn,
                            const DiplomacyManager* diplomacy = nullptr);
 
-/// Backwards-compatible overload (no economy param -- uses limited scoring).
-void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid);
-
 } // namespace aoc::sim
