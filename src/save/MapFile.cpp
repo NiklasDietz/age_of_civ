@@ -136,6 +136,8 @@ std::string indexedName(std::string_view name, std::size_t index) {
 struct LayerWriter {
     WriteBuffer& out;
     uint32_t layerCount = 0;
+    uint64_t m_totalBytes = 0;
+    std::vector<std::pair<std::string, uint64_t>> m_tally;
 
     template <class T> void operator()(std::string_view name, const std::vector<T>& values) {
         this->out.writeString(name);
@@ -144,6 +146,9 @@ struct LayerWriter {
         for (const T& value : values) {
             writeElement(this->out, value);
         }
+        const uint64_t lb = static_cast<uint64_t>(elementBytes(kindOf<T>())) * values.size();
+        this->m_tally.push_back({std::string(name), lb});
+        this->m_totalBytes += lb;
         ++this->layerCount;
     }
 
@@ -164,6 +169,9 @@ struct LayerWriter {
             this->out.writeI32(entry.first);
             this->out.writeU16(entry.second);
         }
+        const uint64_t lb = static_cast<uint64_t>(6) * sorted.size();
+        this->m_tally.push_back({std::string(name), lb});
+        this->m_totalBytes += lb;
         ++this->layerCount;
     }
 };
@@ -225,6 +233,17 @@ void writeGridLayers(WriteBuffer& out, const aoc::map::HexGrid& grid) {
     grid.visitLayers(writer);
     out.writeU32(writer.layerCount);
     out.writeBytes(records.data().data(), records.size());
+    // Per-layer byte tally (debug builds only; LOG_DEBUG compiled out under NDEBUG)
+    std::sort(writer.m_tally.begin(), writer.m_tally.end(),
+              [](const std::pair<std::string, uint64_t>& a,
+                 const std::pair<std::string, uint64_t>& b) { return a.second > b.second; });
+    for (const std::pair<std::string, uint64_t>& entry : writer.m_tally) {
+        LOG_DEBUG("[MapFile] layer %-40s %7llu KB", entry.first.c_str(),
+                  static_cast<unsigned long long>(entry.second / 1024));
+    }
+    LOG_INFO("[MapFile] writeGridLayers: %zu records, total payload %.1f MB",
+             static_cast<std::size_t>(writer.m_tally.size()),
+             static_cast<double>(writer.m_totalBytes) / (1024.0 * 1024.0));
 }
 
 ErrorCode readGridLayers(ReadBuffer& in, aoc::map::HexGrid& grid, const char* source) {
