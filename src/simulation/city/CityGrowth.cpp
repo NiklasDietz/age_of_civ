@@ -239,7 +239,8 @@ static void processSingleCityGrowth(aoc::game::City& city,
                                      const aoc::map::HexGrid& grid,
                                      bool hasFeudalismCivic,
                                      float cityHappiness,
-                                     float climateFoodMult) {
+                                     float climateFoodMult,
+                                     const GovernmentModifiers& gov) {
     // Deficit-triggered reassignment. Workers locked on resource tiles at
     // founding (silver/copper/mountain metal bonuses) stay there even after
     // pop growth outstrips food supply, producing chronic starvation yo-yos
@@ -293,9 +294,8 @@ static void processSingleCityGrowth(aoc::game::City& city,
         }
     }
 
-    // Government growth multiplier (policy cards).
+    // Government growth multiplier (policy cards; computed once per player by the caller).
     {
-        GovernmentModifiers gov = computeGovernmentModifiers(player.government());
         if (surplus > 0.0f) {
             surplus *= gov.growthMultiplier;
         }
@@ -575,13 +575,15 @@ void processCityGrowth(aoc::game::Player& player, const aoc::map::HexGrid& grid,
                        float climateFoodMult) {
     // Check if player has researched Feudalism civic (CivicId{6}) for farm adjacency bonus
     bool hasFeudalismCivic = player.civics().hasCompleted(CivicId{6});
+    // Per player, not per city: this used to be recomputed inside the loop.
+    const GovernmentModifiers gov = computeGovernmentModifiers(player.government());
 
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         // Happiness for celebration growth: read from CityHappinessComponent (synced from ECS).
         // Uses previous turn's happiness since happiness is computed after growth.
         float cityHappiness = city->happiness().happiness;
         processSingleCityGrowth(*city, player, grid, hasFeudalismCivic,
-                                cityHappiness, climateFoodMult);
+                                cityHappiness, climateFoodMult, gov);
     }
 }
 

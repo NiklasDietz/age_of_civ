@@ -119,7 +119,8 @@ static bool cityIsPowered(const aoc::game::Player& player,
 static float computeCityProductionGS(const aoc::game::Player& player,
                                       const aoc::game::City& city,
                                       const aoc::map::HexGrid& grid,
-                                      const aoc::game::GameState& gameState) {
+                                      const aoc::game::GameState& gameState,
+                                      const GovernmentModifiers& govMods) {
     // Sum production from worked tiles
     float totalProduction = 0.0f;
     const CivilizationDef& civSpec = civDef(player.civId());
@@ -191,8 +192,7 @@ static float computeCityProductionGS(const aoc::game::Player& player,
     // Loyalty yield penalty
     totalProduction *= city.loyalty().yieldMultiplier();
 
-    // Government production multiplier
-    GovernmentModifiers govMods = computeGovernmentModifiers(player.government());
+    // Government production multiplier (computed once per player by the caller).
     totalProduction *= govMods.productionMultiplier;
 
     // Civilization production multiplier
@@ -268,11 +268,13 @@ void processProductionQueues(aoc::game::GameState& gameState,
     aoc::game::Player* gsPlayer = gameState.player(player);
     if (gsPlayer == nullptr) { return; }
 
+    // The government modifiers are per player; they used to be recomputed per city.
+    const GovernmentModifiers govMods = computeGovernmentModifiers(gsPlayer->government());
     for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
         ProductionQueueComponent& queue = city->production();
         if (queue.isEmpty()) { continue; }
 
-        float production = computeCityProductionGS(*gsPlayer, *city, grid, gameState);
+        float production = computeCityProductionGS(*gsPlayer, *city, grid, gameState, govMods);
 
         // A7 unit-class wonder boosts:
         //   - Statue of Liberty (20): +50% Settler production, empire-wide.
