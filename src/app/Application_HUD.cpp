@@ -52,6 +52,7 @@
 #include <cstdio>
 #include <string>
 #include <utility>
+#include "aoc/simulation/unit/CombatExtensions.hpp"
 
 namespace aoc::app {
 
@@ -720,7 +721,10 @@ void Application::updateHUD() {
     std::string selText;
     if (this->m_selectedUnit != nullptr) {
         const aoc::sim::UnitTypeDef& def = this->m_selectedUnit->typeDef();
+        const std::string_view formation =
+            aoc::sim::formationLabel(def.unitClass, this->m_selectedUnit->formationLevel());
         selText = std::string(def.name) +
+                  (formation.empty() ? std::string() : " [" + std::string(formation) + "]") +
                   " HP:" + std::to_string(this->m_selectedUnit->hitPoints()) +
                   " MP:" + std::to_string(this->m_selectedUnit->movementRemaining());
     } else if (this->m_selectedCity != nullptr) {

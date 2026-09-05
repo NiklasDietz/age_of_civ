@@ -12,7 +12,8 @@ format.
   `saveGame()` / `loadGame()`: free functions that write/read the entire game. Format:
   `[Header: magic "AOC\0" + version(4) + flags(4) + dataSize(4)]` followed by
   self-describing sections (`sectionId(2) + sectionSize(4) + data`). Current version:
-  `CURRENT_SAVE_VERSION = 14` (v14: a `GreatWorks` section with each city's housed works
+  `CURRENT_SAVE_VERSION = 15` (v15: the unit record carries the formation level, so a
+  Corps or Fleet survives a load; v14: a `GreatWorks` section with each city's housed works
   and a 17th game layer, the sparse `antiquitySite` map; v13: the `Entities` unit record
   carries `AirUnitComponent`, so sorties and the patrol flag survive a load; v12:
   `MapLayers` carries only the game-state grid layers, see `MapFile.hpp` `isGameGridLayer`;

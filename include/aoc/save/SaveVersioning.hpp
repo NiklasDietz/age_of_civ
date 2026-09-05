@@ -37,6 +37,9 @@
  * v14 (2026-09-05): a GreatWorks section (per-city housed works: type, creator,
  * named person, turn) and a 17th game layer, the sparse antiquitySite map.
  * Tourism now counts placed works instead of empty slots.
+ *
+ * v15 (2026-09-05): the Entities unit record carries the FormationLevel (Corps /
+ * Army, Fleet / Armada) after the air state; a load reset every formation before.
  */
 
 #include <cstdint>
@@ -44,6 +47,6 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 14;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 15;
 
 } // namespace aoc::save

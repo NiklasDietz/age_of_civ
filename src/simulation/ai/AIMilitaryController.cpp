@@ -365,6 +365,34 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
             continue;
         }
 
+        // --- Priority 0: form a Corps / Army with an adjacent Single twin when no
+        // enemy is within two tiles (the merged unit is the action of this turn) ---
+        if (gsPlayer->civics().hasCompleted(aoc::sim::FORMATION_CORPS_CIVIC)
+            && unit->formationLevel() != aoc::sim::FormationLevel::Army) {
+            bool enemyNear = false;
+            for (const EnemyUnitSnapshot& enemy : enemySnapshots) {
+                if (grid.distance(unit->position(), enemy.position) <= 2) {
+                    enemyNear = true;
+                    break;
+                }
+            }
+            bool merged = false;
+            for (const aoc::hex::AxialCoord& nbr : neighborTiles) {
+                if (enemyNear || !grid.isValid(nbr)) { break; }
+                const aoc::game::Unit* twin = gsPlayer->unitAt(nbr);
+                if (twin == nullptr || twin->typeId() != unit->typeId()
+                    || twin->formationLevel() != aoc::sim::FormationLevel::Single) {
+                    continue;
+                }
+                if (aoc::sim::requestMergeUnits(gameState, this->m_player, unit->position(), nbr)
+                    == ErrorCode::Ok) {
+                    merged = true;
+                    break;
+                }
+            }
+            if (merged) { continue; }
+        }
+
         // --- Priority 1: Ranged attack within range ---
         if (def.rangedStrength > 0 && def.range > 0) {
             const EnemyUnitSnapshot* bestTarget    = nullptr;

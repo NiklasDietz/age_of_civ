@@ -287,6 +287,17 @@ def aoc_congress_propose(player: int, resolution: int, target: int = 255) -> dic
 
 
 @mcp.tool()
+def aoc_merge_units(player: int, q: int, r: int, source_q: int, source_r: int) -> dict:
+    """Merge the unit owned by `player` at (source_q, source_r) into its same-type unit on the
+    adjacent tile (q, r): a single unit becomes a Corps (Fleet for ships) once the Nationalism
+    civic is complete, a Corps becomes an Army (Armada) once Mobilization is; +15% / +25%
+    strength. The source unit is consumed. Queues the request; a rejection (different type,
+    not adjacent, missing civic, already an Army) is logged in the game log.
+    """
+    return _post("/game/unit/merge", player=player, q=q, r=r, sourceQ=source_q, sourceR=source_r)
+
+
+@mcp.tool()
 def aoc_set_production(player: int, q: int, r: int, item_type: str, item_id: int) -> dict:
     """Queue a production item onto the city owned by `player` at hex (q, r).
 

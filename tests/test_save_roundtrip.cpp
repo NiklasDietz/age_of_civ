@@ -134,6 +134,7 @@ void buildWorld(World& w) {
     veteran.experience().experience = 40;   // experience records ride in MiscEntities
     veteran.experience().level      = 1;
     veteran.experience().promotions = {aoc::PromotionId{0}};
+    veteran.setFormationLevel(aoc::sim::FormationLevel::Corps);   // v15
     // v13: air state rides on the unit record.
     aoc::game::Unit& fighter          = p0.addUnit(aoc::UnitTypeId{18}, {7, 5});
     fighter.airUnit().sortiesRemaining = 0;
@@ -200,6 +201,7 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(lVeteran->experience().level == 1);
     REQUIRE(lVeteran->experience().promotions.size() == 1);
     CHECK(lVeteran->experience().promotions[0] == aoc::PromotionId{0});
+    CHECK(lVeteran->formationLevel() == aoc::sim::FormationLevel::Corps);   // v15
     CHECK(lAlpha.stockpile().goods.at(42) == 10);
     CHECK(lAlpha.stockpile().goods.at(199) == 25);
     CHECK(lAlpha.stockpile().exportBuffer.at(2) == 6);

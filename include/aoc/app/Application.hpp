@@ -636,6 +636,7 @@ private:
     void executeGameControlCommand(const aoc::debug::ActivateGreatPersonCommand& cmd);
     void executeGameControlCommand(const aoc::debug::CongressVoteCommand& cmd);
     void executeGameControlCommand(const aoc::debug::CongressProposalCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::MergeUnitsCommand& cmd);
 
     /// UI-control commands (widget clicks/scrolls) queued by debug-server
     /// HTTP handlers. Deliberately a SEPARATE queue from

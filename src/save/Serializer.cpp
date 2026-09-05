@@ -479,6 +479,7 @@ void writeEntitySection(WriteBuffer& out, const aoc::game::GameState& gameState)
             section.writeI32(air.maxSorties);
             section.writeI32(air.operationalRange);
             section.writeU8(air.isIntercepting ? uint8_t{1} : uint8_t{0});
+            section.writeU8(static_cast<uint8_t>(unit->formationLevel()));   // v15
         }
     }
 
@@ -1849,6 +1850,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 int32_t maxSorties;
                 int32_t range;
                 bool    intercepting;
+                uint8_t formation;   // v15
             };
             std::vector<UnitData> unitDataList;
             unitDataList.reserve(unitCount);
@@ -1878,6 +1880,12 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 ud.maxSorties   = buf.readI32();
                 ud.range        = buf.readI32();
                 ud.intercepting = buf.readU8() != 0;
+                ud.formation    = buf.readU8();   // v15
+                if (ud.formation > static_cast<uint8_t>(aoc::sim::FormationLevel::Army)) {
+                    LOG_ERROR("Serializer: formation level %u out of range",
+                              static_cast<unsigned>(ud.formation));
+                    return ErrorCode::SaveCorrupted;
+                }
                 if (ud.owner > maxOwner) {
                     maxOwner = ud.owner;
                 }
@@ -1985,6 +1993,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 unit.airUnit().maxSorties       = ud.maxSorties;
                 unit.airUnit().operationalRange = ud.range;
                 unit.airUnit().isIntercepting   = ud.intercepting;
+                unit.setFormationLevel(static_cast<aoc::sim::FormationLevel>(ud.formation));
                 loadedUnits.push_back(&unit);
             }
             break;

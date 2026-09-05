@@ -31,8 +31,10 @@
 #include "aoc/core/Types.hpp"
 #include "aoc/core/ErrorCodes.hpp"
 #include "aoc/map/HexCoord.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
 
 #include <cstdint>
+#include <string_view>
 
 namespace aoc::game { class GameState; class Unit; }
 namespace aoc::map { class HexGrid; }
@@ -92,6 +94,34 @@ struct UnitFormationComponent {
 [[nodiscard]] ErrorCode formArmy(aoc::game::GameState& gameState,
                                   aoc::game::Unit& corpsUnit,
                                   aoc::game::Unit& sourceUnit);
+
+/// Civics that unlock formations: Corps / Fleet at Nationalism, Army / Armada at
+/// Mobilization. formCorps / formArmy are gate-free primitives; requestMergeUnits
+/// applies these gates for every caller (right-click, debug route, MCP, AI).
+inline constexpr CivicId FORMATION_CORPS_CIVIC{11};
+inline constexpr CivicId FORMATION_ARMY_CIVIC{37};
+
+/// Empty for a single unit, else Corps / Army, or Fleet / Armada for naval classes.
+[[nodiscard]] constexpr std::string_view formationLabel(UnitClass unitClass,
+                                                        FormationLevel level) {
+    const bool naval = isNaval(unitClass);
+    switch (level) {
+        case FormationLevel::Corps: return naval ? "Fleet" : "Corps";
+        case FormationLevel::Army:  return naval ? "Armada" : "Army";
+        default:                    return "";
+    }
+}
+
+/// Merge the unit `player` owns at `sourceAt` into the one it owns at `at`: a
+/// Single target becomes a Corps / Fleet (needs Nationalism), a Corps / Fleet an
+/// Army / Armada (needs Mobilization). The source must be a Single unit of the same
+/// type on an adjacent tile; it is consumed. InvalidArgument for an unknown seat,
+/// missing units, a different type or a non-adjacent tile; InvalidUnitAction for a
+/// non-military target, a source that is not Single, or a target already at Army;
+/// InvalidState when the civic is missing. Until 2026-09-05 nothing called the
+/// primitives, so no formation was ever formed.
+[[nodiscard]] ErrorCode requestMergeUnits(aoc::game::GameState& gameState, PlayerId player,
+                                          hex::AxialCoord at, hex::AxialCoord sourceAt);
 
 // ============================================================================
 // Nuclear Weapons

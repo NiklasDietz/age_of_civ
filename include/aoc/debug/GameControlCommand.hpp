@@ -67,6 +67,13 @@ struct ActivateGreatPersonCommand {
     aoc::hex::AxialCoord at;
 };
 
+/// Merge the unit at `sourceAt` into the same-type unit at `at` (Corps / Army, Fleet / Armada).
+struct MergeUnitsCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+    aoc::hex::AxialCoord sourceAt;
+};
+
 /// Replace `player`'s vote on the open World Congress proposal.
 struct CongressVoteCommand {
     aoc::PlayerId player;
@@ -84,6 +91,6 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         SetProductionCommand, SetResearchCommand,
                                         AssignSpyMissionCommand, ActivateGreatPersonCommand,
                                         CongressVoteCommand, CongressProposalCommand,
-                                        EndTurnCommand>;
+                                        MergeUnitsCommand, EndTurnCommand>;
 
 } // namespace aoc::debug

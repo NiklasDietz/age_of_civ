@@ -338,4 +338,38 @@ void resetAirSorties(aoc::game::GameState& gameState, PlayerId player) {
     }
 }
 
+ErrorCode requestMergeUnits(aoc::game::GameState& gameState, PlayerId player,
+                            hex::AxialCoord at, hex::AxialCoord sourceAt) {
+    aoc::game::Player* owner = gameState.player(player);
+    if (owner == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+    aoc::game::Unit* target = owner->unitAt(at);
+    aoc::game::Unit* source = owner->unitAt(sourceAt);
+    if (target == nullptr || source == nullptr || target == source) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (target->typeId() != source->typeId()
+        || hex::distance(target->position(), source->position()) != 1) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (!target->isMilitary() || source->formationLevel() != FormationLevel::Single) {
+        return ErrorCode::InvalidUnitAction;
+    }
+    switch (target->formationLevel()) {
+        case FormationLevel::Single:
+            if (!owner->civics().hasCompleted(FORMATION_CORPS_CIVIC)) {
+                return ErrorCode::InvalidState;
+            }
+            return formCorps(gameState, *target, *source);
+        case FormationLevel::Corps:   // == Fleet
+            if (!owner->civics().hasCompleted(FORMATION_ARMY_CIVIC)) {
+                return ErrorCode::InvalidState;
+            }
+            return formArmy(gameState, *target, *source);
+        default:
+            return ErrorCode::InvalidUnitAction;   // already an Army / Armada
+    }
+}
+
 } // namespace aoc::sim

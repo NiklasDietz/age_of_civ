@@ -92,6 +92,7 @@
 // getNextCityName is defined in TurnProcessor.cpp
 
 #include "ApplicationHelpers.hpp"
+#include "aoc/simulation/unit/CombatExtensions.hpp"
 
 namespace aoc::app {
 
@@ -1310,6 +1311,46 @@ ErrorCode Application::initialize(const Config& config) {
             return std::string("{\"queued\":true}");
         });
 
+    // POST /game/unit/merge?player=&q=&r=&sourceQ=&sourceR=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/unit/merge",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t posQ   = 0;
+            int32_t posR   = 0;
+            int32_t srcQ   = 0;
+            int32_t srcR   = 0;
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "q", posQ, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "r", posR, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "sourceQ", srcQ, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "sourceR", srcR, err)) {
+                return err;
+            }
+            aoc::debug::MergeUnitsCommand cmd{};
+            cmd.player   = static_cast<aoc::PlayerId>(player);
+            cmd.at       = aoc::hex::AxialCoord{posQ, posR};
+            cmd.sourceAt = aoc::hex::AxialCoord{srcQ, srcR};
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
     // POST /game/research?player=&techId=
     this->m_debugServer->routeJson(
         DSM::Post, "/game/research",
@@ -1501,6 +1542,7 @@ ErrorCode Application::initialize(const Config& config) {
                 "{\"method\":\"POST\",\"path\":\"/game/greatperson/activate?player=&q=&r=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/congress/vote?player=&weight=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/congress/propose?player=&resolution=&target=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/unit/merge?player=&q=&r=&sourceQ=&sourceR=\"},"
                 "{\"method\":\"GET\",\"path\":\"/ui/tree\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click?widgetId=N\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click-at?x=&y=\"},"
@@ -2466,6 +2508,27 @@ void Application::executeGameControlCommand(const aoc::debug::CongressProposalCo
                  static_cast<int>(cmd.resolution), static_cast<unsigned>(cmd.player),
                  static_cast<int>(cmd.target),
                  static_cast<int>(describeError(result).size()), describeError(result).data());
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::MergeUnitsCommand& cmd) {
+    // The source unit is consumed on success; a selection pointing at it moves to
+    // the target instead of dangling.
+    const bool selectionWasSource = this->m_selectedUnit != nullptr &&
+                                    this->m_selectedUnit->owner() == cmd.player &&
+                                    this->m_selectedUnit->position() == cmd.sourceAt;
+    const ErrorCode result = aoc::sim::requestMergeUnits(this->m_gameState, cmd.player, cmd.at,
+                                                         cmd.sourceAt);
+    if (result != ErrorCode::Ok) {
+        LOG_WARN("Merge by player %u of (%d,%d) into (%d,%d) rejected: %.*s",
+                 static_cast<unsigned>(cmd.player), cmd.sourceAt.q, cmd.sourceAt.r, cmd.at.q,
+                 cmd.at.r, static_cast<int>(describeError(result).size()),
+                 describeError(result).data());
+        return;
+    }
+    if (selectionWasSource) {
+        aoc::game::Player* owner = this->m_gameState.player(cmd.player);
+        this->m_selectedUnit     = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
     }
 }
 
@@ -6267,6 +6330,28 @@ void Application::handleContextAction() {
     }
 
     const aoc::sim::UnitTypeDef& def = unit.typeDef();
+
+    // Form a Corps / Army (Fleet / Armada): a military unit right-clicking an
+    // adjacent own unit of the same type merges into it. Same request as the debug
+    // route; the civic gates and the reach live in the sim.
+    if (unit.isMilitary() && targetTile != unit.position()) {
+        aoc::game::Player* owner = this->m_gameState.player(unit.owner());
+        aoc::game::Unit* twin    = owner != nullptr ? owner->unitAt(targetTile) : nullptr;
+        if (twin != nullptr && twin->typeId() == unit.typeId()) {
+            const PlayerId ownerId = unit.owner();
+            const ErrorCode result = aoc::sim::requestMergeUnits(this->m_gameState, ownerId,
+                                                                 targetTile, unit.position());
+            if (result != ErrorCode::Ok) {
+                this->m_notificationManager.push(
+                    "Cannot form a formation: " + std::string(describeError(result)), 2.0f, 1.0f,
+                    0.3f, 0.3f);
+                return;
+            }
+            this->m_selectedUnit = owner->unitAt(targetTile);   // the selected unit was consumed
+            this->rebuildUnitActionPanel();
+            return;
+        }
+    }
 
     // Attack: a military unit right-clicking a tile another seat's unit holds.
     // Same request as the debug route; reach and the melee / ranged / bombing
