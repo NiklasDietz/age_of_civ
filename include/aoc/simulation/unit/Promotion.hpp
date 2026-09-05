@@ -6,6 +6,8 @@
  */
 
 #include "aoc/core/Types.hpp"
+#include "aoc/map/HexCoord.hpp"
+#include "aoc/core/ErrorCodes.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 
 #include <array>
@@ -199,7 +201,7 @@ struct PromotionWeights {
 } // namespace aoc::sim
 
 // Forward-declared game types for the promotion processor (implemented in .cpp).
-namespace aoc::game { class Player; }
+namespace aoc::game { class GameState; class Player; }
 
 namespace aoc::sim {
 
@@ -209,6 +211,19 @@ namespace aoc::sim {
  * For AI players: auto-select and apply the best promotion.
  * For human players: skip (UI prompts for choice).
  */
+/// AI units take the scored pick as soon as they can promote. Human units
+/// keep the promotion pending: the unit panel (or the route / MCP tool) picks
+/// one through requestPromotion. Until 2026-09-05 the human's units were
+/// auto-promoted like the AI's (Civ VI plan Phase 2.6).
 void processUnitPromotions(aoc::game::Player& player, bool isHuman);
+
+/// Apply `promotion` to the unit of `player` on `at`: it must be able to
+/// promote and the promotion must be in availablePromotions for its class.
+/// Promoting is the unit's action for the turn (movement 0).
+[[nodiscard]] ErrorCode requestPromotion(aoc::game::GameState& gameState, PlayerId player,
+                                         hex::AxialCoord at, PromotionId promotion);
+
+/// Human units that can promote right now (for the turn-start notification).
+[[nodiscard]] int32_t unitsAwaitingPromotion(const aoc::game::Player& player);
 
 } // namespace aoc::sim

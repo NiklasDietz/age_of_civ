@@ -13,11 +13,14 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/unit/Promotion.hpp"
+#include "aoc/core/ErrorCodes.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 
 #include <algorithm>
 
+using aoc::ErrorCode;
 using aoc::PlayerId;
+using aoc::hex::AxialCoord;
 using aoc::PromotionId;
 using aoc::sim::availablePromotions;
 using aoc::sim::PROMOTION_DEFS;
@@ -100,7 +103,7 @@ TEST_CASE("the scored pick is deterministic and class-shaped") {
           doctest::Approx(0.5f * 10 + 10.0f * 0.05f));
 }
 
-TEST_CASE("processUnitPromotions promotes human and AI units alike and consumes the XP") {
+TEST_CASE("the AI auto-promotes; a human unit waits for requestPromotion and consumes the XP") {
     aoc::test::World w            = aoc::test::makeWorld(2);
     aoc::game::Unit& human        = aoc::test::addUnitAt(w, PlayerId{0}, WARRIOR, 5, 5);
     aoc::game::Unit& ai           = aoc::test::addUnitAt(w, PlayerId{1}, ARCHER, 10, 5);
@@ -109,22 +112,30 @@ TEST_CASE("processUnitPromotions promotes human and AI units alike and consumes 
 
     aoc::sim::processUnitPromotions(*w.gameState.player(PlayerId{0}), true);
     aoc::sim::processUnitPromotions(*w.gameState.player(PlayerId{1}), false);
-    REQUIRE(human.experience().promotions.size() == 1);
-    CHECK(human.experience().promotions[0] == PromotionId{5});
-    CHECK(human.experience().level == 1);
-    CHECK(human.experience().experience == 5); // 20 - 15
+    CHECK(human.experience().promotions.empty());   // pending, the human chooses
+    CHECK(aoc::sim::unitsAwaitingPromotion(*w.gameState.player(PlayerId{0})) == 1);
     REQUIRE(ai.experience().promotions.size() == 1);
     CHECK(ai.experience().level == 1);
 
-    // Not enough XP for the next level: nothing happens.
-    aoc::sim::processUnitPromotions(*w.gameState.player(PlayerId{0}), true);
+    // A promotion outside the offer (tier two before its root) is refused; a root is taken.
+    CHECK(aoc::sim::requestPromotion(w.gameState, PlayerId{0}, AxialCoord{5, 5}, PromotionId{6})
+          == ErrorCode::InvalidUnitAction);
+    CHECK(aoc::sim::requestPromotion(w.gameState, PlayerId{0}, AxialCoord{5, 5}, PromotionId{0})
+          == ErrorCode::Ok);
+    REQUIRE(human.experience().promotions.size() == 1);
+    CHECK(human.experience().promotions[0] == PromotionId{0});
     CHECK(human.experience().level == 1);
+    CHECK(human.experience().experience == 5); // 20 - 15
+    CHECK(human.movementRemaining() == 0);     // promoting is the turn's action
+    CHECK(aoc::sim::unitsAwaitingPromotion(*w.gameState.player(PlayerId{0})) == 0);
+    CHECK(aoc::sim::requestPromotion(w.gameState, PlayerId{0}, AxialCoord{5, 5}, PromotionId{1})
+          == ErrorCode::InvalidState);         // no XP for the next level
 
-    // Six levels exhaust the table for a class with nothing left: no crash, no loop.
-    human.experience().experience = 100000;
+    // Six levels exhaust the AI's table for a class with nothing left: no crash, no loop.
+    ai.experience().experience = 100000;
     for (int32_t i = 0; i < 8; ++i) {
-        aoc::sim::processUnitPromotions(*w.gameState.player(PlayerId{0}), true);
+        aoc::sim::processUnitPromotions(*w.gameState.player(PlayerId{1}), false);
     }
-    CHECK(human.experience().level == 6);
-    CHECK(human.experience().promotions.size() == 6);
+    CHECK(ai.experience().level == 6);
+    CHECK(ai.experience().promotions.size() == 6);
 }

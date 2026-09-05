@@ -33,6 +33,7 @@
 #include "aoc/simulation/map/Improvement.hpp"
 #include "aoc/simulation/unit/BuilderActions.hpp"
 #include "aoc/simulation/unit/UnitOrders.hpp"
+#include "aoc/simulation/unit/Promotion.hpp"
 #include "aoc/simulation/turn/TurnProcessor.hpp"
 #include "aoc/save/Serializer.hpp"
 
@@ -1080,12 +1081,17 @@ void Application::rebuildUnitActionPanel() {
     const bool canRepairHere = unitTileIdx >= 0 && def.unitClass == aoc::sim::UnitClass::Civilian
         && this->m_hexGrid.owner(unitTileIdx) == unit.owner() && this->m_hexGrid.isPillaged(unitTileIdx);
 
+    const std::vector<aoc::PromotionId> promotionChoices = unit.experience().canPromote()
+        ? aoc::sim::availablePromotions(unit.experience(), def.unitClass)
+        : std::vector<aoc::PromotionId>{};
+
     // Count buttons to size the panel
     int32_t buttonCount = 3; // Skip + Sleep + Delete always
     if (aoc::sim::isMilitary(def.unitClass)) {
         buttonCount += 2; // Fortify + Alert
         if (canPillageHere) { ++buttonCount; }
     }
+    buttonCount += static_cast<int32_t>(promotionChoices.size());
     if (canRepairHere) { ++buttonCount; }
     if (def.unitClass == aoc::sim::UnitClass::Scout) {
         ++buttonCount; // Auto-Explore
@@ -1302,6 +1308,23 @@ void Application::rebuildUnitActionPanel() {
                     aoc::sim::checkEurekaConditions(*eurekaP, aoc::sim::EurekaCondition::FoundCity);
                 }
             }
+        });
+    }
+
+    // -- Promotion choice: one button per promotion the unit may take (Civ VI) --
+    for (aoc::PromotionId choice : promotionChoices) {
+        const aoc::sim::PromotionDef& pdef = aoc::sim::PROMOTION_DEFS[choice.value];
+        makeActionBtn("Promote: " + std::string(pdef.name), {0.45f, 0.35f, 0.12f, 0.9f},
+                      [this, selectedUnitPtr, choice]() {
+            if (selectedUnitPtr == nullptr) { return; }
+            const ErrorCode rc = aoc::sim::requestPromotion(this->m_gameState, selectedUnitPtr->owner(),
+                                                            selectedUnitPtr->position(), choice);
+            if (rc != ErrorCode::Ok) {
+                LOG_WARN("Promotion refused: %.*s", static_cast<int>(describeError(rc).size()),
+                         describeError(rc).data());
+                return;
+            }
+            this->rebuildUnitActionPanel();
         });
     }
 

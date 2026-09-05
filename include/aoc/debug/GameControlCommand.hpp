@@ -179,6 +179,13 @@ struct SetAlertCommand {
     bool alert;
 };
 
+/// Give the unit on `at` the promotion it has earned.
+struct PromoteUnitCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+    aoc::PromotionId promotion;
+};
+
 /// Merge the unit at `sourceAt` into the same-type unit at `at` (Corps / Army, Fleet / Armada).
 struct MergeUnitsCommand {
     aoc::PlayerId player;
@@ -210,6 +217,7 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         RemoveQueueItemCommand, QueueProjectCommand,
                                         PlaceImprovementCommand, BuilderChopCommand,
                                         BuilderHarvestCommand, PillageCommand, RepairCommand,
-                                        DeleteUnitCommand, SetAlertCommand, EndTurnCommand>;
+                                        DeleteUnitCommand, SetAlertCommand, PromoteUnitCommand,
+                                        EndTurnCommand>;
 
 } // namespace aoc::debug

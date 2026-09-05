@@ -14,6 +14,7 @@
 #include "aoc/simulation/city/CityActions.hpp"
 #include "aoc/simulation/unit/BuilderActions.hpp"
 #include "aoc/simulation/unit/UnitOrders.hpp"
+#include "aoc/simulation/unit/Promotion.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
 
@@ -321,6 +322,28 @@ void Application::registerUnitOrderRoutes() {
     simpleRoute("/game/unit/delete", [](aoc::PlayerId player, aoc::hex::AxialCoord at) {
         return aoc::debug::GameControlCommand{aoc::debug::DeleteUnitCommand{player, at}};
     });
+    // POST /game/unit/promote?player=&q=&r=&promotion=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/unit/promote",
+        [this, readUnit, queued](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player    = 0;
+            int32_t promotion = 0;
+            aoc::hex::AxialCoord at{};
+            std::string err;
+            if (!readUnit(q, player, at, err) || !readIntParam(q, "promotion", promotion, err)) {
+                return err;
+            }
+            if (promotion < 0 || promotion >= static_cast<int32_t>(aoc::sim::PROMOTION_DEFS.size())) {
+                return std::string("{\"error\":\"promotion out of range\"}");
+            }
+            return queued(aoc::debug::PromoteUnitCommand{
+                static_cast<aoc::PlayerId>(player), at,
+                aoc::PromotionId{static_cast<uint8_t>(promotion)}});
+        });
+
     // POST /game/unit/alert?player=&q=&r=&on=
     this->m_debugServer->routeJson(
         DSM::Post, "/game/unit/alert",
@@ -464,6 +487,13 @@ void Application::executeGameControlCommand(const aoc::debug::SetAlertCommand& c
     const ErrorCode rc = aoc::sim::requestSetAlert(this->m_gameState, cmd.player, cmd.at, cmd.alert);
     if (rc != ErrorCode::Ok) {
         warnRejected("Alert", cmd.player, cmd.at, rc);
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::PromoteUnitCommand& cmd) {
+    const ErrorCode rc = aoc::sim::requestPromotion(this->m_gameState, cmd.player, cmd.at, cmd.promotion);
+    if (rc != ErrorCode::Ok) {
+        warnRejected("Promotion", cmd.player, cmd.at, rc);
     }
 }
 

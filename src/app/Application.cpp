@@ -37,6 +37,7 @@
 #include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/simulation/tech/EraProgression.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
+#include "aoc/simulation/unit/Promotion.hpp"
 #include "aoc/simulation/unit/AttackRequest.hpp"
 #include "aoc/simulation/unit/Naval.hpp"
 #include "aoc/simulation/city/CityGrowth.hpp"
@@ -1712,6 +1713,7 @@ ErrorCode Application::initialize(const Config& config) {
                 "{\"method\":\"POST\",\"path\":\"/game/unit/pillage?player=&q=&r=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/unit/delete?player=&q=&r=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/unit/alert?player=&q=&r=&on=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/unit/promote?player=&q=&r=&promotion=\"},"
                 "{\"method\":\"GET\",\"path\":\"/ui/tree\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click?widgetId=N\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click-at?x=&y=\"},"
@@ -6985,6 +6987,13 @@ void Application::handleEndTurn() {
                 this->m_techScreen.setGrid(&this->m_hexGrid);
                 this->m_techScreen.open(this->m_uiManager);
             }
+        }
+
+        // Units waiting for the human to pick a promotion (they no longer auto-promote).
+        if (const int32_t pending = aoc::sim::unitsAwaitingPromotion(*humanPost); pending > 0) {
+            this->m_notificationManager.push(std::to_string(pending)
+                                                 + (pending == 1 ? " unit can be promoted" : " units can be promoted"),
+                                             4.0f, 0.9f, 0.75f, 0.3f);
         }
 
         // Civic completion notification

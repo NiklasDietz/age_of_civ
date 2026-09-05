@@ -659,6 +659,7 @@ private:
     void executeGameControlCommand(const aoc::debug::RepairCommand& cmd);
     void executeGameControlCommand(const aoc::debug::DeleteUnitCommand& cmd);
     void executeGameControlCommand(const aoc::debug::SetAlertCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::PromoteUnitCommand& cmd);
 
     /// The five `/game/city/*` routes (Application_CityControl.cpp).
     void registerCityControlRoutes();

@@ -448,6 +448,17 @@ def aoc_set_alert(player: int, q: int, r: int, on: bool = True) -> dict:
 
 
 @mcp.tool()
+def aoc_promote_unit(player: int, q: int, r: int, promotion: int) -> dict:
+    """Give the unit on (q, r) promotion `promotion` (0 Battlecry, 1 Tortoise, 2 Commando,
+    3 Medic, 4 Blitz, 5 Elite, 6 Zweihander, 7 Camouflage, 8 Depredation, 9 Survivalism,
+    10 Ambush, 11 Legendary; class lines and prerequisites apply). The unit must have the XP
+    for its next level; human units wait for this choice instead of auto-promoting. Promoting
+    ends the unit's movement. Queues the request.
+    """
+    return _post("/game/unit/promote", player=player, q=q, r=r, promotion=promotion)
+
+
+@mcp.tool()
 def aoc_set_production(player: int, q: int, r: int, item_type: str, item_id: int) -> dict:
     """Queue a production item onto the city owned by `player` at hex (q, r).
 
