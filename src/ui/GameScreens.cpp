@@ -1455,7 +1455,7 @@ void GovernmentScreen::open(UIManager& ui) {
         const aoc::sim::GovernmentDef& govSlots = aoc::sim::governmentDef(playerGov->government);
         const uint8_t availableSlots =
             static_cast<uint8_t>(govSlots.militarySlots + govSlots.economicSlots +
-                                 govSlots.diplomaticSlots + govSlots.wildcardSlots);
+                                 govSlots.diplomaticSlots + aoc::sim::wildcardSlotCount(*playerGov));
         for (uint8_t slot = 0; slot < availableSlots; ++slot) {
             std::string policyText;
             if (playerGov->activePolicies[slot] != aoc::sim::EMPTY_POLICY_SLOT) {

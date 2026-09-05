@@ -12,6 +12,7 @@
 #include "aoc/core/Types.hpp"
 #include "aoc/core/ErrorCodes.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 
@@ -53,6 +54,11 @@ struct PlayerGovernmentComponent {
     /// Player-enabled auto-policy manager: fill empty slots with best unlocked policies
     /// each turn using flat utility scoring. Ignored during anarchy.
     bool autoPolicies = false;
+
+    /// Wildcard slots granted by buildings (Government Plaza). Derived every turn
+    /// by processGovernment from the player's cities, so it is not saved; after a
+    /// load it is back at the next turn. Read through wildcardSlotCount().
+    uint8_t bonusWildcardSlots = 0;
 
     /// Check if a government type has been unlocked.
     [[nodiscard]] bool isGovernmentUnlocked(GovernmentType type) const {
@@ -102,6 +108,16 @@ struct PlayerGovernmentComponent {
  * @param player  Player whose modifiers to compute.
  * @return Combined GovernmentModifiers.
  */
+/// The wildcard policy slots the player actually has: the government's own plus
+/// the building bonus, never pushing the total past MAX_POLICY_SLOTS.
+[[nodiscard]] inline uint8_t wildcardSlotCount(const PlayerGovernmentComponent& gov) {
+    const GovernmentDef& gdef = governmentDef(gov.government);
+    const int32_t fixed = gdef.militarySlots + gdef.economicSlots + gdef.diplomaticSlots;
+    const int32_t room  = static_cast<int32_t>(MAX_POLICY_SLOTS) - fixed;
+    const int32_t want  = gdef.wildcardSlots + gov.bonusWildcardSlots;
+    return static_cast<uint8_t>(std::clamp(want, 0, std::max(0, room)));
+}
+
 [[nodiscard]] GovernmentModifiers computeGovernmentModifiers(
     const aoc::game::GameState& gameState, PlayerId player);
 

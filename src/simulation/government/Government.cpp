@@ -9,6 +9,7 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
+#include "aoc/simulation/city/District.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/core/Log.hpp"
 
@@ -33,7 +34,7 @@ GovernmentModifiers computeGovernmentModifiers(
     // player advances to a government with enough slots.
     const uint8_t availableSlots = std::min<uint8_t>(MAX_POLICY_SLOTS,
         static_cast<uint8_t>(gdef.militarySlots + gdef.economicSlots
-                              + gdef.diplomaticSlots + gdef.wildcardSlots));
+                              + gdef.diplomaticSlots + wildcardSlotCount(gov)));
     for (uint8_t slot = 0; slot < availableSlots; ++slot) {
         const int8_t policyId = gov.activePolicies[slot];
         if (policyId == EMPTY_POLICY_SLOT || policyId < 0) {
@@ -182,6 +183,17 @@ ErrorCode executeGovernmentAction(aoc::game::GameState& gameState, PlayerId play
 void processGovernment(aoc::game::Player& player) {
     PlayerGovernmentComponent& gov = player.government();
 
+    // Building-granted wildcard slots, re-derived from the cities every turn.
+    uint8_t bonus = 0;
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        for (const CityDistrictsComponent::PlacedDistrict& d : city->districts().districts) {
+            for (const BuildingId bid : d.buildings) {
+                bonus = static_cast<uint8_t>(bonus + buildingWildcardSlots(bid));
+            }
+        }
+    }
+    gov.bonusWildcardSlots = std::min<uint8_t>(bonus, 1);   // one Plaza per empire counts
+
     // Tick anarchy
     if (gov.anarchyTurnsRemaining > 0) {
         --gov.anarchyTurnsRemaining;
@@ -223,7 +235,8 @@ void equipBestPolicies(PlayerGovernmentComponent& gov) {
     for (uint8_t s = 0; s < gdef.diplomaticSlots && idx < MAX_POLICY_SLOTS; ++s, ++idx) {
         slots[slotCount++] = {idx, PolicySlotType::Diplomatic};
     }
-    for (uint8_t s = 0; s < gdef.wildcardSlots   && idx < MAX_POLICY_SLOTS; ++s, ++idx) {
+    const uint8_t wildcards = wildcardSlotCount(gov);
+    for (uint8_t s = 0; s < wildcards && idx < MAX_POLICY_SLOTS; ++s, ++idx) {
         slots[slotCount++] = {idx, PolicySlotType::Wildcard};
     }
 

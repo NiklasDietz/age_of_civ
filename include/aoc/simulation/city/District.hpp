@@ -106,6 +106,15 @@ static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType
     }
 }
 
+/// Wildcard policy slots a building grants its owner (empire-wide, once);
+/// processGovernment derives PlayerGovernmentComponent::bonusWildcardSlots from it.
+[[nodiscard]] inline constexpr uint8_t buildingWildcardSlots(BuildingId id) {
+    switch (id.value) {
+        case 47: return 1;   // Government Plaza
+        default: return 0;
+    }
+}
+
 // ============================================================================
 // Building definitions
 // ============================================================================
@@ -188,7 +197,7 @@ struct BuildingDef {
 
 // Format: {id, name, district, prodCost, maint, prodBonus, sciBonus, goldBonus, sciMult, resourceCosts, fuelGoodId, fuelPerTurn}
 // Resource costs and fuel added for mid/late-game buildings per plan Phase 1C/1D.
-inline constexpr std::array<BuildingDef, 47> BUILDING_DEFS = {{
+inline constexpr std::array<BuildingDef, 48> BUILDING_DEFS = {{
     //                                                                                                                     resourceCosts         fuel
     {BuildingId{0},  "Forge",              DistrictType::Industrial,  60, 1, 2, 0, 0, 1.0f},                            // no cost, no fuel
     {BuildingId{1},  "Workshop",           DistrictType::Industrial,  40, 1, 1, 0, 0, 1.0f},
@@ -263,6 +272,10 @@ inline constexpr std::array<BuildingDef, 47> BUILDING_DEFS = {{
     // tech (TechTree.cpp). No resource cost:
     // Steel is never produced in practice and would make it unbuildable.
     {BuildingId{46}, "Spaceport",             DistrictType::Industrial, 300, 3, 0, 2, 0, 1.0f},
+    // Government (2026-09-05): one Plaza per empire matters; +1 wildcard policy slot
+    // via buildingWildcardSlots(), capped by MAX_POLICY_SLOTS.
+    {BuildingId{47}, "Government Plaza",      DistrictType::CityCenter, 200, 2, 0, 0, 1, 1.0f, {{44, 2}},
+     0xFFFF, 0, 0, 0, 0, CivicId{14}},  // 2 Stone; State Workforce
 }};
 
 [[nodiscard]] inline constexpr const BuildingDef& buildingDef(BuildingId id) {

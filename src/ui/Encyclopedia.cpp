@@ -153,6 +153,10 @@ static void buildBuildingEntries(std::vector<WikiEntry>& entries) {
             std::snprintf(amenityText, sizeof(amenityText), "%g", static_cast<double>(amenities));
             bonuses += "+Amenities:" + std::string(amenityText) + " ";
         }
+        if (aoc::sim::buildingWildcardSlots(b.id) > 0) {
+            bonuses += "+" + std::to_string(aoc::sim::buildingWildcardSlots(b.id)) +
+                       " Wildcard policy slot ";
+        }
         const int32_t housing = aoc::sim::buildingHousing(b.id);
         if (housing > 0) {
             bonuses += "+Housing:" + std::to_string(housing) + " ";

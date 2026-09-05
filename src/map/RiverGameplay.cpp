@@ -91,11 +91,10 @@ void processFlooding(aoc::game::GameState& /*gameState*/, HexGrid& grid, int32_t
             continue;  // Floodplain not on a river
         }
 
-        // Check if a Dam improvement blocks flooding
-        // Dam would be an improvement on any upstream tile on this river
-        // For simplicity: if this tile has a Dam improvement, no flooding
-        if (grid.improvement(i) == ImprovementType::Fort) {
-            // Fort acts as levee/dam protection for now
+        // A Dam on the tile holds the river back. The Fort was the stand-in until
+        // 2026-09-05 and keeps protecting so existing forts do not regress.
+        const ImprovementType standing = grid.improvement(i);
+        if (standing == ImprovementType::Dam || standing == ImprovementType::Fort) {
             continue;
         }
 

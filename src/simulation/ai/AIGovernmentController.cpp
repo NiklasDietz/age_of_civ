@@ -82,7 +82,8 @@ void AIController::manageGovernment(aoc::game::GameState& gameState) {
     for (uint8_t s = 0; s < gdef.diplomaticSlots && slotIdx < MAX_POLICY_SLOTS; ++s, ++slotIdx) {
         slots.push_back({slotIdx, PolicySlotType::Diplomatic});
     }
-    for (uint8_t s = 0; s < gdef.wildcardSlots  && slotIdx < MAX_POLICY_SLOTS; ++s, ++slotIdx) {
+    const uint8_t wildcards = wildcardSlotCount(gov);
+    for (uint8_t s = 0; s < wildcards && slotIdx < MAX_POLICY_SLOTS; ++s, ++slotIdx) {
         slots.push_back({slotIdx, PolicySlotType::Wildcard});
     }
 
