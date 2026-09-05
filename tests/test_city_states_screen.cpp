@@ -11,6 +11,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
+#include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/ui/CityStatesScreen.hpp"
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ui/Widget.hpp"
@@ -136,16 +137,27 @@ TEST_CASE("Send Envoy spends the pool, the third envoy seats you, and refresh sh
     CHECK(f.world.gameState.cityStates()[0].envoys[0] == 3);
 }
 
-TEST_CASE("Levy without gold and Bully under a rival suzerain are rejected without side effects") {
+TEST_CASE("Levy as suzerain without gold is rejected; Bully under a rival suzerain is rejected") {
     Fixture f;
-    f.world.gameState.cityStates()[0].envoys[1] = 4;
-    f.world.gameState.cityStates()[0].suzerain  = f.world.gameState.cityStates()[0].computeSuzerain();
+    CityStateComponent& cs = f.world.gameState.cityStates()[0];
+    cs.envoys[0]       = 3;
+    cs.suzerain        = cs.computeSuzerain();
+    cs.turnsSinceBully = aoc::sim::CS_BULLY_COOLDOWN; // so only the seat can reject a bully
+    REQUIRE(cs.suzerain == PlayerId{0});
     f.screen.open(f.ui);
-    CHECK(f.labelsContaining("suzerain: none") == 0);
-    REQUIRE(f.clickButton("Levy (200 gold)"));
-    CHECK(f.world.gameState.cityStates()[0].levyPlayer == aoc::INVALID_PLAYER);
+    CHECK(f.labelsContaining("your envoys 3  |  suzerain: you") == 1);
+    REQUIRE(f.clickButton("Levy (200 gold)")); // suzerain, but 0 gold
+    CHECK(cs.levyPlayer == aoc::INVALID_PLAYER);
+
+    f.world.gameState.player(PlayerId{1})->setCivId(static_cast<aoc::sim::CivId>(1));
+    cs.envoys[1] = 4; // the rival takes the seat
+    cs.suzerain  = cs.computeSuzerain();
+    REQUIRE(cs.suzerain == PlayerId{1});
+    f.screen.refresh(f.ui);
+    const std::string rival(aoc::sim::civDef(static_cast<aoc::sim::CivId>(1)).name);
+    CHECK(f.labelsContaining("suzerain: " + rival) == 1);
     REQUIRE(f.clickButton("Bully"));
-    CHECK(f.world.gameState.cityStates()[0].envoys[0] == 1);
+    CHECK(cs.envoys[0] == 3);
     CHECK(f.world.gameState.player(PlayerId{0})->treasury() == 0);
 }
 

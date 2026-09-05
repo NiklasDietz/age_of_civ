@@ -23,6 +23,7 @@
 #include "aoc/map/Terrain.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <vector>
 
 namespace aoc::sim {
@@ -684,8 +685,38 @@ ErrorCode requestBullyCityState(aoc::game::GameState& gameState, PlayerId player
         || cs->turnsSinceBully < CS_BULLY_COOLDOWN) {
         return ErrorCode::InvalidState;
     }
-    return bullyCityState(gameState, player, cityStateIndex) ? ErrorCode::Ok
-                                                             : ErrorCode::InvalidState;
+    if (!bullyCityState(gameState, player, cityStateIndex)) {
+        return ErrorCode::InvalidState;
+    }
+    cs->suzerain = cs->computeSuzerain(); // two envoys fewer may cost the seat at once
+    return ErrorCode::Ok;
+}
+
+void aiSpendEnvoys(aoc::game::GameState& gameState, PlayerId player) {
+    aoc::game::Player* p = gameState.player(player);
+    if (p == nullptr || player >= MAX_PLAYERS) {
+        return;
+    }
+    const std::vector<CityStateComponent>& cityStates = gameState.cityStates();
+    while (p->envoys().available > 0) {
+        std::size_t best  = cityStates.size();
+        int32_t bestScore = std::numeric_limits<int32_t>::min();
+        for (std::size_t i = 0; i < cityStates.size(); ++i) {
+            const CityStateComponent& cs = cityStates[i];
+            if (!cs.hasMet(player) || cs.suzerain == player) {
+                continue;
+            }
+            const int32_t score = static_cast<int32_t>(cs.envoys[player]) * 10
+                                - (cs.suzerain != INVALID_PLAYER ? 5 : 0);
+            if (score > bestScore) {
+                bestScore = score;
+                best      = i;
+            }
+        }
+        if (best == cityStates.size() || requestSendEnvoy(gameState, player, best) != ErrorCode::Ok) {
+            break;
+        }
+    }
 }
 
 } // namespace aoc::sim

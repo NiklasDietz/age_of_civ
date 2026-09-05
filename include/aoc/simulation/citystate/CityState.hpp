@@ -247,12 +247,19 @@ void checkCityStateQuests(aoc::game::GameState& gameState);
 /// EntityNotFound for a bad index or player, InvalidState when the player has
 /// not met the city-state (envoy, bully), is not its suzerain (levy), a rival
 /// is (bully), the levy is already running or the bully cooldown is active;
-/// InsufficientResources without an envoy or the gold.
+/// InsufficientResources without an envoy or the gold. Send and bully re-seat
+/// the suzerain immediately; the per-turn pass would otherwise do it next turn.
 ErrorCode requestSendEnvoy(aoc::game::GameState& gameState, PlayerId player,
                            std::size_t cityStateIndex);
 ErrorCode requestLevyCityState(aoc::game::GameState& gameState, PlayerId player,
                                std::size_t cityStateIndex);
 ErrorCode requestBullyCityState(aoc::game::GameState& gameState, PlayerId player,
                                 std::size_t cityStateIndex);
+
+/// AI envoy policy: spend the whole pool, one envoy at a time, on the met
+/// city-state where the player is closest to suzerainty without holding it
+/// (own envoys x10, minus 5 when a rival holds the seat; lowest index wins
+/// ties). Deterministic; stops when nothing qualifies.
+void aiSpendEnvoys(aoc::game::GameState& gameState, PlayerId player);
 
 } // namespace aoc::sim
