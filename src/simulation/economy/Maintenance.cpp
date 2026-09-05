@@ -347,6 +347,9 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
                 static_cast<float>(cityGold) * (1.0f - corruptionPct));
         }
 
+        // Named governor: Financier +20%, Merchant +10%, Tax Haven +10% (Governor.hpp).
+        cityGold = static_cast<CurrencyAmount>(
+            static_cast<float>(cityGold) * city->governor().goldMultiplier());
         goldIncome += cityGold;
     }
 

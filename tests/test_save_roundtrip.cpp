@@ -111,6 +111,12 @@ void buildWorld(World& w) {
     static_cast<void>(aoc::sim::placeGreatWork(
         alpha, {aoc::sim::GreatWorkType::Writing, aoc::PlayerId{0}, 7, 12}));
     w.grid.setAntiquitySite(24, 1);
+    // v16: a seated governor with a title.
+    alpha.governor().focus            = aoc::sim::CityFocus::Science;
+    alpha.governor().isActive         = true;
+    alpha.governor().assignedGovernor = aoc::sim::GovernorType::Scholar;
+    static_cast<void>(alpha.governor().addPromotion(aoc::sim::GovernorPromotion::ResearchGrant));
+    alpha.governor().turnsActive      = 9;
     alpha.stockpile().goods[42]  = 10;   // scrambled insertion order on
     alpha.stockpile().goods[7]   = 3;    // purpose -- pins the sorted-write
     alpha.stockpile().goods[199] = 25;   // guarantee.
@@ -191,6 +197,13 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(lAlpha.greatWorks().works[0].namedId == 7);
     CHECK(lAlpha.greatWorks().works[0].createdTurn == 12);
     CHECK(loaded.grid.antiquitySite(24) == 1);
+    // v16: the governor came back whole.
+    CHECK(lAlpha.governor().focus == aoc::sim::CityFocus::Science);
+    CHECK(lAlpha.governor().isActive);
+    CHECK(lAlpha.governor().assignedGovernor == aoc::sim::GovernorType::Scholar);
+    CHECK(lAlpha.governor().promotionCount == 1);
+    CHECK(lAlpha.governor().hasPromotion(aoc::sim::GovernorPromotion::ResearchGrant));
+    CHECK(lAlpha.governor().turnsActive == 9);
     // Experience and promotions survive the load (they were dropped until 2026-09-05).
     const aoc::game::Unit* lVeteran = nullptr;
     for (const std::unique_ptr<aoc::game::Unit>& u : lp0.units()) {

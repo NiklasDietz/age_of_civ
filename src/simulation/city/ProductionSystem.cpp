@@ -195,6 +195,9 @@ static float computeCityProductionGS(const aoc::game::Player& player,
     // Government production multiplier (computed once per player by the caller).
     totalProduction *= govMods.productionMultiplier;
 
+    // Named governor: Industrialist +15%, Automated Factory +10% (Governor.hpp).
+    totalProduction *= city.governor().productionMultiplier();
+
     // Civilization production multiplier
     totalProduction *= civDef(player.civId()).modifiers.productionMultiplier;
 

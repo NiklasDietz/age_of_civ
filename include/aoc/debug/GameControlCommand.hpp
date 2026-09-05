@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <string>
 #include <variant>
+#include "aoc/simulation/city/Governor.hpp"
 
 namespace aoc::debug {
 
@@ -67,6 +68,20 @@ struct ActivateGreatPersonCommand {
     aoc::hex::AxialCoord at;
 };
 
+/// Seat a named governor in the city at `at` (a title recruits a new one; moving is free).
+struct AssignGovernorCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+    aoc::sim::GovernorType type;
+};
+
+/// Buy a title for the governor seated in the city at `at`.
+struct PromoteGovernorCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+    aoc::sim::GovernorPromotion promotion;
+};
+
 /// Merge the unit at `sourceAt` into the same-type unit at `at` (Corps / Army, Fleet / Armada).
 struct MergeUnitsCommand {
     aoc::PlayerId player;
@@ -91,6 +106,7 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         SetProductionCommand, SetResearchCommand,
                                         AssignSpyMissionCommand, ActivateGreatPersonCommand,
                                         CongressVoteCommand, CongressProposalCommand,
-                                        MergeUnitsCommand, EndTurnCommand>;
+                                        MergeUnitsCommand, AssignGovernorCommand,
+                                        PromoteGovernorCommand, EndTurnCommand>;
 
 } // namespace aoc::debug

@@ -14,6 +14,8 @@
 #include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/core/Log.hpp"
+#include "aoc/simulation/tech/CivicTree.hpp"
+#include <algorithm>
 
 namespace aoc::sim {
 
@@ -214,6 +216,174 @@ void processGovernors(aoc::game::GameState& gameState,
 
     for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
         governorAutoQueue(gameState, grid, *city, player);
+    }
+}
+
+// ============================================================================
+// Titles (2026-09-05): recruit and promote named governors
+// ============================================================================
+
+int32_t governorTitlesEarned(const aoc::game::Player& player) {
+    int32_t completed = 0;
+    for (const bool done : player.civics().completedCivics) {
+        if (done) { ++completed; }
+    }
+    return completed / CIVICS_PER_GOVERNOR_TITLE;
+}
+
+int32_t governorTitlesSpent(const aoc::game::Player& player) {
+    bool seated[static_cast<std::size_t>(GovernorType::Count)] = {};
+    int32_t spent = 0;
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        const CityGovernorComponent& gov = city->governor();
+        if (gov.hasNamedGovernor()) {
+            seated[static_cast<std::size_t>(gov.assignedGovernor)] = true;
+        }
+        spent += gov.promotionCount;
+    }
+    for (std::size_t t = 1; t < static_cast<std::size_t>(GovernorType::Count); ++t) {
+        if (seated[t]) { ++spent; }
+    }
+    return spent;
+}
+
+int32_t governorTitlesAvailable(const aoc::game::Player& player) {
+    return std::max(0, governorTitlesEarned(player) - governorTitlesSpent(player));
+}
+
+int32_t governorFavorPerTurn(const aoc::game::Player& player) {
+    int32_t favor = 0;
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        const CityGovernorComponent& gov = city->governor();
+        if (gov.hasPromotion(GovernorPromotion::PeaceKeeper))  { favor += 10; }
+        if (gov.hasPromotion(GovernorPromotion::CarbonCredit)) { favor += 5; }
+    }
+    return favor;
+}
+
+ErrorCode requestAssignGovernor(aoc::game::GameState& gameState, PlayerId player,
+                                hex::AxialCoord cityAt, GovernorType type) {
+    aoc::game::Player* owner = gameState.player(player);
+    if (owner == nullptr || type == GovernorType::None || type >= GovernorType::Count) {
+        return ErrorCode::InvalidArgument;
+    }
+    aoc::game::City* city = owner->cityAt(cityAt);
+    if (city == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (city->governor().assignedGovernor == type) {
+        return ErrorCode::Ok;   // already seated here
+    }
+    // Moving a seated governor is free; recruiting a new one costs a title.
+    aoc::game::City* previousSeat = nullptr;
+    for (const std::unique_ptr<aoc::game::City>& other : owner->cities()) {
+        if (other->governor().assignedGovernor == type) { previousSeat = other.get(); }
+    }
+    if (previousSeat == nullptr && governorTitlesAvailable(*owner) <= 0) {
+        return ErrorCode::InvalidState;
+    }
+    CityGovernorComponent& gov = city->governor();
+    if (previousSeat != nullptr) {
+        CityGovernorComponent& from = previousSeat->governor();
+        gov.assignedGovernor = from.assignedGovernor;
+        gov.promotionCount   = from.promotionCount;
+        for (int32_t i = 0; i < 3; ++i) { gov.promotions[i] = from.promotions[i]; }
+        from.assignedGovernor = GovernorType::None;
+        from.promotionCount   = 0;
+        for (int32_t i = 0; i < 3; ++i) { from.promotions[i] = GovernorPromotion::None; }
+        from.turnsActive = 0;
+    } else {
+        gov.assignedGovernor = type;
+        gov.promotionCount   = 0;
+        for (int32_t i = 0; i < 3; ++i) { gov.promotions[i] = GovernorPromotion::None; }
+    }
+    gov.turnsActive = 0;
+    LOG_INFO("Player %u seats governor %.*s in %s", static_cast<unsigned>(player),
+             static_cast<int>(governorTypeName(type).size()), governorTypeName(type).data(),
+             city->name().c_str());
+    return ErrorCode::Ok;
+}
+
+ErrorCode requestPromoteGovernor(aoc::game::GameState& gameState, PlayerId player,
+                                 hex::AxialCoord cityAt, GovernorPromotion promotion) {
+    aoc::game::Player* owner = gameState.player(player);
+    if (owner == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+    aoc::game::City* city = owner->cityAt(cityAt);
+    if (city == nullptr || !city->governor().hasNamedGovernor()
+        || governorForPromotion(promotion) != city->governor().assignedGovernor) {
+        return ErrorCode::InvalidArgument;
+    }
+    CityGovernorComponent& gov = city->governor();
+    if (gov.hasPromotion(promotion) || gov.promotionCount >= 3) {
+        return ErrorCode::InvalidUnitAction;
+    }
+    if (governorTitlesAvailable(*owner) <= 0) {
+        return ErrorCode::InvalidState;
+    }
+    static_cast<void>(gov.addPromotion(promotion));
+    LOG_INFO("Player %u promotes the %.*s in %s (title %u)", static_cast<unsigned>(player),
+             static_cast<int>(governorTypeName(gov.assignedGovernor).size()),
+             governorTypeName(gov.assignedGovernor).data(), city->name().c_str(),
+             static_cast<unsigned>(promotion));
+    return ErrorCode::Ok;
+}
+
+void aiSpendGovernorTitles(aoc::game::GameState& gameState, PlayerId player) {
+    aoc::game::Player* owner = gameState.player(player);
+    if (owner == nullptr || governorTitlesAvailable(*owner) <= 0) {
+        return;
+    }
+    // Seats: capital first, then the most populous cities, in a stable order.
+    std::vector<aoc::game::City*> seats;
+    for (const std::unique_ptr<aoc::game::City>& city : owner->cities()) {
+        seats.push_back(city.get());
+    }
+    std::stable_sort(seats.begin(), seats.end(),
+                     [](const aoc::game::City* a, const aoc::game::City* b) {
+                         if (a->isOriginalCapital() != b->isOriginalCapital()) {
+                             return a->isOriginalCapital();
+                         }
+                         return a->population() > b->population();
+                     });
+    for (aoc::game::City* city : seats) {
+        if (governorTitlesAvailable(*owner) <= 0) { return; }
+        if (city->governor().hasNamedGovernor()) { continue; }
+        GovernorType wanted = GovernorType::Diplomat;
+        if (city->isOriginalCapital())                        { wanted = GovernorType::Financier; }
+        else if (city->hasDistrict(DistrictType::Campus))     { wanted = GovernorType::Scholar; }
+        else if (city->hasDistrict(DistrictType::Industrial)) { wanted = GovernorType::Industrialist; }
+        // Each type sits in one city; fall through the list until an unseated one fits.
+        const GovernorType order[] = {wanted, GovernorType::Financier, GovernorType::Scholar,
+                                      GovernorType::Industrialist, GovernorType::Diplomat,
+                                      GovernorType::General, GovernorType::Merchant,
+                                      GovernorType::Environmentalist};
+        for (const GovernorType candidate : order) {
+            bool seatedElsewhere = false;
+            for (aoc::game::City* other : seats) {
+                if (other->governor().assignedGovernor == candidate) { seatedElsewhere = true; }
+            }
+            if (seatedElsewhere) { continue; }
+            if (requestAssignGovernor(gameState, player, city->location(), candidate) == ErrorCode::Ok) {
+                break;
+            }
+        }
+    }
+    // Then the first effective title of each seated tree.
+    for (aoc::game::City* city : seats) {
+        if (governorTitlesAvailable(*owner) <= 0) { return; }
+        const CityGovernorComponent& gov = city->governor();
+        if (!gov.hasNamedGovernor() || gov.promotionCount >= 3) { continue; }
+        for (uint8_t v = 1; v < static_cast<uint8_t>(GovernorPromotion::Count); ++v) {
+            const GovernorPromotion promo = static_cast<GovernorPromotion>(v);
+            if (governorForPromotion(promo) != gov.assignedGovernor
+                || !governorPromotionHasEffect(promo) || gov.hasPromotion(promo)) {
+                continue;
+            }
+            static_cast<void>(requestPromoteGovernor(gameState, player, city->location(), promo));
+            break;
+        }
     }
 }
 

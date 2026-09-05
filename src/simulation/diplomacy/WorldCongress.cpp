@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <array>
 #include <string>
+#include "aoc/simulation/city/Governor.hpp"
 
 namespace aoc::sim {
 
@@ -78,7 +79,8 @@ void accruePerPlayerFavor(aoc::game::GameState& gs, const DiplomacyManager* dipl
             ? countAlliances(*diplomacy, p->id(), playerCount) : 0;
         const int32_t suze  = countSuzeraintyFor(gs, p->id());
         const int32_t griev = grievanceSeverityAgainst(gs, p->id());
-        const int32_t perTurn = computeDiplomaticFavor(*p, alliances, suze, griev);
+        const int32_t perTurn = computeDiplomaticFavor(*p, alliances, suze, griev)
+                              + governorFavorPerTurn(*p);   // Peace Keeper / Carbon Credit
         p->diplomaticFavor().owner = p->id();
         p->diplomaticFavor().favorPerTurn = perTurn;
         p->diplomaticFavor().favor += perTurn;

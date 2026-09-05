@@ -136,10 +136,10 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         loyalty.ownCityPressure = std::clamp(loyalty.ownCityPressure, 0.0f, 50.0f);
         loyalty.foreignCityPressure = std::clamp(loyalty.foreignCityPressure, -50.0f, 0.0f);
 
-        // Governor bonus (+4 loyalty if governor is active)
-        if (city->governor().isActive) {
-            loyalty.governorBonus = 4.0f;
-        }
+        // Governor bonus: +4 for an active focus governor, or the named governor's
+        // own bonus (Diplomat +8, others +4, Citadel +4 more), whichever is larger.
+        loyalty.governorBonus = std::max(city->governor().isActive ? 4.0f : 0.0f,
+                                         city->governor().loyaltyBonus());
 
         // Garrison bonus (+3 per military unit on the city tile, max 9)
         for (const std::unique_ptr<aoc::game::Unit>& unit : gsPlayer->units()) {

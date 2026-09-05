@@ -61,6 +61,7 @@
 #include <array>
 #include <span>
 #include <unordered_set>
+#include "aoc/simulation/city/Governor.hpp"
 
 namespace aoc::sim::ai {
 
@@ -1031,6 +1032,10 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             }
         }
     }
+
+    // Governor titles (Governor.hpp): seat and promote before the city decisions so
+    // the multipliers apply to this turn's production choices.
+    aoc::sim::aiSpendGovernorTitles(gameState, this->m_player);
 
     int32_t cityIndex = 0;
     for (const std::unique_ptr<aoc::game::City>& cityPtr : gsPlayer->cities()) {

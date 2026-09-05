@@ -93,6 +93,7 @@
 
 #include "ApplicationHelpers.hpp"
 #include "aoc/simulation/unit/CombatExtensions.hpp"
+#include "aoc/simulation/city/Governor.hpp"
 
 namespace aoc::app {
 
@@ -1351,6 +1352,85 @@ ErrorCode Application::initialize(const Config& config) {
             return std::string("{\"queued\":true}");
         });
 
+    // POST /game/governor/assign?player=&q=&r=&type=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/governor/assign",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t posQ   = 0;
+            int32_t posR   = 0;
+            int32_t type   = 0;
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "q", posQ, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "r", posR, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "type", type, err)) {
+                return err;
+            }
+            if (type <= 0 || type >= static_cast<int32_t>(aoc::sim::GovernorType::Count)) {
+                return std::string("{\"error\":\"type out of range\"}");
+            }
+            aoc::debug::AssignGovernorCommand cmd{};
+            cmd.player = static_cast<aoc::PlayerId>(player);
+            cmd.at     = aoc::hex::AxialCoord{posQ, posR};
+            cmd.type   = static_cast<aoc::sim::GovernorType>(type);
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
+    // POST /game/governor/promote?player=&q=&r=&promotion=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/governor/promote",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player    = 0;
+            int32_t posQ      = 0;
+            int32_t posR      = 0;
+            int32_t promotion = 0;
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "q", posQ, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "r", posR, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "promotion", promotion, err)) {
+                return err;
+            }
+            if (promotion <= 0
+                || promotion >= static_cast<int32_t>(aoc::sim::GovernorPromotion::Count)) {
+                return std::string("{\"error\":\"promotion out of range\"}");
+            }
+            aoc::debug::PromoteGovernorCommand cmd{};
+            cmd.player    = static_cast<aoc::PlayerId>(player);
+            cmd.at        = aoc::hex::AxialCoord{posQ, posR};
+            cmd.promotion = static_cast<aoc::sim::GovernorPromotion>(promotion);
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
     // POST /game/research?player=&techId=
     this->m_debugServer->routeJson(
         DSM::Post, "/game/research",
@@ -1543,6 +1623,8 @@ ErrorCode Application::initialize(const Config& config) {
                 "{\"method\":\"POST\",\"path\":\"/game/congress/vote?player=&weight=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/congress/propose?player=&resolution=&target=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/unit/merge?player=&q=&r=&sourceQ=&sourceR=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/governor/assign?player=&q=&r=&type=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/governor/promote?player=&q=&r=&promotion=\"},"
                 "{\"method\":\"GET\",\"path\":\"/ui/tree\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click?widgetId=N\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click-at?x=&y=\"},"
@@ -2529,6 +2611,27 @@ void Application::executeGameControlCommand(const aoc::debug::MergeUnitsCommand&
     if (selectionWasSource) {
         aoc::game::Player* owner = this->m_gameState.player(cmd.player);
         this->m_selectedUnit     = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::AssignGovernorCommand& cmd) {
+    const ErrorCode result =
+        aoc::sim::requestAssignGovernor(this->m_gameState, cmd.player, cmd.at, cmd.type);
+    if (result != ErrorCode::Ok) {
+        LOG_WARN("Governor %d for player %u at (%d,%d) rejected: %.*s", static_cast<int>(cmd.type),
+                 static_cast<unsigned>(cmd.player), cmd.at.q, cmd.at.r,
+                 static_cast<int>(describeError(result).size()), describeError(result).data());
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::PromoteGovernorCommand& cmd) {
+    const ErrorCode result =
+        aoc::sim::requestPromoteGovernor(this->m_gameState, cmd.player, cmd.at, cmd.promotion);
+    if (result != ErrorCode::Ok) {
+        LOG_WARN("Governor title %d for player %u at (%d,%d) rejected: %.*s",
+                 static_cast<int>(cmd.promotion), static_cast<unsigned>(cmd.player), cmd.at.q,
+                 cmd.at.r, static_cast<int>(describeError(result).size()),
+                 describeError(result).data());
     }
 }
 

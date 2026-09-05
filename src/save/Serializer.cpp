@@ -511,6 +511,18 @@ void writeEntitySection(WriteBuffer& out, const aoc::game::GameState& gameState)
             section.writeI32(city->tilesClaimedCount());
             section.writeU8(city->isOriginalCapital() ? uint8_t{1} : uint8_t{0});
             section.writeU8(city->originalOwner());
+            // v16: the governor component (focus, flags, named governor, titles).
+            const aoc::sim::CityGovernorComponent& gov = city->governor();
+            section.writeU8(static_cast<uint8_t>(gov.focus));
+            section.writeU8(gov.isActive ? uint8_t{1} : uint8_t{0});
+            section.writeU8(gov.autoQueueProduction ? uint8_t{1} : uint8_t{0});
+            section.writeU8(gov.autoAssignTiles ? uint8_t{1} : uint8_t{0});
+            section.writeU8(static_cast<uint8_t>(gov.assignedGovernor));
+            section.writeU8(static_cast<uint8_t>(gov.promotionCount));
+            for (int32_t i = 0; i < 3; ++i) {
+                section.writeU8(static_cast<uint8_t>(gov.promotions[i]));
+            }
+            section.writeI32(gov.turnsActive);
         }
     }
 
@@ -1912,6 +1924,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 int32_t tilesClaimedCount;
                 bool isOriginalCapital;
                 PlayerId originalOwner;
+                aoc::sim::CityGovernorComponent governor;   // v16
             };
             std::vector<CityData> cityDataList;
             cityDataList.reserve(cityCount);
@@ -1940,6 +1953,34 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 cd.tilesClaimedCount     = buf.readI32();
                 cd.isOriginalCapital     = buf.readU8() != 0;
                 cd.originalOwner         = buf.readU8();
+                // v16: governor component, every enum range-checked.
+                {
+                    const uint8_t focus = buf.readU8();
+                    cd.governor.isActive            = buf.readU8() != 0;
+                    cd.governor.autoQueueProduction = buf.readU8() != 0;
+                    cd.governor.autoAssignTiles     = buf.readU8() != 0;
+                    const uint8_t type  = buf.readU8();
+                    const uint8_t count = buf.readU8();
+                    uint8_t promos[3]   = {};
+                    for (int32_t k = 0; k < 3; ++k) { promos[k] = buf.readU8(); }
+                    cd.governor.turnsActive = buf.readI32();
+                    if (focus >= static_cast<uint8_t>(aoc::sim::CityFocus::Count)
+                        || type >= static_cast<uint8_t>(aoc::sim::GovernorType::Count) || count > 3
+                        || promos[0] >= static_cast<uint8_t>(aoc::sim::GovernorPromotion::Count)
+                        || promos[1] >= static_cast<uint8_t>(aoc::sim::GovernorPromotion::Count)
+                        || promos[2] >= static_cast<uint8_t>(aoc::sim::GovernorPromotion::Count)) {
+                        LOG_ERROR("Serializer: governor record out of range (focus %u type %u count %u)",
+                                  static_cast<unsigned>(focus), static_cast<unsigned>(type),
+                                  static_cast<unsigned>(count));
+                        return ErrorCode::SaveCorrupted;
+                    }
+                    cd.governor.focus            = static_cast<aoc::sim::CityFocus>(focus);
+                    cd.governor.assignedGovernor = static_cast<aoc::sim::GovernorType>(type);
+                    cd.governor.promotionCount   = count;
+                    for (int32_t k = 0; k < 3; ++k) {
+                        cd.governor.promotions[k] = static_cast<aoc::sim::GovernorPromotion>(promos[k]);
+                    }
+                }
 
                 if (cd.owner > maxOwner) {
                     maxOwner = cd.owner;
@@ -1972,6 +2013,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 }
                 city.setOriginalCapital(cd.isOriginalCapital);
                 city.setOriginalOwner(cd.originalOwner);
+                city.governor() = cd.governor;   // v16
                 loadedCities.push_back(&city);
             }
 

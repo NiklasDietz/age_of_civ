@@ -130,7 +130,8 @@ float computePlayerScience(const aoc::game::Player& player,
 
         // Civ-6 style unique improvement + district science bonus per city.
         cityScience += static_cast<float>(civSpec.uniqueImprovement.scienceBonus);
-
+        // Named governor: Scholar +15%, Research Grant +10% (Governor.hpp).
+        cityScience *= city->governor().scienceMultiplier();
         totalScience += cityScience;
     }
 

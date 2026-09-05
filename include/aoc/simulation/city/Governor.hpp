@@ -26,9 +26,13 @@
 #include "aoc/core/Types.hpp"
 
 #include <cstdint>
+#include "aoc/core/ErrorCodes.hpp"
+#include "aoc/map/HexCoord.hpp"
+#include <string_view>
 
 namespace aoc::game { class GameState; }
 namespace aoc::game { class City; }
+namespace aoc::game { class Player; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -136,25 +140,102 @@ struct CityGovernorComponent {
     }
 
     /// Governor bonuses (base, before promotions).
+    /// Governor bonuses; the first title of each tree adds to them (2026-09-05):
+    /// Tax Haven +10% gold, Automated Factory +10% production, Research Grant
+    /// +10% science, Citadel +4 loyalty. Applied in Maintenance.cpp, ProductionSystem.cpp,
+    /// CityScience.cpp and CityLoyalty.cpp.
     [[nodiscard]] float goldMultiplier() const {
-        if (this->assignedGovernor == GovernorType::Financier) { return 1.20f; }
-        if (this->assignedGovernor == GovernorType::Merchant) { return 1.10f; }
-        return 1.0f;
+        float m = 1.0f;
+        if (this->assignedGovernor == GovernorType::Financier) { m = 1.20f; }
+        if (this->assignedGovernor == GovernorType::Merchant) { m = 1.10f; }
+        if (this->hasPromotion(GovernorPromotion::TaxHaven)) { m += 0.10f; }
+        return m;
     }
     [[nodiscard]] float productionMultiplier() const {
-        if (this->assignedGovernor == GovernorType::Industrialist) { return 1.15f; }
-        return 1.0f;
+        float m = 1.0f;
+        if (this->assignedGovernor == GovernorType::Industrialist) { m = 1.15f; }
+        if (this->hasPromotion(GovernorPromotion::AutomatedFactory)) { m += 0.10f; }
+        return m;
     }
     [[nodiscard]] float scienceMultiplier() const {
-        if (this->assignedGovernor == GovernorType::Scholar) { return 1.15f; }
-        return 1.0f;
+        float m = 1.0f;
+        if (this->assignedGovernor == GovernorType::Scholar) { m = 1.15f; }
+        if (this->hasPromotion(GovernorPromotion::ResearchGrant)) { m += 0.10f; }
+        return m;
     }
     [[nodiscard]] float loyaltyBonus() const {
-        if (this->assignedGovernor == GovernorType::Diplomat) { return 8.0f; }
-        if (this->assignedGovernor != GovernorType::None) { return 4.0f; }
-        return 0.0f;
+        float b = 0.0f;
+        if (this->assignedGovernor == GovernorType::Diplomat) { b = 8.0f; }
+        else if (this->assignedGovernor != GovernorType::None) { b = 4.0f; }
+        if (this->hasPromotion(GovernorPromotion::Citadel)) { b += 4.0f; }
+        return b;
     }
 };
+
+[[nodiscard]] constexpr std::string_view governorTypeName(GovernorType type) {
+    switch (type) {
+        case GovernorType::Financier:        return "Financier";
+        case GovernorType::Industrialist:    return "Industrialist";
+        case GovernorType::Diplomat:         return "Diplomat";
+        case GovernorType::General:          return "General";
+        case GovernorType::Scholar:          return "Scholar";
+        case GovernorType::Merchant:         return "Merchant";
+        case GovernorType::Environmentalist: return "Environmentalist";
+        default:                             return "None";
+    }
+}
+
+/// The governor a promotion belongs to: five titles per tree, in enum order.
+[[nodiscard]] constexpr GovernorType governorForPromotion(GovernorPromotion promo) {
+    const uint8_t v = static_cast<uint8_t>(promo);
+    if (v == 0 || v >= static_cast<uint8_t>(GovernorPromotion::Count)) { return GovernorType::None; }
+    return static_cast<GovernorType>((v - 1) / 5 + 1);
+}
+
+/// Titles with an effect today (the others are recruitable names only, see the
+/// Open debt note): the first title of the Financier, Industrialist, Scholar and
+/// General trees, plus Peace Keeper (+10 favor / turn) and Carbon Credit (+5).
+[[nodiscard]] constexpr bool governorPromotionHasEffect(GovernorPromotion promo) {
+    switch (promo) {
+        case GovernorPromotion::TaxHaven:
+        case GovernorPromotion::AutomatedFactory:
+        case GovernorPromotion::ResearchGrant:
+        case GovernorPromotion::Citadel:
+        case GovernorPromotion::PeaceKeeper:
+        case GovernorPromotion::CarbonCredit:
+            return true;
+        default:
+            return false;
+    }
+}
+
+/// Titles: one per five completed civics. A title recruits a governor the player
+/// does not have yet (moving one between cities is free) or buys a promotion.
+inline constexpr int32_t CIVICS_PER_GOVERNOR_TITLE = 5;
+[[nodiscard]] int32_t governorTitlesEarned(const aoc::game::Player& player);
+[[nodiscard]] int32_t governorTitlesSpent(const aoc::game::Player& player);
+[[nodiscard]] int32_t governorTitlesAvailable(const aoc::game::Player& player);
+
+/// Favor per turn from Peace Keeper (+10) and Carbon Credit (+5) titles across cities.
+[[nodiscard]] int32_t governorFavorPerTurn(const aoc::game::Player& player);
+
+/// Assign `type` to the player's city at `cityAt`. A type already seated elsewhere
+/// moves (free); a new type costs a title. InvalidArgument for an unknown seat,
+/// city or type; InvalidState when no title is available.
+[[nodiscard]] ErrorCode requestAssignGovernor(aoc::game::GameState& gameState, PlayerId player,
+                                              hex::AxialCoord cityAt, GovernorType type);
+
+/// Buy `promotion` for the governor seated at `cityAt`. InvalidArgument for an
+/// unknown seat / city, no governor, or a title from another tree; InvalidUnitAction
+/// when already held or the three slots are full; InvalidState without a title.
+[[nodiscard]] ErrorCode requestPromoteGovernor(aoc::game::GameState& gameState, PlayerId player,
+                                               hex::AxialCoord cityAt, GovernorPromotion promotion);
+
+/// The AI spends every available title: seat governors (capital first, then by
+/// population; Scholar for a Campus, Industrialist for an Industrial Zone,
+/// Financier for the capital, Diplomat otherwise), then the first effective
+/// promotion of each seated tree. Deterministic.
+void aiSpendGovernorTitles(aoc::game::GameState& gameState, PlayerId player);
 
 /**
  * @brief Run the governor for a city: auto-queue production based on focus.

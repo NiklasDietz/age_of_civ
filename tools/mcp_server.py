@@ -298,6 +298,29 @@ def aoc_merge_units(player: int, q: int, r: int, source_q: int, source_r: int) -
 
 
 @mcp.tool()
+def aoc_assign_governor(player: int, q: int, r: int, governor_type: int) -> dict:
+    """Seat a named governor in the city owned by `player` at (q, r). Types: 1 Financier
+    (+20% gold), 2 Industrialist (+15% production), 3 Diplomat (+8 loyalty), 4 General,
+    5 Scholar (+15% science), 6 Merchant (+10% gold), 7 Environmentalist. Titles come one per
+    five completed civics; recruiting a new governor costs one, moving a seated one is free.
+    Queues the request; a rejection (no title, unknown city) is logged in the game log.
+    """
+    return _post("/game/governor/assign", player=player, q=q, r=r, type=governor_type)
+
+
+@mcp.tool()
+def aoc_promote_governor(player: int, q: int, r: int, promotion: int) -> dict:
+    """Buy a title (1 to 35, five per governor in type order: 1-5 Financier, 6-10
+    Industrialist, 11-15 Diplomat, 16-20 General, 21-25 Scholar, 26-30 Merchant, 31-35
+    Environmentalist) for the governor seated in the city at (q, r). Titles with an effect
+    today: 1 Tax Haven +10% gold, 6 Automated Factory +10% production, 13 Peace Keeper +10
+    favor/turn, 16 Citadel +4 loyalty, 21 Research Grant +10% science, 35 Carbon Credit +5
+    favor/turn. Costs one title; three per governor at most. Queues the request.
+    """
+    return _post("/game/governor/promote", player=player, q=q, r=r, promotion=promotion)
+
+
+@mcp.tool()
 def aoc_set_production(player: int, q: int, r: int, item_type: str, item_id: int) -> dict:
     """Queue a production item onto the city owned by `player` at hex (q, r).
 

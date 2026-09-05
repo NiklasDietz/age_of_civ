@@ -40,6 +40,10 @@
  *
  * v15 (2026-09-05): the Entities unit record carries the FormationLevel (Corps /
  * Army, Fleet / Armada) after the air state; a load reset every formation before.
+ *
+ * v16 (2026-09-05): the Entities city record carries the CityGovernorComponent
+ * (focus, flags, named governor, up to three titles, turns active); a load
+ * dropped every governor before.
  */
 
 #include <cstdint>
@@ -47,6 +51,6 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 15;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 16;
 
 } // namespace aoc::save

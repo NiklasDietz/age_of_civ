@@ -950,6 +950,7 @@ if(AOC_BUILD_TESTS)
         test_great_works
         test_promotions
         test_formations
+        test_governors
     )
 
     # UI tests link against src/ui/UIManager.cpp and src/ui/ScreenRegistry.cpp,
