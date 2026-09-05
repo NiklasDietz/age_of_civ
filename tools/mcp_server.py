@@ -589,6 +589,31 @@ def aoc_open_borders(player: int, target: int) -> dict:
 
 
 @mcp.tool()
+def aoc_list_deals(player: int) -> dict:
+    """List the deal proposals waiting for `player` (index, from, expiresTurn, terms as text) and
+    the active deals `player` is part of.
+    """
+    return _get("/game/deals", player=player)
+
+
+@mcp.tool()
+def aoc_propose_deal(player: int, target: int, give_gold: int = 0, ask_gold: int = 0,
+                     open_borders: bool = False, non_aggression: bool = False) -> dict:
+    """Propose a deal to `target`: gold given, gold asked, open borders and/or a non-aggression pact
+    (30 turns). An AI answers at once by its gold-equivalent valuation (stance-aware); a human
+    recipient gets it in the inbox for 5 turns. Queues the request.
+    """
+    return _post("/game/deal/propose", player=player, target=target, giveGold=give_gold, askGold=ask_gold,
+                 openBorders=1 if open_borders else 0, nonAggression=1 if non_aggression else 0)
+
+
+@mcp.tool()
+def aoc_respond_proposal(player: int, index: int, accept: bool) -> dict:
+    """Accept or reject proposal `index` of `player`'s inbox (aoc_list_deals). Queues the request."""
+    return _post("/game/deal/respond", player=player, index=index, accept=1 if accept else 0)
+
+
+@mcp.tool()
 def aoc_set_production(player: int, q: int, r: int, item_type: str, item_id: int) -> dict:
     """Queue a production item onto the city owned by `player` at hex (q, r).
 

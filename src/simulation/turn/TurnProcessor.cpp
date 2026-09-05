@@ -56,6 +56,7 @@
 #include "aoc/simulation/diplomacy/BorderViolation.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
 #include "aoc/simulation/diplomacy/NavalPassage.hpp"
+#include "aoc/simulation/diplomacy/DealProposals.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyExtensions.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
@@ -1449,6 +1450,7 @@ void processTurn(TurnContext& turnContext) {
     if (turnContext.diplomacy != nullptr) {
         turnContext.diplomacy->tickModifiers();
         turnContext.diplomacy->expireAgreements(static_cast<int32_t>(turnContext.currentTurn));
+        expireProposals(*turnContext.gameState, static_cast<int32_t>(turnContext.currentTurn));
     }
 
     // Espionage: resolve spy mission outcomes for all players.

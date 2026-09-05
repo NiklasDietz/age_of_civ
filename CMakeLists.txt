@@ -327,6 +327,7 @@ set(AOC_LIB_SOURCES
     src/simulation/diplomacy/BorderViolation.cpp
     src/simulation/diplomacy/DiplomacyState.cpp
     src/simulation/diplomacy/DiplomacyActions.cpp
+    src/simulation/diplomacy/DealProposals.cpp
     src/simulation/diplomacy/EspionageSystem.cpp
     src/simulation/diplomacy/WarWeariness.cpp
     src/simulation/diplomacy/Grievance.cpp
@@ -966,6 +967,7 @@ if(AOC_BUILD_TESTS)
         test_great_works
         test_city_states
         test_diplomacy_actions
+        test_deal_proposals
         test_promotions
         test_formations
         test_governors

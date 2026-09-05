@@ -1469,6 +1469,7 @@ ErrorCode Application::initialize(const Config& config) {
     this->registerCultureRoutes();
     this->registerCityStateRoutes();
     this->registerDiplomacyRoutes();
+    this->registerDealRoutes();
 
     // POST /game/governor/promote?player=&q=&r=&promotion=
     this->m_debugServer->routeJson(

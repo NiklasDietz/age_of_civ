@@ -678,6 +678,8 @@ private:
     void executeGameControlCommand(const aoc::debug::SendDelegationCommand& cmd);
     void executeGameControlCommand(const aoc::debug::EstablishEmbassyCommand& cmd);
     void executeGameControlCommand(const aoc::debug::OpenBordersCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::ProposeDealCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::RespondProposalCommand& cmd);
 
     /// The five `/game/city/*` routes (Application_CityControl.cpp).
     void registerCityControlRoutes();
@@ -696,6 +698,7 @@ private:
     void registerCultureRoutes();
     void registerCityStateRoutes();
     void registerDiplomacyRoutes();
+    void registerDealRoutes();
 
     /// A right-click attack on a civ at peace arms this; the next right-click on
     /// the same civ declares war and attacks (Civ VI's confirmation, without a modal).

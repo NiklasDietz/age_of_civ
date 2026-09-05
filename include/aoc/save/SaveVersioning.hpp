@@ -72,6 +72,10 @@
  * v21 (2026-09-06): Diplomacy carries the war start turn, friendship and
  * open-borders expiry per pair, and denouncement turn, delegation and
  * embassy per direction (DiplomacyActions.hpp).
+ *
+ * v22 (2026-09-06): a DealProposals section, the deal proposals waiting for
+ * the human's answer (DealProposals.hpp). Active deals themselves still live
+ * outside GameState and are not saved.
  */
 
 #include <cstdint>
@@ -79,6 +83,6 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 21;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 22;
 
 } // namespace aoc::save

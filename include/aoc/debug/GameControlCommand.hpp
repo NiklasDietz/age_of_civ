@@ -254,6 +254,22 @@ struct OpenBordersCommand {
     aoc::PlayerId target;
 };
 
+/// Propose a preset deal (DealProposals.hpp): gold either way, open borders, non-aggression.
+struct ProposeDealCommand {
+    aoc::PlayerId player;
+    aoc::PlayerId target;
+    int32_t giveGold;
+    int32_t askGold;
+    bool openBorders;
+    bool nonAggression;
+};
+/// Answer proposal `index` of the human's inbox.
+struct RespondProposalCommand {
+    aoc::PlayerId player;
+    int32_t index;
+    bool accept;
+};
+
 /// Merge the unit at `sourceAt` into the same-type unit at `at` (Corps / Army, Fleet / Armada).
 struct MergeUnitsCommand {
     aoc::PlayerId player;
@@ -290,6 +306,7 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         MoveGreatWorkCommand, SendEnvoyCommand, LevyCityStateCommand,
                                         BullyCityStateCommand, DeclareWarCommand, MakePeaceCommand,
                                         DenounceCommand, DeclareFriendshipCommand, SendDelegationCommand,
-                                        EstablishEmbassyCommand, OpenBordersCommand, EndTurnCommand>;
+                                        EstablishEmbassyCommand, OpenBordersCommand, ProposeDealCommand,
+                                        RespondProposalCommand, EndTurnCommand>;
 
 } // namespace aoc::debug

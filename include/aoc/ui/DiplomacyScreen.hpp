@@ -10,6 +10,9 @@
 
 #include "aoc/ui/GameScreens.hpp"
 #include "aoc/core/Types.hpp"
+#include "aoc/simulation/diplomacy/DealTerms.hpp"
+
+#include <vector>
 
 namespace aoc::sim {
 class DiplomacyManager;
@@ -47,6 +50,10 @@ private:
     aoc::sim::AllianceObligationTracker* m_obligations = nullptr;
     /// Civ whose casus belli picker is open (Declare War is a two-step choice).
     PlayerId                       m_warTarget   = INVALID_PLAYER;
+    /// Civ whose deal composer is open, and the terms toggled so far.
+    PlayerId                       m_composerTarget = INVALID_PLAYER;
+    std::vector<aoc::sim::DealTerm> m_composerTerms;
+    void toggleComposerTerm(aoc::sim::DealTermType type, PlayerId from, PlayerId to, int32_t gold);
     PlayerId                       m_player      = INVALID_PLAYER;
     WidgetId                       m_playerList  = INVALID_WIDGET;
 };

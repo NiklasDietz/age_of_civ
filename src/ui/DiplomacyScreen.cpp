@@ -15,6 +15,7 @@
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyActions.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/DealProposals.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/simulation/monetary/Bonds.hpp"
@@ -40,6 +41,32 @@ void DiplomacyScreen::setContext(aoc::game::GameState* gameState, PlayerId human
     this->m_dealTracker = dealTracker;
     this->m_obligations = obligations;
     this->m_warTarget   = INVALID_PLAYER;
+    this->m_composerTarget = INVALID_PLAYER;
+    this->m_composerTerms.clear();
+}
+
+void DiplomacyScreen::toggleComposerTerm(aoc::sim::DealTermType type, PlayerId from, PlayerId to, int32_t gold) {
+    // Gold: one lump per direction; the same amount again removes it.
+    for (std::vector<aoc::sim::DealTerm>::iterator it = this->m_composerTerms.begin();
+         it != this->m_composerTerms.end(); ++it) {
+        const bool sameSlot = it->type == type && it->fromPlayer == from && it->toPlayer == to;
+        if (!sameSlot) {
+            continue;
+        }
+        const bool sameAmount = type != aoc::sim::DealTermType::GoldLump || it->goldLump == gold;
+        this->m_composerTerms.erase(it);
+        if (sameAmount) {
+            return;
+        }
+        break;
+    }
+    aoc::sim::DealTerm term{};
+    term.type       = type;
+    term.fromPlayer = from;
+    term.toPlayer   = to;
+    term.goldLump   = gold;
+    term.duration   = 30;
+    this->m_composerTerms.push_back(term);
 }
 
 void DiplomacyScreen::open(UIManager& ui) {
@@ -71,6 +98,69 @@ void DiplomacyScreen::open(UIManager& ui) {
     // meeting someone via unit contact populates `hasMet`, then they
     // appear in diplomacy. Prevents the earlier exploit where every
     // player was visible from turn 0.
+    // Inbox: deal proposals other civs made to the human, newest last.
+    {
+        const std::vector<aoc::sim::PendingProposal>& inbox = this->m_gameState->pendingProposals();
+        bool any = false;
+        for (std::size_t i = 0; i < inbox.size(); ++i) {
+            const aoc::sim::PendingProposal& p = inbox[i];
+            if (p.to != this->m_player) {
+                continue;
+            }
+            if (!any) {
+                (void)ui.createLabel(this->m_playerList, {0.0f, 0.0f, 500.0f, 18.0f},
+                                     LabelData{"INBOX", tokens::TEXT_HEADER, 12.0f});
+                any = true;
+            }
+            const aoc::game::Player* fromPlayer = this->m_gameState->player(p.from);
+            std::string text = "From ";
+            text += fromPlayer != nullptr ? std::string(aoc::sim::civDef(fromPlayer->civId()).name)
+                                          : "P" + std::to_string(static_cast<unsigned>(p.from));
+            text += ": ";
+            for (std::size_t t = 0; t < p.deal.terms.size(); ++t) {
+                if (t > 0) { text += "; "; }
+                text += aoc::sim::describeDealTerm(*this->m_gameState, p.deal.terms[t]);
+            }
+            text += "  (expires turn " + std::to_string(p.expiresTurn) + ")";
+            PanelData cardBg;
+            cardBg.backgroundColor = tokens::SURFACE_PARCHMENT_DIM;
+            cardBg.cornerRadius    = tokens::CORNER_BUTTON;
+            const WidgetId card = ui.createPanel(this->m_playerList, {0.0f, 0.0f, 500.0f, 48.0f}, std::move(cardBg));
+            if (Widget* cw = ui.getWidget(card); cw != nullptr) {
+                cw->padding = {2.0f, 4.0f, 2.0f, 4.0f};
+                cw->childSpacing = 2.0f;
+            }
+            (void)ui.createLabel(card, {0.0f, 0.0f, 490.0f, 14.0f}, LabelData{text, tokens::TEXT_INK, 10.0f});
+            const WidgetId answerRow = ui.createPanel(card, {0.0f, 0.0f, 490.0f, 24.0f},
+                                                      PanelData{Color{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+            if (Widget* ar = ui.getWidget(answerRow); ar != nullptr) {
+                ar->layoutDirection = LayoutDirection::Horizontal;
+                ar->childSpacing    = 6.0f;
+            }
+            for (const bool accept : {true, false}) {
+                ButtonData btn;
+                btn.label        = accept ? "Accept" : "Reject";
+                btn.fontSize     = 11.0f;
+                btn.normalColor  = accept ? tokens::STATE_SUCCESS : tokens::STATE_DANGER;
+                btn.hoverColor   = tokens::BRONZE_LIGHT;
+                btn.pressedColor = tokens::STATE_PRESSED;
+                btn.cornerRadius = 3.0f;
+                btn.onClick      = [i, accept, &ui, this]() {
+                    if (this->m_gameState != nullptr && this->m_grid != nullptr && this->m_dealTracker != nullptr) {
+                        const aoc::ErrorCode rc = aoc::sim::requestRespondToProposal(
+                            *this->m_gameState, *this->m_grid, *this->m_dealTracker, this->m_player, i, accept);
+                        if (rc != aoc::ErrorCode::Ok) {
+                            LOG_INFO("Proposal answer rejected: %.*s", static_cast<int>(aoc::describeError(rc).size()),
+                                     aoc::describeError(rc).data());
+                        }
+                    }
+                    this->close(ui);
+                };
+                (void)ui.createButton(answerRow, {0.0f, 0.0f, 80.0f, 22.0f}, std::move(btn));
+            }
+        }
+    }
+
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState->players()) {
         const PlayerId otherId = playerPtr->id();
         if (otherId == this->m_player || otherId == BARBARIAN_PLAYER) {
@@ -323,6 +413,109 @@ void DiplomacyScreen::open(UIManager& ui) {
                               return aoc::sim::requestEstablishEmbassy(*gsForActions, *diplomacy, humanPlayer,
                                                                        otherId);
                           });
+            }
+        }
+
+        // Deal composer: toggle a few preset terms, then send through requestProposeDeal.
+        if (!rel.isAtWar && this->m_dealTracker != nullptr && this->m_grid != nullptr) {
+            if (this->m_composerTarget != otherId) {
+                ButtonData proposeBtn;
+                proposeBtn.label        = "Propose Deal";
+                proposeBtn.fontSize     = 11.0f;
+                proposeBtn.normalColor  = tokens::BRONZE_BASE;
+                proposeBtn.hoverColor   = tokens::BRONZE_LIGHT;
+                proposeBtn.pressedColor = tokens::STATE_PRESSED;
+                proposeBtn.cornerRadius = 3.0f;
+                proposeBtn.onClick      = [otherId, &ui, this]() {
+                    this->m_composerTarget = otherId;
+                    this->m_composerTerms.clear();
+                    this->close(ui);
+                    this->open(ui);
+                };
+                (void)ui.createButton(btnRow, {0.0f, 0.0f, 110.0f, 22.0f}, std::move(proposeBtn));
+            } else {
+                std::string summary = "Proposal: ";
+                if (this->m_composerTerms.empty()) {
+                    summary += "(nothing yet)";
+                }
+                for (std::size_t t = 0; t < this->m_composerTerms.size(); ++t) {
+                    if (t > 0) { summary += "; "; }
+                    summary += aoc::sim::describeDealTerm(*gsForActions, this->m_composerTerms[t]);
+                }
+                (void)ui.createLabel(playerPanel, {0.0f, 0.0f, 490.0f, 14.0f},
+                                     LabelData{std::move(summary), tokens::TEXT_INK, 10.0f});
+                const WidgetId termRow = ui.createPanel(playerPanel, {0.0f, 0.0f, 490.0f, 26.0f},
+                                                        PanelData{Color{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+                if (Widget* tr = ui.getWidget(termRow); tr != nullptr) {
+                    tr->layoutDirection = LayoutDirection::Horizontal;
+                    tr->childSpacing    = 4.0f;
+                }
+                struct Toggle {
+                    const char* label;
+                    aoc::sim::DealTermType type;
+                    bool give;
+                    int32_t gold;
+                };
+                const Toggle toggles[6] = {
+                    {"Give 100 gold", aoc::sim::DealTermType::GoldLump, true, 100},
+                    {"Give 500 gold", aoc::sim::DealTermType::GoldLump, true, 500},
+                    {"Ask 100 gold", aoc::sim::DealTermType::GoldLump, false, 100},
+                    {"Ask 500 gold", aoc::sim::DealTermType::GoldLump, false, 500},
+                    {"Open Borders", aoc::sim::DealTermType::OpenBorders, true, 0},
+                    {"Non-Aggression", aoc::sim::DealTermType::NonAggression, true, 0},
+                };
+                for (const Toggle& tg : toggles) {
+                    ButtonData btn;
+                    btn.label        = tg.label;
+                    btn.fontSize     = 10.0f;
+                    btn.normalColor  = tokens::SURFACE_PARCHMENT_DIM;
+                    btn.hoverColor   = tokens::BRONZE_LIGHT;
+                    btn.pressedColor = tokens::STATE_PRESSED;
+                    btn.cornerRadius = 3.0f;
+                    const aoc::sim::DealTermType type = tg.type;
+                    const PlayerId from = tg.give ? humanPlayer : otherId;
+                    const PlayerId to   = tg.give ? otherId : humanPlayer;
+                    const int32_t gold  = tg.gold;
+                    btn.onClick = [type, from, to, gold, &ui, this]() {
+                        this->toggleComposerTerm(type, from, to, gold);
+                        this->close(ui);
+                        this->open(ui);
+                    };
+                    (void)ui.createButton(termRow, {0.0f, 0.0f, 76.0f, 22.0f}, std::move(btn));
+                }
+                const WidgetId sendRow = ui.createPanel(playerPanel, {0.0f, 0.0f, 490.0f, 26.0f},
+                                                        PanelData{Color{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+                if (Widget* sr = ui.getWidget(sendRow); sr != nullptr) {
+                    sr->layoutDirection = LayoutDirection::Horizontal;
+                    sr->childSpacing    = 6.0f;
+                }
+                aoc::sim::GlobalDealTracker* tracker = this->m_dealTracker;
+                aoc::map::HexGrid* grid              = this->m_grid;
+                addAction(sendRow, "Send Proposal", 120.0f, tokens::STATE_SUCCESS,
+                          [gsForActions, grid, tracker, diplomacy, humanPlayer, otherId, nowTurn, this]() {
+                              aoc::sim::DiplomaticDeal deal;
+                              deal.playerA = humanPlayer;
+                              deal.playerB = otherId;
+                              deal.terms   = this->m_composerTerms;
+                              this->m_composerTarget = INVALID_PLAYER;
+                              this->m_composerTerms.clear();
+                              return aoc::sim::requestProposeDeal(*gsForActions, *grid, *tracker, *diplomacy, deal,
+                                                                  nowTurn);
+                          });
+                ButtonData cancelDeal;
+                cancelDeal.label        = "Cancel";
+                cancelDeal.fontSize     = 11.0f;
+                cancelDeal.normalColor  = tokens::BRONZE_BASE;
+                cancelDeal.hoverColor   = tokens::BRONZE_LIGHT;
+                cancelDeal.pressedColor = tokens::STATE_PRESSED;
+                cancelDeal.cornerRadius = 3.0f;
+                cancelDeal.onClick      = [&ui, this]() {
+                    this->m_composerTarget = INVALID_PLAYER;
+                    this->m_composerTerms.clear();
+                    this->close(ui);
+                    this->open(ui);
+                };
+                (void)ui.createButton(sendRow, {0.0f, 0.0f, 80.0f, 22.0f}, std::move(cancelDeal));
             }
         }
 

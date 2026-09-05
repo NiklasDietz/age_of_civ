@@ -30,6 +30,7 @@
 #include "aoc/save/Serializer.hpp"
 #include "GridLayerCompare.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/diplomacy/Espionage.hpp"
 #include "aoc/simulation/city/CityBombardment.hpp"
 #include "aoc/simulation/tech/EraScore.hpp"
@@ -246,6 +247,27 @@ void buildWorld(World& w) {
     w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).denouncedOnTurn      = 12;
     w.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).hasDelegation        = true;
     w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).hasEmbassy           = true;
+    {
+        aoc::sim::PendingProposal offer;
+        offer.from         = aoc::PlayerId{1};
+        offer.to           = aoc::PlayerId{0};
+        offer.proposedTurn = 7;
+        offer.expiresTurn  = 12;
+        offer.deal.playerA = aoc::PlayerId{1};
+        offer.deal.playerB = aoc::PlayerId{0};
+        aoc::sim::DealTerm gold{};
+        gold.type       = aoc::sim::DealTermType::GoldLump;
+        gold.fromPlayer = aoc::PlayerId{1};
+        gold.toPlayer   = aoc::PlayerId{0};
+        gold.goldLump   = 50;
+        aoc::sim::DealTerm borders{};
+        borders.type       = aoc::sim::DealTermType::OpenBorders;
+        borders.fromPlayer = aoc::PlayerId{0};
+        borders.toPlayer   = aoc::PlayerId{1};
+        borders.duration   = 30;
+        offer.deal.terms   = {gold, borders};
+        w.gameState.pendingProposals().push_back(offer);
+    }
     w.gameState.initializeCityStateSlots(2);
     aoc::sim::CityStateComponent cs0{};
     cs0.defId    = 3;
@@ -464,6 +486,16 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     REQUIRE(loaded.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).embargoedGoods.size() == 2);
     CHECK(loaded.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).embargoedGoods[0] == 44);
     // v17: city-states and their seats.
+    REQUIRE(loaded.gameState.pendingProposals().size() == 1);
+    const aoc::sim::PendingProposal& lOffer = loaded.gameState.pendingProposals().front();
+    CHECK(lOffer.from == aoc::PlayerId{1});
+    CHECK(lOffer.to == aoc::PlayerId{0});
+    CHECK(lOffer.expiresTurn == 12);
+    REQUIRE(lOffer.deal.terms.size() == 2);
+    CHECK(lOffer.deal.terms[0].type == aoc::sim::DealTermType::GoldLump);
+    CHECK(lOffer.deal.terms[0].goldLump == 50);
+    CHECK(lOffer.deal.terms[1].type == aoc::sim::DealTermType::OpenBorders);
+    CHECK(lOffer.deal.terms[1].fromPlayer == aoc::PlayerId{0});
     REQUIRE(loaded.gameState.cityStates().size() == 2);
     const aoc::sim::CityStateComponent& lCs0 = loaded.gameState.cityStates()[0];
     CHECK(lCs0.defId == 3);

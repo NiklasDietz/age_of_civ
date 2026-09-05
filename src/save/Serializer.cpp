@@ -50,6 +50,7 @@
 #include "aoc/simulation/diplomacy/WorldCongress.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
+#include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
 #include "aoc/simulation/monetary/CurrencyWar.hpp"
@@ -162,6 +163,8 @@ constexpr std::size_t MAX_RELATION_MODIFIERS     = 1000;
 constexpr std::size_t MAX_CITY_STATES        = 32;
 constexpr std::size_t MAX_RESOLUTION_RECORDS = 256;
 constexpr std::size_t MAX_EMBARGOED_GOODS    = 1024;
+constexpr std::size_t MAX_PENDING_PROPOSALS  = 64;
+constexpr std::size_t MAX_DEAL_TERMS         = 16;
 constexpr std::size_t MAX_RESEARCH_QUEUE     = 128;
 constexpr std::size_t MAX_CITY_WONDERS           = 256;
 constexpr std::size_t MAX_CITY_GREAT_WORKS       = 64;
@@ -1326,6 +1329,41 @@ void writeCityStatesSection(WriteBuffer& out, const aoc::game::GameState& gameSt
 
 /// v17: the global religion tracker and per-player faith. City pressure rides
 /// on the Entities city record.
+/// v22: deal proposals waiting for the human. cityEntity is never written; every
+/// constructed CedeCity term names its city by tileCoord.
+void writeDealProposalsSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
+    WriteBuffer section;
+    const std::vector<aoc::sim::PendingProposal>& inbox = gameState.pendingProposals();
+    section.writeU32(static_cast<uint32_t>(inbox.size()));
+    for (const aoc::sim::PendingProposal& p : inbox) {
+        section.writeU8(p.from);
+        section.writeU8(p.to);
+        section.writeI32(p.proposedTurn);
+        section.writeI32(p.expiresTurn);
+        section.writeU8(p.deal.playerA);
+        section.writeU8(p.deal.playerB);
+        section.writeI32(p.deal.turnsRemaining);
+        section.writeU8(p.deal.isAccepted ? uint8_t{1} : uint8_t{0});
+        section.writeU8(p.deal.isBroken ? uint8_t{1} : uint8_t{0});
+        section.writeU32(static_cast<uint32_t>(p.deal.terms.size()));
+        for (const aoc::sim::DealTerm& t : p.deal.terms) {
+            section.writeU8(static_cast<uint8_t>(t.type));
+            section.writeU8(t.fromPlayer);
+            section.writeU8(t.toPlayer);
+            section.writeI32(t.tileCoord.q);
+            section.writeI32(t.tileCoord.r);
+            section.writeI32(t.goldPerTurn);
+            section.writeI32(t.goldLump);
+            section.writeI32(t.duration);
+            section.writeU16(t.goodId);
+            section.writeI32(t.goodAmount);
+            section.writeI32(t.zoneRadius);
+            section.writeI32(t.maxMilitaryUnits);
+        }
+    }
+    writeSection(out, SectionId::DealProposals, section);
+}
+
 void writeReligionSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
     WriteBuffer section;
     const aoc::sim::GlobalReligionTracker& tracker = gameState.religionTracker();
@@ -1843,6 +1881,7 @@ ErrorCode saveGame(const std::string& filepath, const aoc::game::GameState& game
     // v17 sections
     writeCityStatesSection(buf, gameState);
     writeReligionSection(buf, gameState);
+    writeDealProposalsSection(buf, gameState);
     writeWorldCongressSection(buf, gameState);
     writeMiscEntitiesSection(buf, gameState);
     writeCurrencyTrustSection(buf, gameState);
@@ -3029,6 +3068,58 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                         }
                     }
                 }
+            }
+            break;
+        }
+        case SectionId::DealProposals: {
+            std::vector<aoc::sim::PendingProposal>& inbox = gameState.pendingProposals();
+            inbox.clear();
+            const uint32_t count = buf.readU32();
+            if (count > MAX_PENDING_PROPOSALS || !buf.canReadRecords(count, 20)) {
+                LOG_ERROR("Serializer: pending proposal count %u out of range", count);
+                return ErrorCode::SaveCorrupted;
+            }
+            for (uint32_t i = 0; i < count && !buf.isCorrupt(); ++i) {
+                aoc::sim::PendingProposal p;
+                p.from                = buf.readU8();
+                p.to                  = buf.readU8();
+                p.proposedTurn        = buf.readI32();
+                p.expiresTurn         = buf.readI32();
+                p.deal.playerA        = buf.readU8();
+                p.deal.playerB        = buf.readU8();
+                p.deal.turnsRemaining = buf.readI32();
+                p.deal.isAccepted     = buf.readU8() != 0;
+                p.deal.isBroken       = buf.readU8() != 0;
+                const uint32_t termCount = buf.readU32();
+                if (termCount > MAX_DEAL_TERMS || !buf.canReadRecords(termCount, 37)) {
+                    LOG_ERROR("Serializer: deal term count %u out of range", termCount);
+                    return ErrorCode::SaveCorrupted;
+                }
+                for (uint32_t t = 0; t < termCount && !buf.isCorrupt(); ++t) {
+                    aoc::sim::DealTerm term{};
+                    const uint8_t type = buf.readU8();
+                    if (type >= static_cast<uint8_t>(aoc::sim::DealTermType::Count)) {
+                        LOG_ERROR("Serializer: deal term type %u out of range", type);
+                        return ErrorCode::SaveCorrupted;
+                    }
+                    term.type             = static_cast<aoc::sim::DealTermType>(type);
+                    term.fromPlayer       = buf.readU8();
+                    term.toPlayer         = buf.readU8();
+                    term.tileCoord        = {buf.readI32(), buf.readI32()};
+                    term.goldPerTurn      = buf.readI32();
+                    term.goldLump         = buf.readI32();
+                    term.duration         = buf.readI32();
+                    term.goodId           = buf.readU16();
+                    term.goodAmount       = buf.readI32();
+                    term.zoneRadius       = buf.readI32();
+                    term.maxMilitaryUnits = buf.readI32();
+                    p.deal.terms.push_back(term);
+                }
+                if (p.from >= MAX_PLAYERS || p.to >= MAX_PLAYERS) {
+                    LOG_ERROR("Serializer: pending proposal parties out of range");
+                    return ErrorCode::SaveCorrupted;
+                }
+                inbox.push_back(std::move(p));
             }
             break;
         }

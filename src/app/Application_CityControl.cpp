@@ -16,6 +16,8 @@
 #include "aoc/simulation/unit/UnitOrders.hpp"
 #include "aoc/simulation/unit/Promotion.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
+#include "aoc/simulation/diplomacy/DealProposals.hpp"
+#include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyActions.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/culture/GreatWorks.hpp"
@@ -887,6 +889,173 @@ void Application::executeGameControlCommand(const aoc::debug::OpenBordersCommand
     logDiplomacyResult("Open borders", cmd.player, cmd.target,
                        aoc::sim::requestOpenBorders(this->m_gameState, this->m_diplomacy, cmd.player,
                                                     cmd.target, this->m_gameState.currentTurn()));
+}
+
+namespace {
+
+/// Optional integer query parameter: absent means `fallback`, malformed is an error.
+bool readOptionalInt(const std::unordered_map<std::string, std::string>& query, const char* name,
+                     int32_t fallback, int32_t& out, std::string& errorJson) {
+    if (query.find(name) == query.end()) {
+        out = fallback;
+        return true;
+    }
+    return readIntParam(query, name, out, errorJson);
+}
+
+std::string dealTermsJson(const aoc::game::GameState& gameState, const aoc::sim::DiplomaticDeal& deal) {
+    std::string json = "[";
+    for (std::size_t t = 0; t < deal.terms.size(); ++t) {
+        if (t > 0) { json += ","; }
+        json += "\"" + aoc::sim::describeDealTerm(gameState, deal.terms[t]) + "\"";
+    }
+    return json + "]";
+}
+
+} // namespace
+
+void Application::registerDealRoutes() {
+    using DSM = aoc::debug::DebugServer::Method;
+    using Query = std::unordered_map<std::string, std::string>;
+
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/deal/propose",
+        [this](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t target = 0;
+            int32_t giveGold = 0;
+            int32_t askGold = 0;
+            int32_t openBorders = 0;
+            int32_t nonAggression = 0;
+            std::string err;
+            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "target", target, err)
+                || !readOptionalInt(q, "giveGold", 0, giveGold, err) || !readOptionalInt(q, "askGold", 0, askGold, err)
+                || !readOptionalInt(q, "openBorders", 0, openBorders, err)
+                || !readOptionalInt(q, "nonAggression", 0, nonAggression, err)) {
+                return err;
+            }
+            if (player < 0 || target < 0 || player >= MAX_PLAYERS || target >= MAX_PLAYERS || giveGold < 0
+                || askGold < 0) {
+                return std::string("{\"error\":\"player, target or gold out of range\"}");
+            }
+            std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+            this->m_pendingCommands.push_back(aoc::debug::ProposeDealCommand{
+                static_cast<aoc::PlayerId>(player), static_cast<aoc::PlayerId>(target), giveGold, askGold,
+                openBorders != 0, nonAggression != 0});
+            return std::string("{\"queued\":true}");
+        });
+
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/deal/respond",
+        [this](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t index = 0;
+            int32_t accept = 0;
+            std::string err;
+            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "index", index, err)
+                || !readIntParam(q, "accept", accept, err)) {
+                return err;
+            }
+            if (player < 0 || player >= MAX_PLAYERS || index < 0
+                || static_cast<std::size_t>(index) >= this->m_gameState.pendingProposals().size()) {
+                return std::string("{\"error\":\"player or index out of range\"}");
+            }
+            std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+            this->m_pendingCommands.push_back(
+                aoc::debug::RespondProposalCommand{static_cast<aoc::PlayerId>(player), index, accept != 0});
+            return std::string("{\"queued\":true}");
+        });
+
+    this->m_debugServer->routeJson(
+        DSM::Get, "/game/deals",
+        [this](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            std::string err;
+            if (!readIntParam(q, "player", player, err)) {
+                return err;
+            }
+            const aoc::PlayerId me = static_cast<aoc::PlayerId>(player);
+            std::string json = "{\"inbox\":[";
+            bool first = true;
+            const std::vector<aoc::sim::PendingProposal>& inbox = this->m_gameState.pendingProposals();
+            for (std::size_t i = 0; i < inbox.size(); ++i) {
+                if (inbox[i].to != me) { continue; }
+                if (!first) { json += ","; }
+                first = false;
+                json += "{\"index\":" + std::to_string(i) + ",\"from\":" + std::to_string(static_cast<unsigned>(inbox[i].from))
+                        + ",\"expiresTurn\":" + std::to_string(inbox[i].expiresTurn)
+                        + ",\"terms\":" + dealTermsJson(this->m_gameState, inbox[i].deal) + "}";
+            }
+            json += "],\"activeDeals\":[";
+            first = true;
+            for (const aoc::sim::DiplomaticDeal& deal : this->m_dealTracker.activeDeals) {
+                if (deal.playerA != me && deal.playerB != me) { continue; }
+                if (!first) { json += ","; }
+                first = false;
+                json += "{\"with\":" + std::to_string(static_cast<unsigned>(deal.playerA == me ? deal.playerB : deal.playerA))
+                        + ",\"accepted\":" + (deal.isAccepted ? "true" : "false")
+                        + ",\"broken\":" + (deal.isBroken ? "true" : "false")
+                        + ",\"turnsRemaining\":" + std::to_string(deal.turnsRemaining)
+                        + ",\"terms\":" + dealTermsJson(this->m_gameState, deal) + "}";
+            }
+            json += "]}";
+            return json;
+        });
+}
+
+void Application::executeGameControlCommand(const aoc::debug::ProposeDealCommand& cmd) {
+    aoc::sim::DiplomaticDeal deal;
+    deal.playerA = cmd.player;
+    deal.playerB = cmd.target;
+    if (cmd.giveGold > 0) {
+        aoc::sim::DealTerm t{};
+        t.type       = aoc::sim::DealTermType::GoldLump;
+        t.fromPlayer = cmd.player;
+        t.toPlayer   = cmd.target;
+        t.goldLump   = cmd.giveGold;
+        deal.terms.push_back(t);
+    }
+    if (cmd.askGold > 0) {
+        aoc::sim::DealTerm t{};
+        t.type       = aoc::sim::DealTermType::GoldLump;
+        t.fromPlayer = cmd.target;
+        t.toPlayer   = cmd.player;
+        t.goldLump   = cmd.askGold;
+        deal.terms.push_back(t);
+    }
+    for (const aoc::sim::DealTermType pact :
+         {aoc::sim::DealTermType::OpenBorders, aoc::sim::DealTermType::NonAggression}) {
+        const bool wanted = pact == aoc::sim::DealTermType::OpenBorders ? cmd.openBorders : cmd.nonAggression;
+        if (!wanted) { continue; }
+        aoc::sim::DealTerm t{};
+        t.type       = pact;
+        t.fromPlayer = cmd.player;
+        t.toPlayer   = cmd.target;
+        t.duration   = 30;
+        deal.terms.push_back(t);
+    }
+    logDiplomacyResult("Deal proposal", cmd.player, cmd.target,
+                       aoc::sim::requestProposeDeal(this->m_gameState, this->m_hexGrid, this->m_dealTracker,
+                                                    this->m_diplomacy, deal, this->m_gameState.currentTurn()));
+}
+
+void Application::executeGameControlCommand(const aoc::debug::RespondProposalCommand& cmd) {
+    const ErrorCode rc = aoc::sim::requestRespondToProposal(this->m_gameState, this->m_hexGrid, this->m_dealTracker,
+                                                            cmd.player, static_cast<std::size_t>(cmd.index),
+                                                            cmd.accept);
+    if (rc != ErrorCode::Ok) {
+        LOG_WARN("Proposal answer by player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
+                 static_cast<int>(describeError(rc).size()), describeError(rc).data());
+    }
 }
 
 } // namespace aoc::app

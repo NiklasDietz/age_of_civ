@@ -32,6 +32,7 @@
 #include "aoc/simulation/diplomacy/WorldCongress.hpp"
 #include "aoc/simulation/barbarian/BarbarianClans.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
+#include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/simulation/diplomacy/Espionage.hpp"
@@ -209,6 +210,9 @@ public:
 
     [[nodiscard]] std::vector<aoc::sim::CityStateComponent>& cityStates() { return this->m_cityStates; }
     [[nodiscard]] const std::vector<aoc::sim::CityStateComponent>& cityStates() const { return this->m_cityStates; }
+    /// Deal proposals waiting for the human's answer (DealProposals.hpp).
+    [[nodiscard]] std::vector<aoc::sim::PendingProposal>& pendingProposals() { return this->m_pendingProposals; }
+    [[nodiscard]] const std::vector<aoc::sim::PendingProposal>& pendingProposals() const { return this->m_pendingProposals; }
 
     [[nodiscard]] std::vector<aoc::sim::ElectricityAgreementComponent>& electricityAgreements() { return this->m_electricityAgreements; }
     [[nodiscard]] const std::vector<aoc::sim::ElectricityAgreementComponent>& electricityAgreements() const { return this->m_electricityAgreements; }
@@ -254,6 +258,7 @@ private:
     std::vector<aoc::sim::CommodityHoardComponent> m_commodityHoards;
     std::vector<aoc::sim::BarbarianClanComponent> m_barbarianClans;
     std::vector<aoc::sim::CityStateComponent> m_cityStates;
+    std::vector<aoc::sim::PendingProposal> m_pendingProposals;
     std::vector<aoc::sim::ElectricityAgreementComponent> m_electricityAgreements;
 
     /// WP-S: encampment supply buffers keyed by tile index.

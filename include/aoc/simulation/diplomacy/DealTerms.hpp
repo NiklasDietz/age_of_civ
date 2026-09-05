@@ -107,6 +107,18 @@ struct DiplomaticDeal {
 };
 
 /// Global deal tracker.
+/// A deal offered to a human player, waiting in GameState::pendingProposals()
+/// (DealProposals.hpp). `deal.playerA` proposed it to `deal.playerB`.
+inline constexpr int32_t PROPOSAL_TTL_TURNS = 5;
+
+struct PendingProposal {
+    PlayerId       from = INVALID_PLAYER;
+    PlayerId       to   = INVALID_PLAYER;
+    DiplomaticDeal deal;
+    int32_t        proposedTurn = 0;
+    int32_t        expiresTurn  = 0;
+};
+
 struct GlobalDealTracker {
     std::vector<DiplomaticDeal> activeDeals;
 

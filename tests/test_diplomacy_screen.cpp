@@ -9,6 +9,7 @@
 #include "support/World.hpp"
 
 #include "aoc/game/Player.hpp"
+#include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyActions.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/ui/DiplomacyScreen.hpp"
@@ -30,6 +31,7 @@ namespace {
 struct Fixture {
     aoc::test::World world = aoc::test::makeWorld(2);
     aoc::sim::DiplomacyManager d;
+    aoc::sim::GlobalDealTracker tracker;
     UIManager ui;
     DiplomacyScreen screen;
 
@@ -41,8 +43,8 @@ struct Fixture {
         this->world.gameState.players()[1]->setCivId(static_cast<aoc::sim::CivId>(1));
         this->ui.setScreenSize(1920.0f, 1200.0f);
         this->screen.setScreenSize(1920.0f, 1200.0f);
-        this->screen.setContext(&this->world.gameState, PlayerId{0}, &this->d, &this->world.grid, nullptr,
-                                nullptr);
+        this->screen.setContext(&this->world.gameState, PlayerId{0}, &this->d, &this->world.grid,
+                                &this->tracker, nullptr);
     }
 
     [[nodiscard]] int32_t labelsContaining(const std::string& needle) const {
@@ -139,4 +141,72 @@ TEST_CASE("a rejected action leaves the state alone; an accepted one shows its t
     CHECK(f.labelsContaining("[Delegation]") == 1);
     CHECK(f.buttonsLabelled("Delegation (25 gold)") == 0);
     CHECK(f.buttonsLabelled("Embassy (50 gold)") == 1);
+}
+
+TEST_CASE("the deal composer toggles preset terms and sends them; an AI takes a gift at once") {
+    Fixture f;
+    f.world.gameState.player(PlayerId{0})->addGold(150);
+    f.screen.open(f.ui);
+    CHECK(f.buttonsLabelled("Propose Deal") == 1);
+    REQUIRE(f.clickButton("Propose Deal"));
+    CHECK(f.labelsContaining("Proposal: (nothing yet)") == 1);
+    CHECK(f.buttonsLabelled("Give 100 gold") == 1);
+    REQUIRE(f.clickButton("Give 100 gold"));
+    CHECK(f.labelsContaining("Proposal: 100 gold (") == 1);
+    REQUIRE(f.clickButton("Give 500 gold")); // replaces the 100
+    CHECK(f.labelsContaining("Proposal: 500 gold (") == 1);
+    REQUIRE(f.clickButton("Give 500 gold")); // same amount again removes it
+    CHECK(f.labelsContaining("Proposal: (nothing yet)") == 1);
+    REQUIRE(f.clickButton("Give 100 gold"));
+    REQUIRE(f.clickButton("Non-Aggression"));
+    CHECK(f.labelsContaining("Non-Aggression Pact (30 turns)") == 1);
+    REQUIRE(f.clickButton("Send Proposal"));
+    CHECK_FALSE(f.screen.isOpen());
+    CHECK(f.world.gameState.player(PlayerId{1})->treasury() == 100);
+    CHECK(f.world.gameState.player(PlayerId{0})->treasury() == 50);
+    REQUIRE(f.tracker.activeDeals.size() == 1);
+    CHECK(f.tracker.activeDeals.front().hasTerm(aoc::sim::DealTermType::NonAggression));
+    CHECK(f.tracker.hasNonAggressionPact(PlayerId{0}, PlayerId{1}));
+
+    f.screen.open(f.ui);
+    CHECK(f.buttonsLabelled("Propose Deal") == 1); // composer closed after sending
+    REQUIRE(f.clickButton("Propose Deal"));
+    REQUIRE(f.clickButton("Cancel"));
+    CHECK(f.buttonsLabelled("Propose Deal") == 1);
+}
+
+TEST_CASE("the inbox lists proposals to the human with Accept and Reject") {
+    Fixture f;
+    f.world.gameState.player(PlayerId{1})->addGold(200);
+    aoc::sim::PendingProposal offer;
+    offer.from = PlayerId{1};
+    offer.to   = PlayerId{0};
+    offer.deal.playerA = PlayerId{1};
+    offer.deal.playerB = PlayerId{0};
+    aoc::sim::DealTerm gold{};
+    gold.type       = aoc::sim::DealTermType::GoldLump;
+    gold.fromPlayer = PlayerId{1};
+    gold.toPlayer   = PlayerId{0};
+    gold.goldLump   = 75;
+    offer.deal.terms.push_back(gold);
+    offer.expiresTurn = 5;
+    f.world.gameState.pendingProposals().push_back(offer);
+
+    f.screen.open(f.ui);
+    CHECK(f.labelsContaining("INBOX") == 1);
+    CHECK(f.labelsContaining("From Egypt: 75 gold (Egypt -> Rome)  (expires turn 5)") == 1);
+    CHECK(f.buttonsLabelled("Accept") == 1);
+    CHECK(f.buttonsLabelled("Reject") == 1);
+    REQUIRE(f.clickButton("Accept"));
+    CHECK(f.world.gameState.pendingProposals().empty());
+    CHECK(f.world.gameState.player(PlayerId{0})->treasury() == 75);
+    CHECK(f.world.gameState.player(PlayerId{1})->treasury() == 125);
+
+    f.world.gameState.pendingProposals().push_back(offer);
+    f.screen.open(f.ui);
+    REQUIRE(f.clickButton("Reject"));
+    CHECK(f.world.gameState.pendingProposals().empty());
+    CHECK(f.world.gameState.player(PlayerId{0})->treasury() == 75);
+    f.screen.open(f.ui);
+    CHECK(f.labelsContaining("INBOX") == 0);
 }
