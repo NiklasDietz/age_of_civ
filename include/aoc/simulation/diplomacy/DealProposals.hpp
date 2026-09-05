@@ -8,6 +8,9 @@
  * it waits in GameState::pendingProposals() for PROPOSAL_TTL_TURNS and the human
  * answers with requestRespondToProposal; an AI recipient accepts at once when
  * dealValueFor says the deal is worth at least nothing to it, else declines.
+ * Applying a deal realizes its pacts (open borders for the term's duration) and,
+ * when the parties were at war, makes peace: a deal concluded at war is the
+ * peace treaty. Arrival, answer and expiry push Diplomacy notifications.
  * Convention: `deal.playerA` proposes, `deal.playerB` receives.
  */
 
@@ -52,13 +55,24 @@ class DiplomacyManager;
 /// declines. InvalidArgument: no terms or a term naming a third party. For an AI
 /// recipient the deal is applied through acceptDeal and its code is returned.
 ErrorCode requestProposeDeal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
-                             const DiplomacyManager& diplomacy, const DiplomaticDeal& deal, int32_t currentTurn);
+                             DiplomacyManager& diplomacy, const DiplomaticDeal& deal, int32_t currentTurn);
 
 /// The human answers proposal `index` of GameState::pendingProposals(). The
 /// proposal leaves the inbox either way; on accept the deal is applied through
 /// acceptDeal and its code is returned.
 ErrorCode requestRespondToProposal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
-                                   GlobalDealTracker& tracker, PlayerId responder, std::size_t index, bool accept);
+                                   GlobalDealTracker& tracker, DiplomacyManager& diplomacy, PlayerId responder,
+                                   std::size_t index, bool accept, int32_t currentTurn);
+
+/// AI offers (2.10c). Peace: the losing `loser` offers `winner` a tenth of its
+/// treasury (or a non-aggression pact when broke); a human winner finds it in
+/// the inbox, an AI winner values it. Open borders: offered when `ai` is at
+/// least Friendly toward `other`; the other side consents by its own stance.
+/// Both return true when the proposal was delivered or applied.
+bool aiOfferPeace(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
+                  DiplomacyManager& diplomacy, PlayerId loser, PlayerId winner, int32_t currentTurn);
+bool aiOfferOpenBorders(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
+                        DiplomacyManager& diplomacy, PlayerId ai, PlayerId other, int32_t currentTurn);
 
 /// Drop proposals whose expiresTurn has come. Runs once per turn.
 void expireProposals(aoc::game::GameState& gameState, int32_t currentTurn);

@@ -11,6 +11,7 @@
 #include "aoc/simulation/ai/AIController.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
+#include "aoc/simulation/diplomacy/DealProposals.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
@@ -97,7 +98,16 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             // civs to actually find at-war targets. Short wars also made
             // secession, attrition, and spy missions under-trigger.
             const float peaceThreshold = 1.5f + beh.grudgeHolding - beh.peaceAcceptanceThreshold;
-            if (peaceMilRatio > std::max(peaceThreshold, 0.8f)) {
+            const aoc::game::Player* otherSeat = gameState.player(other);
+            if (peaceMilRatio > std::max(peaceThreshold, 0.8f) && otherSeat != nullptr && otherSeat->isHuman()
+                && dealTracker != nullptr) {
+                // A human decides from the inbox (2.10c); the offer repeats after it expires.
+                if (aiOfferPeace(gameState, grid, *dealTracker, diplomacy, this->m_player, other,
+                                 gameState.currentTurn())) {
+                    LOG_INFO("AI %u offered peace to the human player %u", static_cast<unsigned>(this->m_player),
+                             static_cast<unsigned>(other));
+                }
+            } else if (peaceMilRatio > std::max(peaceThreshold, 0.8f)) {
                 // War reparations: the weaker side (proposing peace) pays 10% of
                 // their treasury to the stronger side. This makes war economically
                 // meaningful — winning wars pays for the military investment.
@@ -255,10 +265,20 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             }
 
             if (!rel.hasOpenBorders && relationScore > 10) {
-                diplomacy.grantOpenBorders(this->m_player, other);
-                LOG_INFO("AI %u Opened borders with player %u (relations %d)",
-                         static_cast<unsigned>(this->m_player),
-                         static_cast<unsigned>(other), relationScore);
+                if (dealTracker != nullptr) {
+                    // The other side consents by its own stance (2.10c); a human sees the offer in the inbox.
+                    if (aiOfferOpenBorders(gameState, grid, *dealTracker, diplomacy, this->m_player, other,
+                                           gameState.currentTurn())) {
+                        LOG_INFO("AI %u offered open borders to player %u (relations %d)",
+                                 static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
+                                 relationScore);
+                    }
+                } else {
+                    diplomacy.grantOpenBorders(this->m_player, other);
+                    LOG_INFO("AI %u Opened borders with player %u (relations %d)",
+                             static_cast<unsigned>(this->m_player),
+                             static_cast<unsigned>(other), relationScore);
+                }
             }
 
             // H6.4: alliance formation is now personality-gated. Without this,

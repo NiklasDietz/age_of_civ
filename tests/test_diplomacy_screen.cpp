@@ -9,6 +9,7 @@
 #include "support/World.hpp"
 
 #include "aoc/game/Player.hpp"
+#include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyActions.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
@@ -195,6 +196,9 @@ TEST_CASE("the inbox lists proposals to the human with Accept and Reject") {
     f.screen.open(f.ui);
     CHECK(f.labelsContaining("INBOX") == 1);
     CHECK(f.labelsContaining("From Egypt: 75 gold (Egypt -> Rome)  (expires turn 5)") == 1);
+    const std::string quote(aoc::sim::getLeaderDialogue(static_cast<aoc::sim::CivId>(1),
+                                                        aoc::sim::DialogueContext::ProposeTrade));
+    CHECK(f.labelsContaining(quote) == 1);
     CHECK(f.buttonsLabelled("Accept") == 1);
     CHECK(f.buttonsLabelled("Reject") == 1);
     REQUIRE(f.clickButton("Accept"));

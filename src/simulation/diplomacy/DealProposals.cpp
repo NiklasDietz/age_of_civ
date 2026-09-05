@@ -10,7 +10,9 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyActions.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/event/GameNotifications.hpp"
 
 #include <algorithm>
 #include <memory>
@@ -89,14 +91,56 @@ ErrorCode proposalShapeValid(const aoc::game::GameState& gameState, const Diplom
     return ErrorCode::Ok;
 }
 
+std::string termsText(const aoc::game::GameState& gameState, const DiplomaticDeal& deal) {
+    std::string text;
+    for (std::size_t t = 0; t < deal.terms.size(); ++t) {
+        if (t > 0) { text += "; "; }
+        text += describeDealTerm(gameState, deal.terms[t]);
+    }
+    return text;
+}
+
+void notify(PlayerId to, PlayerId other, std::string title, std::string body, int32_t priority) {
+    aoc::sim::event::GameNotification n;
+    n.category       = aoc::sim::event::NotificationCategory::Diplomacy;
+    n.title          = std::move(title);
+    n.body           = std::move(body);
+    n.relevantPlayer = to;
+    n.otherPlayer    = other;
+    n.priority       = priority;
+    aoc::sim::event::pushNotification(n);
+}
+
+/// proposeDeal + acceptDeal, then the parts acceptDeal leaves to diplomacy: open
+/// borders for the term's duration, and peace when the parties were at war.
 ErrorCode applyDeal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
-                    const DiplomaticDeal& deal) {
+                    DiplomacyManager& diplomacy, const DiplomaticDeal& deal, int32_t currentTurn) {
     const std::size_t index = tracker.activeDeals.size();
     const ErrorCode proposed = proposeDeal(gameState, tracker, deal);
     if (proposed != ErrorCode::Ok) {
         return proposed;
     }
-    return acceptDeal(gameState, grid, tracker, static_cast<int32_t>(index));
+    const ErrorCode accepted = acceptDeal(gameState, grid, tracker, static_cast<int32_t>(index));
+    if (accepted != ErrorCode::Ok) {
+        return accepted;
+    }
+    const PlayerId a = deal.playerA;
+    const PlayerId b = deal.playerB;
+    if (a < diplomacy.playerCount() && b < diplomacy.playerCount()) {
+        for (const DealTerm& term : deal.terms) {
+            if (term.type == DealTermType::OpenBorders) {
+                if (!diplomacy.relation(a, b).hasOpenBorders) {
+                    diplomacy.grantOpenBorders(a, b);
+                }
+                diplomacy.relation(a, b).openBordersUntilTurn = currentTurn + term.duration;
+                diplomacy.relation(b, a).openBordersUntilTurn = currentTurn + term.duration;
+            }
+        }
+        if (diplomacy.isAtWar(a, b)) {
+            diplomacy.makePeace(a, b); // a deal concluded at war is the peace treaty
+        }
+    }
+    return ErrorCode::Ok;
 }
 
 } // namespace
@@ -209,7 +253,7 @@ std::string describeDealTerm(const aoc::game::GameState& gameState, const DealTe
 }
 
 ErrorCode requestProposeDeal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
-                             const DiplomacyManager& diplomacy, const DiplomaticDeal& deal, int32_t currentTurn) {
+                             DiplomacyManager& diplomacy, const DiplomaticDeal& deal, int32_t currentTurn) {
     const ErrorCode shape = proposalShapeValid(gameState, diplomacy, deal);
     if (shape != ErrorCode::Ok) {
         return shape;
@@ -230,20 +274,34 @@ ErrorCode requestProposeDeal(aoc::game::GameState& gameState, aoc::map::HexGrid&
         pending.proposedTurn = currentTurn;
         pending.expiresTurn  = currentTurn + PROPOSAL_TTL_TURNS;
         gameState.pendingProposals().push_back(std::move(pending));
+        notify(deal.playerB, deal.playerA, "Deal proposed",
+               civName(gameState, deal.playerA) + " offers: " + termsText(gameState, deal), 5);
         LOG_INFO("Player %u proposed a deal with %zu terms to player %u", static_cast<unsigned>(deal.playerA),
                  deal.terms.size(), static_cast<unsigned>(deal.playerB));
         return ErrorCode::Ok;
     }
+    const aoc::game::Player* proposer = gameState.player(deal.playerA);
+    const bool humanProposer          = proposer != nullptr && proposer->isHuman();
     if (!aiAcceptsDeal(gameState, diplomacy, deal.playerB, deal)) {
         LOG_INFO("Player %u declined a deal from player %u (value %d)", static_cast<unsigned>(deal.playerB),
                  static_cast<unsigned>(deal.playerA), dealValueFor(gameState, diplomacy, deal.playerB, deal));
+        if (humanProposer) {
+            notify(deal.playerA, deal.playerB, "Deal declined",
+                   civName(gameState, deal.playerB) + " declined: " + termsText(gameState, deal), 4);
+        }
         return ErrorCode::InvalidState;
     }
-    return applyDeal(gameState, grid, tracker, deal);
+    const ErrorCode applied = applyDeal(gameState, grid, tracker, diplomacy, deal, currentTurn);
+    if (humanProposer && applied == ErrorCode::Ok) {
+        notify(deal.playerA, deal.playerB, "Deal accepted",
+               civName(gameState, deal.playerB) + " accepted: " + termsText(gameState, deal), 4);
+    }
+    return applied;
 }
 
 ErrorCode requestRespondToProposal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
-                                   GlobalDealTracker& tracker, PlayerId responder, std::size_t index, bool accept) {
+                                   GlobalDealTracker& tracker, DiplomacyManager& diplomacy, PlayerId responder,
+                                   std::size_t index, bool accept, int32_t currentTurn) {
     std::vector<PendingProposal>& inbox = gameState.pendingProposals();
     if (index >= inbox.size()) {
         return ErrorCode::EntityNotFound;
@@ -258,18 +316,69 @@ ErrorCode requestRespondToProposal(aoc::game::GameState& gameState, aoc::map::He
                  static_cast<unsigned>(deal.playerA));
         return ErrorCode::Ok;
     }
-    return applyDeal(gameState, grid, tracker, deal);
+    return applyDeal(gameState, grid, tracker, diplomacy, deal, currentTurn);
 }
 
 void expireProposals(aoc::game::GameState& gameState, int32_t currentTurn) {
     std::vector<PendingProposal>& inbox = gameState.pendingProposals();
-    const std::size_t before = inbox.size();
-    inbox.erase(std::remove_if(inbox.begin(), inbox.end(),
-                               [currentTurn](const PendingProposal& p) { return p.expiresTurn <= currentTurn; }),
-                inbox.end());
-    if (inbox.size() != before) {
-        LOG_INFO("%zu deal proposal(s) expired on turn %d", before - inbox.size(), currentTurn);
+    std::vector<PendingProposal> kept;
+    kept.reserve(inbox.size());
+    for (PendingProposal& p : inbox) {
+        if (p.expiresTurn > currentTurn) {
+            kept.push_back(std::move(p));
+            continue;
+        }
+        notify(p.to, p.from, "Proposal expired",
+               "The offer from " + civName(gameState, p.from) + " lapsed: " + termsText(gameState, p.deal), 2);
+        LOG_INFO("Deal proposal from player %u to %u expired on turn %d", static_cast<unsigned>(p.from),
+                 static_cast<unsigned>(p.to), currentTurn);
     }
+    inbox = std::move(kept);
+}
+
+bool aiOfferPeace(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
+                  DiplomacyManager& diplomacy, PlayerId loser, PlayerId winner, int32_t currentTurn) {
+    const aoc::game::Player* me = gameState.player(loser);
+    if (me == nullptr || loser >= diplomacy.playerCount() || winner >= diplomacy.playerCount()
+        || !diplomacy.isAtWar(loser, winner)) {
+        return false;
+    }
+    DiplomaticDeal deal;
+    deal.playerA = loser;
+    deal.playerB = winner;
+    DealTerm term{};
+    term.fromPlayer = loser;
+    term.toPlayer   = winner;
+    if (me->treasury() > 0) {
+        term.type     = DealTermType::GoldLump;
+        term.goldLump = std::max<int32_t>(1, static_cast<int32_t>(me->treasury() / 10));
+    } else {
+        term.type     = DealTermType::NonAggression;
+        term.duration = 30;
+    }
+    deal.terms.push_back(term);
+    return requestProposeDeal(gameState, grid, tracker, diplomacy, deal, currentTurn) == ErrorCode::Ok;
+}
+
+bool aiOfferOpenBorders(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
+                        DiplomacyManager& diplomacy, PlayerId ai, PlayerId other, int32_t currentTurn) {
+    if (ai >= diplomacy.playerCount() || other >= diplomacy.playerCount() || ai == other) {
+        return false;
+    }
+    const PairwiseRelation& rel = diplomacy.relation(ai, other);
+    if (!rel.hasMet || rel.isAtWar || rel.hasOpenBorders || rel.totalScore() < OPEN_BORDERS_MIN_SCORE) {
+        return false;
+    }
+    DiplomaticDeal deal;
+    deal.playerA = ai;
+    deal.playerB = other;
+    DealTerm term{};
+    term.type       = DealTermType::OpenBorders;
+    term.fromPlayer = ai;
+    term.toPlayer   = other;
+    term.duration   = OPEN_BORDERS_TURNS;
+    deal.terms.push_back(term);
+    return requestProposeDeal(gameState, grid, tracker, diplomacy, deal, currentTurn) == ErrorCode::Ok;
 }
 
 } // namespace aoc::sim

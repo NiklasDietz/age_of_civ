@@ -15,6 +15,7 @@
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyActions.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/diplomacy/DealProposals.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
@@ -122,15 +123,26 @@ void DiplomacyScreen::open(UIManager& ui) {
                 text += aoc::sim::describeDealTerm(*this->m_gameState, p.deal.terms[t]);
             }
             text += "  (expires turn " + std::to_string(p.expiresTurn) + ")";
+            const bool warDeal = this->m_diplomacy != nullptr && this->m_diplomacy->isAtWar(p.from, p.to);
+            const std::string quote =
+                fromPlayer != nullptr
+                    ? std::string(aoc::sim::getLeaderDialogue(
+                          fromPlayer->civId(), warDeal ? aoc::sim::DialogueContext::ProposePeace
+                                                       : aoc::sim::DialogueContext::ProposeTrade))
+                    : std::string();
             PanelData cardBg;
             cardBg.backgroundColor = tokens::SURFACE_PARCHMENT_DIM;
             cardBg.cornerRadius    = tokens::CORNER_BUTTON;
-            const WidgetId card = ui.createPanel(this->m_playerList, {0.0f, 0.0f, 500.0f, 48.0f}, std::move(cardBg));
+            const WidgetId card = ui.createPanel(this->m_playerList, {0.0f, 0.0f, 500.0f, 64.0f}, std::move(cardBg));
             if (Widget* cw = ui.getWidget(card); cw != nullptr) {
                 cw->padding = {2.0f, 4.0f, 2.0f, 4.0f};
                 cw->childSpacing = 2.0f;
             }
             (void)ui.createLabel(card, {0.0f, 0.0f, 490.0f, 14.0f}, LabelData{text, tokens::TEXT_INK, 10.0f});
+            if (!quote.empty()) {
+                (void)ui.createLabel(card, {0.0f, 0.0f, 490.0f, 14.0f},
+                                     LabelData{"\"" + quote + "\"", tokens::TEXT_DISABLED, 10.0f});
+            }
             const WidgetId answerRow = ui.createPanel(card, {0.0f, 0.0f, 490.0f, 24.0f},
                                                       PanelData{Color{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
             if (Widget* ar = ui.getWidget(answerRow); ar != nullptr) {
@@ -146,9 +158,11 @@ void DiplomacyScreen::open(UIManager& ui) {
                 btn.pressedColor = tokens::STATE_PRESSED;
                 btn.cornerRadius = 3.0f;
                 btn.onClick      = [i, accept, &ui, this]() {
-                    if (this->m_gameState != nullptr && this->m_grid != nullptr && this->m_dealTracker != nullptr) {
+                    if (this->m_gameState != nullptr && this->m_grid != nullptr && this->m_dealTracker != nullptr
+                        && this->m_diplomacy != nullptr) {
                         const aoc::ErrorCode rc = aoc::sim::requestRespondToProposal(
-                            *this->m_gameState, *this->m_grid, *this->m_dealTracker, this->m_player, i, accept);
+                            *this->m_gameState, *this->m_grid, *this->m_dealTracker, *this->m_diplomacy,
+                            this->m_player, i, accept, this->m_gameState->currentTurn());
                         if (rc != aoc::ErrorCode::Ok) {
                             LOG_INFO("Proposal answer rejected: %.*s", static_cast<int>(aoc::describeError(rc).size()),
                                      aoc::describeError(rc).data());

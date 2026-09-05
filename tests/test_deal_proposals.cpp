@@ -12,7 +12,9 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/diplomacy/DealProposals.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyActions.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/event/GameNotifications.hpp"
 
 #include <string>
 
@@ -144,17 +146,17 @@ TEST_CASE("proposals to the human wait in the inbox until answered or expired") 
     CHECK(human.treasury() == 0); // nothing applied yet
     CHECK(f.propose(offer, 11) == ErrorCode::InvalidState); // one open proposal per pair
 
-    CHECK(aoc::sim::requestRespondToProposal(gs, f.world.grid, f.tracker, PlayerId{2}, 0, true)
+    CHECK(aoc::sim::requestRespondToProposal(gs, f.world.grid, f.tracker, f.d, PlayerId{2}, 0, true, 11)
           == ErrorCode::InvalidState); // not addressed to player 2
-    CHECK(aoc::sim::requestRespondToProposal(gs, f.world.grid, f.tracker, PlayerId{0}, 4, true)
+    CHECK(aoc::sim::requestRespondToProposal(gs, f.world.grid, f.tracker, f.d, PlayerId{0}, 4, true, 11)
           == ErrorCode::EntityNotFound);
-    CHECK(aoc::sim::requestRespondToProposal(gs, f.world.grid, f.tracker, PlayerId{0}, 0, true) == ErrorCode::Ok);
+    CHECK(aoc::sim::requestRespondToProposal(gs, f.world.grid, f.tracker, f.d, PlayerId{0}, 0, true, 11) == ErrorCode::Ok);
     CHECK(gs.pendingProposals().empty());
     CHECK(human.treasury() == 50);
     CHECK(ai.treasury() == 450);
 
     CHECK(f.propose(offer, 12) == ErrorCode::Ok);
-    CHECK(aoc::sim::requestRespondToProposal(gs, f.world.grid, f.tracker, PlayerId{0}, 0, false) == ErrorCode::Ok);
+    CHECK(aoc::sim::requestRespondToProposal(gs, f.world.grid, f.tracker, f.d, PlayerId{0}, 0, false, 13) == ErrorCode::Ok);
     CHECK(gs.pendingProposals().empty());
     CHECK(human.treasury() == 50);
 
@@ -188,4 +190,66 @@ TEST_CASE("malformed proposals are refused before anyone is asked") {
     CHECK(f.propose(Fixture::deal(PlayerId{0}, PlayerId{1}, {Fixture::gold(PlayerId{0}, PlayerId{1}, 999)}))
           == ErrorCode::InsufficientResources);
     CHECK(f.tracker.activeDeals.size() == 1);
+}
+
+TEST_CASE("a deal concluded at war is the peace treaty, and the AI offers one to a human from the inbox") {
+    Fixture f;
+    aoc::game::GameState& gs = f.world.gameState;
+    static_cast<void>(aoc::sim::event::drainNotifications(PlayerId{0}));
+    gs.player(PlayerId{1})->addGold(200);
+    f.d.declareWar(PlayerId{1}, PlayerId{0}, aoc::sim::CasusBelliType::SurpriseWar, nullptr, &gs, 5);
+
+    CHECK(aoc::sim::aiOfferPeace(gs, f.world.grid, f.tracker, f.d, PlayerId{1}, PlayerId{0}, 20));
+    REQUIRE(gs.pendingProposals().size() == 1);
+    REQUIRE(gs.pendingProposals().front().deal.terms.size() == 1);
+    CHECK(gs.pendingProposals().front().deal.terms[0].type == DealTermType::GoldLump);
+    CHECK(gs.pendingProposals().front().deal.terms[0].goldLump == 20); // a tenth of the treasury
+    CHECK_FALSE(aoc::sim::aiOfferPeace(gs, f.world.grid, f.tracker, f.d, PlayerId{1}, PlayerId{0}, 21)); // one open
+    const std::vector<aoc::sim::event::GameNotification> arrived = aoc::sim::event::drainNotifications(PlayerId{0});
+    REQUIRE_FALSE(arrived.empty());
+    CHECK(arrived.back().title == "Deal proposed");
+
+    CHECK(aoc::sim::requestRespondToProposal(gs, f.world.grid, f.tracker, f.d, PlayerId{0}, 0, true, 22)
+          == ErrorCode::Ok);
+    CHECK_FALSE(f.d.isAtWar(PlayerId{0}, PlayerId{1}));
+    CHECK(f.d.relation(PlayerId{0}, PlayerId{1}).turnsSincePeace == 0);
+    CHECK(gs.player(PlayerId{0})->treasury() == 20);
+
+    // Broke: the offer becomes a non-aggression pact instead of gold.
+    f.d.declareWar(PlayerId{1}, PlayerId{0}, aoc::sim::CasusBelliType::SurpriseWar, nullptr, &gs, 30);
+    gs.player(PlayerId{1})->addGold(-gs.player(PlayerId{1})->treasury());
+    CHECK(aoc::sim::aiOfferPeace(gs, f.world.grid, f.tracker, f.d, PlayerId{1}, PlayerId{0}, 40));
+    CHECK(gs.pendingProposals().front().deal.terms[0].type == DealTermType::NonAggression);
+    CHECK_FALSE(aoc::sim::aiOfferPeace(gs, f.world.grid, f.tracker, f.d, PlayerId{1}, PlayerId{2}, 40)); // not at war
+}
+
+TEST_CASE("an accepted open-borders deal opens borders for its duration; the AI offers them to friends only") {
+    Fixture f;
+    aoc::game::GameState& gs = f.world.gameState;
+    const DiplomaticDeal borders =
+        Fixture::deal(PlayerId{0}, PlayerId{1}, {Fixture::pact(DealTermType::OpenBorders, PlayerId{0}, PlayerId{1})});
+    CHECK(f.propose(borders, 10) == ErrorCode::InvalidState); // Neutral: declined
+    f.d.addModifier(PlayerId{0}, PlayerId{1}, {"Test goodwill", 15, 0});
+    CHECK(f.propose(borders, 10) == ErrorCode::Ok);
+    CHECK(f.d.relation(PlayerId{1}, PlayerId{0}).hasOpenBorders);
+    CHECK(f.d.relation(PlayerId{0}, PlayerId{1}).openBordersUntilTurn == 10 + aoc::sim::OPEN_BORDERS_TURNS);
+    f.d.expireAgreements(10 + aoc::sim::OPEN_BORDERS_TURNS);
+    CHECK_FALSE(f.d.relation(PlayerId{0}, PlayerId{1}).hasOpenBorders);
+
+    CHECK_FALSE(aoc::sim::aiOfferOpenBorders(gs, f.world.grid, f.tracker, f.d, PlayerId{1}, PlayerId{2}, 12));
+    f.d.addModifier(PlayerId{1}, PlayerId{2}, {"Test goodwill", 15, 0});
+    CHECK(aoc::sim::aiOfferOpenBorders(gs, f.world.grid, f.tracker, f.d, PlayerId{1}, PlayerId{2}, 12));
+    CHECK(f.d.relation(PlayerId{2}, PlayerId{1}).hasOpenBorders);
+    CHECK(f.d.relation(PlayerId{2}, PlayerId{1}).openBordersUntilTurn == 12 + aoc::sim::OPEN_BORDERS_TURNS);
+    CHECK_FALSE(aoc::sim::aiOfferOpenBorders(gs, f.world.grid, f.tracker, f.d, PlayerId{1}, PlayerId{2}, 13));
+
+    static_cast<void>(aoc::sim::event::drainNotifications(PlayerId{0}));
+    CHECK(aoc::sim::aiOfferOpenBorders(gs, f.world.grid, f.tracker, f.d, PlayerId{1}, PlayerId{0}, 50));
+    CHECK(gs.pendingProposals().size() == 1);
+    aoc::sim::expireProposals(gs, 50 + aoc::sim::PROPOSAL_TTL_TURNS);
+    CHECK(gs.pendingProposals().empty());
+    const std::vector<aoc::sim::event::GameNotification> notes = aoc::sim::event::drainNotifications(PlayerId{0});
+    REQUIRE(notes.size() >= 2);
+    CHECK(notes.front().title == "Deal proposed");
+    CHECK(notes.back().title == "Proposal expired");
 }
