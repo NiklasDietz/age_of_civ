@@ -30,6 +30,12 @@
 #include "aoc/save/Serializer.hpp"
 #include "GridLayerCompare.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/Espionage.hpp"
+#include "aoc/simulation/city/CityBombardment.hpp"
+#include "aoc/simulation/tech/EraScore.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
+#include "aoc/simulation/diplomacy/WorldCongress.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/simulation/turn/TurnManager.hpp"
 
@@ -63,6 +69,8 @@ struct World {
     aoc::map::FogOfWar fogOfWar;
     aoc::Random rng{12345u};
 };
+
+[[nodiscard]] aoc::game::Player& p2ref(World& w) { return *w.gameState.players()[2]; }
 
 /// Populate a small but non-trivial state. Every unordered_map the
 /// serializer touches gets entries, inserted in scrambled key order.
@@ -152,6 +160,107 @@ void buildWorld(World& w) {
     // from the highest player index that owns a city or unit, so a player
     // with neither is silently dropped on load (pre-existing behaviour).
     w.gameState.players()[2]->addUnit(aoc::UnitTypeId{0}, {2, 2});
+
+    // v17: an idle Master Spy with two promotions, a named great person, walls
+    // under siege, loyalty in unrest, happiness, stage, aqueduct link, a locked
+    // tile and religious pressure on Alpha.
+    aoc::game::Unit& spy        = p0.addUnit(aoc::UnitTypeId{101}, {8, 5});
+    spy.spy().owner             = aoc::PlayerId{0};
+    spy.spy().location          = {12, 9};
+    spy.spy().level             = aoc::sim::SpyLevel::MasterSpy;
+    spy.spy().currentMission    = aoc::sim::SpyMission::SiphonFunds;
+    spy.spy().turnsRemaining    = 0;
+    spy.spy().experience        = 7;
+    spy.spy().promotion1        = aoc::sim::SpyPromotion::Financier;
+    spy.spy().promotion2        = aoc::sim::SpyPromotion::Seduction;
+    aoc::game::Unit& sage        = p0.addUnit(aoc::UnitTypeId{102}, {5, 6});
+    sage.greatPerson().owner     = aoc::PlayerId{0};
+    sage.greatPerson().defId     = 2;
+    sage.greatPerson().namedId   = 31;
+    sage.greatPerson().position  = {5, 6};
+    alpha.walls().setTier(aoc::sim::WallTier::Medieval);
+    static_cast<void>(alpha.walls().takeDamage(30));
+    alpha.loyalty().loyalty     = 63.5f;
+    alpha.loyalty().unrestTurns = 2;
+    alpha.loyalty().revoltOriginalOwner = aoc::PlayerId{1};
+    alpha.happiness().amenities = 4.5f;
+    alpha.happiness().happiness = 1.25f;
+    alpha.setStage(aoc::game::CitySize::Town);
+    alpha.setAqueductConnected(true);
+    alpha.toggleTileLock({6, 5});
+    alpha.religion().addPressure(1, 42.0f);
+    // v17: a founded religion, faith, a congress mid-session with favor,
+    // historic moments, a research queue, a known tech, auto policies, contact,
+    // an embargo with goods and intel, and two city-states with a city and a unit.
+    aoc::sim::GlobalReligionTracker& religions = w.gameState.religionTracker();
+    static_cast<void>(religions.foundReligion("Testism", aoc::PlayerId{1}));
+    religions.religions[0].founderBelief  = 0;
+    religions.religions[0].enhancerBelief = 13;
+    p1.faith().faith           = 88.5f;
+    p1.faith().foundedReligion = 0;
+    p1.faith().hasPantheon     = true;
+    p1.faith().pantheonBelief  = 4;
+    aoc::sim::WorldCongressComponent& congress = w.gameState.worldCongress();
+    congress.isActive              = true;
+    congress.turnsUntilNextSession = 12;
+    congress.currentProposal       = aoc::sim::Resolution::GlobalSanctions;
+    congress.proposer              = aoc::PlayerId{1};
+    congress.proposalTarget        = aoc::PlayerId{0};
+    congress.votes[0]              = -2;
+    congress.votes[2]              = 3;
+    congress.voteChosen[2]         = true;
+    congress.passedResolutions.push_back(aoc::sim::Resolution::BanNuclearWeapons);
+    congress.activeEffects.push_back({aoc::sim::Resolution::WorldsFair, aoc::PlayerId{2}, 6});
+    congress.preferredProposal     = aoc::sim::Resolution::ArmsReduction;
+    congress.preferredBy           = aoc::PlayerId{2};
+    p2ref(w).diplomaticFavor().favor = 41;
+    p2ref(w).diplomaticFavor().favorPerTurn = 3;
+    aoc::sim::addEraScore(p0, 12, 3, "Completed the Pyramids");
+    aoc::sim::addEraScore(p0, 15, 2, "Researched Mining");
+    p0.eraScore().currentAgeType     = aoc::sim::AgeType::Golden;
+    p0.eraScore().turnsRemaining     = 7;
+    p0.eraScore().goldenAgeThreshold = 25;
+    p0.researchQueue().researchQueue = {aoc::TechId{3}, aoc::TechId{9}};
+    p0.tech().knownTechs[5]          = true;
+    p1.government().autoPolicies     = true;
+    w.diplomacy.meetPlayers(aoc::PlayerId{0}, aoc::PlayerId{1}, 21);
+    w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).turnsSincePeace = 4;
+    w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).passiveBonus    = 6;
+    w.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).passiveBonus    = 6;
+    w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).intelLevel      = 3;
+    w.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).intelLevel      = 1;
+    w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).hasEmbargo      = true;
+    w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).embargoedGoods  = {44, 7};
+    w.gameState.initializeCityStateSlots(2);
+    aoc::sim::CityStateComponent cs0{};
+    cs0.defId    = 3;
+    cs0.type     = aoc::sim::CityStateType::Scientific;
+    cs0.location = {18, 3};
+    cs0.envoys[0] = 4;
+    cs0.envoys[2] = 1;
+    cs0.suzerain  = aoc::PlayerId{0};
+    cs0.setMet(aoc::PlayerId{0});
+    cs0.activeQuest.type           = aoc::sim::CityStateQuestType::ResearchTech;
+    cs0.activeQuest.assignedTo     = aoc::PlayerId{0};
+    cs0.activeQuest.isActive       = true;
+    cs0.activeQuest.turnsRemaining = 17;
+    cs0.questStreak.player         = aoc::PlayerId{0};
+    cs0.questStreak.streak         = 2;
+    cs0.levyPlayer                 = aoc::PlayerId{0};
+    cs0.levyTurnsLeft              = 9;
+    cs0.turnsSinceBully            = 3;
+    aoc::sim::CityStateComponent cs1{};
+    cs1.defId    = 5;
+    cs1.type     = aoc::sim::CityStateType::Militaristic;
+    cs1.location = {2, 13};
+    w.gameState.cityStates() = {cs0, cs1};
+    aoc::game::Player& seat0 = *w.gameState.cityStatePlayers()[0];
+    seat0.setCivId(static_cast<aoc::sim::CivId>(30));
+    aoc::game::City& csCity = seat0.addCity({18, 3}, "Geneva");
+    csCity.setPopulation(4);
+    csCity.workedTiles().push_back({18, 3});
+    aoc::game::Unit& csGuard = seat0.addUnit(aoc::UnitTypeId{9}, {19, 3});
+    csGuard.setHitPoints(77);
 }
 
 [[nodiscard]] std::vector<char> readAll(const std::string& path) {
@@ -242,6 +351,116 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(lFighter->airUnit().maxSorties == 2);
     CHECK(lFighter->airUnit().operationalRange == 11);
     CHECK(lFighter->airUnit().isIntercepting);
+    // v17: spy and great person on the unit record.
+    const aoc::game::Unit* lSpy  = nullptr;
+    const aoc::game::Unit* lSage = nullptr;
+    for (const std::unique_ptr<aoc::game::Unit>& u : lp0.units()) {
+        if (u->typeId() == aoc::UnitTypeId{101}) { lSpy = u.get(); }
+        if (u->typeId() == aoc::UnitTypeId{102}) { lSage = u.get(); }
+    }
+    REQUIRE(lSpy != nullptr);
+    CHECK(lSpy->spy().level == aoc::sim::SpyLevel::MasterSpy);
+    CHECK(lSpy->spy().currentMission == aoc::sim::SpyMission::SiphonFunds);
+    CHECK(lSpy->spy().turnsRemaining == 0);
+    CHECK(lSpy->spy().experience == 7);
+    CHECK(lSpy->spy().location == aoc::hex::AxialCoord{12, 9});
+    CHECK(lSpy->spy().promotion1 == aoc::sim::SpyPromotion::Financier);
+    CHECK(lSpy->spy().promotion2 == aoc::sim::SpyPromotion::Seduction);
+    REQUIRE(lSage != nullptr);
+    CHECK(lSage->greatPerson().owner == aoc::PlayerId{0});
+    CHECK(lSage->greatPerson().defId == 2);
+    CHECK(lSage->greatPerson().namedId == 31);
+    CHECK(lSage->greatPerson().position == aoc::hex::AxialCoord{5, 6});
+    // v17: the city record.
+    CHECK(lAlpha.walls().tier == aoc::sim::WallTier::Medieval);
+    CHECK(lAlpha.walls().currentHP == 170);
+    CHECK(lAlpha.walls().maxHP == 200);
+    CHECK(lAlpha.loyalty().loyalty == doctest::Approx(63.5f));
+    CHECK(lAlpha.loyalty().unrestTurns == 2);
+    CHECK(lAlpha.loyalty().revoltOriginalOwner == aoc::PlayerId{1});
+    CHECK(lAlpha.happiness().amenities == doctest::Approx(4.5f));
+    CHECK(lAlpha.happiness().happiness == doctest::Approx(1.25f));
+    CHECK(lAlpha.stage() == aoc::game::CitySize::Town);
+    CHECK(lAlpha.aqueductConnected());
+    CHECK(lAlpha.isTileLocked({6, 5}));
+    CHECK(lAlpha.religion().pressure[1] == doctest::Approx(42.0f));
+    // v17: religion, congress, favor, moments, queue, known tech, auto policies.
+    CHECK(loaded.gameState.religionTracker().religionsFoundedCount == 1);
+    CHECK(loaded.gameState.religionTracker().religions[0].name == "Testism");
+    CHECK(loaded.gameState.religionTracker().religions[0].founder == aoc::PlayerId{1});
+    CHECK(loaded.gameState.religionTracker().religions[0].enhancerBelief == 13);
+    CHECK(lp1.faith().faith == doctest::Approx(88.5f));
+    CHECK(lp1.faith().foundedReligion == 0);
+    CHECK(lp1.faith().hasPantheon);
+    CHECK(lp1.faith().pantheonBelief == 4);
+    const aoc::sim::WorldCongressComponent& lCongress = loaded.gameState.worldCongress();
+    CHECK(lCongress.isActive);
+    CHECK(lCongress.turnsUntilNextSession == 12);
+    CHECK(lCongress.currentProposal == aoc::sim::Resolution::GlobalSanctions);
+    CHECK(lCongress.proposer == aoc::PlayerId{1});
+    CHECK(lCongress.votes[0] == -2);
+    CHECK(lCongress.votes[2] == 3);
+    CHECK(lCongress.voteChosen[2]);
+    REQUIRE(lCongress.passedResolutions.size() == 1);
+    CHECK(lCongress.passedResolutions[0] == aoc::sim::Resolution::BanNuclearWeapons);
+    REQUIRE(lCongress.activeEffects.size() == 1);
+    CHECK(lCongress.activeEffects[0].type == aoc::sim::Resolution::WorldsFair);
+    CHECK(lCongress.activeEffects[0].turnsRemaining == 6);
+    CHECK(lCongress.preferredProposal == aoc::sim::Resolution::ArmsReduction);
+    CHECK(lCongress.preferredBy == aoc::PlayerId{2});
+    CHECK(loaded.gameState.players()[2]->diplomaticFavor().favor == 41);
+    REQUIRE(lp0.eraScore().moments.size() == 2);
+    CHECK(lp0.eraScore().moments[1].text == "Researched Mining");
+    CHECK(lp0.eraScore().moments[0].turn == 12);
+    CHECK(lp0.eraScore().lifetimeEraScore == 5);
+    CHECK(lp0.eraScore().eraScore == 5);
+    CHECK(lp0.eraScore().currentAgeType == aoc::sim::AgeType::Golden);
+    CHECK(lp0.eraScore().turnsRemaining == 7);
+    CHECK(lp0.eraScore().goldenAgeThreshold == 25);
+    REQUIRE(lp0.researchQueue().researchQueue.size() == 2);
+    CHECK(lp0.researchQueue().researchQueue[1] == aoc::TechId{9});
+    CHECK(lp0.tech().knownTechs[5]);
+    CHECK(lp1.government().autoPolicies);
+    // v17: contact and the directional relation fields.
+    CHECK(loaded.diplomacy.haveMet(aoc::PlayerId{0}, aoc::PlayerId{1}));
+    CHECK(loaded.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).metOnTurn == 21);
+    CHECK(loaded.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).turnsSincePeace == 4);
+    CHECK(loaded.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).passiveBonus == 6);
+    CHECK(loaded.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).intelLevel == 3);
+    CHECK(loaded.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).intelLevel == 1);
+    CHECK(loaded.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).hasEmbargo);
+    CHECK_FALSE(loaded.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).hasEmbargo);
+    REQUIRE(loaded.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).embargoedGoods.size() == 2);
+    CHECK(loaded.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).embargoedGoods[0] == 44);
+    // v17: city-states and their seats.
+    REQUIRE(loaded.gameState.cityStates().size() == 2);
+    const aoc::sim::CityStateComponent& lCs0 = loaded.gameState.cityStates()[0];
+    CHECK(lCs0.defId == 3);
+    CHECK(lCs0.type == aoc::sim::CityStateType::Scientific);
+    CHECK(lCs0.location == aoc::hex::AxialCoord{18, 3});
+    CHECK(lCs0.envoys[0] == 4);
+    CHECK(lCs0.envoys[2] == 1);
+    CHECK(lCs0.suzerain == aoc::PlayerId{0});
+    CHECK(lCs0.hasMet(aoc::PlayerId{0}));
+    CHECK_FALSE(lCs0.hasMet(aoc::PlayerId{1}));
+    CHECK(lCs0.activeQuest.type == aoc::sim::CityStateQuestType::ResearchTech);
+    CHECK(lCs0.activeQuest.turnsRemaining == 17);
+    CHECK(lCs0.questStreak.streak == 2);
+    CHECK(lCs0.levyTurnsLeft == 9);
+    CHECK(lCs0.turnsSinceBully == 3);
+    CHECK(loaded.gameState.cityStates()[1].type == aoc::sim::CityStateType::Militaristic);
+    REQUIRE(loaded.gameState.cityStatePlayers().size() == 2);
+    const aoc::game::Player& lSeat0 = *loaded.gameState.cityStatePlayers()[0];
+    CHECK(lSeat0.id() == aoc::PlayerId{200});
+    CHECK(lSeat0.civId() == static_cast<aoc::sim::CivId>(30));
+    REQUIRE(lSeat0.cities().size() == 1);
+    CHECK(lSeat0.cities()[0]->name() == "Geneva");
+    CHECK(lSeat0.cities()[0]->population() == 4);
+    REQUIRE(lSeat0.units().size() == 1);
+    CHECK(lSeat0.units()[0]->typeId() == aoc::UnitTypeId{9});
+    CHECK(lSeat0.units()[0]->hitPoints() == 77);
+    CHECK(loaded.gameState.player(aoc::PlayerId{201}) != nullptr);
+
     aoc::test::LayerSnapshot layers;
     original.grid.visitLayers(layers);
     aoc::test::LayerCompare layerCompare{layers};

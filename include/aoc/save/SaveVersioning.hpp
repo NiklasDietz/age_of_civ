@@ -44,6 +44,19 @@
  * v16 (2026-09-05): the Entities city record carries the CityGovernorComponent
  * (focus, flags, named governor, up to three titles, turns active); a load
  * dropped every governor before.
+ *
+ * v17 (2026-09-05): the save fidelity bundle. Unit record: SpyComponent (level,
+ * promotions, idle spies) and GreatPersonComponent. City record: walls, loyalty,
+ * happiness, stage, aqueduct link, locked tiles, religious pressure. TechProgress:
+ * knownTechs and the research queue. GovernmentState: autoPolicies. PlayerState:
+ * era score, age type, thresholds, Historic Moments + lifetime era score
+ * (none of the age state was saved before). Diplomacy: hasMet, metOnTurn,
+ * turnsSincePeace, passiveBonus, lastWarAggressor, intel and embargoes per
+ * direction. New sections CityStates (components + seats with cities and units),
+ * ReligionState (tracker + faith) and WorldCongressState (congress + favor).
+ * Still not carried: GlobalDealTracker, AllianceObligationTracker and goody huts
+ * (not reachable from loadGame's signature), the barbarian seat (reset by design),
+ * city-state districts / queues / stockpiles.
  */
 
 #include <cstdint>
@@ -51,6 +64,6 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 16;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 17;
 
 } // namespace aoc::save

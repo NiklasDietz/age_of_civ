@@ -188,6 +188,8 @@ int main() {
                              "electricity agreement count 0xFFFFFFFF fails to load");
         test_hugeRecordCount(dir, valid, aoc::save::SectionId::HoardState,
                              "hoard count 0xFFFFFFFF fails to load");
+        test_hugeRecordCount(dir, valid, aoc::save::SectionId::CityStates,
+                             "city-state count 0xFFFFFFFF fails to load");   // v17
     }
 
     std::error_code ec;

@@ -137,6 +137,10 @@ public:
 
     [[nodiscard]] bool isTileLocked(aoc::hex::AxialCoord tile) const;
     void toggleTileLock(aoc::hex::AxialCoord tile);
+    /// Every pinned tile, for the save.
+    [[nodiscard]] const std::vector<aoc::hex::AxialCoord>& lockedTiles() const {
+        return this->m_lockedTiles;
+    }
 
     /// Auto-assign workers based on focus priority.
     ///

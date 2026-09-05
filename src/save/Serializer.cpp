@@ -41,6 +41,15 @@
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/barbarian/BarbarianController.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
+#include "aoc/simulation/city/Happiness.hpp"
+#include "aoc/simulation/city/CityLoyalty.hpp"
+#include "aoc/simulation/city/CityBombardment.hpp"
+#include "aoc/simulation/automation/Automation.hpp"
+#include "aoc/simulation/tech/EraScore.hpp"
+#include "aoc/simulation/diplomacy/DiplomaticFavor.hpp"
+#include "aoc/simulation/diplomacy/WorldCongress.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
 #include "aoc/simulation/monetary/CurrencyWar.hpp"
@@ -149,6 +158,11 @@ constexpr std::size_t MAX_INVESTMENTS = 10000;
 constexpr int32_t MAX_MAP_DIMENSION              = aoc::map::HexGrid::MAX_MAP_DIMENSION;
 constexpr std::size_t MAX_DISTRICT_BUILDINGS     = 100;
 constexpr std::size_t MAX_RELATION_MODIFIERS     = 1000;
+// v17 caps
+constexpr std::size_t MAX_CITY_STATES        = 32;
+constexpr std::size_t MAX_RESOLUTION_RECORDS = 256;
+constexpr std::size_t MAX_EMBARGOED_GOODS    = 1024;
+constexpr std::size_t MAX_RESEARCH_QUEUE     = 128;
 constexpr std::size_t MAX_CITY_WONDERS           = 256;
 constexpr std::size_t MAX_CITY_GREAT_WORKS       = 64;
 constexpr std::size_t MAX_HOARD_POSITIONS        = 1000;
@@ -480,6 +494,27 @@ void writeEntitySection(WriteBuffer& out, const aoc::game::GameState& gameState)
             section.writeI32(air.operationalRange);
             section.writeU8(air.isIntercepting ? uint8_t{1} : uint8_t{0});
             section.writeU8(static_cast<uint8_t>(unit->formationLevel()));   // v15
+            // v17: the spy and great-person components ride on the unit record, so
+            // a load keeps spy levels, promotions, idle spies and named great people.
+            const aoc::sim::SpyComponent& spy = unit->spy();
+            section.writeU8(spy.owner);
+            section.writeI32(spy.location.q);
+            section.writeI32(spy.location.r);
+            section.writeU8(static_cast<uint8_t>(spy.currentMission));
+            section.writeU8(static_cast<uint8_t>(spy.level));
+            section.writeI32(spy.turnsRemaining);
+            section.writeI32(spy.experience);
+            section.writeU8(spy.isRevealed ? uint8_t{1} : uint8_t{0});
+            section.writeU8(static_cast<uint8_t>(spy.promotion1));
+            section.writeU8(static_cast<uint8_t>(spy.promotion2));
+            section.writeU8(static_cast<uint8_t>(spy.promotion3));
+            const aoc::sim::GreatPersonComponent& gp = unit->greatPerson();
+            section.writeU8(gp.owner);
+            section.writeU8(gp.defId);
+            section.writeU8(gp.namedId);
+            section.writeI32(gp.position.q);
+            section.writeI32(gp.position.r);
+            section.writeU8(gp.isActivated ? uint8_t{1} : uint8_t{0});
         }
     }
 
@@ -523,6 +558,40 @@ void writeEntitySection(WriteBuffer& out, const aoc::game::GameState& gameState)
                 section.writeU8(static_cast<uint8_t>(gov.promotions[i]));
             }
             section.writeI32(gov.turnsActive);
+            // v17: defence, loyalty, happiness, stage, aqueduct link, locked tiles
+            // and religious pressure; none of these survived a load before.
+            const aoc::sim::CityWallState& walls = city->walls();
+            section.writeU8(static_cast<uint8_t>(walls.tier));
+            section.writeI32(walls.currentHP);
+            section.writeI32(walls.maxHP);
+            section.writeI32(walls.rangedStrength);
+            section.writeI32(walls.range);
+            const aoc::sim::CityLoyaltyComponent& loy = city->loyalty();
+            for (const float v : {loy.loyalty, loy.loyaltyPerTurn, loy.baseLoyalty,
+                                  loy.ownCityPressure, loy.foreignCityPressure, loy.governorBonus,
+                                  loy.garrisonBonus, loy.monumentBonus, loy.happinessEffect,
+                                  loy.ageEffect, loy.capturedPenalty, loy.devotionBonus}) {
+                section.writeF32(v);
+            }
+            section.writeI32(loy.unrestTurns);
+            section.writeI32(loy.revoltFreeCityTurns);
+            section.writeU8(loy.revoltOriginalOwner);
+            const aoc::sim::CityHappinessComponent& hap = city->happiness();
+            for (const float v : {hap.amenities, hap.demand, hap.modifiers, hap.disasterUnhappiness,
+                                  hap.happiness}) {
+                section.writeF32(v);
+            }
+            section.writeU8(static_cast<uint8_t>(city->stage()));
+            section.writeU8(city->aqueductConnected() ? uint8_t{1} : uint8_t{0});
+            section.writeU32(static_cast<uint32_t>(city->lockedTiles().size()));
+            for (const aoc::hex::AxialCoord& tile : city->lockedTiles()) {
+                section.writeI32(tile.q);
+                section.writeI32(tile.r);
+            }
+            section.writeU8(aoc::sim::MAX_RELIGIONS);
+            for (const float pressure : city->religion().pressure) {
+                section.writeF32(pressure);
+            }
         }
     }
 
@@ -596,6 +665,31 @@ void writeTechProgressSection(WriteBuffer& out, const aoc::game::GameState& game
                 }
             }
             section.writeU8(byte);
+        }
+    }
+
+    // v17: known-but-not-completed techs and the research queue per player.
+    section.writeU32(playerCount);
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        const aoc::sim::PlayerTechComponent& tech = player->tech();
+        section.writeU8(static_cast<uint8_t>(player->id()));
+        const uint16_t totalTechs = aoc::sim::techCount();
+        section.writeU16(totalTechs);
+        const uint16_t byteCount = static_cast<uint16_t>((totalTechs + 7) / 8);
+        for (uint16_t b = 0; b < byteCount; ++b) {
+            uint8_t byte = 0;
+            for (uint8_t bit = 0; bit < 8; ++bit) {
+                const uint16_t techIdx = static_cast<uint16_t>(b * 8 + bit);
+                if (techIdx < totalTechs && techIdx < tech.knownTechs.size() && tech.knownTechs[techIdx]) {
+                    byte |= static_cast<uint8_t>(1u << bit);
+                }
+            }
+            section.writeU8(byte);
+        }
+        const std::vector<TechId>& queue = player->researchQueue().researchQueue;
+        section.writeU32(static_cast<uint32_t>(queue.size()));
+        for (const TechId id : queue) {
+            section.writeU16(id.value);
         }
     }
 
@@ -740,6 +834,7 @@ void writeGovernmentSection(WriteBuffer& out, const aoc::game::GameState& gameSt
         section.writeI32(gov.anarchyTurnsRemaining);
         section.writeU8(static_cast<uint8_t>(gov.activeAction));
         section.writeI32(gov.actionTurnsRemaining);
+        section.writeU8(gov.autoPolicies ? uint8_t{1} : uint8_t{0});   // v17
     }
 
     writeSection(out, SectionId::GovernmentState, section);
@@ -926,6 +1021,26 @@ void writePlayerStateSection(WriteBuffer& out, const aoc::game::GameState& gameS
     // --- PlayerWarComponent: not yet in Player object model, write zero count ---
     section.writeU32(0);
 
+    // --- v17: Historic Moments timeline and lifetime era score ---
+    section.writeU32(playerCount);
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        const aoc::sim::PlayerEraScoreComponent& score = player->eraScore();
+        section.writeU8(static_cast<uint8_t>(player->id()));
+        // The age state itself was never saved before v17 either.
+        section.writeI32(score.eraScore);
+        section.writeI32(score.goldenAgeThreshold);
+        section.writeI32(score.darkAgeThreshold);
+        section.writeU8(static_cast<uint8_t>(score.currentAgeType));
+        section.writeI32(score.turnsRemaining);
+        section.writeI32(score.lifetimeEraScore);
+        section.writeU32(static_cast<uint32_t>(score.moments.size()));
+        for (const aoc::sim::HistoricMoment& m : score.moments) {
+            section.writeI32(m.turn);
+            section.writeI32(m.points);
+            section.writeString(m.text);
+        }
+    }
+
     writeSection(out, SectionId::PlayerState, section);
 }
 
@@ -977,6 +1092,22 @@ void writeDiplomacySection(WriteBuffer& out, const aoc::sim::DiplomacyManager& d
                                                         (rel.casusBelliNaval ? 0x2 : 0x0));
             section.writeU8(cbBits);
             section.writeU8(rel.warningIssued ? uint8_t{1} : uint8_t{0});
+            // v17: contact, peace cooldown, warming and the last aggressor are
+            // symmetric; intelligence and embargoes are written per direction.
+            const aoc::sim::PairwiseRelation& back = diplomacy.relation(b, a);
+            section.writeU8(rel.hasMet ? uint8_t{1} : uint8_t{0});
+            section.writeI32(rel.metOnTurn);
+            section.writeI32(rel.turnsSincePeace);
+            section.writeI32(rel.passiveBonus);
+            section.writeU8(rel.lastWarAggressor);
+            for (const aoc::sim::PairwiseRelation* dir : {&rel, &back}) {
+                section.writeU8(dir->intelLevel);
+                section.writeU8(dir->hasEmbargo ? uint8_t{1} : uint8_t{0});
+                section.writeU32(static_cast<uint32_t>(dir->embargoedGoods.size()));
+                for (const uint16_t good : dir->embargoedGoods) {
+                    section.writeU16(good);
+                }
+            }
         }
     }
 
@@ -1087,30 +1218,9 @@ void writeMiscEntitiesSection(WriteBuffer& out, const aoc::game::GameState& game
     // --- GreatPersonComponent (not yet in GameState global list, write 0) ---
     section.writeU32(0);
 
-    // --- SpyComponent: spies are stored on Unit objects, iterate all players ---
-    uint32_t spyCount = 0;
-    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
-        for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
-            if (unit->spy().turnsRemaining > 0) {
-                ++spyCount;
-            }
-        }
-    }
-    section.writeU32(spyCount);
-    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
-        for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
-            const aoc::sim::SpyComponent& spy = unit->spy();
-            if (spy.turnsRemaining > 0) {
-                section.writeU8(spy.owner);
-                section.writeI32(spy.location.q);
-                section.writeI32(spy.location.r);
-                section.writeU8(static_cast<uint8_t>(spy.currentMission));
-                section.writeI32(spy.turnsRemaining);
-                section.writeI32(spy.experience);
-                section.writeU8(spy.isRevealed ? uint8_t{1} : uint8_t{0});
-            }
-        }
-    }
+    // --- SpyComponent: since v17 the whole component rides on the unit record
+    //     (Entities), so this list is always empty; the reader still accepts it. ---
+    section.writeU32(0);
 
     // --- UnitExperienceComponent: one record per unit with any XP or promotion ---
     uint32_t expCount = 0;
@@ -1139,6 +1249,136 @@ void writeMiscEntitiesSection(WriteBuffer& out, const aoc::game::GameState& game
     }
 
     writeSection(out, SectionId::MiscEntities, section);
+}
+
+/// v17: city-state components, then their Players (cities and units in slot order).
+/// City-state districts, queues and stockpiles are not carried; they rebuild.
+void writeCityStatesSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
+    WriteBuffer section;
+    const std::vector<aoc::sim::CityStateComponent>& states = gameState.cityStates();
+    section.writeU32(static_cast<uint32_t>(states.size()));
+    for (const aoc::sim::CityStateComponent& cs : states) {
+        section.writeU8(cs.defId);
+        section.writeU8(static_cast<uint8_t>(cs.type));
+        section.writeI32(cs.location.q);
+        section.writeI32(cs.location.r);
+        section.writeU8(MAX_PLAYERS);
+        for (const int8_t e : cs.envoys) {
+            section.writeU8(static_cast<uint8_t>(e));
+        }
+        section.writeU8(cs.suzerain);
+        section.writeU32(cs.metMask);
+        section.writeU8(static_cast<uint8_t>(cs.activeQuest.type));
+        section.writeU8(cs.activeQuest.assignedTo);
+        section.writeU8(cs.activeQuest.isCompleted ? uint8_t{1} : uint8_t{0});
+        section.writeU8(cs.activeQuest.isActive ? uint8_t{1} : uint8_t{0});
+        section.writeI32(cs.activeQuest.turnsRemaining);
+        section.writeI32(cs.activeQuest.envoyReward);
+        section.writeI32(cs.activeQuest.snapshot);
+        section.writeU8(cs.questStreak.player);
+        section.writeI32(cs.questStreak.streak);
+        section.writeU8(cs.levyPlayer);
+        section.writeI32(cs.levyTurnsLeft);
+        section.writeI32(cs.turnsSinceBully);
+    }
+    const std::vector<std::unique_ptr<aoc::game::Player>>& seats = gameState.cityStatePlayers();
+    section.writeU32(static_cast<uint32_t>(seats.size()));
+    for (const std::unique_ptr<aoc::game::Player>& seat : seats) {
+        section.writeU8(seat->id());
+        section.writeU8(static_cast<uint8_t>(seat->civId()));
+        section.writeU32(static_cast<uint32_t>(seat->cities().size()));
+        for (const std::unique_ptr<aoc::game::City>& city : seat->cities()) {
+            section.writeI32(city->location().q);
+            section.writeI32(city->location().r);
+            section.writeString(city->name());
+            section.writeI32(city->population());
+            section.writeF32(city->foodSurplus());
+            section.writeF32(city->productionProgress());
+            section.writeU32(static_cast<uint32_t>(city->workedTiles().size()));
+            for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
+                section.writeI32(tile.q);
+                section.writeI32(tile.r);
+            }
+        }
+        section.writeU32(static_cast<uint32_t>(seat->units().size()));
+        for (const std::unique_ptr<aoc::game::Unit>& unit : seat->units()) {
+            section.writeU16(unit->typeId().value);
+            section.writeI32(unit->position().q);
+            section.writeI32(unit->position().r);
+            section.writeI32(unit->hitPoints());
+            section.writeI32(unit->movementRemaining());
+            section.writeU8(static_cast<uint8_t>(unit->state()));
+            section.writeU8(static_cast<uint8_t>(unit->chargesRemaining()));
+        }
+    }
+    writeSection(out, SectionId::CityStates, section);
+}
+
+/// v17: the global religion tracker and per-player faith. City pressure rides
+/// on the Entities city record.
+void writeReligionSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
+    WriteBuffer section;
+    const aoc::sim::GlobalReligionTracker& tracker = gameState.religionTracker();
+    section.writeU8(tracker.religionsFoundedCount);
+    section.writeU8(aoc::sim::MAX_RELIGIONS);
+    for (const aoc::sim::ReligionDef& def : tracker.religions) {
+        section.writeU8(def.id);
+        section.writeString(def.name);
+        section.writeU8(def.founder);
+        section.writeU8(def.founderBelief);
+        section.writeU8(def.followerBelief);
+        section.writeU8(def.worshipBelief);
+        section.writeU8(def.enhancerBelief);
+    }
+    section.writeU32(static_cast<uint32_t>(gameState.players().size()));
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        const aoc::sim::PlayerFaithComponent& faith = player->faith();
+        section.writeU8(static_cast<uint8_t>(player->id()));
+        section.writeF32(faith.faith);
+        section.writeU8(faith.foundedReligion);
+        section.writeU8(faith.hasPantheon ? uint8_t{1} : uint8_t{0});
+        section.writeU8(faith.pantheonBelief);
+    }
+    writeSection(out, SectionId::ReligionState, section);
+}
+
+/// v17: the World Congress component and per-player diplomatic favor.
+void writeWorldCongressSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
+    WriteBuffer section;
+    const aoc::sim::WorldCongressComponent& wc = gameState.worldCongress();
+    section.writeU8(wc.isActive ? uint8_t{1} : uint8_t{0});
+    section.writeI32(wc.turnsUntilNextSession);
+    section.writeU8(static_cast<uint8_t>(wc.currentProposal));
+    section.writeU8(wc.proposer);
+    section.writeU8(wc.proposalTarget);
+    section.writeU8(MAX_PLAYERS);
+    for (const int16_t v : wc.votes) {
+        section.writeI32(v);
+    }
+    for (const bool chosen : wc.voteChosen) {
+        section.writeU8(chosen ? uint8_t{1} : uint8_t{0});
+    }
+    section.writeU32(static_cast<uint32_t>(wc.passedResolutions.size()));
+    for (const aoc::sim::Resolution res : wc.passedResolutions) {
+        section.writeU8(static_cast<uint8_t>(res));
+    }
+    section.writeU32(static_cast<uint32_t>(wc.activeEffects.size()));
+    for (const aoc::sim::ActiveResolution& effect : wc.activeEffects) {
+        section.writeU8(static_cast<uint8_t>(effect.type));
+        section.writeU8(effect.target);
+        section.writeI32(effect.turnsRemaining);
+    }
+    section.writeU8(static_cast<uint8_t>(wc.preferredProposal));
+    section.writeU8(wc.preferredTarget);
+    section.writeU8(wc.preferredBy);
+    section.writeU32(static_cast<uint32_t>(gameState.players().size()));
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        const aoc::sim::PlayerDiplomaticFavorComponent& favor = player->diplomaticFavor();
+        section.writeU8(static_cast<uint8_t>(player->id()));
+        section.writeI32(favor.favor);
+        section.writeI32(favor.favorPerTurn);
+    }
+    writeSection(out, SectionId::WorldCongressState, section);
 }
 
 /// Serialize per-player currency trust state.
@@ -1590,6 +1830,10 @@ ErrorCode saveGame(const std::string& filepath, const aoc::game::GameState& game
     writeMarketSection(buf, economy);
     writeWonderSection(buf, gameState);
     writeGreatWorksSection(buf, gameState);
+    // v17 sections
+    writeCityStatesSection(buf, gameState);
+    writeReligionSection(buf, gameState);
+    writeWorldCongressSection(buf, gameState);
     writeMiscEntitiesSection(buf, gameState);
     writeCurrencyTrustSection(buf, gameState);
     writeCrisisSection(buf, gameState);
@@ -1863,6 +2107,8 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 int32_t range;
                 bool    intercepting;
                 uint8_t formation;   // v15
+                aoc::sim::SpyComponent spy;                 // v17
+                aoc::sim::GreatPersonComponent greatPerson; // v17
             };
             std::vector<UnitData> unitDataList;
             unitDataList.reserve(unitCount);
@@ -1898,6 +2144,37 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                               static_cast<unsigned>(ud.formation));
                     return ErrorCode::SaveCorrupted;
                 }
+                // v17: spy and great-person components, every enum range-checked.
+                {
+                    ud.spy.owner          = buf.readU8();
+                    ud.spy.location       = {buf.readI32(), buf.readI32()};
+                    const uint8_t mission = buf.readU8();
+                    const uint8_t level   = buf.readU8();
+                    ud.spy.turnsRemaining = buf.readI32();
+                    ud.spy.experience     = buf.readI32();
+                    ud.spy.isRevealed     = buf.readU8() != 0;
+                    uint8_t promos[3]     = {};
+                    for (int32_t k = 0; k < 3; ++k) { promos[k] = buf.readU8(); }
+                    if (mission >= static_cast<uint8_t>(aoc::sim::SpyMission::Count)
+                        || level > static_cast<uint8_t>(aoc::sim::SpyLevel::MasterSpy)
+                        || promos[0] >= static_cast<uint8_t>(aoc::sim::SpyPromotion::Count)
+                        || promos[1] >= static_cast<uint8_t>(aoc::sim::SpyPromotion::Count)
+                        || promos[2] >= static_cast<uint8_t>(aoc::sim::SpyPromotion::Count)) {
+                        LOG_ERROR("Serializer: spy record out of range (mission %u level %u)",
+                                  static_cast<unsigned>(mission), static_cast<unsigned>(level));
+                        return ErrorCode::SaveCorrupted;
+                    }
+                    ud.spy.currentMission = static_cast<aoc::sim::SpyMission>(mission);
+                    ud.spy.level          = static_cast<aoc::sim::SpyLevel>(level);
+                    ud.spy.promotion1     = static_cast<aoc::sim::SpyPromotion>(promos[0]);
+                    ud.spy.promotion2     = static_cast<aoc::sim::SpyPromotion>(promos[1]);
+                    ud.spy.promotion3     = static_cast<aoc::sim::SpyPromotion>(promos[2]);
+                    ud.greatPerson.owner       = buf.readU8();
+                    ud.greatPerson.defId       = buf.readU8();
+                    ud.greatPerson.namedId     = buf.readU8();
+                    ud.greatPerson.position    = {buf.readI32(), buf.readI32()};
+                    ud.greatPerson.isActivated = buf.readU8() != 0;
+                }
                 if (ud.owner > maxOwner) {
                     maxOwner = ud.owner;
                 }
@@ -1925,6 +2202,13 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 bool isOriginalCapital;
                 PlayerId originalOwner;
                 aoc::sim::CityGovernorComponent governor;   // v16
+                aoc::sim::CityWallState walls;               // v17
+                aoc::sim::CityLoyaltyComponent loyalty;      // v17
+                aoc::sim::CityHappinessComponent happiness;  // v17
+                aoc::game::CitySize stage;                   // v17
+                bool aqueductConnected;                      // v17
+                std::vector<aoc::hex::AxialCoord> lockedTiles; // v17
+                aoc::sim::CityReligionComponent religion;    // v17
             };
             std::vector<CityData> cityDataList;
             cityDataList.reserve(cityCount);
@@ -1981,6 +2265,59 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                         cd.governor.promotions[k] = static_cast<aoc::sim::GovernorPromotion>(promos[k]);
                     }
                 }
+                // v17: walls, loyalty, happiness, stage, aqueduct, locked tiles, religion.
+                {
+                    const uint8_t tier      = buf.readU8();
+                    cd.walls.currentHP      = buf.readI32();
+                    cd.walls.maxHP          = buf.readI32();
+                    cd.walls.rangedStrength = buf.readI32();
+                    cd.walls.range          = buf.readI32();
+                    if (tier > static_cast<uint8_t>(aoc::sim::WallTier::Steel)) {
+                        LOG_ERROR("Serializer: wall tier %u out of range", static_cast<unsigned>(tier));
+                        return ErrorCode::SaveCorrupted;
+                    }
+                    cd.walls.tier = static_cast<aoc::sim::WallTier>(tier);
+                    float* loyaltyFields[] = {
+                        &cd.loyalty.loyalty,        &cd.loyalty.loyaltyPerTurn,
+                        &cd.loyalty.baseLoyalty,    &cd.loyalty.ownCityPressure,
+                        &cd.loyalty.foreignCityPressure, &cd.loyalty.governorBonus,
+                        &cd.loyalty.garrisonBonus,  &cd.loyalty.monumentBonus,
+                        &cd.loyalty.happinessEffect, &cd.loyalty.ageEffect,
+                        &cd.loyalty.capturedPenalty, &cd.loyalty.devotionBonus};
+                    for (float* field : loyaltyFields) { *field = buf.readF32(); }
+                    cd.loyalty.unrestTurns         = buf.readI32();
+                    cd.loyalty.revoltFreeCityTurns = buf.readI32();
+                    cd.loyalty.revoltOriginalOwner = buf.readU8();
+                    cd.happiness.amenities           = buf.readF32();
+                    cd.happiness.demand              = buf.readF32();
+                    cd.happiness.modifiers           = buf.readF32();
+                    cd.happiness.disasterUnhappiness = buf.readF32();
+                    cd.happiness.happiness           = buf.readF32();
+                    const uint8_t stage = buf.readU8();
+                    if (stage > static_cast<uint8_t>(aoc::game::CitySize::City)) {
+                        LOG_ERROR("Serializer: city stage %u out of range", static_cast<unsigned>(stage));
+                        return ErrorCode::SaveCorrupted;
+                    }
+                    cd.stage             = static_cast<aoc::game::CitySize>(stage);
+                    cd.aqueductConnected = buf.readU8() != 0;
+                    const uint32_t lockedCount = buf.readU32();
+                    if (lockedCount > MAX_WORKED_TILES || !buf.canReadRecords(lockedCount, 8)) {
+                        LOG_ERROR("Serializer: locked-tile count %u out of range", lockedCount);
+                        return ErrorCode::SaveCorrupted;
+                    }
+                    cd.lockedTiles.reserve(lockedCount);
+                    for (uint32_t j = 0; j < lockedCount; ++j) {
+                        cd.lockedTiles.push_back({buf.readI32(), buf.readI32()});
+                    }
+                    const uint8_t religionCount = buf.readU8();
+                    if (religionCount != aoc::sim::MAX_RELIGIONS) {
+                        LOG_ERROR("Serializer: religion slot count %u != %u",
+                                  static_cast<unsigned>(religionCount),
+                                  static_cast<unsigned>(aoc::sim::MAX_RELIGIONS));
+                        return ErrorCode::SaveCorrupted;
+                    }
+                    for (float& pressure : cd.religion.pressure) { pressure = buf.readF32(); }
+                }
 
                 if (cd.owner > maxOwner) {
                     maxOwner = cd.owner;
@@ -2014,6 +2351,15 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 city.setOriginalCapital(cd.isOriginalCapital);
                 city.setOriginalOwner(cd.originalOwner);
                 city.governor() = cd.governor;   // v16
+                city.walls()     = cd.walls;       // v17
+                city.loyalty()   = cd.loyalty;
+                city.happiness() = cd.happiness;
+                city.setStage(cd.stage);
+                city.setAqueductConnected(cd.aqueductConnected);
+                for (const aoc::hex::AxialCoord& tile : cd.lockedTiles) {
+                    city.toggleTileLock(tile);
+                }
+                city.religion() = cd.religion;
                 loadedCities.push_back(&city);
             }
 
@@ -2036,6 +2382,8 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 unit.airUnit().operationalRange = ud.range;
                 unit.airUnit().isIntercepting   = ud.intercepting;
                 unit.setFormationLevel(static_cast<aoc::sim::FormationLevel>(ud.formation));
+                unit.spy()         = ud.spy;           // v17
+                unit.greatPerson() = ud.greatPerson;   // v17
                 loadedUnits.push_back(&unit);
             }
             break;
@@ -2124,6 +2472,44 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                     }
                 } else {
                     buf.skip(byteCount);
+                }
+            }
+
+            // v17: knownTechs bitset + research queue per player.
+            const uint32_t knownCount = buf.readU32();
+            if (knownCount > MAX_PLAYERS) {
+                LOG_ERROR("Serializer: knownTechs record count %u exceeds MAX_PLAYERS", knownCount);
+                return ErrorCode::SaveCorrupted;
+            }
+            for (uint32_t i = 0; i < knownCount && !buf.isCorrupt(); ++i) {
+                const PlayerId owner      = buf.readU8();
+                const uint16_t totalTechs = buf.readU16();
+                const uint16_t byteCount  = static_cast<uint16_t>((totalTechs + 7) / 8);
+                aoc::game::Player* player = gameState.player(owner);
+                for (uint16_t b = 0; b < byteCount; ++b) {
+                    const uint8_t byte = buf.readU8();
+                    for (uint8_t bit = 0; bit < 8; ++bit) {
+                        const uint16_t techIdx = static_cast<uint16_t>(b * 8 + bit);
+                        if (player != nullptr && techIdx < totalTechs
+                            && techIdx < player->tech().knownTechs.size()) {
+                            player->tech().knownTechs[techIdx] = ((byte >> bit) & 1u) != 0;
+                        }
+                    }
+                }
+                const uint32_t queueCount = buf.readU32();
+                if (queueCount > MAX_RESEARCH_QUEUE || !buf.canReadRecords(queueCount, 2)) {
+                    LOG_ERROR("Serializer: research queue count %u out of range", queueCount);
+                    return ErrorCode::SaveCorrupted;
+                }
+                for (uint32_t q = 0; q < queueCount && !buf.isCorrupt(); ++q) {
+                    const uint16_t techVal = buf.readU16();
+                    if (techVal >= aoc::sim::techCount()) {
+                        LOG_ERROR("Serializer: queued tech %u out of range", static_cast<unsigned>(techVal));
+                        return ErrorCode::SaveCorrupted;
+                    }
+                    if (player != nullptr) {
+                        player->researchQueue().researchQueue.push_back(TechId{techVal});
+                    }
                 }
             }
             break;
@@ -2251,6 +2637,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 gov.anarchyTurnsRemaining = buf.readI32();
                 gov.activeAction          = static_cast<aoc::sim::GovernmentAction>(buf.readU8());
                 gov.actionTurnsRemaining  = buf.readI32();
+                gov.autoPolicies          = buf.readU8() != 0;   // v17
                 if (player != nullptr) {
                     player->government() = std::move(gov);
                 }
@@ -2467,6 +2854,49 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                     (void)buf.readI32(); // defenderWarScore
                 }
             }
+
+            // --- v17: Historic Moments ---
+            const uint32_t momentPlayers = buf.readU32();
+            if (momentPlayers > MAX_PLAYERS) {
+                LOG_ERROR("Serializer: historic moment record count %u exceeds MAX_PLAYERS", momentPlayers);
+                return ErrorCode::SaveCorrupted;
+            }
+            for (uint32_t i = 0; i < momentPlayers && !buf.isCorrupt(); ++i) {
+                const PlayerId owner        = buf.readU8();
+                const int32_t eraScoreNow   = buf.readI32();
+                const int32_t goldenAt      = buf.readI32();
+                const int32_t darkBelow     = buf.readI32();
+                const uint8_t ageType       = buf.readU8();
+                const int32_t ageTurnsLeft  = buf.readI32();
+                const int32_t lifetime      = buf.readI32();
+                const uint32_t count        = buf.readU32();
+                aoc::game::Player* player   = gameState.player(owner);
+                if (ageType > static_cast<uint8_t>(aoc::sim::AgeType::Dark)
+                    || count > aoc::sim::MAX_HISTORIC_MOMENTS || !buf.canReadRecords(count, 10)) {
+                    LOG_ERROR("Serializer: era score record out of range (age %u moments %u)",
+                              static_cast<unsigned>(ageType), count);
+                    return ErrorCode::SaveCorrupted;
+                }
+                if (player != nullptr) {
+                    aoc::sim::PlayerEraScoreComponent& score = player->eraScore();
+                    score.eraScore           = eraScoreNow;
+                    score.goldenAgeThreshold = goldenAt;
+                    score.darkAgeThreshold   = darkBelow;
+                    score.currentAgeType     = static_cast<aoc::sim::AgeType>(ageType);
+                    score.turnsRemaining     = ageTurnsLeft;
+                    score.lifetimeEraScore   = lifetime;
+                    score.moments.clear();
+                }
+                for (uint32_t m = 0; m < count && !buf.isCorrupt(); ++m) {
+                    aoc::sim::HistoricMoment moment{};
+                    moment.turn   = buf.readI32();
+                    moment.points = buf.readI32();
+                    moment.text   = buf.readString();
+                    if (player != nullptr) {
+                        player->eraScore().moments.push_back(std::move(moment));
+                    }
+                }
+            }
             break;
         }
         case SectionId::Diplomacy: {
@@ -2548,6 +2978,252 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                     rel.casusBelliLand     = (cbBits & 0x1) != 0;
                     rel.casusBelliNaval    = (cbBits & 0x2) != 0;
                     rel.warningIssued      = buf.readU8() != 0;
+                    // v17: symmetric fields mirrored, directional ones per direction.
+                    rel.hasMet           = buf.readU8() != 0;
+                    rel.metOnTurn        = buf.readI32();
+                    rel.turnsSincePeace  = buf.readI32();
+                    rel.passiveBonus     = buf.readI32();
+                    rel.lastWarAggressor = buf.readU8();
+                    mirror.hasMet           = rel.hasMet;
+                    mirror.metOnTurn        = rel.metOnTurn;
+                    mirror.turnsSincePeace  = rel.turnsSincePeace;
+                    mirror.passiveBonus     = rel.passiveBonus;
+                    mirror.lastWarAggressor = rel.lastWarAggressor;
+                    for (aoc::sim::PairwiseRelation* dir : {&rel, &mirror}) {
+                        dir->intelLevel = buf.readU8();
+                        dir->hasEmbargo = buf.readU8() != 0;
+                        const uint32_t goodCount = buf.readU32();
+                        if (goodCount > MAX_EMBARGOED_GOODS || !buf.canReadRecords(goodCount, 2)) {
+                            LOG_ERROR("Serializer: embargoed good count %u out of range", goodCount);
+                            return ErrorCode::SaveCorrupted;
+                        }
+                        dir->embargoedGoods.clear();
+                        dir->embargoedGoods.reserve(goodCount);
+                        for (uint32_t g = 0; g < goodCount && !buf.isCorrupt(); ++g) {
+                            dir->embargoedGoods.push_back(buf.readU16());
+                        }
+                    }
+                }
+            }
+            break;
+        }
+        case SectionId::CityStates: {
+            // v17: city-state components, then their Players (cities, units).
+            std::vector<aoc::sim::CityStateComponent>& states = gameState.cityStates();
+            states.clear();
+            const uint32_t stateCount = buf.readU32();
+            if (stateCount > MAX_CITY_STATES || !buf.canReadRecords(stateCount, 40)) {
+                LOG_ERROR("Serializer: city-state count %u out of range", stateCount);
+                return ErrorCode::SaveCorrupted;
+            }
+            for (uint32_t i = 0; i < stateCount && !buf.isCorrupt(); ++i) {
+                aoc::sim::CityStateComponent cs{};
+                cs.defId           = buf.readU8();
+                const uint8_t type = buf.readU8();
+                cs.location        = {buf.readI32(), buf.readI32()};
+                const uint8_t envoySlots = buf.readU8();
+                if (type >= static_cast<uint8_t>(aoc::sim::CityStateType::Count) || envoySlots != MAX_PLAYERS) {
+                    LOG_ERROR("Serializer: city-state record out of range (type %u slots %u)",
+                              static_cast<unsigned>(type), static_cast<unsigned>(envoySlots));
+                    return ErrorCode::SaveCorrupted;
+                }
+                cs.type = static_cast<aoc::sim::CityStateType>(type);
+                for (int8_t& e : cs.envoys) { e = static_cast<int8_t>(buf.readU8()); }
+                cs.suzerain = buf.readU8();
+                cs.metMask  = buf.readU32();
+                const uint8_t questType         = buf.readU8();
+                cs.activeQuest.assignedTo       = buf.readU8();
+                cs.activeQuest.isCompleted      = buf.readU8() != 0;
+                cs.activeQuest.isActive         = buf.readU8() != 0;
+                cs.activeQuest.turnsRemaining   = buf.readI32();
+                cs.activeQuest.envoyReward      = buf.readI32();
+                cs.activeQuest.snapshot         = buf.readI32();
+                if (questType >= static_cast<uint8_t>(aoc::sim::CityStateQuestType::Count)) {
+                    LOG_ERROR("Serializer: city-state quest type %u out of range", static_cast<unsigned>(questType));
+                    return ErrorCode::SaveCorrupted;
+                }
+                cs.activeQuest.type  = static_cast<aoc::sim::CityStateQuestType>(questType);
+                cs.questStreak.player = buf.readU8();
+                cs.questStreak.streak = buf.readI32();
+                cs.levyPlayer         = buf.readU8();
+                cs.levyTurnsLeft      = buf.readI32();
+                cs.turnsSinceBully    = buf.readI32();
+                states.push_back(cs);
+            }
+            const uint32_t seatCount = buf.readU32();
+            if (seatCount > MAX_CITY_STATES) {
+                LOG_ERROR("Serializer: city-state seat count %u out of range", seatCount);
+                return ErrorCode::SaveCorrupted;
+            }
+            gameState.initializeCityStateSlots(static_cast<int32_t>(seatCount));
+            for (uint32_t i = 0; i < seatCount && !buf.isCorrupt(); ++i) {
+                const PlayerId id    = buf.readU8();
+                const uint8_t civId  = buf.readU8();
+                aoc::game::Player* seat = gameState.player(id);
+                if (id != static_cast<PlayerId>(aoc::sim::CITY_STATE_PLAYER_BASE + i) || seat == nullptr) {
+                    LOG_ERROR("Serializer: city-state seat id %u out of order", static_cast<unsigned>(id));
+                    return ErrorCode::SaveCorrupted;
+                }
+                seat->setCivId(static_cast<aoc::sim::CivId>(civId));
+                const uint32_t cityCount = buf.readU32();
+                if (cityCount > MAX_CITIES || !buf.canReadRecords(cityCount, 20)) {
+                    LOG_ERROR("Serializer: city-state city count %u out of range", cityCount);
+                    return ErrorCode::SaveCorrupted;
+                }
+                for (uint32_t c = 0; c < cityCount && !buf.isCorrupt(); ++c) {
+                    const aoc::hex::AxialCoord loc = {buf.readI32(), buf.readI32()};
+                    const std::string name         = buf.readString();
+                    aoc::game::City& city          = seat->addCity(loc, name);
+                    city.setPopulation(buf.readI32());
+                    city.setFoodSurplus(buf.readF32());
+                    city.setProductionProgress(buf.readF32());
+                    const uint32_t workedCount = buf.readU32();
+                    if (workedCount > MAX_WORKED_TILES || !buf.canReadRecords(workedCount, 8)) {
+                        LOG_ERROR("Serializer: city-state worked-tile count %u out of range", workedCount);
+                        return ErrorCode::SaveCorrupted;
+                    }
+                    // Replace, not append: the City constructor already seeded the centre.
+                    std::vector<aoc::hex::AxialCoord> worked;
+                    worked.reserve(workedCount);
+                    for (uint32_t t = 0; t < workedCount && !buf.isCorrupt(); ++t) {
+                        worked.push_back({buf.readI32(), buf.readI32()});
+                    }
+                    city.workedTiles() = std::move(worked);
+                }
+                const uint32_t unitCountCs = buf.readU32();
+                if (unitCountCs > MAX_UNITS || !buf.canReadRecords(unitCountCs, 20)) {
+                    LOG_ERROR("Serializer: city-state unit count %u out of range", unitCountCs);
+                    return ErrorCode::SaveCorrupted;
+                }
+                for (uint32_t u = 0; u < unitCountCs && !buf.isCorrupt(); ++u) {
+                    const UnitTypeId typeId        = UnitTypeId{buf.readU16()};
+                    const aoc::hex::AxialCoord pos = {buf.readI32(), buf.readI32()};
+                    aoc::game::Unit& unit          = seat->addUnit(typeId, pos);
+                    unit.setHitPoints(buf.readI32());
+                    unit.setMovementRemaining(buf.readI32());
+                    unit.setState(static_cast<aoc::sim::UnitState>(buf.readU8()));
+                    unit.setChargesRemaining(static_cast<int8_t>(buf.readU8()));
+                }
+            }
+            break;
+        }
+        case SectionId::ReligionState: {
+            // v17: the global religion tracker and per-player faith.
+            aoc::sim::GlobalReligionTracker& tracker = gameState.religionTracker();
+            tracker.religionsFoundedCount = buf.readU8();
+            const uint8_t slots           = buf.readU8();
+            if (tracker.religionsFoundedCount > aoc::sim::MAX_RELIGIONS || slots != aoc::sim::MAX_RELIGIONS) {
+                LOG_ERROR("Serializer: religion tracker out of range (founded %u slots %u)",
+                          static_cast<unsigned>(tracker.religionsFoundedCount), static_cast<unsigned>(slots));
+                return ErrorCode::SaveCorrupted;
+            }
+            for (aoc::sim::ReligionDef& def : tracker.religions) {
+                def.id             = buf.readU8();
+                def.name           = buf.readString();
+                def.founder        = buf.readU8();
+                uint8_t beliefs[4] = {};
+                for (int32_t k = 0; k < 4; ++k) { beliefs[k] = buf.readU8(); }
+                for (int32_t k = 0; k < 4; ++k) {
+                    if (beliefs[k] != 255 && beliefs[k] >= aoc::sim::BELIEF_COUNT) {
+                        LOG_ERROR("Serializer: belief index %u out of range", static_cast<unsigned>(beliefs[k]));
+                        return ErrorCode::SaveCorrupted;
+                    }
+                }
+                def.founderBelief  = beliefs[0];
+                def.followerBelief = beliefs[1];
+                def.worshipBelief  = beliefs[2];
+                def.enhancerBelief = beliefs[3];
+            }
+            const uint32_t faithCount = buf.readU32();
+            if (faithCount > MAX_PLAYERS || !buf.canReadRecords(faithCount, 8)) {
+                LOG_ERROR("Serializer: faith record count %u out of range", faithCount);
+                return ErrorCode::SaveCorrupted;
+            }
+            for (uint32_t i = 0; i < faithCount && !buf.isCorrupt(); ++i) {
+                const PlayerId owner      = buf.readU8();
+                const float faith         = buf.readF32();
+                const uint8_t founded     = buf.readU8();
+                const bool hasPantheon    = buf.readU8() != 0;
+                const uint8_t pantheon    = buf.readU8();
+                aoc::game::Player* player = gameState.player(owner);
+                if (player != nullptr) {
+                    player->faith().faith           = faith;
+                    player->faith().foundedReligion = founded;
+                    player->faith().hasPantheon     = hasPantheon;
+                    player->faith().pantheonBelief  = pantheon;
+                }
+            }
+            break;
+        }
+        case SectionId::WorldCongressState: {
+            // v17: the congress component and per-player diplomatic favor.
+            aoc::sim::WorldCongressComponent wc{};
+            wc.isActive              = buf.readU8() != 0;
+            wc.turnsUntilNextSession = buf.readI32();
+            const uint8_t current    = buf.readU8();
+            wc.proposer              = buf.readU8();
+            wc.proposalTarget        = buf.readU8();
+            const uint8_t seats      = buf.readU8();
+            if (current > static_cast<uint8_t>(aoc::sim::Resolution::Count) || seats != MAX_PLAYERS) {
+                LOG_ERROR("Serializer: congress header out of range (proposal %u seats %u)",
+                          static_cast<unsigned>(current), static_cast<unsigned>(seats));
+                return ErrorCode::SaveCorrupted;
+            }
+            wc.currentProposal = static_cast<aoc::sim::Resolution>(current);
+            for (int16_t& v : wc.votes) { v = static_cast<int16_t>(buf.readI32()); }
+            for (bool& chosen : wc.voteChosen) { chosen = buf.readU8() != 0; }
+            const uint32_t passedCount = buf.readU32();
+            if (passedCount > MAX_RESOLUTION_RECORDS || !buf.canReadRecords(passedCount, 1)) {
+                LOG_ERROR("Serializer: passed resolution count %u out of range", passedCount);
+                return ErrorCode::SaveCorrupted;
+            }
+            for (uint32_t i = 0; i < passedCount && !buf.isCorrupt(); ++i) {
+                const uint8_t res = buf.readU8();
+                if (res >= static_cast<uint8_t>(aoc::sim::Resolution::Count)) {
+                    LOG_ERROR("Serializer: passed resolution %u out of range", static_cast<unsigned>(res));
+                    return ErrorCode::SaveCorrupted;
+                }
+                wc.passedResolutions.push_back(static_cast<aoc::sim::Resolution>(res));
+            }
+            const uint32_t effectCount = buf.readU32();
+            if (effectCount > MAX_RESOLUTION_RECORDS || !buf.canReadRecords(effectCount, 6)) {
+                LOG_ERROR("Serializer: active resolution count %u out of range", effectCount);
+                return ErrorCode::SaveCorrupted;
+            }
+            for (uint32_t i = 0; i < effectCount && !buf.isCorrupt(); ++i) {
+                aoc::sim::ActiveResolution effect{};
+                const uint8_t res     = buf.readU8();
+                effect.target         = buf.readU8();
+                effect.turnsRemaining = buf.readI32();
+                if (res >= static_cast<uint8_t>(aoc::sim::Resolution::Count)) {
+                    LOG_ERROR("Serializer: active resolution %u out of range", static_cast<unsigned>(res));
+                    return ErrorCode::SaveCorrupted;
+                }
+                effect.type = static_cast<aoc::sim::Resolution>(res);
+                wc.activeEffects.push_back(effect);
+            }
+            const uint8_t preferred = buf.readU8();
+            wc.preferredTarget      = buf.readU8();
+            wc.preferredBy          = buf.readU8();
+            if (preferred > static_cast<uint8_t>(aoc::sim::Resolution::Count)) {
+                LOG_ERROR("Serializer: preferred resolution %u out of range", static_cast<unsigned>(preferred));
+                return ErrorCode::SaveCorrupted;
+            }
+            wc.preferredProposal = static_cast<aoc::sim::Resolution>(preferred);
+            gameState.worldCongress() = std::move(wc);
+            const uint32_t favorCount = buf.readU32();
+            if (favorCount > MAX_PLAYERS || !buf.canReadRecords(favorCount, 9)) {
+                LOG_ERROR("Serializer: favor record count %u out of range", favorCount);
+                return ErrorCode::SaveCorrupted;
+            }
+            for (uint32_t i = 0; i < favorCount && !buf.isCorrupt(); ++i) {
+                const PlayerId owner      = buf.readU8();
+                const int32_t favor       = buf.readI32();
+                const int32_t perTurn     = buf.readI32();
+                aoc::game::Player* player = gameState.player(owner);
+                if (player != nullptr) {
+                    player->diplomaticFavor().favor        = favor;
+                    player->diplomaticFavor().favorPerTurn = perTurn;
                 }
             }
             break;

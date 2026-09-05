@@ -90,6 +90,10 @@ enum class SectionId : uint16_t {
     MapLayers = 0x0027, ///< Game-state HexGrid layers by name (MapFile.hpp isGameGridLayer, v12); read after MapGrid
     // v14 sections --------------------------------------------------------
     GreatWorks = 0x0028, ///< Per-city housed great works (GreatWorks.hpp); read after Entities
+    // v17 sections --------------------------------------------------------
+    CityStates         = 0x0029, ///< City-state components + their Players (cities, units); read after Entities
+    ReligionState      = 0x002A, ///< GlobalReligionTracker + per-player faith (city pressure rides on the city record)
+    WorldCongressState = 0x002B, ///< WorldCongressComponent + per-player diplomatic favor
 };
 
 /// Low-level binary write buffer.
