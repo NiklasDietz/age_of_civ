@@ -126,7 +126,7 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
                 const TechDef& def = techDef(tech.currentResearch);
                 // Master spies steal more: 20% base + 10% per level
                 const float pct = 0.20f + static_cast<float>(static_cast<uint8_t>(spy.level)) * 0.10f;
-                const float bonus = pct * static_cast<float>(def.researchCost);
+                const float bonus = pct * effectiveResearchCost(tech, tech.currentResearch);
                 tech.researchProgress += bonus;
                 LOG_INFO("Spy (P%u, %.*s) stole tech: +%.0f toward %.*s",
                          static_cast<unsigned>(spy.owner),

@@ -337,7 +337,7 @@ static void buildTechEntries(std::vector<WikiEntry>& entries) {
         entry.category = WikiCategory::Technologies;
         entry.title = std::string(t.name);
         entry.statsBlock = "Era: " + std::to_string(t.era.value)
-            + "\nResearch Cost: " + std::to_string(t.researchCost) + " science";
+            + "\nBase Research Cost: " + std::to_string(t.researchCost) + " science (scaled by pace and tree depth)";
 
         std::string prereqs;
         for (aoc::TechId pre : t.prerequisites) {

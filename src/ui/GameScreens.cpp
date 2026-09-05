@@ -287,7 +287,7 @@ std::string formatTechTooltip(const aoc::sim::TechDef& def) {
     out += std::to_string(def.era.value);
     out += "  ·  ";
     out += std::to_string(def.researchCost);
-    out += " science";
+    out += " base science";
     if (!def.unlockedUnits.empty()) {
         out += "\nUnlocks units: ";
         for (std::size_t i = 0; i < def.unlockedUnits.size(); ++i) {
@@ -886,7 +886,8 @@ void TechScreen::open(UIManager& ui) {
         const aoc::sim::TechDef& def = aoc::sim::techDef(playerTech->currentResearch);
         currentText = "Researching: " + std::string(def.name) + "  (" +
                       std::to_string(static_cast<int>(playerTech->researchProgress)) + "/" +
-                      std::to_string(def.researchCost) + ")";
+                      std::to_string(static_cast<int>(aoc::sim::effectiveResearchCost(
+                          *playerTech, playerTech->currentResearch))) + ")";
     }
     this->m_currentLabel =
         ui.createLabel(innerPanel, {0.0f, 0.0f, SCREEN_W - 24.0f, 24.0f},
@@ -1180,12 +1181,15 @@ void TechScreen::open(UIManager& ui) {
         }
 
         // Cost + turn-count line.
-        std::string costLabel = std::to_string(tech.researchCost) + " sci";
+        const float effectiveCost = playerTech != nullptr
+            ? aoc::sim::effectiveResearchCost(*playerTech, tech.id)
+            : static_cast<float>(tech.researchCost);
+        std::string costLabel = std::to_string(static_cast<int>(effectiveCost)) + " sci";
         if (researched) {
             costLabel = std::string(tech.name.size() > 0 ? "Researched" : "");
         } else if (sciencePerTurn > 0.5f) {
             const float remaining =
-                static_cast<float>(tech.researchCost) -
+                effectiveCost -
                 playerTech->researchProgress *
                     (playerTech->currentResearch.value == tech.id.value ? 1.0f : 0.0f);
             const int turns = static_cast<int>(std::ceil(remaining / sciencePerTurn));
@@ -1234,8 +1238,7 @@ void TechScreen::open(UIManager& ui) {
             constexpr float DOT_SIZE   = 4.0f;
             constexpr float RING_R     = 14.0f;
             constexpr float RING_BOX_W = (RING_R + DOT_SIZE) * 2.0f;
-            const float frac           = std::clamp(
-                playerTech->researchProgress / static_cast<float>(tech.researchCost), 0.0f, 1.0f);
+            const float frac           = aoc::sim::researchFraction(*playerTech);
             float eurekaFrac = 0.0f;
             if (eb != nullptr && playerEureka != nullptr &&
                 playerEureka->hasTriggered(eb->boostIndex)) {
@@ -1390,7 +1393,8 @@ void TechScreen::refresh(UIManager& ui) {
         const aoc::sim::TechDef& def = aoc::sim::techDef(playerTech->currentResearch);
         currentText = "Researching: " + std::string(def.name) + " (" +
                       std::to_string(static_cast<int>(playerTech->researchProgress)) + "/" +
-                      std::to_string(def.researchCost) + ")";
+                      std::to_string(static_cast<int>(aoc::sim::effectiveResearchCost(
+                          *playerTech, playerTech->currentResearch))) + ")";
     }
     ui.setLabelText(this->m_currentLabel, std::move(currentText));
 }

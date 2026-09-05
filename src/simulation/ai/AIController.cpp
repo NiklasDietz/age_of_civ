@@ -627,10 +627,7 @@ void AIController::manageGreatPeople(aoc::game::GameState& gameState,
         switch (type) {
             case GreatPersonType::Scientist: {
                 const PlayerTechComponent& tech = player->tech();
-                const float progressRatio = tech.currentResearch.isValid()
-                    ? tech.researchProgress
-                      / (static_cast<float>(techDef(tech.currentResearch).researchCost) + 1.0f)
-                    : 0.0f;
+                const float progressRatio = researchFraction(tech);
                 // High score when we are deep into a long tech: a 50% jump is a big gift.
                 utility = bh.scienceFocus * (0.5f + progressRatio);
                 break;

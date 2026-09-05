@@ -67,8 +67,8 @@ void applyCivicEffect(aoc::game::GameState& gameState, PlayerId player, uint8_t 
                 if (gsPlayer == nullptr) { break; }
                 PlayerTechComponent& tech = gsPlayer->tech();
                 if (tech.currentResearch.isValid()) {
-                    const TechDef& tdef = techDef(tech.currentResearch);
-                    tech.researchProgress += static_cast<float>(tdef.researchCost) * 0.5f;
+                    tech.researchProgress +=
+                        effectiveResearchCost(tech, tech.currentResearch) * 0.5f;
                     LOG_INFO("Player %u: civic FreeTech granted +50%% progress on tech %u",
                              static_cast<unsigned>(player),
                              static_cast<unsigned>(tech.currentResearch.value));

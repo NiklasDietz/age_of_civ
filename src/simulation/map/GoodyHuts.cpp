@@ -115,7 +115,7 @@ GoodyHutReward checkAndClaimGoodyHut(GoodyHutState& state,
             PlayerTechComponent& tech = player.tech();
             if (tech.currentResearch.isValid()) {
                 const TechDef& def = techDef(tech.currentResearch);
-                const float bonus = 0.20f * static_cast<float>(def.researchCost);
+                const float bonus = 0.20f * effectiveResearchCost(tech, tech.currentResearch);
                 tech.researchProgress += bonus;
                 LOG_INFO("Goody hut: P%u found ancient scroll (+%.0f science toward %.*s)",
                          static_cast<unsigned>(player.id()),

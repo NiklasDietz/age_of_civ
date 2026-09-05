@@ -858,16 +858,12 @@ void Application::updateHUD() {
             const aoc::sim::PlayerTechComponent& tech = techPlayer->tech();
             if (tech.currentResearch.isValid()) {
                 const aoc::sim::TechDef& tdef = aoc::sim::techDef(tech.currentResearch);
+                const float effectiveCost =
+                    aoc::sim::effectiveResearchCost(tech, tech.currentResearch);
                 researchText = "Research: " + std::string(tdef.name) + " " +
                                std::to_string(static_cast<int>(tech.researchProgress)) + "/" +
-                               std::to_string(tdef.researchCost);
-                if (tdef.researchCost > 0) {
-                    researchFraction =
-                        tech.researchProgress / static_cast<float>(tdef.researchCost);
-                    if (researchFraction > 1.0f) {
-                        researchFraction = 1.0f;
-                    }
-                }
+                               std::to_string(static_cast<int>(effectiveCost));
+                researchFraction = aoc::sim::researchFraction(tech);
             }
         }
         this->m_uiManager.setLabelText(this->m_researchLabel, std::move(researchText));

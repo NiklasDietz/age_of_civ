@@ -317,8 +317,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
             } else {
                 PlayerTechComponent& tech = playerObj->tech();
                 if (tech.currentResearch.isValid()) {
-                    const TechDef& tdef = techDef(tech.currentResearch);
-                    const float bonus   = static_cast<float>(tdef.researchCost) * 0.5f;
+                    const float bonus = effectiveResearchCost(tech, tech.currentResearch) * 0.5f;
                     tech.researchProgress += bonus;
                     LOG_INFO("Scientist added %.0f research progress",
                              static_cast<double>(bonus));

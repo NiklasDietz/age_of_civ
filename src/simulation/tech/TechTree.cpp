@@ -6,6 +6,8 @@
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/ExpandedContent.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
+
+#include <algorithm>
 #include "aoc/core/Log.hpp"
 
 #include <cassert>
@@ -406,6 +408,40 @@ uint16_t techCount() {
     return static_cast<uint16_t>(getTechs().size());
 }
 
+float effectiveResearchCost(const PlayerTechComponent& tech, TechId techId) {
+    if (!techId.isValid() || techId.value >= techCount()) {
+        return 0.0f;
+    }
+    const TechDef& def = techDef(techId);
+    int32_t completed = 0;
+    for (uint16_t ti = 0; ti < techCount(); ++ti) {
+        if (tech.hasResearched(TechId{ti})) {
+            ++completed;
+        }
+    }
+    // H3.2: early-era tech discount removed. The depth multiplier already makes
+    // early techs cheap relative to late techs (low completed count -> ~1.0, vs
+    // 3.5+ for late techs). Stacking a flat 30 percent era discount on top
+    // produced a sub-50 percent early price and an overpowered early spiral.
+    // Research pace is handled by the per-citizen science output in
+    // CityScience.cpp instead.
+    const float depthMultiplier = 1.0f + static_cast<float>(completed) * 0.05f;
+    return static_cast<float>(def.researchCost)
+         * GamePace::instance().costMultiplier
+         * depthMultiplier;
+}
+
+float researchFraction(const PlayerTechComponent& tech) {
+    if (!tech.currentResearch.isValid()) {
+        return 0.0f;
+    }
+    const float cost = effectiveResearchCost(tech, tech.currentResearch);
+    if (cost <= 0.0f) {
+        return 0.0f;
+    }
+    return std::clamp(tech.researchProgress / cost, 0.0f, 1.0f);
+}
+
 bool advanceResearch(PlayerTechComponent& tech, float sciencePoints) {
     if (!tech.currentResearch.isValid()) {
         return false;
@@ -416,23 +452,7 @@ bool advanceResearch(PlayerTechComponent& tech, float sciencePoints) {
     const TechDef& def = techDef(tech.currentResearch);
     // Recursive tech cost scaling: techs with deeper dependency trees cost more.
     // Each already-researched tech adds 5% to the base cost.
-    int32_t numPrereqs = 0;
-    for (uint16_t ti = 0; ti < techCount(); ++ti) {
-        if (tech.hasResearched(TechId{ti})) {
-            ++numPrereqs;
-        }
-    }
-    float depthMultiplier = 1.0f + static_cast<float>(numPrereqs) * 0.05f;
-
-    // H3.2: early-era tech discount removed. The depthMultiplier above already
-    // makes early techs cheap relative to late techs (low prereq count ->
-    // multiplier ~1.0, vs 3.5+ for late techs). Stacking a flat 30% era
-    // discount on top produced a sub-50% early price and an overpowered early
-    // spiral. Research pace is now handled by the bumped per-citizen science
-    // output in CityScience.cpp instead.
-    float scaledCost = static_cast<float>(def.researchCost)
-                     * GamePace::instance().costMultiplier
-                     * depthMultiplier;
+    const float scaledCost = effectiveResearchCost(tech, tech.currentResearch);
     if (tech.researchProgress >= scaledCost) {
         LOG_INFO("Player %u researched: %.*s",
                  static_cast<unsigned>(tech.owner),

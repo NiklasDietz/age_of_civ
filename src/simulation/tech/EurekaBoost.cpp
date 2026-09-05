@@ -139,7 +139,8 @@ void checkEurekaConditions(aoc::game::Player& player,
             }
 
             const TechDef& def = techDef(boost.techId);
-            const float boostAmount = boost.boostFraction * static_cast<float>(def.researchCost);
+            const float boostAmount =
+                boost.boostFraction * effectiveResearchCost(techComp, boost.techId);
 
             if (techComp.currentResearch == boost.techId) {
                 techComp.researchProgress += boostAmount;
@@ -209,7 +210,8 @@ void consumePendingEurekaBoosts(aoc::game::Player& player) {
             && techComp.currentResearch == boost.techId
             && !techComp.hasResearched(boost.techId)) {
             const TechDef& def = techDef(boost.techId);
-            const float boostAmount = boost.boostFraction * static_cast<float>(def.researchCost);
+            const float boostAmount =
+                boost.boostFraction * effectiveResearchCost(techComp, boost.techId);
             techComp.researchProgress += boostAmount;
             eurekaComp.clearPending(boost.boostIndex);
             LOG_INFO("Pending eureka consumed! Player %u: +%.0f%% toward %.*s",

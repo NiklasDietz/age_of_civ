@@ -145,6 +145,17 @@ struct PlayerTechComponent {
  */
 bool advanceResearch(PlayerTechComponent& tech, float sciencePoints);
 
+/// The science a tech really costs this player: TechDef::researchCost scaled by
+/// the game pace and by tree depth (+5 percent per completed tech). This is the
+/// number advanceResearch completes against; every HUD bar, tech card, eureka,
+/// Great Scientist, spy and goody-hut reader uses it (until 2026-09-05 they all
+/// read the unscaled base, so a "40 percent" eureka was 20 percent at depth 20).
+[[nodiscard]] float effectiveResearchCost(const PlayerTechComponent& tech, TechId techId);
+
+/// researchProgress / effectiveResearchCost of the current research, clamped to
+/// [0, 1]; 0 when nothing is being researched.
+[[nodiscard]] float researchFraction(const PlayerTechComponent& tech);
+
 /// Acquire a tech via trade/gift. Marks it KNOWN. If all prereqs are already
 /// completed, also marks it COMPLETED (immediately usable). Otherwise it
 /// stays known-but-locked until prereqs are met (then promoted by

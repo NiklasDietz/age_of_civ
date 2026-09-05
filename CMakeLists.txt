@@ -958,6 +958,7 @@ if(AOC_BUILD_TESTS)
         test_first_contact
         test_religion
         test_tech_gating
+        test_research_cost
     )
 
     # UI tests link against src/ui/UIManager.cpp and src/ui/ScreenRegistry.cpp,
