@@ -948,6 +948,7 @@ if(AOC_BUILD_TESTS)
         test_spaceport
         test_government_plaza_and_dam
         test_great_works
+        test_promotions
     )
 
     # UI tests link against src/ui/UIManager.cpp and src/ui/ScreenRegistry.cpp,

@@ -817,7 +817,7 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     // City-state bonuses
     processCityStateBonuses(*turnContext.gameState, player);
 
-    // Unit promotions: AI auto-selects, human gets UI prompt
+    // Unit promotions: the scored pick for AI and human alike (no choice UI yet)
     {
         const bool isHuman = (player == turnContext.humanPlayer);
         processUnitPromotions(*gsPlayer, isHuman);

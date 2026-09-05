@@ -1060,9 +1060,10 @@ void writeGreatWorksSection(WriteBuffer& out, const aoc::game::GameState& gameSt
 /**
  * @brief Serialize misc entities: barbarian encampments, great persons, spies.
  *
- * Unit experience is intentionally omitted here since UnitExperienceComponent
- * is not yet part of the Unit object model (write zero count for forward compat).
- * Barbarians, great persons, and spies from GameState global collections.
+ * Unit experience records (unit index in Entities order, XP, level, promotion
+ * ids) fill the slot the format always had; until 2026-09-05 the count was 0 and
+ * a load forgot every promotion. Barbarians, great persons, and spies from
+ * GameState global collections.
  */
 void writeMiscEntitiesSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
     WriteBuffer section;
@@ -1098,8 +1099,31 @@ void writeMiscEntitiesSection(WriteBuffer& out, const aoc::game::GameState& game
         }
     }
 
-    // --- UnitExperienceComponent: not yet in Unit object model, write 0 ---
-    section.writeU32(0);
+    // --- UnitExperienceComponent: one record per unit with any XP or promotion ---
+    uint32_t expCount = 0;
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
+            const aoc::sim::UnitExperienceComponent& xp = unit->experience();
+            if (xp.experience > 0 || xp.level > 0 || !xp.promotions.empty()) { ++expCount; }
+        }
+    }
+    section.writeU32(expCount);
+    uint32_t unitIndex = 0;
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
+            const aoc::sim::UnitExperienceComponent& xp = unit->experience();
+            if (xp.experience > 0 || xp.level > 0 || !xp.promotions.empty()) {
+                section.writeU32(unitIndex);
+                section.writeI32(xp.experience);
+                section.writeI32(xp.level);
+                section.writeU32(static_cast<uint32_t>(xp.promotions.size()));
+                for (const PromotionId pid : xp.promotions) {
+                    section.writeU16(pid.value);
+                }
+            }
+            ++unitIndex;
+        }
+    }
 
     writeSection(out, SectionId::MiscEntities, section);
 }
@@ -2609,15 +2633,36 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 }
             }
 
-            // --- UnitExperienceComponent (not yet in Unit object model: skip) ---
+            // --- UnitExperienceComponent: into the units loaded by Entities ---
             uint32_t expCount = buf.readU32();
-            for (uint32_t i = 0; i < expCount; ++i) {
-                (void)buf.readU32(); // unitIndex
-                (void)buf.readI32();
-                (void)buf.readI32(); // experience, level
-                uint32_t promoCount = buf.readU32();
-                for (uint32_t p = 0; p < promoCount; ++p) {
-                    (void)buf.readU16(); // PromotionId
+            if (!buf.canReadRecords(expCount, 16)) {
+                LOG_ERROR("Serializer: experience record count %u exceeds file size", expCount);
+                return ErrorCode::SaveCorrupted;
+            }
+            for (uint32_t i = 0; i < expCount && !buf.isCorrupt(); ++i) {
+                const uint32_t unitIndex  = buf.readU32();
+                const int32_t  experience = buf.readI32();
+                const int32_t  level      = buf.readI32();
+                const uint32_t promoCount = buf.readU32();
+                if (promoCount > aoc::sim::PROMOTION_DEFS.size()
+                    || !buf.canReadRecords(promoCount, 2)) {
+                    LOG_ERROR("Serializer: promotion count %u out of range", promoCount);
+                    return ErrorCode::SaveCorrupted;
+                }
+                aoc::sim::UnitExperienceComponent xp{};
+                xp.experience = experience;
+                xp.level      = level;
+                xp.promotions.reserve(promoCount);
+                for (uint32_t p = 0; p < promoCount && !buf.isCorrupt(); ++p) {
+                    const uint16_t pid = buf.readU16();
+                    if (pid >= aoc::sim::PROMOTION_DEFS.size()) {
+                        LOG_ERROR("Serializer: promotion id %u out of range", static_cast<unsigned>(pid));
+                        return ErrorCode::SaveCorrupted;
+                    }
+                    xp.promotions.push_back(PromotionId{pid});
+                }
+                if (unitIndex < static_cast<uint32_t>(loadedUnits.size())) {
+                    loadedUnits[unitIndex]->experience() = std::move(xp);
                 }
             }
             break;

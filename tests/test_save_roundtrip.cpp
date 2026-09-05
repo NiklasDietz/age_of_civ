@@ -130,7 +130,10 @@ void buildWorld(World& w) {
     p0.warWeariness().turnsAtWar[2] = 12;
     p1.warWeariness().turnsAtWar[0] = 5;
 
-    p0.addUnit(aoc::UnitTypeId{0}, {6, 5});
+    aoc::game::Unit& veteran         = p0.addUnit(aoc::UnitTypeId{0}, {6, 5});
+    veteran.experience().experience = 40;   // experience records ride in MiscEntities
+    veteran.experience().level      = 1;
+    veteran.experience().promotions = {aoc::PromotionId{0}};
     // v13: air state rides on the unit record.
     aoc::game::Unit& fighter          = p0.addUnit(aoc::UnitTypeId{18}, {7, 5});
     fighter.airUnit().sortiesRemaining = 0;
@@ -187,6 +190,16 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(lAlpha.greatWorks().works[0].namedId == 7);
     CHECK(lAlpha.greatWorks().works[0].createdTurn == 12);
     CHECK(loaded.grid.antiquitySite(24) == 1);
+    // Experience and promotions survive the load (they were dropped until 2026-09-05).
+    const aoc::game::Unit* lVeteran = nullptr;
+    for (const std::unique_ptr<aoc::game::Unit>& u : lp0.units()) {
+        if (u->position() == aoc::hex::AxialCoord{6, 5}) { lVeteran = u.get(); }
+    }
+    REQUIRE(lVeteran != nullptr);
+    CHECK(lVeteran->experience().experience == 40);
+    CHECK(lVeteran->experience().level == 1);
+    REQUIRE(lVeteran->experience().promotions.size() == 1);
+    CHECK(lVeteran->experience().promotions[0] == aoc::PromotionId{0});
     CHECK(lAlpha.stockpile().goods.at(42) == 10);
     CHECK(lAlpha.stockpile().goods.at(199) == 25);
     CHECK(lAlpha.stockpile().exportBuffer.at(2) == 6);

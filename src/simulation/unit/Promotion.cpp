@@ -1,6 +1,8 @@
 /**
  * @file Promotion.cpp
- * @brief Unit promotion processing — auto-select for AI, pending for human.
+ * @brief Unit promotion processing: the scored pick for every seat. The human
+ *        was skipped for a choice prompt that never existed, so human units never
+ *        promoted until 2026-09-05; a choice UI can replace the auto-pick later.
  */
 
 #include "aoc/simulation/unit/Promotion.hpp"
@@ -14,16 +16,11 @@ void processUnitPromotions(aoc::game::Player& player, bool isHuman) {
     for (const std::unique_ptr<aoc::game::Unit>& unitPtr : player.units()) {
         UnitExperienceComponent& xp = unitPtr->experience();
         if (!xp.canPromote()) { continue; }
-
-        if (isHuman) {
-            // Human: UI will prompt for choice. Skip auto-promotion.
-            continue;
-        }
-
-        // AI: auto-select best promotion for this unit class
-        const PromotionId chosen = aiSelectPromotion(xp, unitPtr->typeDef().unitClass);
+        const UnitClass unitClass = unitPtr->typeDef().unitClass;
+        if (availablePromotions(xp, unitClass).empty()) { continue; }   // tree exhausted
+        const PromotionId chosen = aiSelectPromotion(xp, unitClass);
         xp.applyPromotion(chosen);
-        LOG_INFO("AI P%u promoted %.*s: chose %.*s (level %d)",
+        LOG_INFO("%s P%u promoted %.*s: chose %.*s (level %d)", isHuman ? "Human" : "AI",
                  static_cast<unsigned>(player.id()),
                  static_cast<int>(unitPtr->typeDef().name.size()),
                  unitPtr->typeDef().name.data(),

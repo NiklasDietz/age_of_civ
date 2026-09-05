@@ -22,15 +22,39 @@ struct PromotionDef {
     int32_t          movementBonus;
     int32_t          healingBonus;        ///< Extra HP healed per turn when fortified
     float            terrainDefenseBonus; ///< Additional terrain defense multiplier
+    /// Unit classes that may take it: one bit per UnitClass, 0xFFFF = any.
+    uint16_t         classMask = 0xFFFF;
+    /// Promotion the unit must already hold; invalid = none (a root of the tree).
+    PromotionId      prerequisite{};
 };
 
-inline constexpr std::array<PromotionDef, 6> PROMOTION_DEFS = {{
-    {PromotionId{0}, "Battlecry",       3, 0, 0, 0.0f},
-    {PromotionId{1}, "Tortoise",        0, 0, 0, 0.15f},
-    {PromotionId{2}, "Commando",        0, 1, 0, 0.0f},
-    {PromotionId{3}, "Medic",           0, 0, 10, 0.0f},
-    {PromotionId{4}, "Blitz",           2, 1, 0, 0.0f},
-    {PromotionId{5}, "Elite",           5, 0, 5, 0.1f},
+[[nodiscard]] constexpr uint16_t promotionClassBit(UnitClass c) {
+    return static_cast<uint16_t>(1u << static_cast<uint8_t>(c));
+}
+inline constexpr uint16_t PROMO_ANY_CLASS    = 0xFFFF;
+inline constexpr uint16_t PROMO_MELEE_LINE   = promotionClassBit(UnitClass::Melee)
+                                             | promotionClassBit(UnitClass::AntiCavalry);
+inline constexpr uint16_t PROMO_RANGED_LINE  = promotionClassBit(UnitClass::Ranged)
+                                             | promotionClassBit(UnitClass::Artillery);
+inline constexpr uint16_t PROMO_MOUNTED_LINE = promotionClassBit(UnitClass::Cavalry)
+                                             | promotionClassBit(UnitClass::Armor);
+
+/// Append-only: ids are stored in saves. Rows 0-5 are the roots every class may
+/// take; rows 6-11 (2026-09-05) are the second tier, each behind one root and,
+/// for the class-bound ones, limited to a line.
+inline constexpr std::array<PromotionDef, 12> PROMOTION_DEFS = {{
+    {PromotionId{0},  "Battlecry",       3, 0, 0, 0.0f},
+    {PromotionId{1},  "Tortoise",        0, 0, 0, 0.15f},
+    {PromotionId{2},  "Commando",        0, 1, 0, 0.0f},
+    {PromotionId{3},  "Medic",           0, 0, 10, 0.0f},
+    {PromotionId{4},  "Blitz",           2, 1, 0, 0.0f},
+    {PromotionId{5},  "Elite",           5, 0, 5, 0.1f},
+    {PromotionId{6},  "Zweihander",      5, 0, 0, 0.0f,  PROMO_MELEE_LINE,   PromotionId{0}},
+    {PromotionId{7},  "Camouflage",      0, 0, 0, 0.20f, PROMO_RANGED_LINE,  PromotionId{1}},
+    {PromotionId{8},  "Depredation",     2, 1, 0, 0.0f,  PROMO_MOUNTED_LINE, PromotionId{2}},
+    {PromotionId{9},  "Survivalism",     0, 0, 10, 0.05f, PROMO_ANY_CLASS,   PromotionId{3}},
+    {PromotionId{10}, "Ambush",          4, 0, 0, 0.0f,  PROMO_MOUNTED_LINE, PromotionId{4}},
+    {PromotionId{11}, "Legendary",       4, 0, 5, 0.10f, PROMO_ANY_CLASS,    PromotionId{5}},
 }};
 
 /// XP thresholds for each promotion level.
@@ -84,59 +108,74 @@ struct UnitExperienceComponent {
     }
 };
 
-/// Get available promotions for a unit (ones it hasn't already taken).
+[[nodiscard]] inline bool hasPromotion(const UnitExperienceComponent& xp, PromotionId pid) {
+    for (const PromotionId& existing : xp.promotions) {
+        if (existing == pid) { return true; }
+    }
+    return false;
+}
+
+/// Promotions `unitClass` may take next: not held yet, open to the class, and
+/// with the prerequisite already held.
 [[nodiscard]] inline std::vector<PromotionId> availablePromotions(
-    const UnitExperienceComponent& xp) {
+    const UnitExperienceComponent& xp, UnitClass unitClass) {
     std::vector<PromotionId> available;
+    const uint16_t classBit = promotionClassBit(unitClass);
     for (std::size_t i = 0; i < PROMOTION_DEFS.size(); ++i) {
-        const PromotionId pid = PROMOTION_DEFS[i].id;
-        bool alreadyHas = false;
-        for (const PromotionId& existing : xp.promotions) {
-            if (existing == pid) { alreadyHas = true; break; }
-        }
-        if (!alreadyHas) {
-            available.push_back(pid);
-        }
+        const PromotionDef& def = PROMOTION_DEFS[i];
+        if (hasPromotion(xp, def.id)) { continue; }
+        if ((def.classMask & classBit) == 0) { continue; }
+        if (def.prerequisite.isValid() && !hasPromotion(xp, def.prerequisite)) { continue; }
+        available.push_back(def.id);
     }
     return available;
 }
 
-/// AI auto-selects the best promotion for a unit based on its class.
-/// Melee: prefer Battlecry > Blitz > Elite.
-/// Ranged: prefer Tortoise > Elite > Medic.
-/// Cavalry: prefer Commando > Blitz > Battlecry.
-[[nodiscard]] inline PromotionId aiSelectPromotion(
-    const UnitExperienceComponent& xp, UnitClass unitClass) {
-    const std::vector<PromotionId> available = availablePromotions(xp);
-    if (available.empty()) { return PromotionId{0}; }
+/// What a class values in a promotion: weights per bonus field. Deterministic,
+/// no RNG: ties go to the lower id, so append-only rows never reorder picks.
+struct PromotionWeights {
+    float combat;
+    float movement;
+    float healing;
+    float terrainDefense;
+};
 
-    // Preference order by unit class
-    std::array<uint8_t, 6> preference{};
+[[nodiscard]] constexpr PromotionWeights promotionWeightsFor(UnitClass unitClass) {
     switch (unitClass) {
         case UnitClass::Melee:
-        case UnitClass::AntiCavalry:
-            preference = {0, 4, 5, 1, 3, 2};  // Battlecry, Blitz, Elite...
-            break;
+        case UnitClass::AntiCavalry: return {3.0f, 1.0f, 0.5f, 10.0f};
         case UnitClass::Ranged:
-        case UnitClass::Artillery:
-            preference = {1, 5, 3, 0, 4, 2};  // Tortoise, Elite, Medic...
-            break;
+        case UnitClass::Artillery:   return {2.0f, 1.0f, 0.5f, 25.0f};
         case UnitClass::Cavalry:
-        case UnitClass::Armor:
-            preference = {2, 4, 0, 5, 1, 3};  // Commando, Blitz, Battlecry...
-            break;
-        default:
-            preference = {5, 0, 4, 1, 3, 2};  // Elite first for other types
-            break;
+        case UnitClass::Armor:       return {2.0f, 4.0f, 0.5f, 5.0f};
+        default:                     return {2.0f, 1.0f, 1.0f, 10.0f};
     }
+}
 
-    for (uint8_t prefId : preference) {
-        const PromotionId pid{prefId};
-        for (const PromotionId& avail : available) {
-            if (avail == pid) { return pid; }
+[[nodiscard]] constexpr float scorePromotion(const PromotionDef& def, UnitClass unitClass) {
+    const PromotionWeights w = promotionWeightsFor(unitClass);
+    return w.combat * static_cast<float>(def.combatStrengthBonus)
+         + w.movement * static_cast<float>(def.movementBonus)
+         + w.healing * static_cast<float>(def.healingBonus)
+         + w.terrainDefense * def.terrainDefenseBonus;
+}
+
+/// The best available promotion for the class by scorePromotion; PromotionId{0}
+/// only when nothing is available (callers check canPromote first).
+[[nodiscard]] inline PromotionId aiSelectPromotion(
+    const UnitExperienceComponent& xp, UnitClass unitClass) {
+    const std::vector<PromotionId> available = availablePromotions(xp, unitClass);
+    if (available.empty()) { return PromotionId{0}; }
+    PromotionId best = available.front();
+    float bestScore  = -1.0f;
+    for (const PromotionId pid : available) {
+        const float score = scorePromotion(PROMOTION_DEFS[pid.value], unitClass);
+        if (score > bestScore) {
+            bestScore = score;
+            best      = pid;
         }
     }
-    return available.front();
+    return best;
 }
 
 } // namespace aoc::sim
