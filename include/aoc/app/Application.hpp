@@ -45,6 +45,7 @@
 #include "aoc/ui/CityListScreen.hpp"
 #include "aoc/ui/GreatWorksScreen.hpp"
 #include "aoc/ui/CityStatesScreen.hpp"
+#include "aoc/ui/ClimateScreen.hpp"
 #include "aoc/ui/UnitListScreen.hpp"
 #include "aoc/ui/DemographicsScreen.hpp"
 #include "aoc/ui/WorldCongressScreen.hpp"
@@ -331,6 +332,7 @@ private:
     aoc::ui::CityListScreen m_cityListScreen;
     aoc::ui::GreatWorksScreen m_greatWorksScreen;
     aoc::ui::CityStatesScreen m_cityStatesScreen;
+    aoc::ui::ClimateScreen m_climateScreen;
     aoc::ui::UnitListScreen m_unitListScreen;
     aoc::ui::DemographicsScreen m_demographicsScreen;
     aoc::ui::WorldCongressScreen m_worldCongressScreen;

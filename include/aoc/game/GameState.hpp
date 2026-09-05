@@ -33,6 +33,7 @@
 #include "aoc/simulation/barbarian/BarbarianClans.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
+#include "aoc/simulation/climate/NaturalDisasters.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/simulation/diplomacy/Espionage.hpp"
@@ -213,6 +214,9 @@ public:
     /// Deal proposals waiting for the human's answer (DealProposals.hpp).
     [[nodiscard]] std::vector<aoc::sim::PendingProposal>& pendingProposals() { return this->m_pendingProposals; }
     [[nodiscard]] const std::vector<aoc::sim::PendingProposal>& pendingProposals() const { return this->m_pendingProposals; }
+    /// Disasters that struck, newest last (NaturalDisasters.hpp). Transient, not saved.
+    [[nodiscard]] std::vector<aoc::sim::DisasterRecord>& disasterHistory() { return this->m_disasterHistory; }
+    [[nodiscard]] const std::vector<aoc::sim::DisasterRecord>& disasterHistory() const { return this->m_disasterHistory; }
 
     [[nodiscard]] std::vector<aoc::sim::ElectricityAgreementComponent>& electricityAgreements() { return this->m_electricityAgreements; }
     [[nodiscard]] const std::vector<aoc::sim::ElectricityAgreementComponent>& electricityAgreements() const { return this->m_electricityAgreements; }
@@ -259,6 +263,7 @@ private:
     std::vector<aoc::sim::BarbarianClanComponent> m_barbarianClans;
     std::vector<aoc::sim::CityStateComponent> m_cityStates;
     std::vector<aoc::sim::PendingProposal> m_pendingProposals;
+    std::vector<aoc::sim::DisasterRecord> m_disasterHistory;
     std::vector<aoc::sim::ElectricityAgreementComponent> m_electricityAgreements;
 
     /// WP-S: encampment supply buffers keyed by tile index.

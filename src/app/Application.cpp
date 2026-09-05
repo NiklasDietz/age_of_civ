@@ -1779,6 +1779,7 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_screenRegistry.add(&this->m_cityListScreen);
     this->m_screenRegistry.add(&this->m_greatWorksScreen);
     this->m_screenRegistry.add(&this->m_cityStatesScreen);
+    this->m_screenRegistry.add(&this->m_climateScreen);
     this->m_screenRegistry.add(&this->m_unitListScreen);
     this->m_screenRegistry.add(&this->m_demographicsScreen);
     this->m_screenRegistry.add(&this->m_worldCongressScreen);
@@ -5436,6 +5437,7 @@ void Application::run() {
         this->m_cityListScreen.refresh(this->m_uiManager);
         this->m_greatWorksScreen.refresh(this->m_uiManager);
         this->m_cityStatesScreen.refresh(this->m_uiManager);
+        this->m_climateScreen.refresh(this->m_uiManager);
         this->m_unitListScreen.refresh(this->m_uiManager);
         this->m_demographicsScreen.refresh(this->m_uiManager);
         this->m_worldCongressScreen.refresh(this->m_uiManager);

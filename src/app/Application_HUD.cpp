@@ -351,7 +351,7 @@ void Application::buildHUD() {
             float dropY = 34.0f;
 
             this->m_menuDropdown =
-                this->m_uiManager.createPanel({dropX, dropY, 110.0f, 488.0f},
+                this->m_uiManager.createPanel({dropX, dropY, 110.0f, 520.0f},
                                               aoc::ui::PanelData{aoc::ui::tokens::SURFACE_PARCHMENT,
                                                                  aoc::ui::tokens::CORNER_PANEL});
             {
@@ -455,6 +455,14 @@ void Application::buildHUD() {
                 this->m_cityStatesScreen.setContext(&this->m_gameState, &this->m_hexGrid,
                                                     this->m_gameState.humanPlayerId());
                 this->m_cityStatesScreen.open(this->m_uiManager);
+            });
+
+            makeDropBtn(this->m_menuDropdown, "Climate", [this]() {
+                this->m_uiManager.removeWidget(this->m_menuDropdown);
+                this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
+                this->m_climateScreen.setContext(&this->m_gameState, &this->m_hexGrid,
+                                                 this->m_gameState.humanPlayerId());
+                this->m_climateScreen.open(this->m_uiManager);
             });
 
             makeDropBtn(this->m_menuDropdown, "Religion Lens", [this]() {

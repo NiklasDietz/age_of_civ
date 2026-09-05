@@ -77,6 +77,24 @@ struct TileDisasterComponent {
  * @param globalTemp  Current global temperature (from climate system).
  * @return Number of disasters that occurred this turn.
  */
+/// One disaster that struck, kept for the Climate screen. Transient: it is not
+/// saved, like notifications and the event log.
+struct DisasterRecord {
+    DisasterType    type     = DisasterType::None;
+    int32_t         turn     = 0;
+    hex::AxialCoord at{0, 0};
+    int32_t         severity = 1;
+    PlayerId        owner    = INVALID_PLAYER; ///< Who owned the struck tile or city
+};
+inline constexpr std::size_t MAX_DISASTER_HISTORY = 32;
+
+[[nodiscard]] std::string_view disasterTypeName(DisasterType type);
+
+/// Append to GameState::disasterHistory() (oldest dropped past MAX_DISASTER_HISTORY)
+/// and push a Disaster notification to `owner` when there is one.
+void recordDisaster(aoc::game::GameState& gameState, DisasterType type, int32_t turn, hex::AxialCoord at,
+                    int32_t severity, PlayerId owner);
+
 int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                                 int32_t turnNumber, float globalTemp);
 

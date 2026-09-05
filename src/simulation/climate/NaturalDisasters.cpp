@@ -15,6 +15,9 @@
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/core/Log.hpp"
+#include "aoc/simulation/event/GameNotifications.hpp"
+
+#include <string>
 
 #include <algorithm>
 #include <cmath>
@@ -29,6 +32,38 @@ static void applyDisasterAmenityHit(aoc::game::City& city, float delta) {
     // 2026-04-28: cap raised 10→20 so accumulating disasters can produce a
     // meaningfully unhappy region (forces evacuation/rebuild decisions).
     hp.disasterUnhappiness = std::min(20.0f, hp.disasterUnhappiness + delta);
+}
+
+std::string_view disasterTypeName(DisasterType type) {
+    switch (type) {
+        case DisasterType::VolcanicEruption: return "Volcanic Eruption";
+        case DisasterType::Earthquake:       return "Earthquake";
+        case DisasterType::Tsunami:          return "Tsunami";
+        case DisasterType::Drought:          return "Drought";
+        case DisasterType::Wildfire:         return "Wildfire";
+        case DisasterType::Hurricane:        return "Hurricane";
+        default:                             return "None";
+    }
+}
+
+void recordDisaster(aoc::game::GameState& gameState, DisasterType type, int32_t turn, hex::AxialCoord at,
+                    int32_t severity, PlayerId owner) {
+    std::vector<DisasterRecord>& history = gameState.disasterHistory();
+    history.push_back(DisasterRecord{type, turn, at, severity, owner});
+    while (history.size() > MAX_DISASTER_HISTORY) {
+        history.erase(history.begin());
+    }
+    if (owner == INVALID_PLAYER) {
+        return;
+    }
+    aoc::sim::event::GameNotification n;
+    n.category       = aoc::sim::event::NotificationCategory::Disaster;
+    n.title          = std::string(disasterTypeName(type));
+    n.body           = std::string(disasterTypeName(type)) + " at (" + std::to_string(at.q) + ","
+                       + std::to_string(at.r) + "), severity " + std::to_string(severity);
+    n.relevantPlayer = owner;
+    n.priority       = 6;
+    aoc::sim::event::pushNotification(n);
 }
 
 int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
@@ -75,6 +110,7 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
                     }
                 }
                 ++disasterCount;
+                recordDisaster(gameState, DisasterType::VolcanicEruption, turnNumber, center, 3, grid.owner(i));
                 LOG_INFO("VOLCANIC ERUPTION at tile %d!", i);
             }
         }
@@ -98,6 +134,8 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
                             }
                             applyDisasterAmenityHit(*city, 4.0f);
                             LOG_INFO("EARTHQUAKE damaged city %s", city->name().c_str());
+                            recordDisaster(gameState, DisasterType::Earthquake, turnNumber, center, 2,
+                                           city->owner());
                             damaged = true;
                             break;
                         }
@@ -143,6 +181,7 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
                     }
                 }
                 ++disasterCount;
+                recordDisaster(gameState, DisasterType::Drought, turnNumber, grid.toAxial(i), 1, grid.owner(i));
                 LOG_INFO("DROUGHT at tile %d (temp=%.2f)",
                          i, static_cast<double>(globalTemp));
             }
@@ -156,6 +195,7 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
             if (fireHash < threshold) {
                 grid.setFeature(i, aoc::map::FeatureType::None);
                 ++disasterCount;
+                recordDisaster(gameState, DisasterType::Wildfire, turnNumber, grid.toAxial(i), 1, grid.owner(i));
                 LOG_INFO("WILDFIRE destroyed forest at tile %d", i);
             }
         }
@@ -193,6 +233,7 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
                     }
                 }
                 ++disasterCount;
+                recordDisaster(gameState, DisasterType::Hurricane, turnNumber, tileCoord, 2, grid.owner(i));
                 LOG_INFO("HURRICANE at coastal tile %d", i);
             }
         }

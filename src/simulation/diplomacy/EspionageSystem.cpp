@@ -19,14 +19,34 @@
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/city/CityLoyalty.hpp"
+#include "aoc/simulation/event/GameNotifications.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
+#include <string>
 #include <cassert>
 #include <vector>
 
 namespace aoc::sim {
+
+namespace {
+
+/// Spy outcomes used to be LOG_INFO only; the owner (and the victim, where one
+/// is known) now get a Diplomacy notification.
+void notifyEspionage(PlayerId to, PlayerId other, std::string title, std::string body) {
+    if (to == INVALID_PLAYER) { return; }
+    aoc::sim::event::GameNotification n;
+    n.category       = aoc::sim::event::NotificationCategory::Diplomacy;
+    n.title          = std::move(title);
+    n.body           = std::move(body);
+    n.relevantPlayer = to;
+    n.otherPlayer    = other;
+    n.priority       = 4;
+    aoc::sim::event::pushNotification(n);
+}
+
+} // namespace
 
 // ============================================================================
 // Helpers
@@ -96,6 +116,8 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
     switch (spy.currentMission) {
         case SpyMission::GatherIntelligence: {
             raiseIntel(static_cast<uint8_t>(IntelligenceLevel::Basic));
+            notifyEspionage(spy.owner, INVALID_PLAYER, "Intelligence gathered",
+                            "Your spy reported from (" + std::to_string(spy.location.q) + "," + std::to_string(spy.location.r) + ")");
             LOG_INFO("Spy (%.*s, P%u) gathered intelligence at (%d,%d)",
                      static_cast<int>(spyLevelName(spy.level).size()),
                      spyLevelName(spy.level).data(),
@@ -128,6 +150,8 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
                 const float pct = 0.20f + static_cast<float>(static_cast<uint8_t>(spy.level)) * 0.10f;
                 const float bonus = pct * effectiveResearchCost(tech, tech.currentResearch);
                 tech.researchProgress += bonus;
+                notifyEspionage(spy.owner, INVALID_PLAYER, "Technology stolen",
+                                "+" + std::to_string(static_cast<int32_t>(bonus)) + " toward " + std::string(def.name));
                 LOG_INFO("Spy (P%u, %.*s) stole tech: +%.0f toward %.*s",
                          static_cast<unsigned>(spy.owner),
                          static_cast<int>(spyLevelName(spy.level).size()),
@@ -143,6 +167,10 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
             if (city != nullptr) {
                 const float reduction = city->productionProgress() * 0.5f;
                 city->setProductionProgress(city->productionProgress() - reduction);
+                notifyEspionage(spy.owner, city->owner(), "Sabotage succeeded",
+                                city->name() + " lost " + std::to_string(static_cast<int32_t>(reduction)) + " production");
+                notifyEspionage(city->owner(), spy.owner, "Production sabotaged",
+                                "An enemy spy sabotaged " + city->name());
                 LOG_INFO("Spy (P%u) sabotaged production in %s (-%.0f)",
                          static_cast<unsigned>(spy.owner),
                          city->name().c_str(), static_cast<double>(reduction));
@@ -160,6 +188,10 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
                 stolen = std::max(stolen, static_cast<CurrencyAmount>(1));
                 target->addGold(-stolen);
                 ownerPlayer.addGold(stolen);
+                notifyEspionage(spy.owner, target->id(), "Funds siphoned",
+                                std::to_string(static_cast<long long>(stolen)) + " gold taken");
+                notifyEspionage(target->id(), spy.owner, "Funds stolen",
+                                "An enemy spy siphoned " + std::to_string(static_cast<long long>(stolen)) + " gold");
                 LOG_INFO("Spy (P%u) siphoned %lld gold from P%u",
                          static_cast<unsigned>(spy.owner),
                          static_cast<long long>(stolen),
@@ -185,6 +217,10 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
                     target->addGold(-damage);
                     const CurrencyAmount skim = damage / 2;
                     ownerPlayer.addGold(skim);
+                    notifyEspionage(spy.owner, target->id(), "Market manipulated",
+                                    "+" + std::to_string(static_cast<long long>(skim)) + " gold skimmed");
+                    notifyEspionage(target->id(), spy.owner, "Market manipulated",
+                                    "An enemy spy cost you " + std::to_string(static_cast<long long>(damage)) + " gold");
                     LOG_INFO("Spy (P%u) manipulated market: P%u lost %lld gold, owner +%lld",
                              static_cast<unsigned>(spy.owner),
                              static_cast<unsigned>(target->id()),
@@ -203,6 +239,10 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
                 target->monetary().inflationRate = std::clamp(
                     target->monetary().inflationRate + static_cast<float>(trustDamage) * 0.01f,
                     -0.20f, 0.50f);
+                notifyEspionage(spy.owner, target->id(), "Currency counterfeited",
+                                "Their currency trust fell by " + std::to_string(trustDamage));
+                notifyEspionage(target->id(), spy.owner, "Counterfeit currency",
+                                "An enemy spy flooded your markets; inflation rose");
                 LOG_INFO("Spy (P%u) counterfeited currency: P%u trust -%d",
                          static_cast<unsigned>(spy.owner),
                          static_cast<unsigned>(target->id()), trustDamage);

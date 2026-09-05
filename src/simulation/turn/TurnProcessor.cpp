@@ -57,6 +57,7 @@
 #include "aoc/simulation/diplomacy/Grievance.hpp"
 #include "aoc/simulation/diplomacy/NavalPassage.hpp"
 #include "aoc/simulation/diplomacy/DealProposals.hpp"
+#include "aoc/simulation/event/GameNotifications.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyExtensions.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
@@ -1022,7 +1023,20 @@ void processGlobalSystems(TurnContext& turnContext) {
         // Industrial pollution CO2
         climate.addCO2(static_cast<float>(totalIndustrialCO2(gameState)));
         aoc::Random climateRng = turnContext.rng->fork();
+        const int32_t seaBefore = climate.seaLevelRise;
         climate.processTurn(grid, climateRng);
+        if (climate.seaLevelRise > seaBefore) {
+            for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+                if (p == nullptr) { continue; }
+                aoc::sim::event::GameNotification n;
+                n.category       = aoc::sim::event::NotificationCategory::Disaster;
+                n.title          = "Sea level rising";
+                n.body           = std::to_string(climate.seaLevelRise) + " coast tiles have flooded";
+                n.relevantPlayer = p->id();
+                n.priority       = 6;
+                aoc::sim::event::pushNotification(n);
+            }
+        }
 
         // Climate thresholds push narrative events into the per-player queue.
         // The per-event cooldown (WORLD_EVENT_COOLDOWN_TURNS) prevents spam.
