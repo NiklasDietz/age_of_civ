@@ -407,6 +407,23 @@ public:
         }
     }
 
+    // -- Antiquity sites (sparse; 0 = none, 1 = a city fell here). A game layer
+    // since save v14; meant to be dug into Artifact great works one day. --
+    [[nodiscard]] uint16_t antiquitySite(int32_t index) const {
+        this->assertIndex(index);
+        const std::unordered_map<int32_t, uint16_t>::const_iterator it =
+            this->m_antiquitySite.find(index);
+        return (it == this->m_antiquitySite.end()) ? uint16_t{0} : it->second;
+    }
+    void setAntiquitySite(int32_t index, uint16_t kind) {
+        this->assertIndex(index);
+        if (kind == 0) {
+            this->m_antiquitySite.erase(index);
+        } else {
+            this->m_antiquitySite[index] = kind;
+        }
+    }
+
     // -- WP-C3 stacked infrastructure lanes (PowerPole + Pipeline + Aqueduct) --
     static constexpr uint8_t INFRA_POWER_POLE = 1u << 0;
     static constexpr uint8_t INFRA_PIPELINE   = 1u << 1;
@@ -1955,6 +1972,7 @@ private:
     /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
     /// Greenhouse improvement actively populate. Tile index → good id.
     std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;
+    std::unordered_map<int32_t, uint16_t> m_antiquitySite;   ///< v14 game layer, see antiquitySite()
     std::vector<NaturalWonderType> m_naturalWonder;
 
     // Strategic chokepoints (computed at map generation)
@@ -1982,6 +2000,7 @@ public:
         this->m_tileInfra[idx] = 0;
         // WP-C4: and any Greenhouse crop planted on the tile.
         this->m_greenhouseCrop.erase(index);
+        this->m_antiquitySite.erase(index);
     }
 
     /// Tick fallout decay for all tiles (call once per turn).

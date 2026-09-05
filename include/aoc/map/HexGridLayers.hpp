@@ -186,6 +186,7 @@ void HexGrid::visitLayersImpl(Self& self, Visitor&& visitor) {
     visitor("magneticIntensity", self.m_magneticIntensity);
     visitor("groundwaterDepth", self.m_groundwaterDepth);
     visitor("greenhouseCrop", self.m_greenhouseCrop);
+    visitor("antiquitySite", self.m_antiquitySite);
     visitor("naturalWonder", self.m_naturalWonder);
     visitor("chokepoint", self.m_chokepoint);
     visitor("falloutTurns", self.m_falloutTurns);

@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
+#include "aoc/simulation/culture/GreatWorks.hpp"
 #include "aoc/simulation/greatpeople/GreatPeopleExpanded.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
@@ -371,6 +372,16 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
         }
 
         case GreatPersonType::Artist: {
+            // A work of Art in the nearest own city with a free Theatre slot; that is
+            // what tourism counts since 2026-09-05. Without a slot, the culture bomb.
+            if (aoc::game::City* home =
+                    cityWithFreeGreatWorkSlot(*playerObj, grid, gp.position)) {
+                const GreatWork work{GreatWorkType::Art, gp.owner, gp.namedId,
+                                     gameState.currentTurn()};
+                static_cast<void>(placeGreatWork(*home, work));
+                LOG_INFO("Artist placed a work of Art in %s", home->name().c_str());
+                break;
+            }
             // Culture bomb: claim all unowned tiles within 2 hexes around the GP's position
             std::vector<hex::AxialCoord> tiles;
             hex::spiral(gp.position, 2, std::back_inserter(tiles));

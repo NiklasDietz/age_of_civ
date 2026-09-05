@@ -305,6 +305,10 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
                          city->name().c_str(),
                          static_cast<unsigned>(unit.owner()),
                          static_cast<unsigned>(previousOwner));
+                // A fallen city leaves an antiquity site (v14 layer) for later digs;
+                // same const_cast the tile-ownership transfer above already uses.
+                const_cast<aoc::map::HexGrid&>(grid).setAntiquitySite(
+                    grid.toIndex(city->location()), 1);
                 break;
             }
         }

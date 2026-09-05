@@ -13,6 +13,7 @@
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/greatpeople/GreatPeopleExpanded.hpp"
+#include "aoc/simulation/culture/GreatWorks.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <array>
@@ -169,10 +170,13 @@ void GreatPeopleScreen::buildRows(UIManager& ui) {
     for (const std::unique_ptr<aoc::game::Unit>& unit : self->units()) {
         if (isGreatPerson(*unit) && !unit->greatPerson().isActivated) { ++living; }
     }
+    const aoc::sim::GreatWorkTally works = aoc::sim::tallyGreatWorks(*self);
     ui.setLabelText(this->m_summaryLabel,
                     "Recruited: " + std::to_string(recruitedTotal) + "   Waiting to act: " +
                         std::to_string(living) + "   Types exhausted: " +
-                        std::to_string(exhaustedTypes));
+                        std::to_string(exhaustedTypes) + "   Great Works: " +
+                        std::to_string(works.works) + " of " + std::to_string(works.capacity) +
+                        " slots");
 
     this->addHeader(ui, "PROGRESS");
     this->addProgressRows(ui, *self);

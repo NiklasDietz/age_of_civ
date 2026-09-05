@@ -22,6 +22,8 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
+#include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/culture/GreatWorks.hpp"
 #include "aoc/map/FogOfWar.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/save/MapFile.hpp"
@@ -103,6 +105,12 @@ void buildWorld(World& w) {
     p1.monetary().treasury = 87;
 
     aoc::game::City& alpha = p0.addCity({5, 5}, "Alpha");
+    // v14: a housed great work (Amphitheater slot) and an antiquity site.
+    alpha.districts().districts.push_back(
+        {aoc::sim::DistrictType::Theatre, {4, 5}, {aoc::BuildingId{39}}});
+    static_cast<void>(aoc::sim::placeGreatWork(
+        alpha, {aoc::sim::GreatWorkType::Writing, aoc::PlayerId{0}, 7, 12}));
+    w.grid.setAntiquitySite(24, 1);
     alpha.stockpile().goods[42]  = 10;   // scrambled insertion order on
     alpha.stockpile().goods[7]   = 3;    // purpose -- pins the sorted-write
     alpha.stockpile().goods[199] = 25;   // guarantee.
@@ -172,6 +180,13 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     const aoc::game::City& lAlpha = *lp0.cities()[0];
     CHECK(lAlpha.name() == "Alpha");
     CHECK(lAlpha.location() == aoc::hex::AxialCoord{5, 5});
+    // v14: the housed work and the antiquity site.
+    REQUIRE(lAlpha.greatWorks().works.size() == 1);
+    CHECK(lAlpha.greatWorks().works[0].type == aoc::sim::GreatWorkType::Writing);
+    CHECK(lAlpha.greatWorks().works[0].creator == aoc::PlayerId{0});
+    CHECK(lAlpha.greatWorks().works[0].namedId == 7);
+    CHECK(lAlpha.greatWorks().works[0].createdTurn == 12);
+    CHECK(loaded.grid.antiquitySite(24) == 1);
     CHECK(lAlpha.stockpile().goods.at(42) == 10);
     CHECK(lAlpha.stockpile().goods.at(199) == 25);
     CHECK(lAlpha.stockpile().exportBuffer.at(2) == 6);
@@ -204,7 +219,7 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     aoc::test::LayerCompare layerCompare{layers};
     GameLayersOnly gameLayers{layerCompare};
     loaded.grid.visitLayers(gameLayers);
-    CHECK(layerCompare.seen == 16);
+    CHECK(layerCompare.seen == 17);   // v14 added antiquitySite
     CHECK_MESSAGE(layerCompare.mismatched == 0,
                   "first game layer lost by save/load: " << layerCompare.firstMismatch);
     // v12: worldgen-only layers are not in the save; the loaded grid holds them

@@ -150,6 +150,7 @@ constexpr int32_t MAX_MAP_DIMENSION              = aoc::map::HexGrid::MAX_MAP_DI
 constexpr std::size_t MAX_DISTRICT_BUILDINGS     = 100;
 constexpr std::size_t MAX_RELATION_MODIFIERS     = 1000;
 constexpr std::size_t MAX_CITY_WONDERS           = 256;
+constexpr std::size_t MAX_CITY_GREAT_WORKS       = 64;
 constexpr std::size_t MAX_HOARD_POSITIONS        = 1000;
 constexpr std::size_t MAX_ELECTRICITY_AGREEMENTS = 1000;
 // MAX_BONDS, MAX_HOARDS, MAX_GRIEVANCES, MAX_INVESTMENTS are defined in the
@@ -1024,6 +1025,38 @@ void writeWonderSection(WriteBuffer& out, const aoc::game::GameState& gameState)
     writeSection(out, SectionId::WonderState, section);
 }
 
+/// v14: per-city housed great works, in the same city order as the Entities section.
+void writeGreatWorksSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
+    WriteBuffer section;
+    uint32_t cityCount = 0;
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
+            if (!city->greatWorks().works.empty()) {
+                ++cityCount;
+            }
+        }
+    }
+    section.writeU32(cityCount);
+    uint32_t cityIndex = 0;
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
+            const aoc::sim::CityGreatWorksComponent& housed = city->greatWorks();
+            if (!housed.works.empty()) {
+                section.writeU32(cityIndex);
+                section.writeU32(static_cast<uint32_t>(housed.works.size()));
+                for (const aoc::sim::GreatWork& work : housed.works) {
+                    section.writeU8(static_cast<uint8_t>(work.type));
+                    section.writeU8(work.creator);
+                    section.writeU8(work.namedId);
+                    section.writeI32(work.createdTurn);
+                }
+            }
+            ++cityIndex;
+        }
+    }
+    writeSection(out, SectionId::GreatWorks, section);
+}
+
 /**
  * @brief Serialize misc entities: barbarian encampments, great persons, spies.
  *
@@ -1519,6 +1552,7 @@ ErrorCode saveGame(const std::string& filepath, const aoc::game::GameState& game
     writeDiplomacySection(buf, diplomacy);
     writeMarketSection(buf, economy);
     writeWonderSection(buf, gameState);
+    writeGreatWorksSection(buf, gameState);
     writeMiscEntitiesSection(buf, gameState);
     writeCurrencyTrustSection(buf, gameState);
     writeCrisisSection(buf, gameState);
@@ -2493,6 +2527,39 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
 
                 if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
                     loadedCities[cityIndex]->wonders() = std::move(wonders);
+                }
+            }
+            break;
+        }
+        case SectionId::GreatWorks: {
+            uint32_t cityCount = buf.readU32();
+            for (uint32_t i = 0; i < cityCount && !buf.isCorrupt(); ++i) {
+                uint32_t cityIndex = buf.readU32();
+                uint32_t workCount = buf.readU32();
+                if (workCount > MAX_CITY_GREAT_WORKS || !buf.canReadRecords(workCount, 7)) {
+                    LOG_ERROR("Serializer: city great work count %u exceeds MAX_CITY_GREAT_WORKS "
+                              "%zu or file size",
+                              workCount, MAX_CITY_GREAT_WORKS);
+                    return ErrorCode::SaveCorrupted;
+                }
+                aoc::sim::CityGreatWorksComponent housed{};
+                housed.works.reserve(workCount);
+                for (uint32_t k = 0; k < workCount && !buf.isCorrupt(); ++k) {
+                    const uint8_t type = buf.readU8();
+                    if (type >= static_cast<uint8_t>(aoc::sim::GreatWorkType::Count)) {
+                        LOG_ERROR("Serializer: great work type %u out of range",
+                                  static_cast<unsigned>(type));
+                        return ErrorCode::SaveCorrupted;
+                    }
+                    aoc::sim::GreatWork work{};
+                    work.type        = static_cast<aoc::sim::GreatWorkType>(type);
+                    work.creator     = buf.readU8();
+                    work.namedId     = buf.readU8();
+                    work.createdTurn = buf.readI32();
+                    housed.works.push_back(work);
+                }
+                if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
+                    loadedCities[cityIndex]->greatWorks() = std::move(housed);
                 }
             }
             break;

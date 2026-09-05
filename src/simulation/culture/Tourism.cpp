@@ -34,20 +34,6 @@ namespace {
 constexpr float FOREIGN_TOURIST_COST  = 150.0f;
 constexpr float DOMESTIC_TOURIST_COST = 100.0f;
 
-/// Count great-work slots from all Theatre/Culture buildings placed in a city.
-/// Assumes slots are filled for tourism purposes (simplification).
-[[nodiscard]] int32_t cityGreatWorkSlots(const aoc::game::City& city) {
-    int32_t total = 0;
-    for (const CityDistrictsComponent::PlacedDistrict& district :
-             city.districts().districts) {
-        for (const BuildingId b : district.buildings) {
-            if (b.value < BUILDING_DEFS.size()) {
-                total += static_cast<int32_t>(buildingDef(b).greatWorksSlots);
-            }
-        }
-    }
-    return total;
-}
 
 /// True if city has any HolySite building (Shrine/Temple/Cathedral).
 [[nodiscard]] bool cityIsHolySite(const aoc::game::City& city) {
@@ -68,21 +54,21 @@ void computeTourism(aoc::game::GameState& gameState, PlayerId playerId,
     t.owner = playerId;
 
     int32_t wonderTotal   = 0;
-    int32_t greatWorkSlot = 0;
+    int32_t greatWorks    = 0;   // placed works, not slots (GreatWorks.hpp)
     int32_t holySites     = 0;
 
     for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
         wonderTotal   += static_cast<int32_t>(city->wonders().wonders.size());
-        greatWorkSlot += cityGreatWorkSlots(*city);
+        greatWorks    += static_cast<int32_t>(city->greatWorks().works.size());
         if (cityIsHolySite(*city)) { ++holySites; }
     }
 
     t.wonderCount    = wonderTotal;
-    t.greatWorkCount = greatWorkSlot;
+    t.greatWorkCount = greatWorks;
 
     // Base tourism per turn.
     float base = 3.0f * static_cast<float>(wonderTotal)
-               + 2.0f * static_cast<float>(greatWorkSlot)
+               + 2.0f * static_cast<float>(greatWorks)
                + 2.0f * static_cast<float>(holySites);
 
     // Trade-agreement multiplier: any active agreement treats us as having

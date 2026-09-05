@@ -27,6 +27,7 @@
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
+#include "aoc/simulation/culture/GreatWorks.hpp"
 #include "aoc/simulation/production/Waste.hpp"
 #include "aoc/simulation/production/PowerGrid.hpp"
 #include "aoc/simulation/production/BuildingCapacity.hpp"
@@ -231,6 +232,10 @@ public:
     [[nodiscard]] aoc::sim::CityWondersComponent& wonders() { return this->m_wonders; }
     [[nodiscard]] const aoc::sim::CityWondersComponent& wonders() const { return this->m_wonders; }
 
+    /// Housed great works; capacity is the sum of the buildings' greatWorksSlots.
+    [[nodiscard]] aoc::sim::CityGreatWorksComponent& greatWorks() { return this->m_greatWorks; }
+    [[nodiscard]] const aoc::sim::CityGreatWorksComponent& greatWorks() const { return this->m_greatWorks; }
+
     [[nodiscard]] aoc::sim::CityBuildingLevelsComponent& buildingLevels() { return this->m_buildingLevels; }
     [[nodiscard]] const aoc::sim::CityBuildingLevelsComponent& buildingLevels() const { return this->m_buildingLevels; }
 
@@ -328,6 +333,7 @@ private:
     aoc::sim::CityPollutionComponent m_pollution;
     aoc::sim::CityPowerComponent     m_power;
     aoc::sim::CityWondersComponent m_wonders;
+    aoc::sim::CityGreatWorksComponent m_greatWorks;
     aoc::sim::CityBuildingLevelsComponent m_buildingLevels;
     aoc::sim::CityProductionExperienceComponent m_productionExperience;
     aoc::sim::CityQualityComponent m_quality;

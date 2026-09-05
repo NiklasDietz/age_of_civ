@@ -88,6 +88,8 @@ enum class SectionId : uint16_t {
     ElectricityAgreementState = 0x0026, ///< Bilateral electricity import contracts
     // v11 sections --------------------------------------------------------
     MapLayers = 0x0027, ///< Game-state HexGrid layers by name (MapFile.hpp isGameGridLayer, v12); read after MapGrid
+    // v14 sections --------------------------------------------------------
+    GreatWorks = 0x0028, ///< Per-city housed great works (GreatWorks.hpp); read after Entities
 };
 
 /// Low-level binary write buffer.

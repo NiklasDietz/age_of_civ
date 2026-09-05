@@ -33,6 +33,10 @@
  * (sortiesRemaining, maxSorties, operationalRange, isIntercepting) after the
  * pending path. Without it a loaded fighter forgot its patrol state and a
  * bomber its spent sorties.
+ *
+ * v14 (2026-09-05): a GreatWorks section (per-city housed works: type, creator,
+ * named person, turn) and a 17th game layer, the sparse antiquitySite map.
+ * Tourism now counts placed works instead of empty slots.
  */
 
 #include <cstdint>
@@ -40,6 +44,6 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 13;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 14;
 
 } // namespace aoc::save

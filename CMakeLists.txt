@@ -305,6 +305,7 @@ set(AOC_LIB_SOURCES
     src/simulation/city/BorderExpansion.cpp
     src/simulation/city/CityBombardment.cpp
     src/simulation/culture/Tourism.cpp
+    src/simulation/culture/GreatWorks.cpp
     src/simulation/map/Improvement.cpp
     src/simulation/map/TerrainModification.cpp
     src/simulation/map/Chokepoint.cpp
@@ -946,6 +947,7 @@ if(AOC_BUILD_TESTS)
         test_neighborhood_housing
         test_spaceport
         test_government_plaza_and_dam
+        test_great_works
     )
 
     # UI tests link against src/ui/UIManager.cpp and src/ui/ScreenRegistry.cpp,
