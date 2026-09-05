@@ -20,6 +20,7 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
+#include "aoc/simulation/unit/CombatExtensions.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/map/HexGrid.hpp"
@@ -382,7 +383,15 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                 if (enemyPlayer != nullptr) {
                     aoc::game::Unit* targetUnit = enemyPlayer->unitAt(bestTarget->position);
                     if (targetUnit != nullptr) {
-                        aoc::sim::resolveRangedCombat(gameState, rng, grid, *unit, *targetUnit);
+                        if (aoc::sim::isAirUnit(def.unitClass)) {
+                            // Aircraft strike through the air system (sorties, range,
+                            // interception); the ranged formula stays for everyone else.
+                            static_cast<void>(aoc::sim::executeBombingRun(
+                                gameState, grid, *unit, targetUnit->position()));
+                        } else {
+                            aoc::sim::resolveRangedCombat(gameState, rng, grid, *unit,
+                                                          *targetUnit);
+                        }
                         // Verified (audit WP-10 #3): resolveRangedCombat takes a
                         // const grid, never moves the attacker, and inflicts zero
                         // attacker damage (no counter-fire), so the attacker can

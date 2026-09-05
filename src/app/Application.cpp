@@ -36,6 +36,7 @@
 #include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/simulation/tech/EraProgression.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
+#include "aoc/simulation/unit/AttackRequest.hpp"
 #include "aoc/simulation/unit/Naval.hpp"
 #include "aoc/simulation/city/CityGrowth.hpp"
 #include "aoc/simulation/city/CityScience.hpp"
@@ -2313,38 +2314,33 @@ void Application::executeGameControlCommand(const aoc::debug::MoveUnitCommand& c
 }
 
 void Application::executeGameControlCommand(const aoc::debug::AttackUnitCommand& cmd) {
-    aoc::game::Player* attackerPlayer = this->m_gameState.player(cmd.player);
-    if (attackerPlayer == nullptr) {
+    // One validated request shared with the right-click order: reach, movement,
+    // sorties and the melee / ranged / bombing choice all live in the sim.
+    // Combat can remove either unit, so the selection is re-looked-up afterwards
+    // instead of dereferencing a pointer the fight may have freed.
+    const bool selectionWasAttacker =
+        this->m_selectedUnit != nullptr && this->m_selectedUnit->owner() == cmd.player &&
+        this->m_selectedUnit->position() == cmd.from;
+    const bool selectionWasDefender =
+        this->m_selectedUnit != nullptr && this->m_selectedUnit->position() == cmd.to;
+    const PlayerId defenderOwner =
+        selectionWasDefender ? this->m_selectedUnit->owner() : aoc::INVALID_PLAYER;
+
+    const ErrorCode result = aoc::sim::requestAttack(this->m_gameState, this->m_gameRng,
+                                                     this->m_hexGrid, cmd.player, cmd.from, cmd.to);
+    if (result != ErrorCode::Ok) {
+        LOG_WARN("Attack by player %u from (%d,%d) on (%d,%d) rejected: %.*s",
+                 static_cast<unsigned>(cmd.player), cmd.from.q, cmd.from.r, cmd.to.q, cmd.to.r,
+                 static_cast<int>(describeError(result).size()), describeError(result).data());
         return;
     }
-    aoc::game::Unit* attacker = attackerPlayer->unitAt(cmd.from);
-    if (attacker == nullptr) {
-        return;
+    if (selectionWasAttacker || selectionWasDefender) {
+        const PlayerId owner = selectionWasAttacker ? cmd.player : defenderOwner;
+        const hex::AxialCoord at = selectionWasAttacker ? cmd.from : cmd.to;
+        aoc::game::Player* ownerPlayer = this->m_gameState.player(owner);
+        this->m_selectedUnit = ownerPlayer != nullptr ? ownerPlayer->unitAt(at) : nullptr;
     }
-    aoc::game::Unit* defender = nullptr;
-    for (const std::unique_ptr<aoc::game::Player>& otherPlayerPtr : this->m_gameState.players()) {
-        if (otherPlayerPtr->id() == cmd.player) {
-            continue;
-        }
-        defender = otherPlayerPtr->unitAt(cmd.to);
-        if (defender != nullptr) {
-            break;
-        }
-    }
-    if (defender == nullptr) {
-        return;
-    }
-    if (attacker->rangedStrength() > 0) {
-        aoc::sim::resolveRangedCombat(this->m_gameState, this->m_gameRng, this->m_hexGrid,
-                                      *attacker, *defender);
-    } else {
-        aoc::sim::resolveMeleeCombat(this->m_gameState, this->m_gameRng, this->m_hexGrid, *attacker,
-                                     *defender);
-    }
-    // The attacker may have died to melee retaliation; a caller that
-    // needs the attacker afterward must re-lookup by its pre-combat
-    // position rather than dereferencing `attacker` again, mirroring
-    // AIMilitaryController.cpp's post-combat cleanup pattern.
+    this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, 0);
 }
 
 void Application::executeGameControlCommand(const aoc::debug::FoundCityCommand& cmd) {
@@ -6271,6 +6267,30 @@ void Application::handleContextAction() {
     }
 
     const aoc::sim::UnitTypeDef& def = unit.typeDef();
+
+    // Attack: a military unit right-clicking a tile another seat's unit holds.
+    // Same request as the debug route; reach and the melee / ranged / bombing
+    // choice are validated in the sim, a rejection is shown and nothing moves.
+    // Until 2026-09-05 the game had no way for the human to attack at all.
+    if (unit.isMilitary() && targetTile != unit.position() &&
+        aoc::sim::enemyUnitAt(this->m_gameState, unit.owner(), targetTile) != nullptr) {
+        const PlayerId attacker    = unit.owner();
+        const hex::AxialCoord from = unit.position();
+        const ErrorCode result     = aoc::sim::requestAttack(
+            this->m_gameState, this->m_gameRng, this->m_hexGrid, attacker, from, targetTile);
+        if (result != ErrorCode::Ok) {
+            this->m_notificationManager.push(
+                "Cannot attack: " + std::string(describeError(result)), 2.0f, 1.0f, 0.3f, 0.3f);
+            return;
+        }
+        aoc::game::Player* attackerPlayer = this->m_gameState.player(attacker);
+        if (attackerPlayer == nullptr || attackerPlayer->unitAt(from) == nullptr) {
+            this->m_selectedUnit = nullptr;   // died to the retaliation
+        }
+        this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, 0);
+        this->rebuildUnitActionPanel();
+        return;
+    }
 
     // If settler and target is valid land, found a city
     if (def.unitClass == aoc::sim::UnitClass::Settler && unit.position() == targetTile) {

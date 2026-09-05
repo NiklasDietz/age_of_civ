@@ -404,6 +404,7 @@ set(AOC_LIB_SOURCES
     src/balance/BalanceParams.cpp
     src/simulation/city/DistrictAdjacency.cpp
     src/simulation/unit/CombatExtensions.cpp
+    src/simulation/unit/AttackRequest.cpp
     src/simulation/religion/TheologicalCombat.cpp
     src/simulation/diplomacy/DiplomacyExtensions.cpp
     src/simulation/greatpeople/GreatPeopleExpanded.cpp
@@ -940,6 +941,7 @@ if(AOC_BUILD_TESTS)
         test_civ_route_bonuses
         test_world_congress
         test_air_sorties
+        test_attack_request
     )
 
     # UI tests link against src/ui/UIManager.cpp and src/ui/ScreenRegistry.cpp,

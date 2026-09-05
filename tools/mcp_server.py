@@ -221,10 +221,14 @@ def aoc_move_unit(player: int, q: int, r: int, target_q: int, target_r: int) -> 
 
 @mcp.tool()
 def aoc_attack_unit(player: int, q: int, r: int, target_q: int, target_r: int) -> dict:
-    """Attack with the unit owned by `player` at (q, r) against whatever unit occupies (target_q, target_r).
-
-    Melee vs ranged is chosen automatically from the attacker's stats.
-    Queues the request; poll aoc_list_units afterward to see HP/death.
+    """Attack with the unit owned by `player` at (q, r) against the unit of another seat
+    occupying (target_q, target_r). Same validated request as the in-game right-click:
+    melee needs an adjacent target and movement left, ranged a target within its range
+    and movement left (either spends the unit's movement), aircraft fly a bombing run
+    within their operational range while they have a sortie (patrolling enemy fighters
+    in range may intercept). Queues the request; a rejection (no enemy there, out of
+    reach, no movement or sortie) is logged in the game log. Poll aoc_list_units
+    afterward to see HP/death.
     """
     return _post("/game/unit/attack", player=player, q=q, r=r, targetQ=target_q, targetR=target_r)
 
