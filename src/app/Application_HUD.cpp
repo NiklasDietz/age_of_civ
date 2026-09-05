@@ -160,7 +160,7 @@ void Application::buildHUD() {
     // Font size is NOT scaled here -- BitmapFont applies fontScale() per draw,
     // so scaling it again would compound the factor.
     constexpr float CHIP_FONT = 13.0f;
-    const float YIELD_STRIP_W = aoc::ui::theme().scaled(400.0f); ///< 4 chips + spacing + padding
+    const float YIELD_STRIP_W = aoc::ui::theme().scaled(500.0f); ///< 5 chips + spacing + padding
 
     this->m_yieldStrip =
         this->m_uiManager.createPanel(this->m_topBar, {0.0f, 0.0f, YIELD_STRIP_W, CHIP_H},
@@ -180,11 +180,12 @@ void Application::buildHUD() {
             aoc::ui::Color color;
             aoc::ui::WidgetId* labelOut;
         };
-        const std::array<YieldChip, 4> chips = {{
+        const std::array<YieldChip, 5> chips = {{
             {"yields.gold", aoc::ui::tokens::RES_GOLD, &this->m_goldLabel},
             {"yields.science", aoc::ui::tokens::RES_SCIENCE, &this->m_scienceLabel},
             {"yields.culture", aoc::ui::tokens::RES_CULTURE, &this->m_cultureLabel},
             {"yields.faith", aoc::ui::tokens::RES_FAITH, &this->m_faithLabel},
+            {"yields.tourism", aoc::ui::tokens::RES_TOURISM, &this->m_tourismLabel},
         }};
         for (const YieldChip& chip : chips) {
             aoc::ui::WidgetId chipPanel =
@@ -349,7 +350,7 @@ void Application::buildHUD() {
             float dropY = 34.0f;
 
             this->m_menuDropdown =
-                this->m_uiManager.createPanel({dropX, dropY, 110.0f, 424.0f},
+                this->m_uiManager.createPanel({dropX, dropY, 110.0f, 456.0f},
                                               aoc::ui::PanelData{aoc::ui::tokens::SURFACE_PARCHMENT,
                                                                  aoc::ui::tokens::CORNER_PANEL});
             {
@@ -436,6 +437,15 @@ void Application::buildHUD() {
                         }
                     });
                 this->m_cityListScreen.open(this->m_uiManager);
+            });
+
+            makeDropBtn(this->m_menuDropdown, "Great Works", [this]() {
+                this->m_uiManager.removeWidget(this->m_menuDropdown);
+                this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
+                this->m_greatWorksScreen.setContext(&this->m_gameState, &this->m_hexGrid,
+                                                    this->m_gameState.humanPlayerId(),
+                                                    &this->m_diplomacy);
+                this->m_greatWorksScreen.open(this->m_uiManager);
             });
 
             makeDropBtn(this->m_menuDropdown, "Religion Lens", [this]() {
@@ -831,7 +841,7 @@ void Application::updateHUD() {
     // updates only — widget chrome stays static.
     {
         const aoc::game::Player* humanHud = this->m_gameState.humanPlayer();
-        std::string goldText, sciText, culText, faithText;
+        std::string goldText, sciText, culText, faithText, tourismText;
         if (humanHud != nullptr) {
             CurrencyAmount goldTreasury = humanHud->treasury();
             CurrencyAmount goldIncome   = humanHud->incomePerTurn();
@@ -846,6 +856,7 @@ void Application::updateHUD() {
                 aoc::sim::computePlayerCulture(*humanHud, this->m_hexGrid);
             culText = "+" + std::to_string(static_cast<int32_t>(totalCulture));
             faithText          = std::to_string(static_cast<int32_t>(humanHud->faith().faith));
+            tourismText        = "+" + std::to_string(static_cast<int32_t>(humanHud->tourism().tourismPerTurn));
         } else {
             goldText  = "0  (+0)";
             float ts  = aoc::sim::computePlayerScience(this->m_gameState, this->m_hexGrid, 0);
@@ -853,6 +864,7 @@ void Application::updateHUD() {
             float tc  = aoc::sim::computePlayerCulture(this->m_gameState, this->m_hexGrid, 0);
             culText   = "+" + std::to_string(static_cast<int32_t>(tc));
             faithText = "0";
+            tourismText = "+0";
         }
         if (this->m_goldLabel != aoc::ui::INVALID_WIDGET) {
             this->m_uiManager.setLabelText(this->m_goldLabel, std::move(goldText));
@@ -865,6 +877,9 @@ void Application::updateHUD() {
         }
         if (this->m_faithLabel != aoc::ui::INVALID_WIDGET) {
             this->m_uiManager.setLabelText(this->m_faithLabel, std::move(faithText));
+        }
+        if (this->m_tourismLabel != aoc::ui::INVALID_WIDGET) {
+            this->m_uiManager.setLabelText(this->m_tourismLabel, std::move(tourismText));
         }
     }
 

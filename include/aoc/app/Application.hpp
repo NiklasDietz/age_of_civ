@@ -43,6 +43,7 @@
 #include "aoc/ui/GreatPeopleScreen.hpp"
 #include "aoc/ui/HistoricMomentsScreen.hpp"
 #include "aoc/ui/CityListScreen.hpp"
+#include "aoc/ui/GreatWorksScreen.hpp"
 #include "aoc/ui/UnitListScreen.hpp"
 #include "aoc/ui/DemographicsScreen.hpp"
 #include "aoc/ui/WorldCongressScreen.hpp"
@@ -239,6 +240,7 @@ private:
     aoc::ui::WidgetId m_scienceLabel = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_cultureLabel = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_faithLabel   = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_tourismLabel = aoc::ui::INVALID_WIDGET;
     /// Civ-6 style strip of player icons in the top bar. Children
     /// rebuilt each frame from `updateDiploStrip` to reflect met /
     /// at-war / allied state. One icon per known civ.
@@ -326,6 +328,7 @@ private:
     aoc::ui::GreatPeopleScreen m_greatPeopleScreen;
     aoc::ui::HistoricMomentsScreen m_historicMomentsScreen;
     aoc::ui::CityListScreen m_cityListScreen;
+    aoc::ui::GreatWorksScreen m_greatWorksScreen;
     aoc::ui::UnitListScreen m_unitListScreen;
     aoc::ui::DemographicsScreen m_demographicsScreen;
     aoc::ui::WorldCongressScreen m_worldCongressScreen;
@@ -662,6 +665,7 @@ private:
     void executeGameControlCommand(const aoc::debug::PromoteUnitCommand& cmd);
     void executeGameControlCommand(const aoc::debug::FoundPantheonCommand& cmd);
     void executeGameControlCommand(const aoc::debug::FoundReligionCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::MoveGreatWorkCommand& cmd);
 
     /// The five `/game/city/*` routes (Application_CityControl.cpp).
     void registerCityControlRoutes();
@@ -677,6 +681,7 @@ private:
 
     /// The two religion routes: pantheon and religion with chosen beliefs.
     void registerReligionRoutes();
+    void registerCultureRoutes();
 
     /// A right-click attack on a civ at peace arms this; the next right-click on
     /// the same civ declares war and attacks (Civ VI's confirmation, without a modal).

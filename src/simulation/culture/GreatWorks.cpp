@@ -6,12 +6,15 @@
 #include "aoc/simulation/culture/GreatWorks.hpp"
 
 #include "aoc/game/City.hpp"
+#include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/greatpeople/GreatPeopleExpanded.hpp"
 
 #include <limits>
 #include <memory>
+#include <string>
 
 namespace aoc::sim {
 
@@ -68,6 +71,43 @@ GreatWorkTally tallyGreatWorks(const aoc::game::Player& owner) {
         tally.capacity += greatWorkCapacity(*city);
     }
     return tally;
+}
+
+std::string describeGreatWork(const GreatWork& work) {
+    std::string text(greatWorkTypeName(work.type));
+    if (static_cast<int32_t>(work.namedId) < NAMED_GP_COUNT) {
+        text += " by ";
+        text += namedGreatPersonDef(work.namedId).name;
+    }
+    text += " (turn " + std::to_string(work.createdTurn) + ")";
+    return text;
+}
+
+ErrorCode requestMoveGreatWork(aoc::game::GameState& gameState, PlayerId player,
+                               hex::AxialCoord fromCity, int32_t index, hex::AxialCoord toCity) {
+    aoc::game::Player* owner = gameState.player(player);
+    if (owner == nullptr) {
+        return ErrorCode::EntityNotFound;
+    }
+    aoc::game::City* from = owner->cityAt(fromCity);
+    aoc::game::City* to   = owner->cityAt(toCity);
+    if (from == nullptr || to == nullptr || from->owner() != player || to->owner() != player) {
+        return ErrorCode::EntityNotFound;
+    }
+    if (from == to) {
+        return ErrorCode::InvalidArgument;
+    }
+    std::vector<GreatWork>& works = from->greatWorks().works;
+    if (index < 0 || index >= static_cast<int32_t>(works.size())) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (freeGreatWorkSlots(*to) <= 0) {
+        return ErrorCode::InvalidCityAction;
+    }
+    const GreatWork work = works[static_cast<size_t>(index)];
+    works.erase(works.begin() + index);
+    to->greatWorks().works.push_back(work);
+    return ErrorCode::Ok;
 }
 
 } // namespace aoc::sim

@@ -8,7 +8,7 @@
  *           >= 500 foreign tourists AND beat EVERY rival's domestic count.
  *           The turn loop only awards that winner +5 era points per turn.
  *   Path B: `checkVictoryConditions` (victory/VictoryCondition.cpp). Its own
- *           tourism (5*wonders + 2*theatre buildings) feeds
+ *           tourism (the per-player accumulator: works, wonders, holy sites) feeds
  *           totalCultureAccumulated; the win needs the culture threshold, 3
  *           wonders, a 1.25x lead, and foreign tourists beating at least HALF
  *           the rivals. This one ends the game.

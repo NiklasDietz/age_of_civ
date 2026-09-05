@@ -200,6 +200,15 @@ struct FoundReligionCommand {
     uint8_t enhancer;
 };
 
+/// Move the Great Work at `index` from the player's city at `from` into a free
+/// slot of the player's city at `to`.
+struct MoveGreatWorkCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord from;
+    int32_t index;
+    aoc::hex::AxialCoord to;
+};
+
 /// Merge the unit at `sourceAt` into the same-type unit at `at` (Corps / Army, Fleet / Armada).
 struct MergeUnitsCommand {
     aoc::PlayerId player;
@@ -232,6 +241,7 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         PlaceImprovementCommand, BuilderChopCommand,
                                         BuilderHarvestCommand, PillageCommand, RepairCommand,
                                         DeleteUnitCommand, SetAlertCommand, PromoteUnitCommand,
-                                        FoundPantheonCommand, FoundReligionCommand, EndTurnCommand>;
+                                        FoundPantheonCommand, FoundReligionCommand,
+                                        MoveGreatWorkCommand, EndTurnCommand>;
 
 } // namespace aoc::debug

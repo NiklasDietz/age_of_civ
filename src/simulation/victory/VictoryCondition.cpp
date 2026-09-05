@@ -107,7 +107,6 @@ static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
         // Cities: population, happiness, loyalty, wonders, tourism.
         // Only currently-owned cities feed CSI -- a city this civ founded
         // and then lost (secession, conquest) is now another civ's stat.
-        int32_t theatreBuildings = 0;
         for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
             if (city == nullptr) { continue; }
             if (city->owner() != pid) { continue; }
@@ -116,16 +115,11 @@ static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
             s.avgHappiness += city->happiness().amenities - city->happiness().demand;
             s.avgLoyalty  += city->loyalty().loyalty;
             s.wonderCount += static_cast<int32_t>(city->wonders().wonders.size());
-            for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& d
-                    : city->districts().districts) {
-                if (d.type == aoc::sim::DistrictType::Theatre) {
-                    theatreBuildings += static_cast<int32_t>(d.buildings.size());
-                }
-            }
         }
-        // WP-N2: tourism = late-era wonders ×5 + Theatre buildings ×2.
-        s.tourismPerTurn = static_cast<float>(s.wonderCount) * 5.0f
-                         + static_cast<float>(theatreBuildings) * 2.0f;
+        // Tourism is the per-player accumulator (placed Great Works, wonders,
+        // holy sites, diplomacy). computeTourism runs after this pass, so the
+        // CSI sees last turn's value; empty Theatre buildings no longer count.
+        s.tourismPerTurn = gsPlayer->tourism().tourismPerTurn;
         if (s.cityCount > 0) {
             s.avgHappiness /= static_cast<float>(s.cityCount);
             s.avgLoyalty   /= static_cast<float>(s.cityCount);

@@ -8,15 +8,18 @@
  *        filled and nothing ever created a work.
  */
 
+#include "aoc/core/ErrorCodes.hpp"
 #include "aoc/core/Types.hpp"
 #include "aoc/map/HexCoord.hpp"
 
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <vector>
 
 namespace aoc::game {
 class City;
+class GameState;
 class Player;
 } // namespace aoc::game
 namespace aoc::map {
@@ -82,5 +85,16 @@ struct GreatWorkTally {
     int32_t capacity = 0;
 };
 [[nodiscard]] GreatWorkTally tallyGreatWorks(const aoc::game::Player& owner);
+
+/// "Art by Michelangelo (turn 30)"; the creator is named when the id is known.
+[[nodiscard]] std::string describeGreatWork(const GreatWork& work);
+
+/// Move the work at `index` in the player's city at `fromCity` into a free slot
+/// of the player's city at `toCity`. Shared by the Great Works screen, the
+/// debug route and the MCP tool. EntityNotFound for a missing or foreign city,
+/// InvalidArgument for a bad index or the same city, InvalidCityAction when the
+/// destination has no free slot.
+ErrorCode requestMoveGreatWork(aoc::game::GameState& gameState, PlayerId player,
+                               hex::AxialCoord fromCity, int32_t index, hex::AxialCoord toCity);
 
 } // namespace aoc::sim

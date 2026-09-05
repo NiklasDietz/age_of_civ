@@ -477,6 +477,16 @@ def aoc_found_religion(player: int, founder: int, worship: int, enhancer: int) -
 
 
 @mcp.tool()
+def aoc_move_great_work(player: int, q: int, r: int, index: int, to_q: int, to_r: int) -> dict:
+    """Move the Great Work at `index` (0-based, in the order the Great Works screen lists them)
+    from `player`'s city at hex (q, r) into a free slot of `player`'s city at (to_q, to_r).
+    Both cities must be the player's; the destination needs a free Theatre slot. Queues the
+    request.
+    """
+    return _post("/game/greatwork/move", player=player, q=q, r=r, index=index, toQ=to_q, toR=to_r)
+
+
+@mcp.tool()
 def aoc_set_production(player: int, q: int, r: int, item_type: str, item_id: int) -> dict:
     """Queue a production item onto the city owned by `player` at hex (q, r).
 

@@ -137,6 +137,7 @@ std::vector<DemographicsScreen::Row> DemographicsScreen::knownRows(int32_t& unme
         row.techs      = p->victoryTracker().scienceProgress;
         row.treasury   = static_cast<int64_t>(p->monetary().treasury);
         row.gdp        = static_cast<int64_t>(p->monetary().gdp);
+        row.tourism    = static_cast<int64_t>(p->tourism().tourismPerTurn);
         row.score      = p->victoryTracker().score;
         rows.push_back(row);
     }
@@ -162,6 +163,7 @@ void DemographicsScreen::buildRows(UIManager& ui) {
     this->addMetricRow(ui, rows, "Technologies", &Row::techs);
     this->addMetricRow(ui, rows, "Treasury", &Row::treasury);
     this->addMetricRow(ui, rows, "GDP", &Row::gdp);
+    this->addMetricRow(ui, rows, "Tourism", &Row::tourism);
     this->addMetricRow(ui, rows, "Score", &Row::score);
 
     this->addHeader(ui, "CIVILIZATIONS BY SCORE");

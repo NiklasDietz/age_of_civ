@@ -15,6 +15,7 @@
 #include "aoc/simulation/unit/BuilderActions.hpp"
 #include "aoc/simulation/unit/UnitOrders.hpp"
 #include "aoc/simulation/unit/Promotion.hpp"
+#include "aoc/simulation/culture/GreatWorks.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
@@ -566,6 +567,44 @@ void Application::executeGameControlCommand(const aoc::debug::FoundReligionComma
                                                         cmd.worship, cmd.enhancer);
     if (rc != ErrorCode::Ok) {
         LOG_WARN("Religion for player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
+                 static_cast<int>(describeError(rc).size()), describeError(rc).data());
+    }
+}
+
+void Application::registerCultureRoutes() {
+    using DSM = aoc::debug::DebugServer::Method;
+    using Query = std::unordered_map<std::string, std::string>;
+
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/greatwork/move",
+        [this](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t fromQ = 0;
+            int32_t fromR = 0;
+            int32_t index = 0;
+            int32_t toQ = 0;
+            int32_t toR = 0;
+            std::string err;
+            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", fromQ, err)
+                || !readIntParam(q, "r", fromR, err) || !readIntParam(q, "index", index, err)
+                || !readIntParam(q, "toQ", toQ, err) || !readIntParam(q, "toR", toR, err)) {
+                return err;
+            }
+            std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+            this->m_pendingCommands.push_back(aoc::debug::MoveGreatWorkCommand{
+                static_cast<aoc::PlayerId>(player), {fromQ, fromR}, index, {toQ, toR}});
+            return std::string("{\"queued\":true}");
+        });
+}
+
+void Application::executeGameControlCommand(const aoc::debug::MoveGreatWorkCommand& cmd) {
+    const ErrorCode rc = aoc::sim::requestMoveGreatWork(this->m_gameState, cmd.player, cmd.from,
+                                                        cmd.index, cmd.to);
+    if (rc != ErrorCode::Ok) {
+        LOG_WARN("Great Work move for player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
                  static_cast<int>(describeError(rc).size()), describeError(rc).data());
     }
 }

@@ -19,6 +19,9 @@
 #include "aoc/simulation/culture/GreatWorks.hpp"
 #include "aoc/simulation/culture/Tourism.hpp"
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
+#include "aoc/simulation/greatpeople/GreatPeopleExpanded.hpp"
+
+#include <string>
 
 using aoc::BuildingId;
 using aoc::PlayerId;
@@ -157,4 +160,34 @@ TEST_CASE("the antiquity layer is sparse, cleared by fallout and by initialize")
     w.grid.setAntiquitySite(tile, 1);
     w.grid.initialize(24, 16);
     CHECK(w.grid.antiquitySite(tile) == 0);
+}
+
+TEST_CASE("a work moves between own cities, only into a free slot") {
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::game::City& alpha  = aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Alpha");
+    aoc::game::City& beta   = aoc::test::addCityAt(w, PlayerId{0}, 12, 5, "Beta");
+    aoc::game::City& theirs = aoc::test::addCityAt(w, PlayerId{1}, 18, 9, "Theirs");
+    addTheatre(alpha, AMPHITHEATER);
+    addTheatre(theirs, AMPHITHEATER);
+    REQUIRE(aoc::sim::placeGreatWork(alpha, {GreatWorkType::Art, PlayerId{0}, 2, 30}));
+    const auto move = [&w](const aoc::game::City& from, int32_t index, const aoc::game::City& to) {
+        return aoc::sim::requestMoveGreatWork(w.gameState, PlayerId{0}, from.location(), index,
+                                              to.location());
+    };
+
+    CHECK(move(alpha, 0, beta) == aoc::ErrorCode::InvalidCityAction); // Beta has no slot yet
+    addTheatre(beta, AMPHITHEATER);
+    CHECK(move(alpha, 5, beta) == aoc::ErrorCode::InvalidArgument);
+    CHECK(move(alpha, 0, alpha) == aoc::ErrorCode::InvalidArgument);
+    CHECK(move(alpha, 0, theirs) == aoc::ErrorCode::EntityNotFound);
+    CHECK(alpha.greatWorks().works.size() == 1);
+
+    CHECK(move(alpha, 0, beta) == aoc::ErrorCode::Ok);
+    CHECK(alpha.greatWorks().works.empty());
+    REQUIRE(beta.greatWorks().works.size() == 1);
+    CHECK(beta.greatWorks().works[0].namedId == 2);
+    CHECK(aoc::sim::describeGreatWork(beta.greatWorks().works[0]) ==
+          std::string("Art by ") + std::string(aoc::sim::namedGreatPersonDef(2).name) + " (turn 30)");
+    CHECK(aoc::sim::describeGreatWork({GreatWorkType::Writing, PlayerId{0}, 0xFF, 7}) ==
+          "Writing (turn 7)");
 }

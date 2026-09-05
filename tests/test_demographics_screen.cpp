@@ -53,6 +53,7 @@ struct Fixture {
         this->world.gameState.players()[1]->victoryTracker().score = 700;
         this->world.gameState.players()[2]->victoryTracker().score = 9000;
         this->world.gameState.players()[1]->monetary().treasury = 120;
+        this->world.gameState.players()[1]->tourism().tourismPerTurn = 12.0f;
 
         this->ui.setScreenSize(1920.0f, 1200.0f);
         this->screen.setScreenSize(1920.0f, 1200.0f);
@@ -98,6 +99,7 @@ TEST_CASE("each metric row gives rank, best, average and worst over the known ci
     CHECK(f.labelsContaining("Cities  yours 1  rank 2 of 2  |  best 2  average 1  worst 1") == 1);
     CHECK(f.labelsContaining("Military units  yours 2  rank 1 of 2  |  best 2  average 1  worst 0") == 1);
     CHECK(f.labelsContaining("Treasury  yours 0  rank 2 of 2  |  best 120  average 60  worst 0") == 1);
+    CHECK(f.labelsContaining("Tourism  yours 0  rank 2 of 2  |  best 12  average 6  worst 0") == 1);
     CHECK(f.labelsContaining("Score  yours 400  rank 2 of 2  |  best 700  average 550  worst 400") == 1);
 }
 

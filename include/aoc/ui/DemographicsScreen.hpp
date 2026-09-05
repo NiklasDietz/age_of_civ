@@ -43,6 +43,7 @@ private:
         int64_t  techs      = 0;
         int64_t  treasury   = 0;
         int64_t  gdp        = 0;
+        int64_t  tourism    = 0;
         int64_t  score      = 0;
     };
 
