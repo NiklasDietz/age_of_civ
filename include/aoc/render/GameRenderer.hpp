@@ -164,6 +164,7 @@ public:
         Habit,          ///< Habitability composite score
         Wetland,        ///< Wetland subtypes (peat/swamp/fen/floodplain)
         Reef,           ///< Coral reef tier (fringing/barrier/atoll/patch)
+        Religion,       ///< Dominant religion of the owning city (Civ VI religion lens, 2026-09-05)
         Cliff,          ///< Cliff coast (hard rock / fjord / headland / ice)
         CoastalLF,      ///< Coastal landforms (stack/spit/bar/tombolo/lagoon/flat/foreland)
         RiverRegime,    ///< Perennial / intermittent / ephemeral / glacier-fed / snow-fed

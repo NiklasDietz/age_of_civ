@@ -325,6 +325,42 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                             fillA   = 0.55f;
                             useFill = true;
                         }
+                    } else if (this->overlayMode == MapOverlay::Religion) {
+                        // Tint an owned tile with the dominant religion of the
+                        // owner's nearest city (pressure lives per city).
+                        const PlayerId tileOwner = grid.owner(index);
+                        const aoc::game::Player* ownerP =
+                            tileOwner != INVALID_PLAYER ? gameState.player(tileOwner) : nullptr;
+                        if (ownerP != nullptr) {
+                            const aoc::hex::AxialCoord here = grid.toAxial(index);
+                            const aoc::game::City* nearest = nullptr;
+                            int32_t bestDist = 4;
+                            for (const std::unique_ptr<aoc::game::City>& c : ownerP->cities()) {
+                                const int32_t d = grid.distance(c->location(), here);
+                                if (d < bestDist) { bestDist = d; nearest = c.get(); }
+                            }
+                            const aoc::sim::ReligionId rel =
+                                nearest != nullptr ? nearest->religion().dominantReligion()
+                                                   : aoc::sim::NO_RELIGION;
+                            if (rel != aoc::sim::NO_RELIGION) {
+                                static constexpr float RELIGION_PALETTE[8][3] = {
+                                    {0.95f, 0.85f, 0.25f}, {0.30f, 0.55f, 0.95f}, {0.85f, 0.30f, 0.30f},
+                                    {0.35f, 0.80f, 0.40f}, {0.75f, 0.40f, 0.85f}, {0.95f, 0.60f, 0.20f},
+                                    {0.30f, 0.80f, 0.80f}, {0.90f, 0.90f, 0.90f}};
+                                const float* c = RELIGION_PALETTE[rel % 8];
+                                fillR   = c[0];
+                                fillG   = c[1];
+                                fillB   = c[2];
+                                fillA   = 0.45f;
+                                useFill = true;
+                            } else {
+                                fillR   = 0.25f;
+                                fillG   = 0.25f;
+                                fillB   = 0.25f;
+                                fillA   = 0.30f;
+                                useFill = true;
+                            }
+                        }
                     } else if (this->overlayMode == MapOverlay::Resources) {
                         const aoc::ResourceId res = grid.resource(index);
                         if (res.isValid()) {

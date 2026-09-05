@@ -1464,6 +1464,7 @@ ErrorCode Application::initialize(const Config& config) {
     this->registerCityControlRoutes();
     this->registerBuilderControlRoutes();
     this->registerUnitOrderRoutes();
+    this->registerReligionRoutes();
 
     // POST /game/governor/promote?player=&q=&r=&promotion=
     this->m_debugServer->routeJson(
@@ -1714,6 +1715,8 @@ ErrorCode Application::initialize(const Config& config) {
                 "{\"method\":\"POST\",\"path\":\"/game/unit/delete?player=&q=&r=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/unit/alert?player=&q=&r=&on=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/unit/promote?player=&q=&r=&promotion=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/religion/pantheon?player=&belief=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/religion/found?player=&founder=&worship=&enhancer=\"},"
                 "{\"method\":\"GET\",\"path\":\"/ui/tree\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click?widgetId=N\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click-at?x=&y=\"},"

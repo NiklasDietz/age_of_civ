@@ -365,6 +365,40 @@ uint8_t firstFreeBelief(const aoc::game::GameState& gameState, BeliefType type) 
     return 255;
 }
 
+bool beliefIsFree(const aoc::game::GameState& gameState, uint8_t belief, BeliefType type) {
+    if (belief >= BELIEF_COUNT || BELIEFS[belief].type != type) {
+        return false;
+    }
+    const GlobalReligionTracker& tracker = gameState.religionTracker();
+    for (uint8_t r = 0; r < tracker.religionsFoundedCount; ++r) {
+        const ReligionDef& def = tracker.religions[r];
+        if (def.founderBelief == belief || def.followerBelief == belief
+            || def.worshipBelief == belief || def.enhancerBelief == belief) {
+            return false;
+        }
+    }
+    for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+        if (other->faith().hasPantheon && other->faith().pantheonBelief == belief) {
+            return false;
+        }
+    }
+    return true;
+}
+
+namespace {
+
+void foundPantheonWith(aoc::game::Player& gsPlayer, uint8_t belief) {
+    PlayerFaithComponent& faith = gsPlayer.faith();
+    faith.hasPantheon    = true;
+    faith.pantheonBelief = belief;
+    faith.faith -= PANTHEON_FAITH_COST;
+    LOG_INFO("Player %u founded pantheon with belief %.*s (faith remaining: %.1f)",
+             static_cast<unsigned>(gsPlayer.id()), static_cast<int>(BELIEFS[belief].name.size()),
+             BELIEFS[belief].name.data(), static_cast<double>(faith.faith));
+}
+
+} // namespace
+
 bool foundPantheonFor(aoc::game::GameState& gameState, PlayerId player) {
     aoc::game::Player* gsPlayer = gameState.player(player);
     if (gsPlayer == nullptr || gsPlayer->faith().hasPantheon
@@ -375,14 +409,23 @@ bool foundPantheonFor(aoc::game::GameState& gameState, PlayerId player) {
     if (belief == 255) {
         belief = 4;   // every follower belief is claimed: share the first one
     }
-    PlayerFaithComponent& faith = gsPlayer->faith();
-    faith.hasPantheon    = true;
-    faith.pantheonBelief = belief;
-    faith.faith -= PANTHEON_FAITH_COST;
-    LOG_INFO("Player %u founded pantheon with belief %.*s (faith remaining: %.1f)",
-             static_cast<unsigned>(player), static_cast<int>(BELIEFS[belief].name.size()),
-             BELIEFS[belief].name.data(), static_cast<double>(faith.faith));
+    foundPantheonWith(*gsPlayer, belief);
     return true;
+}
+
+ErrorCode requestFoundPantheon(aoc::game::GameState& gameState, PlayerId player, uint8_t belief) {
+    aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer == nullptr || !beliefIsFree(gameState, belief, BeliefType::Follower)) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (gsPlayer->faith().hasPantheon) {
+        return ErrorCode::InvalidState;
+    }
+    if (gsPlayer->faith().faith < PANTHEON_FAITH_COST) {
+        return ErrorCode::InsufficientResources;
+    }
+    foundPantheonWith(*gsPlayer, belief);
+    return ErrorCode::Ok;
 }
 
 ReligionId foundReligionFor(aoc::game::GameState& gameState, PlayerId player) {
@@ -400,7 +443,37 @@ ReligionId foundReligionFor(aoc::game::GameState& gameState, PlayerId player) {
     if (founder == 255)  { founder = 0; }
     if (worship == 255)  { worship = 8; }
     if (enhancer == 255) { enhancer = 13; }
+    return foundReligionWith(gameState, *gsPlayer, founder, worship, enhancer);
+}
 
+ErrorCode requestFoundReligion(aoc::game::GameState& gameState, PlayerId player, uint8_t founder,
+                               uint8_t worship, uint8_t enhancer, ReligionId* outId) {
+    aoc::game::Player* gsPlayer    = gameState.player(player);
+    GlobalReligionTracker& tracker = gameState.religionTracker();
+    if (gsPlayer == nullptr || !beliefIsFree(gameState, founder, BeliefType::Founder)
+        || !beliefIsFree(gameState, worship, BeliefType::Worship)
+        || !beliefIsFree(gameState, enhancer, BeliefType::Enhancer)) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (!gsPlayer->faith().hasPantheon || gsPlayer->faith().foundedReligion != NO_RELIGION
+        || !tracker.canFoundReligion()) {
+        return ErrorCode::InvalidState;
+    }
+    if (gsPlayer->faith().faith < RELIGION_FAITH_COST) {
+        return ErrorCode::InsufficientResources;
+    }
+    const ReligionId id = foundReligionWith(gameState, *gsPlayer, founder, worship, enhancer);
+    if (outId != nullptr) {
+        *outId = id;
+    }
+    return ErrorCode::Ok;
+}
+
+ReligionId foundReligionWith(aoc::game::GameState& gameState, aoc::game::Player& owner,
+                             uint8_t founder, uint8_t worship, uint8_t enhancer) {
+    aoc::game::Player* gsPlayer    = &owner;
+    const PlayerId player          = owner.id();
+    GlobalReligionTracker& tracker = gameState.religionTracker();
     const std::string religionName(
         RELIGION_NAMES[tracker.religionsFoundedCount % RELIGION_NAMES.size()]);
     const ReligionId newId = tracker.foundReligion(religionName, player);

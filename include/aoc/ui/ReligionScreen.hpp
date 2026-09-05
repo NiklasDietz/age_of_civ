@@ -41,6 +41,13 @@ private:
     WidgetId              m_faithLabel   = INVALID_WIDGET;
     WidgetId              m_statusLabel  = INVALID_WIDGET;
     WidgetId              m_beliefList   = INVALID_WIDGET;
+    /// The human's picks for founding a religion (255 = first free of the type).
+    uint8_t               m_pickFounder  = 255;
+    uint8_t               m_pickWorship  = 255;
+    uint8_t               m_pickEnhancer = 255;
+    /// Rebuild the list when faith state, religions or pressure moved.
+    [[nodiscard]] uint64_t stateFingerprint() const;
+    uint64_t              m_shownFingerprint = 0;
 };
 
 } // namespace aoc::ui

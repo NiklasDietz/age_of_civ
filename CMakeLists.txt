@@ -994,6 +994,7 @@ if(AOC_BUILD_TESTS)
         list(APPEND AOC_SMOKE_TESTS test_city_detail_screen)
         list(APPEND AOC_SMOKE_TESTS test_city_list_screen)
         list(APPEND AOC_SMOKE_TESTS test_unit_list_screen)
+        list(APPEND AOC_SMOKE_TESTS test_religion_screen)
         list(APPEND AOC_SMOKE_TESTS test_world_congress_screen)
     endif()
 

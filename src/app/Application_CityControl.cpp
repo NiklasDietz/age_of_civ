@@ -15,6 +15,7 @@
 #include "aoc/simulation/unit/BuilderActions.hpp"
 #include "aoc/simulation/unit/UnitOrders.hpp"
 #include "aoc/simulation/unit/Promotion.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
 
@@ -365,6 +366,61 @@ void Application::registerUnitOrderRoutes() {
         });
 }
 
+void Application::registerReligionRoutes() {
+    using DSM = aoc::debug::DebugServer::Method;
+    using Query = std::unordered_map<std::string, std::string>;
+    const auto queued = [this](const aoc::debug::GameControlCommand& cmd) -> std::string {
+        std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+        this->m_pendingCommands.push_back(cmd);
+        return std::string("{\"queued\":true}");
+    };
+    // POST /game/religion/pantheon?player=&belief=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/religion/pantheon",
+        [this, queued](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t belief = 0;
+            std::string err;
+            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "belief", belief, err)) {
+                return err;
+            }
+            if (belief < 0 || belief >= static_cast<int32_t>(aoc::sim::BELIEF_COUNT)) {
+                return std::string("{\"error\":\"belief out of range\"}");
+            }
+            return queued(aoc::debug::FoundPantheonCommand{static_cast<aoc::PlayerId>(player),
+                                                           static_cast<uint8_t>(belief)});
+        });
+    // POST /game/religion/found?player=&founder=&worship=&enhancer=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/religion/found",
+        [this, queued](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t founder = 0;
+            int32_t worship = 0;
+            int32_t enhancer = 0;
+            std::string err;
+            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "founder", founder, err)
+                || !readIntParam(q, "worship", worship, err)
+                || !readIntParam(q, "enhancer", enhancer, err)) {
+                return err;
+            }
+            const int32_t count = static_cast<int32_t>(aoc::sim::BELIEF_COUNT);
+            if (founder < 0 || founder >= count || worship < 0 || worship >= count || enhancer < 0
+                || enhancer >= count) {
+                return std::string("{\"error\":\"belief out of range\"}");
+            }
+            return queued(aoc::debug::FoundReligionCommand{
+                static_cast<aoc::PlayerId>(player), static_cast<uint8_t>(founder),
+                static_cast<uint8_t>(worship), static_cast<uint8_t>(enhancer)});
+        });
+}
+
 namespace {
 
 void warnRejected(const char* what, aoc::PlayerId player, aoc::hex::AxialCoord at, ErrorCode rc) {
@@ -494,6 +550,23 @@ void Application::executeGameControlCommand(const aoc::debug::PromoteUnitCommand
     const ErrorCode rc = aoc::sim::requestPromotion(this->m_gameState, cmd.player, cmd.at, cmd.promotion);
     if (rc != ErrorCode::Ok) {
         warnRejected("Promotion", cmd.player, cmd.at, rc);
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::FoundPantheonCommand& cmd) {
+    const ErrorCode rc = aoc::sim::requestFoundPantheon(this->m_gameState, cmd.player, cmd.belief);
+    if (rc != ErrorCode::Ok) {
+        LOG_WARN("Pantheon for player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
+                 static_cast<int>(describeError(rc).size()), describeError(rc).data());
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::FoundReligionCommand& cmd) {
+    const ErrorCode rc = aoc::sim::requestFoundReligion(this->m_gameState, cmd.player, cmd.founder,
+                                                        cmd.worship, cmd.enhancer);
+    if (rc != ErrorCode::Ok) {
+        LOG_WARN("Religion for player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
+                 static_cast<int>(describeError(rc).size()), describeError(rc).data());
     }
 }
 

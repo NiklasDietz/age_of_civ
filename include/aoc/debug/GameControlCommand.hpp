@@ -186,6 +186,20 @@ struct PromoteUnitCommand {
     aoc::PromotionId promotion;
 };
 
+/// Found a pantheon with a chosen follower belief.
+struct FoundPantheonCommand {
+    aoc::PlayerId player;
+    uint8_t belief;
+};
+
+/// Found a religion with chosen founder / worship / enhancer beliefs.
+struct FoundReligionCommand {
+    aoc::PlayerId player;
+    uint8_t founder;
+    uint8_t worship;
+    uint8_t enhancer;
+};
+
 /// Merge the unit at `sourceAt` into the same-type unit at `at` (Corps / Army, Fleet / Armada).
 struct MergeUnitsCommand {
     aoc::PlayerId player;
@@ -218,6 +232,6 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         PlaceImprovementCommand, BuilderChopCommand,
                                         BuilderHarvestCommand, PillageCommand, RepairCommand,
                                         DeleteUnitCommand, SetAlertCommand, PromoteUnitCommand,
-                                        EndTurnCommand>;
+                                        FoundPantheonCommand, FoundReligionCommand, EndTurnCommand>;
 
 } // namespace aoc::debug

@@ -16,6 +16,7 @@
 #include "aoc/simulation/automation/Automation.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 
+using aoc::ErrorCode;
 using aoc::PlayerId;
 using aoc::UnitTypeId;
 
@@ -119,4 +120,34 @@ TEST_CASE("an auto-spreading missionary converts the city it stands in and spend
     CHECK(target.religion().dominantReligion() == 0);
     REQUIRE(ai.unitCount() == 1);
     CHECK(ai.units()[0]->spreadCharges == 2);
+}
+
+TEST_CASE("the human founds with chosen beliefs; a taken or wrong-typed belief is refused") {
+    aoc::test::World w = aoc::test::makeWorld(3);
+    aoc::game::Player& p0 = *w.gameState.player(PlayerId{0});
+    aoc::game::Player& p1 = *w.gameState.player(PlayerId{1});
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Home");
+    p0.faith().faith = 500.0f;
+    p1.faith().faith = 500.0f;
+
+    CHECK(aoc::sim::requestFoundPantheon(w.gameState, PlayerId{0}, 0) == ErrorCode::InvalidArgument); // founder type
+    CHECK(aoc::sim::requestFoundPantheon(w.gameState, PlayerId{0}, 6) == ErrorCode::Ok);
+    CHECK(p0.faith().pantheonBelief == 6);
+    CHECK(aoc::sim::requestFoundPantheon(w.gameState, PlayerId{1}, 6) == ErrorCode::InvalidArgument); // taken
+    CHECK(aoc::sim::requestFoundPantheon(w.gameState, PlayerId{1}, 5) == ErrorCode::Ok);
+    CHECK(aoc::sim::requestFoundPantheon(w.gameState, PlayerId{1}, 4) == ErrorCode::InvalidState);   // has one
+    CHECK_FALSE(aoc::sim::beliefIsFree(w.gameState, 6, aoc::sim::BeliefType::Follower));
+    CHECK(aoc::sim::beliefIsFree(w.gameState, 7, aoc::sim::BeliefType::Follower));
+
+    aoc::sim::ReligionId id = aoc::sim::NO_RELIGION;
+    CHECK(aoc::sim::requestFoundReligion(w.gameState, PlayerId{0}, 4, 9, 14, &id) == ErrorCode::InvalidArgument); // 4 is a follower belief
+    CHECK(aoc::sim::requestFoundReligion(w.gameState, PlayerId{0}, 2, 9, 14, &id) == ErrorCode::Ok);
+    REQUIRE(id != aoc::sim::NO_RELIGION);
+    const aoc::sim::ReligionDef& def = w.gameState.religionTracker().religions[id];
+    CHECK(def.founderBelief == 2);
+    CHECK(def.followerBelief == 6);
+    CHECK(def.worshipBelief == 9);
+    CHECK(def.enhancerBelief == 14);
+    CHECK(aoc::sim::requestFoundReligion(w.gameState, PlayerId{1}, 2, 10, 15, nullptr) == ErrorCode::InvalidArgument); // founder 2 taken
+    CHECK(aoc::sim::requestFoundReligion(w.gameState, PlayerId{1}, 3, 10, 15, nullptr) == ErrorCode::Ok);
 }

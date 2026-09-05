@@ -459,6 +459,24 @@ def aoc_promote_unit(player: int, q: int, r: int, promotion: int) -> dict:
 
 
 @mcp.tool()
+def aoc_found_pantheon(player: int, belief: int) -> dict:
+    """Found `player`'s pantheon with follower belief `belief` (ids 4-7; each belief is taken
+    by at most one civ). Needs 25 faith and no pantheon yet. Queues the request.
+    """
+    return _post("/game/religion/pantheon", player=player, belief=belief)
+
+
+@mcp.tool()
+def aoc_found_religion(player: int, founder: int, worship: int, enhancer: int) -> dict:
+    """Found `player`'s religion with chosen beliefs: founder 0-3, worship 8-12, enhancer 13-15
+    (the pantheon becomes the follower belief; each belief is exclusive). Needs a pantheon,
+    50 faith and a free religion slot. Queues the request.
+    """
+    return _post("/game/religion/found", player=player, founder=founder, worship=worship,
+                 enhancer=enhancer)
+
+
+@mcp.tool()
 def aoc_set_production(player: int, q: int, r: int, item_type: str, item_id: int) -> dict:
     """Queue a production item onto the city owned by `player` at hex (q, r).
 

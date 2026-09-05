@@ -660,6 +660,8 @@ private:
     void executeGameControlCommand(const aoc::debug::DeleteUnitCommand& cmd);
     void executeGameControlCommand(const aoc::debug::SetAlertCommand& cmd);
     void executeGameControlCommand(const aoc::debug::PromoteUnitCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::FoundPantheonCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::FoundReligionCommand& cmd);
 
     /// The five `/game/city/*` routes (Application_CityControl.cpp).
     void registerCityControlRoutes();
@@ -672,6 +674,9 @@ private:
 
     /// The four unit-order routes: pillage, repair, delete, alert (Application_CityControl.cpp).
     void registerUnitOrderRoutes();
+
+    /// The two religion routes: pantheon and religion with chosen beliefs.
+    void registerReligionRoutes();
 
     /// A right-click attack on a civ at peace arms this; the next right-click on
     /// the same civ declares war and attacks (Civ VI's confirmation, without a modal).

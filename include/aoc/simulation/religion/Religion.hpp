@@ -197,6 +197,29 @@ void processAIReligionFounding(aoc::game::GameState& gameState);
 /// one already or cannot afford it.
 bool foundPantheonFor(aoc::game::GameState& gameState, PlayerId player);
 
+/// The human's choice (Civ VI plan Phase 2.7, 2026-09-05): found a pantheon
+/// with `belief`, which must be a free Follower belief. InvalidArgument for a
+/// wrong or taken belief, InvalidState with a pantheon already,
+/// InsufficientResources without the faith.
+[[nodiscard]] ErrorCode requestFoundPantheon(aoc::game::GameState& gameState, PlayerId player,
+                                             uint8_t belief);
+
+/// Found a religion with chosen founder / worship / enhancer beliefs (each a
+/// free belief of its type; the pantheon is the follower belief). Same
+/// preconditions as foundReligionFor; the new ReligionId is written to `outId`.
+[[nodiscard]] ErrorCode requestFoundReligion(aoc::game::GameState& gameState, PlayerId player,
+                                             uint8_t founder, uint8_t worship, uint8_t enhancer,
+                                             ReligionId* outId = nullptr);
+
+/// Found the religion with these beliefs for `player` (no validation; the two
+/// callers above validate). Returns the new id.
+[[nodiscard]] ReligionId foundReligionWith(aoc::game::GameState& gameState, aoc::game::Player& player,
+                                           uint8_t founder, uint8_t worship, uint8_t enhancer);
+
+/// True when `belief` is of `type` and no religion or pantheon has claimed it.
+[[nodiscard]] bool beliefIsFree(const aoc::game::GameState& gameState, uint8_t belief,
+                                BeliefType type);
+
 /// Found a religion for `player` (RELIGION_FAITH_COST): the next name, the first
 /// free founder / worship / enhancer beliefs, the pantheon as follower belief,
 /// and +5 pressure in every own city. Shared by the AI and the Religion screen.
