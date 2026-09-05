@@ -633,6 +633,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     turnCtx.barbarians = &barbarians;
     turnCtx.dealTracker = &dealTracker;
     turnCtx.allianceTracker = &allianceTracker;
+    diplomacy.setAllianceTracker(&allianceTracker);
     turnCtx.rng = &rng;
     turnCtx.gameState = &gameState;
     for (aoc::sim::ai::AIController& ai : aiControllers) {
@@ -707,55 +708,6 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                                         aoc::INVALID_PLAYER, static_cast<int32_t>(reward), 0,
                                         "Goody hut claimed");
                     }
-                }
-            }
-        }
-
-        // --- Player meeting detection ---
-        // Two players meet when any unit/city of one is within sight range (3 tiles)
-        // of any unit/city of the other. Checked once per turn.
-        constexpr int32_t MEETING_SIGHT_RANGE = 3;
-        for (int32_t pa = 0; pa < playerCount; ++pa) {
-            for (int32_t pb = pa + 1; pb < playerCount; ++pb) {
-                const aoc::PlayerId pidA = static_cast<aoc::PlayerId>(pa);
-                const aoc::PlayerId pidB = static_cast<aoc::PlayerId>(pb);
-                if (diplomacy.haveMet(pidA, pidB)) { continue; }
-
-                const aoc::game::Player* playerA = gameState.player(pidA);
-                const aoc::game::Player* playerB = gameState.player(pidB);
-                if (playerA == nullptr || playerB == nullptr) { continue; }
-
-                // Collect all positions of player A (units + cities)
-                bool met = false;
-                for (const std::unique_ptr<aoc::game::Unit>& uA : playerA->units()) {
-                    if (met) { break; }
-                    for (const std::unique_ptr<aoc::game::Unit>& uB : playerB->units()) {
-                        if (grid.distance(uA->position(), uB->position()) <= MEETING_SIGHT_RANGE) {
-                            met = true; break;
-                        }
-                    }
-                    if (!met) {
-                        for (const std::unique_ptr<aoc::game::City>& cB : playerB->cities()) {
-                            if (grid.distance(uA->position(), cB->location()) <= MEETING_SIGHT_RANGE) {
-                                met = true; break;
-                            }
-                        }
-                    }
-                }
-                if (!met) {
-                    for (const std::unique_ptr<aoc::game::City>& cA : playerA->cities()) {
-                        if (met) { break; }
-                        for (const std::unique_ptr<aoc::game::Unit>& uB : playerB->units()) {
-                            if (grid.distance(cA->location(), uB->position()) <= MEETING_SIGHT_RANGE) {
-                                met = true; break;
-                            }
-                        }
-                    }
-                }
-                if (met) {
-                    diplomacy.meetPlayers(pidA, pidB, turn);
-                    eventLog.record(aoc::sim::TurnEventType::PlayersMet,
-                                    pidA, pidB, 0, 0, "First contact");
                 }
             }
         }

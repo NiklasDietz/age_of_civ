@@ -142,9 +142,12 @@ def evaluate(rows: list[dict[str, str]], quiet: bool = False) -> int:
     # H6  Civs find each other. Before the shared start placement (2026-09-04)
     #     a default 2-player start could put both civs on separate continents
     #     with no land path, so diplomacy had no counterparty.
+    #     MetPlayersMask always carries the player's own bit (the ML pipeline
+    #     wants own data visible), so mask it out or the check can never fail;
+    #     it never had until 2026-09-05.
     unmet = [
         p for p, series in by_player.items()
-        if all(int(r["MetPlayersMask"]) == 0 for r in series)
+        if all((int(r["MetPlayersMask"]) & ~(1 << p)) == 0 for r in series)
     ]
     check(
         "every player meets at least one rival",
@@ -228,7 +231,7 @@ COLUMNS = [
 def _row(turn: int, player: int, **over: object) -> dict[str, str]:
     base = {c: "0" for c in COLUMNS}
     base.update({"Turn": str(turn), "Player": str(player), "Cities": "5",
-                 "Era": "4", "MetPlayersMask": "2", "TradePartners": "1",
+                 "Era": "4", "MetPlayersMask": "3", "TradePartners": "1",
                  "BarbarianUnits": "2" if turn <= 30 else "0"})
     base.update({k: str(v) for k, v in over.items()})
     return base

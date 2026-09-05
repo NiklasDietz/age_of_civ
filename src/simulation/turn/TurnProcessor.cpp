@@ -1170,32 +1170,11 @@ void processGlobalSystems(TurnContext& turnContext) {
     // grievance every turn until they converge or hit the per-pair cap.
     accrueIdeologicalGrievances(gameState);
 
-    // Grievances -> relation score. Refresh a single "Grievances" modifier
-    // per ordered pair each turn using the accumulated grievance total.
-    // Without this step grievances are recorded but never influence
-    // DiplomacyState.totalScore, so AIs never develop hostility and wars
-    // rarely fire. Capped at -40 to leave room for other modifiers.
+    // Grievances -> relation score (applyGrievanceModifiers, DiplomacyState.cpp).
+    // Without it grievances are recorded but never reach totalScore, so AIs
+    // never develop hostility.
     if (turnContext.diplomacy != nullptr) {
-        for (const std::unique_ptr<aoc::game::Player>& a : gameState.players()) {
-            for (const std::unique_ptr<aoc::game::Player>& b : gameState.players()) {
-                if (a->id() == b->id()) { continue; }
-                aoc::sim::PairwiseRelation& rel =
-                    turnContext.diplomacy->relation(a->id(), b->id());
-                // Remove existing Grievances modifier (single slot).
-                for (auto it = rel.modifiers.begin(); it != rel.modifiers.end(); ) {
-                    if (it->reason == "Grievances") { it = rel.modifiers.erase(it); }
-                    else { ++it; }
-                }
-                const int32_t gTotal =
-                    a->grievances().totalGrievanceAgainst(b->id());
-                if (gTotal > 0) {
-                    const int32_t penalty = std::min(gTotal / 2, 40);
-                    if (penalty > 0) {
-                        rel.modifiers.push_back({"Grievances", -penalty, 0});
-                    }
-                }
-            }
-        }
+        applyGrievanceModifiers(gameState, *turnContext.diplomacy);
     }
 
     // Alliance obligations: tick countdowns, check fulfillment, apply penalties
@@ -1359,6 +1338,13 @@ void processTurn(TurnContext& turnContext) {
 
     // 4. Global systems
     processGlobalSystems(turnContext);
+
+    // 4b. First contact between major players. Shared by both front ends; the
+    //     headless tool used to do this in its own loop after processTurn.
+    if (turnContext.diplomacy != nullptr) {
+        processFirstContact(*turnContext.gameState, *turnContext.grid, *turnContext.diplomacy,
+                            eventLog, static_cast<int32_t>(turnContext.currentTurn));
+    }
 
     // 5. Visibility-filtered event dispatch (fog is up to date from step 1/3)
     if (turnContext.fogOfWar != nullptr) {

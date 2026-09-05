@@ -19,9 +19,17 @@
 #include <string_view>
 #include <vector>
 
+namespace aoc::map {
+class HexGrid;
+}
+
 namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
+
+struct AllianceObligationTracker;
+class TurnEventLog;
+
 
 /// A time-decaying relation modifier (e.g., "settled near our borders" -5, decays over 20 turns).
 struct RelationModifier {
@@ -294,10 +302,40 @@ public:
     /// Used for global dishonor events (breaking treaties, etc.).
     void broadcastReputationPenalty(PlayerId violator, int32_t amount, int32_t decayTurns);
 
+    /// Install the tracker that `declareWar` uses when a caller passes none, so
+    /// every war declaration (AI, human, debug) fans obligations out to the
+    /// target's allies. Non-owning; the front end keeps it alive.
+    void setAllianceTracker(AllianceObligationTracker* tracker) {
+        this->m_allianceTracker = tracker;
+    }
+
 private:
     /// Flat NxN matrix: index = a * playerCount + b.
     std::vector<PairwiseRelation> m_relations;
     uint8_t m_playerCount = 0;
+    AllianceObligationTracker* m_allianceTracker = nullptr;
 };
+
+/// Two major players meet when any unit or city of one is within this many
+/// tiles of any unit or city of the other (a city next to a city does not count,
+/// matching the headless rule this replaced).
+inline constexpr int32_t MEETING_SIGHT_RANGE = 3;
+
+/**
+ * @brief First contact for every unmet pair of major players, once per turn.
+ *        Shared by both front ends since 2026-09-05; before that only the
+ *        headless tool scanned, so the GUI game never met anyone. Records one
+ *        PlayersMet event per new pair when `eventLog` is non-null.
+ */
+void processFirstContact(const aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                         DiplomacyManager& diplomacy, TurnEventLog* eventLog, int32_t currentTurn);
+
+/**
+ * @brief Grievances -> relation score. Refreshes the single "Grievances" modifier
+ *        of every ordered pair from the accumulated total. Severities are
+ *        negative, so the penalty is min(|total| / 2, 40); the old gate tested
+ *        the raw total against > 0 and never fired.
+ */
+void applyGrievanceModifiers(const aoc::game::GameState& gameState, DiplomacyManager& diplomacy);
 
 } // namespace aoc::sim

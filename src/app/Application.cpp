@@ -2139,6 +2139,7 @@ void Application::spectatorAdvanceTurn() {
     turnCtx.barbarians      = &this->m_barbarianController;
     turnCtx.dealTracker     = &this->m_dealTracker;
     turnCtx.allianceTracker = &this->m_allianceTracker;
+    this->m_diplomacy.setAllianceTracker(&this->m_allianceTracker);
     turnCtx.rng             = &this->m_gameRng;
     turnCtx.gameState       = &this->m_gameState;
     turnCtx.humanPlayer     = aoc::INVALID_PLAYER;
@@ -6710,6 +6711,7 @@ void Application::handleEndTurn() {
         turnCtx.barbarians      = &this->m_barbarianController;
         turnCtx.dealTracker     = &this->m_dealTracker;
         turnCtx.allianceTracker = &this->m_allianceTracker;
+        this->m_diplomacy.setAllianceTracker(&this->m_allianceTracker);
         turnCtx.rng             = &this->m_gameRng;
         turnCtx.gameState       = &this->m_gameState;
         turnCtx.humanPlayer     = 0;

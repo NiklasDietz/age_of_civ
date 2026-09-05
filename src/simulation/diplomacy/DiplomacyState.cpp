@@ -4,6 +4,13 @@
  */
 
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/Grievance.hpp"
+#include "aoc/simulation/turn/TurnEventLog.hpp"
+#include "aoc/map/HexGrid.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/game/Unit.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/diplomacy/AllianceObligations.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/simulation/event/GameNotifications.hpp"
@@ -151,9 +158,13 @@ void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target,
     relAB.allianceBreakWarningTurns = 0;
     relBA.allianceBreakWarningTurns = 0;
 
-    // Generate alliance obligations for the target's allies
-    if (allianceTracker != nullptr) {
-        allianceTracker->onWarDeclared(aggressor, target, *this);
+    // Generate alliance obligations for the target's allies. Callers that do
+    // not carry a tracker (every AI and UI caller) use the one the front end
+    // installed with setAllianceTracker; until 2026-09-05 this branch never ran.
+    AllianceObligationTracker* obligations =
+        allianceTracker != nullptr ? allianceTracker : this->m_allianceTracker;
+    if (obligations != nullptr) {
+        obligations->onWarDeclared(aggressor, target, *this);
     }
 
     // Break trade agreements between the warring parties.
@@ -602,6 +613,76 @@ bool DiplomacyManager::isAtWar(PlayerId a, PlayerId b) const {
         return true;
     }
     return this->relation(a, b).isAtWar;
+}
+
+namespace {
+
+/// Any unit of `a` within MEETING_SIGHT_RANGE of a unit or city of `b`, or any
+/// city of `a` within range of a unit of `b`.
+bool seatsInSight(const aoc::map::HexGrid& grid, const aoc::game::Player& a,
+                  const aoc::game::Player& b) {
+    for (const std::unique_ptr<aoc::game::Unit>& ua : a.units()) {
+        for (const std::unique_ptr<aoc::game::Unit>& ub : b.units()) {
+            if (grid.distance(ua->position(), ub->position()) <= MEETING_SIGHT_RANGE) {
+                return true;
+            }
+        }
+        for (const std::unique_ptr<aoc::game::City>& cb : b.cities()) {
+            if (grid.distance(ua->position(), cb->location()) <= MEETING_SIGHT_RANGE) {
+                return true;
+            }
+        }
+    }
+    for (const std::unique_ptr<aoc::game::City>& ca : a.cities()) {
+        for (const std::unique_ptr<aoc::game::Unit>& ub : b.units()) {
+            if (grid.distance(ca->location(), ub->position()) <= MEETING_SIGHT_RANGE) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+void processFirstContact(const aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                         DiplomacyManager& diplomacy, TurnEventLog* eventLog, int32_t currentTurn) {
+    const std::vector<std::unique_ptr<aoc::game::Player>>& players = gameState.players();
+    for (std::size_t ia = 0; ia < players.size(); ++ia) {
+        for (std::size_t ib = ia + 1; ib < players.size(); ++ib) {
+            const aoc::game::Player& a = *players[ia];
+            const aoc::game::Player& b = *players[ib];
+            if (diplomacy.haveMet(a.id(), b.id())) {
+                continue;
+            }
+            if (!seatsInSight(grid, a, b)) {
+                continue;
+            }
+            diplomacy.meetPlayers(a.id(), b.id(), currentTurn);
+            if (eventLog != nullptr) {
+                eventLog->record(TurnEventType::PlayersMet, a.id(), b.id(), 0, 0, "First contact");
+            }
+        }
+    }
+}
+
+void applyGrievanceModifiers(const aoc::game::GameState& gameState, DiplomacyManager& diplomacy) {
+    for (const std::unique_ptr<aoc::game::Player>& a : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::Player>& b : gameState.players()) {
+            if (a->id() == b->id()) {
+                continue;
+            }
+            PairwiseRelation& rel = diplomacy.relation(a->id(), b->id());
+            std::erase_if(rel.modifiers,
+                          [](const RelationModifier& m) { return m.reason == "Grievances"; });
+            // Severities are negative (Grievance.cpp), so negate to get the magnitude.
+            const int32_t grievanceTotal = -a->grievances().totalGrievanceAgainst(b->id());
+            const int32_t penalty        = std::min(grievanceTotal / 2, 40);
+            if (penalty > 0) {
+                rel.modifiers.push_back({"Grievances", -penalty, 0});
+            }
+        }
+    }
 }
 
 } // namespace aoc::sim
