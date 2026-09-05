@@ -210,6 +210,7 @@ set(AOC_GFX_ONLY_SOURCES
     src/ui/ReligionScreen.cpp
     src/ui/EspionageScreen.cpp
     src/ui/GreatPeopleScreen.cpp
+    src/ui/HistoricMomentsScreen.cpp
     src/ui/DemographicsScreen.cpp
     src/ui/WorldCongressScreen.cpp
     src/ui/ScoreScreen.cpp
@@ -439,6 +440,7 @@ set(AOC_LIB_SOURCES
     src/ui/ReligionScreen.cpp
     src/ui/EspionageScreen.cpp
     src/ui/GreatPeopleScreen.cpp
+    src/ui/HistoricMomentsScreen.cpp
     src/ui/DemographicsScreen.cpp
     src/ui/WorldCongressScreen.cpp
     src/ui/ScoreScreen.cpp
@@ -951,6 +953,7 @@ if(AOC_BUILD_TESTS)
         test_promotions
         test_formations
         test_governors
+        test_historic_moments
     )
 
     # UI tests link against src/ui/UIManager.cpp and src/ui/ScreenRegistry.cpp,
@@ -963,6 +966,7 @@ if(AOC_BUILD_TESTS)
         list(APPEND AOC_SMOKE_TESTS test_espionage_screen)
         list(APPEND AOC_SMOKE_TESTS test_encyclopedia_screen)
         list(APPEND AOC_SMOKE_TESTS test_great_people_screen)
+        list(APPEND AOC_SMOKE_TESTS test_historic_moments_screen)
         list(APPEND AOC_SMOKE_TESTS test_demographics_screen)
         list(APPEND AOC_SMOKE_TESTS test_world_congress_screen)
     endif()

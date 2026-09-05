@@ -345,7 +345,7 @@ void Application::buildHUD() {
             float dropY = 34.0f;
 
             this->m_menuDropdown =
-                this->m_uiManager.createPanel({dropX, dropY, 110.0f, 296.0f},
+                this->m_uiManager.createPanel({dropX, dropY, 110.0f, 328.0f},
                                               aoc::ui::PanelData{aoc::ui::tokens::SURFACE_PARCHMENT,
                                                                  aoc::ui::tokens::CORNER_PANEL});
             {
@@ -402,6 +402,14 @@ void Application::buildHUD() {
                 this->m_greatPeopleScreen.setContext(&this->m_gameState, &this->m_hexGrid,
                                                      this->m_gameState.humanPlayerId());
                 this->m_greatPeopleScreen.open(this->m_uiManager);
+            });
+
+            makeDropBtn(this->m_menuDropdown, "Historic Moments", [this]() {
+                this->m_uiManager.removeWidget(this->m_menuDropdown);
+                this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
+                this->m_historicMomentsScreen.setContext(&this->m_gameState, &this->m_hexGrid,
+                                                         this->m_gameState.humanPlayerId());
+                this->m_historicMomentsScreen.open(this->m_uiManager);
             });
 
             // Save / Load open the pause menu, which owns the numbered slot rows;
@@ -754,6 +762,7 @@ void Application::updateHUD() {
     this->m_espionageScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_encyclopediaScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_greatPeopleScreen.setScreenSize(hudScreenW, hudScreenH);
+    this->m_historicMomentsScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_demographicsScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_worldCongressScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_scoreScreen.setScreenSize(hudScreenW, hudScreenH);

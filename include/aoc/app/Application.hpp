@@ -41,6 +41,7 @@
 #include "aoc/ui/EspionageScreen.hpp"
 #include "aoc/ui/Encyclopedia.hpp"
 #include "aoc/ui/GreatPeopleScreen.hpp"
+#include "aoc/ui/HistoricMomentsScreen.hpp"
 #include "aoc/ui/DemographicsScreen.hpp"
 #include "aoc/ui/WorldCongressScreen.hpp"
 #include "aoc/ui/EventLog.hpp"
@@ -321,6 +322,7 @@ private:
     aoc::ui::EspionageScreen m_espionageScreen;
     aoc::ui::EncyclopediaScreen m_encyclopediaScreen;
     aoc::ui::GreatPeopleScreen m_greatPeopleScreen;
+    aoc::ui::HistoricMomentsScreen m_historicMomentsScreen;
     aoc::ui::DemographicsScreen m_demographicsScreen;
     aoc::ui::WorldCongressScreen m_worldCongressScreen;
     aoc::ui::ScoreScreen m_scoreScreen;

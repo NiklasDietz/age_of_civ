@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 
 namespace aoc::sim {
 
@@ -50,15 +51,26 @@ static void refreshAgeThresholds(aoc::game::Player& player) {
     esc.darkAgeThreshold   = DARK_AGE_BASE + era * DARK_AGE_PER_ERA;
 }
 
-void addEraScore(aoc::game::Player& player, int32_t points, const std::string& reason) {
+void recordHistoricMoment(PlayerEraScoreComponent& score, int32_t turn, int32_t points,
+                          std::string text) {
+    if (score.moments.size() >= MAX_HISTORIC_MOMENTS) {
+        score.moments.erase(score.moments.begin());
+    }
+    score.moments.push_back(HistoricMoment{turn, points, std::move(text)});
+}
+
+void addEraScore(aoc::game::Player& player, int32_t turn, int32_t points,
+                 const std::string& reason) {
     PlayerEraScoreComponent& esc = player.eraScore();
     esc.eraScore += points;
+    esc.lifetimeEraScore += points;
+    recordHistoricMoment(esc, turn, points, reason);
     LOG_INFO("Player %u era score +%d (%s) => %d",
              static_cast<unsigned>(player.id()), points,
              reason.c_str(), esc.eraScore);
 }
 
-void checkEraTransition(aoc::game::Player& player) {
+void checkEraTransition(aoc::game::Player& player, int32_t turn) {
     PlayerEraScoreComponent& esc = player.eraScore();
 
     constexpr int32_t AGE_DURATION = 10;
@@ -73,6 +85,7 @@ void checkEraTransition(aoc::game::Player& player) {
         LOG_INFO("Player %u enters GOLDEN AGE (score %d >= %d)",
                  static_cast<unsigned>(player.id()),
                  esc.eraScore, esc.goldenAgeThreshold);
+        recordHistoricMoment(esc, turn, 0, "Entered a Golden Age");
 
         if (playerOwnsTajMahal(player)) {
             carryOver = 3;
@@ -85,6 +98,7 @@ void checkEraTransition(aoc::game::Player& player) {
         LOG_INFO("Player %u enters DARK AGE (score %d < %d)",
                  static_cast<unsigned>(player.id()),
                  esc.eraScore, esc.darkAgeThreshold);
+        recordHistoricMoment(esc, turn, 0, "Fell into a Dark Age");
     } else {
         esc.currentAgeType = AgeType::Normal;
         esc.turnsRemaining = 0;

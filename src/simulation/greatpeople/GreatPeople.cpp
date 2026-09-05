@@ -13,6 +13,7 @@
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
+#include "aoc/simulation/tech/EraScore.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/game/GameState.hpp"
@@ -237,6 +238,8 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
         // Reset points and increment recruited count
         gpComp.points[typeIdx]    -= thresh;
         gpComp.recruited[typeIdx] += 1;
+        addEraScore(*playerObj, gameState.currentTurn(), 2,
+                    "Recruited " + std::string(named.name));
 
         LOG_INFO("Player %u recruited %s %.*s (%.*s)",
                  static_cast<unsigned>(player),

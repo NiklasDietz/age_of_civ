@@ -532,7 +532,7 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     // score never accumulates. Without this call the Golden/Dark age system is
     // inert (eraScore grows but never triggers an age).
     if ((turnContext.currentTurn % 10) == 0) {
-        checkEraTransition(*gsPlayer);
+        checkEraTransition(*gsPlayer, static_cast<int32_t>(turnContext.currentTurn));
     }
 
     // City growth (climate food penalty applied at high CO2 levels).
@@ -765,7 +765,8 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
             // AI, and every player in every headless run, sat at score 0 forever
             // and therefore in a permanent Dark Age. Award it here instead, where
             // both builds and all players go through.
-            addEraScore(*gsPlayer, 2, "Researched " + std::string(doneTech.name));
+            addEraScore(*gsPlayer, static_cast<int32_t>(turnContext.currentTurn), 2,
+                        "Researched " + std::string(doneTech.name));
         }
         // Capture the civic-in-progress before advancing: advanceCivicResearch
         // calls completeResearch() on completion, which clears currentResearch.
@@ -777,7 +778,8 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
                              static_cast<uint8_t>(civicBeforeAdvance.value));
             const aoc::sim::CivicDef& doneCivic = aoc::sim::civicDef(civicBeforeAdvance);
             gsPlayer->era().updateEra(doneCivic.era);
-            addEraScore(*gsPlayer, 2, "Adopted " + std::string(doneCivic.name));
+            addEraScore(*gsPlayer, static_cast<int32_t>(turnContext.currentTurn), 2,
+                        "Adopted " + std::string(doneCivic.name));
         }
     }
 
