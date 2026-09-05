@@ -153,6 +153,10 @@ static void buildBuildingEntries(std::vector<WikiEntry>& entries) {
             std::snprintf(amenityText, sizeof(amenityText), "%g", static_cast<double>(amenities));
             bonuses += "+Amenities:" + std::string(amenityText) + " ";
         }
+        const int32_t housing = aoc::sim::buildingHousing(b.id);
+        if (housing > 0) {
+            bonuses += "+Housing:" + std::to_string(housing) + " ";
+        }
         entry.statsBlock += "\nBonuses: " + (bonuses.empty() ? "None" : bonuses);
         if (b.requiredCivic.isValid()) {
             entry.statsBlock += "\nRequires Civic: " +

@@ -72,12 +72,16 @@ float foodForGrowth(int32_t currentPopulation) {
 
 int32_t computeCityHousing(const aoc::game::City& city, const aoc::map::HexGrid& grid) {
     int32_t housing = 4;
-    if (city.hasBuilding(BuildingId{15})) { housing += 2; }  // Granary
-    if (city.hasBuilding(BuildingId{22})) { housing += 4; }  // Hospital
-    // Aqueduct only counts when a connected aqueduct chain reaches a
-    // fresh-water source. Builder-laid INFRA_AQUEDUCT segments + the
-    // turn-end BFS in TurnProcessor.cpp set city.aqueductConnected.
-    if (city.hasBuilding(BuildingId{42}) && city.aqueductConnected()) { housing += 4; }
+    // One table (District.hpp buildingHousing) instead of per-id checks. The
+    // Aqueduct only counts when a connected aqueduct chain reaches a fresh-water
+    // source: builder-laid INFRA_AQUEDUCT segments + the turn-end BFS in
+    // TurnProcessor.cpp set city.aqueductConnected.
+    for (const CityDistrictsComponent::PlacedDistrict& d : city.districts().districts) {
+        for (const BuildingId bid : d.buildings) {
+            if (bid == BuildingId{42} && !city.aqueductConnected()) { continue; }
+            housing += buildingHousing(bid);
+        }
+    }
     int32_t farmCount = 0;
     std::vector<aoc::hex::AxialCoord> nearby;
     nearby.reserve(64);

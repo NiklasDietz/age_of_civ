@@ -93,6 +93,7 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
         case 22: score = 130.0f; break;   // Hospital: strongest amenity
         case 43: score = 125.0f; break;   // Entertainment Complex: +2 amenities
         case 44: score = 120.0f; break;   // Water Park: +2 amenities, harbor cities
+        case 45: score = 115.0f; break;   // Neighborhood: +4 housing
 
         // Campus
         case  7: score = 100.0f * b.scienceFocus; break;  // Library

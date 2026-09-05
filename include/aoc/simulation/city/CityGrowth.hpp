@@ -30,7 +30,8 @@ namespace aoc::sim {
 /// Food needed to grow to the next population point.
 [[nodiscard]] float foodForGrowth(int32_t currentPopulation);
 
-/// Effective housing capacity: base 4 + Granary/Hospital/Aqueduct + nearby farms.
+/// Effective housing capacity: base 4 + buildings (District.hpp buildingHousing:
+/// Granary, Hospital, connected Aqueduct, Neighborhood) + nearby farms.
 /// Shared by CityGrowth (growth gate) and EconomicDepth (migration gate).
 [[nodiscard]] int32_t computeCityHousing(const aoc::game::City& city,
                                           const aoc::map::HexGrid& grid);

@@ -93,6 +93,19 @@ static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType
     }
 }
 
+/// Housing a building adds to its city; CityGrowth.cpp credits it on top of the
+/// base 4 and the nearby farms. The Aqueduct's share counts only while the city
+/// is connected to fresh water (the caller checks `aqueductConnected`).
+[[nodiscard]] inline constexpr int32_t buildingHousing(BuildingId id) {
+    switch (id.value) {
+        case 15: return 2;   // Granary
+        case 22: return 4;   // Hospital
+        case 42: return 4;   // Aqueduct (when connected)
+        case 45: return 4;   // Neighborhood
+        default: return 0;
+    }
+}
+
 // ============================================================================
 // Building definitions
 // ============================================================================
@@ -175,7 +188,7 @@ struct BuildingDef {
 
 // Format: {id, name, district, prodCost, maint, prodBonus, sciBonus, goldBonus, sciMult, resourceCosts, fuelGoodId, fuelPerTurn}
 // Resource costs and fuel added for mid/late-game buildings per plan Phase 1C/1D.
-inline constexpr std::array<BuildingDef, 45> BUILDING_DEFS = {{
+inline constexpr std::array<BuildingDef, 46> BUILDING_DEFS = {{
     //                                                                                                                     resourceCosts         fuel
     {BuildingId{0},  "Forge",              DistrictType::Industrial,  60, 1, 2, 0, 0, 1.0f},                            // no cost, no fuel
     {BuildingId{1},  "Workshop",           DistrictType::Industrial,  40, 1, 1, 0, 0, 1.0f},
@@ -239,6 +252,11 @@ inline constexpr std::array<BuildingDef, 45> BUILDING_DEFS = {{
     {BuildingId{43}, "Entertainment Complex", DistrictType::CityCenter, 150, 2, 0, 0, 0, 1.0f, {{44, 2}},
      0xFFFF, 0, 0, 0, 0, CivicId{20}},  // 2 Stone; Games and Recreation
     {BuildingId{44}, "Water Park",            DistrictType::Harbor,     180, 2, 0, 0, 1, 1.0f, {{44, 2}},
+     0xFFFF, 0, 0, 0, 0, CivicId{34}},  // 2 Stone; Urbanization
+    // Housing (2026-09-05): the Neighborhood is plain housing next to the Aqueduct,
+    // which stays the fresh-water building with its river / mountain connection
+    // rule. +4 housing via buildingHousing(); no district renumbering.
+    {BuildingId{45}, "Neighborhood",          DistrictType::CityCenter, 120, 1, 0, 0, 0, 1.0f, {{44, 2}},
      0xFFFF, 0, 0, 0, 0, CivicId{34}},  // 2 Stone; Urbanization
 }};
 

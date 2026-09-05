@@ -136,5 +136,12 @@ TEST_CASE("building entries state their amenities and their civic gate") {
     screen.refresh(ui);
     CHECK(anyLabelContains(ui, "+Amenities:1"));
     CHECK_FALSE(anyLabelContains(ui, "Requires Civic"));
+
+    screen.search("Neighborhood");
+    screen.refresh(ui);
+    REQUIRE(clickEntry(ui, "Neighborhood"));
+    screen.refresh(ui);
+    CHECK(anyLabelContains(ui, "+Housing:4"));
+    CHECK(anyLabelContains(ui, "Requires Civic: Urbanization"));
     screen.close(ui);
 }

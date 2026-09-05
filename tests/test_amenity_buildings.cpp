@@ -32,7 +32,7 @@ constexpr BuildingId WATER_PARK{44};
 } // namespace
 
 TEST_CASE("the two amenity buildings have rows, districts and civic gates") {
-    CHECK(BUILDING_DEFS.size() == 45);
+    CHECK(BUILDING_DEFS.size() >= 45); // later rows (Neighborhood 45) may follow
     const aoc::sim::BuildingDef& complex = buildingDef(ENTERTAINMENT_COMPLEX);
     CHECK(complex.name == "Entertainment Complex");
     CHECK(complex.requiredDistrict == DistrictType::CityCenter);
