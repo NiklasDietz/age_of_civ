@@ -325,10 +325,16 @@ void resetAirSorties(aoc::game::GameState& gameState, PlayerId player) {
     if (gsPlayer == nullptr) { return; }
 
     for (const std::unique_ptr<aoc::game::Unit>& unit : gsPlayer->units()) {
+        if (!isAirUnit(unitTypeDef(unit->typeId()).unitClass)) {
+            continue;   // every Unit carries the component; only aircraft use it
+        }
         AirUnitComponent& air = unit->airUnit();
         if (air.maxSorties > 0) {
             air.sortiesRemaining = air.maxSorties;
         }
+        // Fighters patrol until they fly a sortie (interception itself needs
+        // sortiesRemaining > 0); bombers never intercept.
+        air.isIntercepting = isInterceptorType(unit->typeId());
     }
 }
 

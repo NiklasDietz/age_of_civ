@@ -123,6 +123,12 @@ void buildWorld(World& w) {
     p1.warWeariness().turnsAtWar[0] = 5;
 
     p0.addUnit(aoc::UnitTypeId{0}, {6, 5});
+    // v13: air state rides on the unit record.
+    aoc::game::Unit& fighter          = p0.addUnit(aoc::UnitTypeId{18}, {7, 5});
+    fighter.airUnit().sortiesRemaining = 0;
+    fighter.airUnit().maxSorties       = 2;
+    fighter.airUnit().operationalRange = 11;
+    fighter.airUnit().isIntercepting   = true;
     p1.addUnit(aoc::UnitTypeId{0}, {12, 10});
     // Player 2 needs at least one unit: loadGame derives the player count
     // from the highest player index that owns a city or unit, so a player
@@ -183,6 +189,16 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(loaded.grid.greenhouseCrop(21) == 7);
     CHECK(loaded.grid.hasFallout(22));
     CHECK(loaded.grid.hasAqueduct(23));
+    // v13: the fighter's air state.
+    const aoc::game::Unit* lFighter = nullptr;
+    for (const std::unique_ptr<aoc::game::Unit>& u : lp0.units()) {
+        if (u->typeId() == aoc::UnitTypeId{18}) { lFighter = u.get(); }
+    }
+    REQUIRE(lFighter != nullptr);
+    CHECK(lFighter->airUnit().sortiesRemaining == 0);
+    CHECK(lFighter->airUnit().maxSorties == 2);
+    CHECK(lFighter->airUnit().operationalRange == 11);
+    CHECK(lFighter->airUnit().isIntercepting);
     aoc::test::LayerSnapshot layers;
     original.grid.visitLayers(layers);
     aoc::test::LayerCompare layerCompare{layers};

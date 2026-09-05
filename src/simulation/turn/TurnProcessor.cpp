@@ -50,6 +50,7 @@
 
 // Military
 #include "aoc/simulation/unit/Movement.hpp"
+#include "aoc/simulation/unit/CombatExtensions.hpp"
 
 // Diplomacy
 #include "aoc/simulation/diplomacy/BorderViolation.hpp"
@@ -1315,6 +1316,12 @@ void processTurn(TurnContext& turnContext) {
                 }
             }
         }
+    }
+
+    // Air units get their sorties back and fighters go on patrol before any
+    // seat acts this turn (see resetAirSorties for why this was missing).
+    for (PlayerId player : turnContext.allPlayers) {
+        resetAirSorties(*turnContext.gameState, player);
     }
 
     // 1. AI decisions. WP-H: skip players the user has taken over

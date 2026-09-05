@@ -138,14 +138,23 @@ struct NuclearWeaponComponent {
 // Air Combat
 // ============================================================================
 
-/// ECS component for air units (Fighters, Bombers).
+/// Per-unit air state (meaningful only for `isAirUnit` classes; every Unit
+/// carries one). Saved since v13 except `baseCity`, which nothing assigns.
 struct AirUnitComponent {
-    EntityId baseCity = NULL_ENTITY;   ///< City or carrier this unit operates from
+    EntityId baseCity = NULL_ENTITY;   ///< ECS relic: never assigned, not saved
     int32_t  sortiesRemaining = 1;     ///< Missions this turn (reset each turn)
     int32_t  maxSorties = 1;           ///< Max missions per turn
     int32_t  operationalRange = 8;     ///< Max hex range from base
-    bool     isIntercepting = false;   ///< Fighter set to intercept mode
+    bool     isIntercepting = false;   ///< Fighter on patrol; set by resetAirSorties
 };
+
+/// Fighters (the Biplane -> Fighter -> Jet Fighter -> Stealth Fighter chain)
+/// fly interception; bombers never do. Pinned to the UnitTypes table by
+/// test_air_sorties, since unitTypeDef() is not constexpr.
+[[nodiscard]] constexpr bool isInterceptorType(UnitTypeId id) {
+    return id == UnitTypeId{48} || id == UnitTypeId{18} || id == UnitTypeId{49}
+        || id == UnitTypeId{50};
+}
 
 /**
  * @brief Execute a bombing run on a target tile.
@@ -173,7 +182,12 @@ bool attemptInterception(aoc::game::GameState& gameState,
                          aoc::game::Unit& target);
 
 /**
- * @brief Reset air unit sorties at the start of a turn.
+ * @brief Start-of-turn reset for `player`'s air units: sorties back to
+ *        `maxSorties`, fighters go on patrol (`isIntercepting`), bombers
+ *        never do. Units that are not air units are left untouched.
+ *        Called by processTurn for every seat before the AI loop; until
+ *        2026-09-05 nothing called it, so an air unit that flew once never
+ *        flew again and no fighter ever intercepted.
  */
 void resetAirSorties(aoc::game::GameState& gameState, PlayerId player);
 

@@ -28,6 +28,11 @@
  * (MapFile.hpp isGameGridLayer). The ~170 worldgen-only layers were 90% of a
  * 17 MB Tutorial save and are never read by the simulation; they remain in
  * the headless map cache (.aocmap), which is lossless.
+ *
+ * v13 (2026-09-05): the Entities unit record carries AirUnitComponent
+ * (sortiesRemaining, maxSorties, operationalRange, isIntercepting) after the
+ * pending path. Without it a loaded fighter forgot its patrol state and a
+ * bomber its spent sorties.
  */
 
 #include <cstdint>
@@ -35,6 +40,6 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 12;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 13;
 
 } // namespace aoc::save

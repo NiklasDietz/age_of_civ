@@ -472,6 +472,12 @@ void writeEntitySection(WriteBuffer& out, const aoc::game::GameState& gameState)
                 section.writeI32(coord.q);
                 section.writeI32(coord.r);
             }
+            // v13: air state. baseCity is an unassigned ECS relic and stays out.
+            const aoc::sim::AirUnitComponent& air = unit->airUnit();
+            section.writeI32(air.sortiesRemaining);
+            section.writeI32(air.maxSorties);
+            section.writeI32(air.operationalRange);
+            section.writeU8(air.isIntercepting ? uint8_t{1} : uint8_t{0});
         }
     }
 
@@ -1781,6 +1787,10 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 aoc::sim::UnitState state;
                 int8_t charges;
                 std::vector<aoc::hex::AxialCoord> pendingPath;
+                int32_t sorties;      // v13
+                int32_t maxSorties;
+                int32_t range;
+                bool    intercepting;
             };
             std::vector<UnitData> unitDataList;
             unitDataList.reserve(unitCount);
@@ -1806,6 +1816,10 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 for (uint16_t p = 0; p < pathSize; ++p) {
                     ud.pendingPath.push_back({buf.readI32(), buf.readI32()});
                 }
+                ud.sorties      = buf.readI32();   // v13
+                ud.maxSorties   = buf.readI32();
+                ud.range        = buf.readI32();
+                ud.intercepting = buf.readU8() != 0;
                 if (ud.owner > maxOwner) {
                     maxOwner = ud.owner;
                 }
@@ -1909,6 +1923,10 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 unit.setState(ud.state);
                 // Note: chargesRemaining is not yet settable via Unit public API.
                 unit.pendingPath() = ud.pendingPath;
+                unit.airUnit().sortiesRemaining = ud.sorties;   // v13
+                unit.airUnit().maxSorties       = ud.maxSorties;
+                unit.airUnit().operationalRange = ud.range;
+                unit.airUnit().isIntercepting   = ud.intercepting;
                 loadedUnits.push_back(&unit);
             }
             break;

@@ -12,9 +12,11 @@ format.
   `saveGame()` / `loadGame()`: free functions that write/read the entire game. Format:
   `[Header: magic "AOC\0" + version(4) + flags(4) + dataSize(4)]` followed by
   self-describing sections (`sectionId(2) + sectionSize(4) + data`). Current version:
-  `CURRENT_SAVE_VERSION = 12` (v12: `MapLayers` carries only the 16 game-state grid
-  layers, see `MapFile.hpp` `isGameGridLayer`; worldgen-only layers live in the
-  headless `.aocmap` cache). Currently 38 named `SectionId` values covering map grid,
+  `CURRENT_SAVE_VERSION = 13` (v13: the `Entities` unit record carries
+  `AirUnitComponent`, so sorties and the patrol flag survive a load; v12: `MapLayers`
+  carries only the 16 game-state grid layers, see `MapFile.hpp` `isGameGridLayer`;
+  worldgen-only layers live in the headless `.aocmap` cache). Currently 38 named
+  `SectionId` values covering map grid,
   entities, diplomacy, market, fog of war, PRNG state, per-player tech/civic/monetary/
   government/production/religion/tourism/space-race/prestige state, and global
   wonder/barbarian/city-state trackers.
