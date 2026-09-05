@@ -260,6 +260,29 @@ def aoc_activate_great_person(player: int, q: int, r: int) -> dict:
 
 
 @mcp.tool()
+def aoc_congress_vote(player: int, weight: int) -> dict:
+    """Replace `player`'s vote on the open World Congress proposal with a signed weight
+    from -4 to 4 (0 abstains). Every seat's vote is cast automatically when a resolution
+    is proposed and tallied at the next end of turn, so this is the window to change it.
+    The first point of weight is free; each extra costs 10 favor, and extras the automatic
+    vote bought are refunded first. Queues the request; no open proposal or too little
+    favor is rejected in the game log.
+    """
+    return _post("/game/congress/vote", player=player, weight=weight)
+
+
+@mcp.tool()
+def aoc_congress_propose(player: int, resolution: int, target: int = 255) -> dict:
+    """Register what `player` proposes the next time it is chosen as proposer (the seat
+    with the most favor, at least 30). Resolution ids: 0 BanNuclearWeapons,
+    1 GlobalSanctions (needs a living rival as `target`), 2 WorldsFair,
+    3 InternationalGames, 4 ArmsReduction, 5 ClimateAccord; 6 clears the registration.
+    Queues the request; an invalid target is rejected in the game log.
+    """
+    return _post("/game/congress/propose", player=player, resolution=resolution, target=target)
+
+
+@mcp.tool()
 def aoc_set_production(player: int, q: int, r: int, item_type: str, item_id: int) -> dict:
     """Queue a production item onto the city owned by `player` at hex (q, r).
 

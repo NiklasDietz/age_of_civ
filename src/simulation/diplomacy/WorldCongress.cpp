@@ -23,11 +23,11 @@ namespace aoc::sim {
 
 namespace {
 
-constexpr int32_t kProposalCost        = 30;
-constexpr int32_t kExtraVoteCost       = 10;
-constexpr int32_t kMaxExtraVotes       = 3;
+constexpr int32_t kProposalCost        = WORLD_CONGRESS_PROPOSAL_COST;
+constexpr int32_t kExtraVoteCost       = WORLD_CONGRESS_EXTRA_VOTE_COST;
+constexpr int32_t kMaxExtraVotes       = WORLD_CONGRESS_MAX_VOTE_WEIGHT - 1;
 constexpr int32_t kMinProposerFavor    = kProposalCost;
-constexpr int32_t kSessionInterval     = 30;
+constexpr int32_t kSessionInterval     = WORLD_CONGRESS_SESSION_INTERVAL;
 constexpr int32_t kSanctionsDuration   = 20;
 constexpr int32_t kCultureBoostTurns   = 10;
 constexpr int32_t kClimateAccordTurns  = 20;
@@ -234,6 +234,61 @@ Resolution selectResolutionForProposer(const aoc::game::Player& proposer,
 }
 
 // ---------------------------------------------------------------------------
+// Player-registered proposals
+// ---------------------------------------------------------------------------
+
+/// Normalise `target` for `res` the way the automatic pick does: prestige
+/// resolutions boost the proposer, sanctions need a living rival, the rest take
+/// none. False when sanctions would target nobody, the proposer or a dead seat.
+bool normaliseProposalTarget(const aoc::game::GameState& gs, PlayerId proposer, Resolution res,
+                             PlayerId& target) {
+    switch (res) {
+        case Resolution::GlobalSanctions: {
+            if (target == INVALID_PLAYER || target == BARBARIAN_PLAYER || target == proposer) {
+                return false;
+            }
+            const aoc::game::Player* rival = gs.player(target);
+            return rival != nullptr && !rival->victoryTracker().isEliminated;
+        }
+        case Resolution::WorldsFair:
+        case Resolution::InternationalGames:
+        case Resolution::ClimateAccord:
+            target = proposer;
+            return true;
+        default:
+            target = INVALID_PLAYER;
+            return true;
+    }
+}
+
+void clearPreferredProposal(WorldCongressComponent& congress) {
+    congress.preferredProposal = Resolution::Count;
+    congress.preferredTarget   = INVALID_PLAYER;
+    congress.preferredBy       = INVALID_PLAYER;
+}
+
+/// The proposal `proposer` registered, or Count when that seat registered none or
+/// its target is no longer valid; consumed either way.
+Resolution takePreferredProposal(WorldCongressComponent& congress,
+                                 const aoc::game::GameState& gs,
+                                 PlayerId proposer,
+                                 PlayerId& outTarget) {
+    if (congress.preferredBy != proposer || congress.preferredProposal == Resolution::Count) {
+        return Resolution::Count;
+    }
+    const Resolution res = congress.preferredProposal;
+    PlayerId target      = congress.preferredTarget;
+    clearPreferredProposal(congress);
+    if (!normaliseProposalTarget(gs, proposer, res, target)) {
+        LOG_INFO("World Congress: Player %u registered '%s' but its target is gone; picking automatically",
+                 static_cast<unsigned>(proposer), resolutionName(res));
+        return Resolution::Count;
+    }
+    outTarget = target;
+    return res;
+}
+
+// ---------------------------------------------------------------------------
 // Effects
 // ---------------------------------------------------------------------------
 
@@ -399,6 +454,7 @@ void WorldCongressComponent::proposeResolution(Resolution res,
     this->proposer         = prop;
     this->proposalTarget   = target;
     this->votes.fill(0);
+    this->voteChosen.fill(false);
     LOG_INFO("World Congress: Player %u proposes '%s' (target=%d)",
              static_cast<unsigned>(prop), resolutionName(res),
              static_cast<int>(target));
@@ -497,9 +553,13 @@ void processWorldCongress(aoc::game::GameState& gameState,
             return;
         }
 
-        PlayerId target = INVALID_PLAYER;
-        const Resolution res = selectResolutionForProposer(*proposer, gameState,
-                                                            diplomacy, rng, target);
+        // A seat that registered its proposal skips the utility pick (and its RNG
+        // draws); only a player request ever registers one, so headless is unchanged.
+        PlayerId   target = INVALID_PLAYER;
+        Resolution res    = takePreferredProposal(congress, gameState, proposerId, target);
+        if (res == Resolution::Count) {
+            res = selectResolutionForProposer(*proposer, gameState, diplomacy, rng, target);
+        }
         proposer->diplomaticFavor().spendFavor(kProposalCost);
         congress.proposeResolution(res, proposerId, target);
 
@@ -565,8 +625,77 @@ void processWorldCongress(aoc::game::GameState& gameState,
         congress.proposer        = INVALID_PLAYER;
         congress.proposalTarget  = INVALID_PLAYER;
         congress.votes.fill(0);
+        congress.voteChosen.fill(false);
         congress.turnsUntilNextSession = kSessionInterval;
     }
+}
+
+// ===========================================================================
+// Player requests (screen, debug route, MCP tool)
+// ===========================================================================
+
+ErrorCode requestCongressVote(aoc::game::GameState& gameState, PlayerId player, int32_t weight) {
+    if (player == INVALID_PLAYER || player == BARBARIAN_PLAYER) {
+        return ErrorCode::InvalidArgument;
+    }
+    aoc::game::Player* voter = gameState.player(player);
+    if (voter == nullptr || voter->victoryTracker().isEliminated) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (weight < -WORLD_CONGRESS_MAX_VOTE_WEIGHT || weight > WORLD_CONGRESS_MAX_VOTE_WEIGHT) {
+        return ErrorCode::InvalidArgument;
+    }
+    WorldCongressComponent& congress = gameState.worldCongress();
+    if (congress.currentProposal == Resolution::Count || player >= congress.votes.size()) {
+        return ErrorCode::InvalidState;
+    }
+    // Only the bought extras move favor: the automatic vote already paid for
+    // |current| - 1 of them, the new weight needs |weight| - 1.
+    const int32_t current   = congress.votes[player];
+    const int32_t oldExtras = std::max(0, std::abs(current) - 1);
+    const int32_t newExtras = std::max(0, std::abs(weight) - 1);
+    const int32_t delta     = (newExtras - oldExtras) * kExtraVoteCost;
+    PlayerDiplomaticFavorComponent& favor = voter->diplomaticFavor();
+    if (delta > 0 && favor.favor < delta) {
+        return ErrorCode::InsufficientResources;
+    }
+    favor.favor -= delta;
+    congress.castVote(player, static_cast<int16_t>(weight));
+    congress.voteChosen[player] = true;
+    LOG_INFO("World Congress: Player %u votes %+d on '%s' (favor %+d)",
+             static_cast<unsigned>(player), weight, resolutionName(congress.currentProposal),
+             -delta);
+    return ErrorCode::Ok;
+}
+
+ErrorCode requestCongressProposal(aoc::game::GameState& gameState, PlayerId player,
+                                  Resolution resolution, PlayerId target) {
+    if (player == INVALID_PLAYER || player == BARBARIAN_PLAYER) {
+        return ErrorCode::InvalidArgument;
+    }
+    const aoc::game::Player* proposer = gameState.player(player);
+    if (proposer == nullptr || proposer->victoryTracker().isEliminated) {
+        return ErrorCode::InvalidArgument;
+    }
+    WorldCongressComponent& congress = gameState.worldCongress();
+    if (resolution == Resolution::Count) {
+        if (congress.preferredBy == player) {
+            clearPreferredProposal(congress);
+        }
+        return ErrorCode::Ok;
+    }
+    if (static_cast<uint8_t>(resolution) > static_cast<uint8_t>(Resolution::Count)) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (!normaliseProposalTarget(gameState, player, resolution, target)) {
+        return ErrorCode::InvalidArgument;
+    }
+    congress.preferredProposal = resolution;
+    congress.preferredTarget   = target;
+    congress.preferredBy       = player;
+    LOG_INFO("World Congress: Player %u will propose '%s' (target=%d) when chosen",
+             static_cast<unsigned>(player), resolutionName(resolution), static_cast<int>(target));
+    return ErrorCode::Ok;
 }
 
 } // namespace aoc::sim

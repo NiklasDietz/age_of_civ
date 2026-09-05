@@ -1243,6 +1243,72 @@ ErrorCode Application::initialize(const Config& config) {
             return std::string("{\"queued\":true}");
         });
 
+    // POST /game/congress/vote?player=&weight=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/congress/vote",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t weight = 0;
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "weight", weight, err)) {
+                return err;
+            }
+            if (weight < -aoc::sim::WORLD_CONGRESS_MAX_VOTE_WEIGHT
+                || weight > aoc::sim::WORLD_CONGRESS_MAX_VOTE_WEIGHT) {
+                return std::string("{\"error\":\"weight out of range\"}");
+            }
+            aoc::debug::CongressVoteCommand cmd{};
+            cmd.player = static_cast<aoc::PlayerId>(player);
+            cmd.weight = weight;
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
+    // POST /game/congress/propose?player=&resolution=&target=   (target optional)
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/congress/propose",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player     = 0;
+            int32_t resolution = 0;
+            int32_t target     = static_cast<int32_t>(aoc::INVALID_PLAYER);
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "resolution", resolution, err)) {
+                return err;
+            }
+            if (q.find("target") != q.end() && !requireIntParam(q, "target", target, err)) {
+                return err;
+            }
+            if (resolution < 0 || resolution > static_cast<int32_t>(aoc::sim::Resolution::Count)) {
+                return std::string("{\"error\":\"resolution out of range\"}");
+            }
+            aoc::debug::CongressProposalCommand cmd{};
+            cmd.player     = static_cast<aoc::PlayerId>(player);
+            cmd.resolution = static_cast<aoc::sim::Resolution>(resolution);
+            cmd.target     = static_cast<aoc::PlayerId>(target);
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
     // POST /game/research?player=&techId=
     this->m_debugServer->routeJson(
         DSM::Post, "/game/research",
@@ -1432,6 +1498,8 @@ ErrorCode Application::initialize(const Config& config) {
                 "{\"method\":\"POST\",\"path\":\"/game/research?player=&techId=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/spy/mission?player=&q=&r=&mission=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/greatperson/activate?player=&q=&r=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/congress/vote?player=&weight=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/congress/propose?player=&resolution=&target=\"},"
                 "{\"method\":\"GET\",\"path\":\"/ui/tree\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click?widgetId=N\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click-at?x=&y=\"},"
@@ -2381,6 +2449,27 @@ void Application::executeGameControlCommand(const aoc::debug::ActivateGreatPerso
                  static_cast<int>(describeError(result).size()), describeError(result).data());
     } else if (this->m_selectedUnit != nullptr && this->m_selectedUnit->position() == cmd.at) {
         this->m_selectedUnit = nullptr;  // the unit was removed by the activation
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::CongressVoteCommand& cmd) {
+    const ErrorCode result =
+        aoc::sim::requestCongressVote(this->m_gameState, cmd.player, cmd.weight);
+    if (result != ErrorCode::Ok) {
+        LOG_WARN("Congress vote %+d for player %u rejected: %.*s", cmd.weight,
+                 static_cast<unsigned>(cmd.player),
+                 static_cast<int>(describeError(result).size()), describeError(result).data());
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::CongressProposalCommand& cmd) {
+    const ErrorCode result = aoc::sim::requestCongressProposal(
+        this->m_gameState, cmd.player, cmd.resolution, cmd.target);
+    if (result != ErrorCode::Ok) {
+        LOG_WARN("Congress proposal %d for player %u (target %d) rejected: %.*s",
+                 static_cast<int>(cmd.resolution), static_cast<unsigned>(cmd.player),
+                 static_cast<int>(cmd.target),
+                 static_cast<int>(describeError(result).size()), describeError(result).data());
     }
 }
 

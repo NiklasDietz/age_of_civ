@@ -1,6 +1,6 @@
 /**
  * @file test_world_congress_screen.cpp
- * @brief The read-only World Congress screen shows the session status, the
+ * @brief The World Congress screen shows the session status, the
  *        current proposal with its vote weights and the human's own vote, the
  *        human's favor, active effects and passed resolutions, and rebuilds only
  *        when the congress state moves.
@@ -22,9 +22,11 @@
 
 using aoc::PlayerId;
 using aoc::sim::Resolution;
+using aoc::ui::ButtonData;
 using aoc::ui::LabelData;
 using aoc::ui::UIManager;
 using aoc::ui::Widget;
+using aoc::ui::WidgetId;
 using aoc::ui::WorldCongressScreen;
 
 namespace {
@@ -53,6 +55,19 @@ struct Fixture {
         return n;
     }
 
+    /// Click the first button whose label contains `needle`; false when none.
+    bool clickButton(const std::string& needle) {
+        for (const Widget& w : this->ui.widgets()) {
+            if (w.id == aoc::ui::INVALID_WIDGET) { continue; }
+            const ButtonData* btn = std::get_if<ButtonData>(&w.data);
+            if (btn != nullptr && btn->label.find(needle) != std::string::npos) {
+                const WidgetId id = w.id;
+                return this->ui.clickWidget(id);
+            }
+        }
+        return false;
+    }
+
     [[nodiscard]] int32_t labelsContaining(const std::string& needle) const {
         int32_t n = 0;
         for (const Widget& w : this->ui.widgets()) {
@@ -73,7 +88,8 @@ TEST_CASE("a fresh congress shows the countdown, the favor, and empty sections")
     CHECK(f.labelsContaining("None on the table.") == 1);
     CHECK(f.labelsContaining("None.") == 1);
     CHECK(f.labelsContaining("None yet.") == 1);
-    CHECK(f.labelsContaining("Votes are cast automatically for every civilization, including yours.") == 1);
+    CHECK(f.labelsContaining("Every civilization votes automatically when a resolution is proposed") == 1);
+    CHECK(f.labelsContaining("Registered: none") == 1);
 }
 
 TEST_CASE("a proposal shows proposer, target, tallied vote weights and the human's own vote") {
@@ -90,7 +106,7 @@ TEST_CASE("a proposal shows proposer, target, tallied vote weights and the human
     CHECK(f.labelsContaining(name + "  proposed by ") == 1);
     CHECK(f.labelsContaining("targeting ") == 1);
     CHECK(f.labelsContaining("(you)") == 1);
-    CHECK(f.labelsContaining("Votes: yes 3  no 2  |  your vote: -2") == 1);
+    CHECK(f.labelsContaining("Votes: yes 3  no 2  |  your vote: -2 (cast automatically)") == 1);
 }
 
 TEST_CASE("active effects and passed resolutions are listed; refresh rebuilds only on change") {
@@ -120,4 +136,64 @@ TEST_CASE("close removes every widget") {
     f.screen.close(f.ui);
     CHECK_FALSE(f.screen.isOpen());
     CHECK(f.liveWidgets() == before);
+}
+
+TEST_CASE("the vote buttons change the human's vote through the shared request") {
+    Fixture f;
+    aoc::sim::WorldCongressComponent& wc = f.world.gameState.worldCongress();
+    wc.isActive = true;
+    wc.proposeResolution(Resolution::WorldsFair, PlayerId{1}, PlayerId{1});
+    wc.castVote(PlayerId{0}, 1);   // the automatic vote
+    const aoc::sim::PlayerDiplomaticFavorComponent& favor =
+        f.world.gameState.players()[0]->diplomaticFavor();
+    f.screen.open(f.ui);
+    CHECK(f.labelsContaining("your vote: +1 (cast automatically)") == 1);
+
+    REQUIRE(f.clickButton("Vote no"));
+    f.screen.refresh(f.ui);
+    CHECK(wc.votes[0] == -1);
+    CHECK(wc.voteChosen[0]);
+    CHECK(f.labelsContaining("your vote: -1 (your choice)") == 1);
+
+    REQUIRE(f.clickButton("More weight"));   // buys one extra
+    f.screen.refresh(f.ui);
+    CHECK(wc.votes[0] == -2);
+    CHECK(favor.favor == 35);
+    CHECK(f.labelsContaining("Your favor: 35") == 1);
+
+    REQUIRE(f.clickButton("Vote yes"));   // changing sides keeps the bought weight for free
+    f.screen.refresh(f.ui);
+    CHECK(wc.votes[0] == 2);
+    CHECK(favor.favor == 35);
+
+    REQUIRE(f.clickButton("Abstain"));   // refunds the extra
+    f.screen.refresh(f.ui);
+    CHECK(wc.votes[0] == 0);
+    CHECK(favor.favor == 45);
+    CHECK(f.labelsContaining("your vote: abstain (your choice)") == 1);
+}
+
+TEST_CASE("the proposal buttons register what the human proposes next") {
+    Fixture f;
+    aoc::sim::WorldCongressComponent& wc = f.world.gameState.worldCongress();
+    f.screen.open(f.ui);
+    CHECK(f.labelsContaining("Registered: none") == 1);
+
+    REQUIRE(f.clickButton(aoc::sim::resolutionName(Resolution::ClimateAccord)));
+    f.screen.refresh(f.ui);
+    CHECK(wc.preferredProposal == Resolution::ClimateAccord);
+    CHECK(wc.preferredBy == PlayerId{0});
+    CHECK(f.labelsContaining(std::string("Registered: ") +
+                             aoc::sim::resolutionName(Resolution::ClimateAccord)) == 1);
+
+    REQUIRE(f.clickButton("Sanction "));   // the one living rival
+    f.screen.refresh(f.ui);
+    CHECK(wc.preferredProposal == Resolution::GlobalSanctions);
+    CHECK(wc.preferredTarget == PlayerId{1});
+    CHECK(f.labelsContaining(" against ") == 1);
+
+    REQUIRE(f.clickButton("Clear"));
+    f.screen.refresh(f.ui);
+    CHECK(wc.preferredProposal == Resolution::Count);
+    CHECK(f.labelsContaining("Registered: none") == 1);
 }

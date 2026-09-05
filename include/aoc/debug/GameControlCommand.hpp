@@ -4,6 +4,7 @@
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/diplomacy/Espionage.hpp"
+#include "aoc/simulation/diplomacy/WorldCongress.hpp"
 
 #include <cstdint>
 #include <string>
@@ -66,9 +67,23 @@ struct ActivateGreatPersonCommand {
     aoc::hex::AxialCoord at;
 };
 
+/// Replace `player`'s vote on the open World Congress proposal.
+struct CongressVoteCommand {
+    aoc::PlayerId player;
+    int32_t weight;
+};
+
+/// Register what `player` proposes the next time it is chosen as proposer.
+struct CongressProposalCommand {
+    aoc::PlayerId player;
+    aoc::sim::Resolution resolution;
+    aoc::PlayerId target;
+};
+
 using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, FoundCityCommand,
                                         SetProductionCommand, SetResearchCommand,
                                         AssignSpyMissionCommand, ActivateGreatPersonCommand,
+                                        CongressVoteCommand, CongressProposalCommand,
                                         EndTurnCommand>;
 
 } // namespace aoc::debug
