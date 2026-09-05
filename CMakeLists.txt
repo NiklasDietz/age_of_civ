@@ -942,6 +942,7 @@ if(AOC_BUILD_TESTS)
         test_world_congress
         test_air_sorties
         test_attack_request
+        test_amenity_buildings
     )
 
     # UI tests link against src/ui/UIManager.cpp and src/ui/ScreenRegistry.cpp,

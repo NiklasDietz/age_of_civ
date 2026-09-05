@@ -14,6 +14,7 @@
 #include "aoc/ui/Widget.hpp"
 
 #include <string>
+#include <variant>
 
 using aoc::ui::EncyclopediaScreen;
 using aoc::ui::UIManager;
@@ -78,5 +79,62 @@ TEST_CASE("switching category and searching rebuild the entry list") {
     screen.search("");
     screen.refresh(ui);
     CHECK(liveWidgets(ui) == unitWidgets);
+    screen.close(ui);
+}
+
+namespace {
+
+/// Click the first button labelled exactly `label`; false when none.
+bool clickEntry(UIManager& ui, const std::string& label) {
+    for (const Widget& w : ui.widgets()) {
+        if (w.id == aoc::ui::INVALID_WIDGET) { continue; }
+        const aoc::ui::ButtonData* btn = std::get_if<aoc::ui::ButtonData>(&w.data);
+        if (btn != nullptr && btn->label == label) {
+            const aoc::ui::WidgetId id = w.id;
+            return ui.clickWidget(id);
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] bool anyLabelContains(const UIManager& ui, const std::string& needle) {
+    for (const Widget& w : ui.widgets()) {
+        if (w.id == aoc::ui::INVALID_WIDGET) { continue; }
+        const aoc::ui::LabelData* label = std::get_if<aoc::ui::LabelData>(&w.data);
+        if (label != nullptr && label->text.find(needle) != std::string::npos) { return true; }
+    }
+    return false;
+}
+
+} // namespace
+
+TEST_CASE("building entries state their amenities and their civic gate") {
+    UIManager ui;
+    ui.setScreenSize(1920.0f, 1200.0f);
+    EncyclopediaScreen screen;
+    screen.setScreenSize(1920.0f, 1200.0f);
+    screen.open(ui);
+    screen.setCategory(WikiCategory::Buildings);
+
+    screen.search("Entertainment Complex");
+    screen.refresh(ui);
+    REQUIRE(clickEntry(ui, "Entertainment Complex"));
+    screen.refresh(ui);
+    CHECK(anyLabelContains(ui, "+Amenities:2"));
+    CHECK(anyLabelContains(ui, "Requires Civic: Games and Recreation"));
+
+    screen.search("Water Park");
+    screen.refresh(ui);
+    REQUIRE(clickEntry(ui, "Water Park"));
+    screen.refresh(ui);
+    CHECK(anyLabelContains(ui, "District: Harbor"));
+    CHECK(anyLabelContains(ui, "Requires Civic: Urbanization"));
+
+    screen.search("Hospital");
+    screen.refresh(ui);
+    REQUIRE(clickEntry(ui, "Hospital"));
+    screen.refresh(ui);
+    CHECK(anyLabelContains(ui, "+Amenities:1"));
+    CHECK_FALSE(anyLabelContains(ui, "Requires Civic"));
     screen.close(ui);
 }

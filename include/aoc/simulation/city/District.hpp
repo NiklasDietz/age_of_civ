@@ -79,6 +79,20 @@ static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType
     return r;
 }
 
+/// Amenities a building adds to its city every turn; Happiness.cpp credits it.
+/// One table instead of id checks scattered through the happiness pass.
+[[nodiscard]] inline constexpr float buildingAmenities(BuildingId id) {
+    switch (id.value) {
+        case 6:  return 0.5f;   // Market
+        case 15: return 0.5f;   // Granary
+        case 16: return 0.5f;   // Monument
+        case 22: return 1.0f;   // Hospital
+        case 43: return 2.0f;   // Entertainment Complex
+        case 44: return 2.0f;   // Water Park
+        default: return 0.0f;
+    }
+}
+
 // ============================================================================
 // Building definitions
 // ============================================================================
@@ -161,7 +175,7 @@ struct BuildingDef {
 
 // Format: {id, name, district, prodCost, maint, prodBonus, sciBonus, goldBonus, sciMult, resourceCosts, fuelGoodId, fuelPerTurn}
 // Resource costs and fuel added for mid/late-game buildings per plan Phase 1C/1D.
-inline constexpr std::array<BuildingDef, 43> BUILDING_DEFS = {{
+inline constexpr std::array<BuildingDef, 45> BUILDING_DEFS = {{
     //                                                                                                                     resourceCosts         fuel
     {BuildingId{0},  "Forge",              DistrictType::Industrial,  60, 1, 2, 0, 0, 1.0f},                            // no cost, no fuel
     {BuildingId{1},  "Workshop",           DistrictType::Industrial,  40, 1, 1, 0, 0, 1.0f},
@@ -219,6 +233,13 @@ inline constexpr std::array<BuildingDef, 43> BUILDING_DEFS = {{
     // Housing infrastructure: Aqueduct grants +4 housing. Requires adjacent river
     // or mountain (enforced at production-time, not at def level).
     {BuildingId{42}, "Aqueduct",           DistrictType::CityCenter,  80, 1, 0, 0, 0, 1.0f, {{44, 2}}}, // 2 Stone
+    // Amenity sources (2026-09-05). Buildings rather than new district types, so the
+    // AI district table, adjacency and the district UI stay untouched; +2 amenities
+    // each via buildingAmenities(). Water Park is coastal by living in the Harbor.
+    {BuildingId{43}, "Entertainment Complex", DistrictType::CityCenter, 150, 2, 0, 0, 0, 1.0f, {{44, 2}},
+     0xFFFF, 0, 0, 0, 0, CivicId{20}},  // 2 Stone; Games and Recreation
+    {BuildingId{44}, "Water Park",            DistrictType::Harbor,     180, 2, 0, 0, 1, 1.0f, {{44, 2}},
+     0xFFFF, 0, 0, 0, 0, CivicId{34}},  // 2 Stone; Urbanization
 }};
 
 [[nodiscard]] inline constexpr const BuildingDef& buildingDef(BuildingId id) {

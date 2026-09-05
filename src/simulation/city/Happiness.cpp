@@ -142,10 +142,7 @@ void computeCityHappiness(aoc::game::Player& player) {
                 happiness.amenities += 0.5f;
             }
             for (BuildingId bid : d.buildings) {
-                if (bid.value == 15) { happiness.amenities += 0.5f; }  // Granary
-                if (bid.value == 22) { happiness.amenities += 1.0f; }  // Hospital
-                if (bid.value == 6)  { happiness.amenities += 0.5f; }  // Market
-                if (bid.value == 16) { happiness.amenities += 0.5f; }  // Monument
+                happiness.amenities += buildingAmenities(bid);
             }
         }
 

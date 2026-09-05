@@ -4,6 +4,8 @@
  */
 
 #include "aoc/ui/Encyclopedia.hpp"
+#include "aoc/simulation/tech/CivicTree.hpp"
+#include <cstdio>
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ui/StyleTokens.hpp"
 
@@ -145,7 +147,17 @@ static void buildBuildingEntries(std::vector<WikiEntry>& entries) {
             int pct = static_cast<int>((b.scienceMultiplier - 1.0f) * 100.0f);
             bonuses += "+" + std::to_string(pct) + "% Science ";
         }
+        const float amenities = aoc::sim::buildingAmenities(b.id);
+        if (amenities > 0.0f) {
+            char amenityText[16];
+            std::snprintf(amenityText, sizeof(amenityText), "%g", static_cast<double>(amenities));
+            bonuses += "+Amenities:" + std::string(amenityText) + " ";
+        }
         entry.statsBlock += "\nBonuses: " + (bonuses.empty() ? "None" : bonuses);
+        if (b.requiredCivic.isValid()) {
+            entry.statsBlock += "\nRequires Civic: " +
+                                std::string(aoc::sim::civicDef(b.requiredCivic).name);
+        }
 
         // Building capacity info
         aoc::sim::BuildingTierClass tier = aoc::sim::buildingTierClass(b.id);
