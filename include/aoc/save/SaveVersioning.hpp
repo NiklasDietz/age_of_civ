@@ -68,6 +68,10 @@
  * v20 (2026-09-05): GovernmentState carries the per-player envoy pool
  * (available, lifetime). Envoys come from civics and are spent on
  * city-states; passive accrual is gone.
+ *
+ * v21 (2026-09-06): Diplomacy carries the war start turn, friendship and
+ * open-borders expiry per pair, and denouncement turn, delegation and
+ * embassy per direction (DiplomacyActions.hpp).
  */
 
 #include <cstdint>
@@ -75,6 +79,6 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 20;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 21;
 
 } // namespace aoc::save

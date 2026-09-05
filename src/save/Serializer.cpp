@@ -1104,9 +1104,15 @@ void writeDiplomacySection(WriteBuffer& out, const aoc::sim::DiplomacyManager& d
             section.writeI32(rel.turnsSincePeace);
             section.writeI32(rel.passiveBonus);
             section.writeU8(rel.lastWarAggressor);
+            section.writeI32(rel.warDeclaredOnTurn);    // v21
+            section.writeI32(rel.friendshipUntilTurn);  // v21
+            section.writeI32(rel.openBordersUntilTurn); // v21
             for (const aoc::sim::PairwiseRelation* dir : {&rel, &back}) {
                 section.writeU8(dir->intelLevel);
                 section.writeU8(dir->hasEmbargo ? uint8_t{1} : uint8_t{0});
+                section.writeI32(dir->denouncedOnTurn);                        // v21
+                section.writeU8(dir->hasDelegation ? uint8_t{1} : uint8_t{0}); // v21
+                section.writeU8(dir->hasEmbassy ? uint8_t{1} : uint8_t{0});    // v21
                 section.writeU32(static_cast<uint32_t>(dir->embargoedGoods.size()));
                 for (const uint16_t good : dir->embargoedGoods) {
                     section.writeU16(good);
@@ -2994,14 +3000,23 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                     rel.turnsSincePeace  = buf.readI32();
                     rel.passiveBonus     = buf.readI32();
                     rel.lastWarAggressor = buf.readU8();
+                    rel.warDeclaredOnTurn    = buf.readI32(); // v21
+                    rel.friendshipUntilTurn  = buf.readI32(); // v21
+                    rel.openBordersUntilTurn = buf.readI32(); // v21
                     mirror.hasMet           = rel.hasMet;
                     mirror.metOnTurn        = rel.metOnTurn;
                     mirror.turnsSincePeace  = rel.turnsSincePeace;
                     mirror.passiveBonus     = rel.passiveBonus;
                     mirror.lastWarAggressor = rel.lastWarAggressor;
+                    mirror.warDeclaredOnTurn    = rel.warDeclaredOnTurn;
+                    mirror.friendshipUntilTurn  = rel.friendshipUntilTurn;
+                    mirror.openBordersUntilTurn = rel.openBordersUntilTurn;
                     for (aoc::sim::PairwiseRelation* dir : {&rel, &mirror}) {
                         dir->intelLevel = buf.readU8();
                         dir->hasEmbargo = buf.readU8() != 0;
+                        dir->denouncedOnTurn = buf.readI32();      // v21
+                        dir->hasDelegation   = buf.readU8() != 0;  // v21
+                        dir->hasEmbassy      = buf.readU8() != 0;  // v21
                         const uint32_t goodCount = buf.readU32();
                         if (goodCount > MAX_EMBARGOED_GOODS || !buf.canReadRecords(goodCount, 2)) {
                             LOG_ERROR("Serializer: embargoed good count %u out of range", goodCount);

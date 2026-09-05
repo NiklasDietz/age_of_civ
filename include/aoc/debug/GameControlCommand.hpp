@@ -223,6 +223,37 @@ struct BullyCityStateCommand {
     int32_t index;
 };
 
+/// Diplomacy actions between two majors (DiplomacyActions.hpp).
+struct DeclareWarCommand {
+    aoc::PlayerId player;
+    aoc::PlayerId target;
+    uint8_t casusBelli;
+};
+struct MakePeaceCommand {
+    aoc::PlayerId player;
+    aoc::PlayerId target;
+};
+struct DenounceCommand {
+    aoc::PlayerId player;
+    aoc::PlayerId target;
+};
+struct DeclareFriendshipCommand {
+    aoc::PlayerId player;
+    aoc::PlayerId target;
+};
+struct SendDelegationCommand {
+    aoc::PlayerId player;
+    aoc::PlayerId target;
+};
+struct EstablishEmbassyCommand {
+    aoc::PlayerId player;
+    aoc::PlayerId target;
+};
+struct OpenBordersCommand {
+    aoc::PlayerId player;
+    aoc::PlayerId target;
+};
+
 /// Merge the unit at `sourceAt` into the same-type unit at `at` (Corps / Army, Fleet / Armada).
 struct MergeUnitsCommand {
     aoc::PlayerId player;
@@ -257,6 +288,8 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         DeleteUnitCommand, SetAlertCommand, PromoteUnitCommand,
                                         FoundPantheonCommand, FoundReligionCommand,
                                         MoveGreatWorkCommand, SendEnvoyCommand, LevyCityStateCommand,
-                                        BullyCityStateCommand, EndTurnCommand>;
+                                        BullyCityStateCommand, DeclareWarCommand, MakePeaceCommand,
+                                        DenounceCommand, DeclareFriendshipCommand, SendDelegationCommand,
+                                        EstablishEmbassyCommand, OpenBordersCommand, EndTurnCommand>;
 
 } // namespace aoc::debug

@@ -521,6 +521,74 @@ def aoc_bully_city_state(player: int, index: int) -> dict:
 
 
 @mcp.tool()
+def aoc_list_relations(player: int) -> dict:
+    """List `player`'s relation with every other major: met, atWar, score, stance, open borders
+    (and until which turn), friendsUntil, denouncedOn, delegation, embassy, turnsSincePeace,
+    warDeclaredOn, and the casus belli indices justified right now (0 Surprise, 1 Formal,
+    2 Holy, 3 Liberation, 4 Reconquest, 5 Colonial, 6 Economic, 7 Protectorate).
+    """
+    return _get("/game/diplomacy", player=player)
+
+
+@mcp.tool()
+def aoc_declare_war(player: int, target: int, cb: int = 0) -> dict:
+    """Declare war on `target` with casus belli `cb` (see aoc_list_relations). Rejected when not met,
+    already at war, within 10 turns of a peace, during a Declaration of Friendship, or when the
+    casus belli is not justified. Queues the request.
+    """
+    return _post("/game/diplomacy/war", player=player, target=target, cb=cb)
+
+
+@mcp.tool()
+def aoc_make_peace(player: int, target: int) -> dict:
+    """Propose peace to `target`. Needs 10 turns of war; an AI accepts only when the proposer's
+    military outweighs its own beyond its personality threshold. Queues the request.
+    """
+    return _post("/game/diplomacy/peace", player=player, target=target)
+
+
+@mcp.tool()
+def aoc_denounce(player: int, target: int) -> dict:
+    """Denounce `target`: -20 relation for 30 turns and a Formal War casus belli for that time.
+    Not while at war, during a friendship, or when already denounced. Queues the request.
+    """
+    return _post("/game/diplomacy/denounce", player=player, target=target)
+
+
+@mcp.tool()
+def aoc_declare_friendship(player: int, target: int) -> dict:
+    """Declare friendship with `target` for 30 turns (+15 relation, no war either way). The other
+    side accepts at Friendly stance (score 10 or more) and refuses while denouncements stand.
+    Queues the request.
+    """
+    return _post("/game/diplomacy/friendship", player=player, target=target)
+
+
+@mcp.tool()
+def aoc_send_delegation(player: int, target: int) -> dict:
+    """Send a delegation to `target` for 25 gold: +3 relation and intelligence level 1.
+    Queues the request.
+    """
+    return _post("/game/diplomacy/delegation", player=player, target=target)
+
+
+@mcp.tool()
+def aoc_establish_embassy(player: int, target: int) -> dict:
+    """Establish an embassy with `target` for 50 gold: +5 relation and intelligence level 2.
+    Refused at Hostile stance. Queues the request.
+    """
+    return _post("/game/diplomacy/embassy", player=player, target=target)
+
+
+@mcp.tool()
+def aoc_open_borders(player: int, target: int) -> dict:
+    """Agree open borders with `target` for 30 turns; the other side consents at Friendly stance
+    (score 10 or more). Queues the request.
+    """
+    return _post("/game/diplomacy/borders", player=player, target=target)
+
+
+@mcp.tool()
 def aoc_set_production(player: int, q: int, r: int, item_type: str, item_id: int) -> dict:
     """Queue a production item onto the city owned by `player` at hex (q, r).
 

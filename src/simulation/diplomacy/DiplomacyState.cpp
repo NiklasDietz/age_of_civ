@@ -102,7 +102,7 @@ void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target,
                                    CasusBelliType cb,
                                    AllianceObligationTracker* allianceTracker,
                                    aoc::game::GameState* gameState,
-                                   int32_t /*currentTurn*/) {
+                                   int32_t currentTurn) {
     PairwiseRelation& relAB = this->relation(aggressor, target);
     PairwiseRelation& relBA = this->relation(target, aggressor);
 
@@ -126,6 +126,12 @@ void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target,
     // Wipe accumulated peace-time warming
     relAB.passiveBonus = 0;
     relBA.passiveBonus = 0;
+    relAB.warDeclaredOnTurn    = currentTurn;
+    relBA.warDeclaredOnTurn    = currentTurn;
+    relAB.friendshipUntilTurn  = -1;
+    relBA.friendshipUntilTurn  = -1;
+    relAB.openBordersUntilTurn = -1;
+    relBA.openBordersUntilTurn = -1;
 
     // War modifier scaled by CB multiplier (H1.5). Liberation/Reconquest/
     // Protectorate CBs (multiplier 0) produce no relation penalty; Surprise War
@@ -415,6 +421,27 @@ void DiplomacyManager::addReputationModifier(PlayerId a, PlayerId b,
     // NOT symmetric: reputation is directional. "A's reputation with B" is
     // independent of "B's reputation with A". You can be trustworthy toward
     // one player and a backstabber toward another.
+}
+
+void DiplomacyManager::expireAgreements(int32_t currentTurn) {
+    for (uint8_t a = 0; a < this->m_playerCount; ++a) {
+        for (uint8_t b = static_cast<uint8_t>(a + 1); b < this->m_playerCount; ++b) {
+            PairwiseRelation& ab = this->relation(a, b);
+            PairwiseRelation& ba = this->relation(b, a);
+            if (ab.openBordersUntilTurn >= 0 && currentTurn >= ab.openBordersUntilTurn) {
+                ab.hasOpenBorders      = false;
+                ba.hasOpenBorders      = false;
+                ab.openBordersUntilTurn = -1;
+                ba.openBordersUntilTurn = -1;
+                LOG_INFO("Open borders between %u and %u expired", static_cast<unsigned>(a),
+                         static_cast<unsigned>(b));
+            }
+            if (ab.friendshipUntilTurn >= 0 && currentTurn >= ab.friendshipUntilTurn) {
+                ab.friendshipUntilTurn = -1;
+                ba.friendshipUntilTurn = -1;
+            }
+        }
+    }
 }
 
 void DiplomacyManager::tickModifiers() {

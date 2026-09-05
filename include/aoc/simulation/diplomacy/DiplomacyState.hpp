@@ -90,6 +90,13 @@ struct PairwiseRelation {
     bool    hasCulturalAlliance  = false;   ///< +25% tourism between allies (L1)
     bool    hasReligiousAlliance = false;   ///< +25% faith on shared holy sites (L1)
     bool    hasEmbargo         = false;
+    // -- Timed agreements and stances (Civ VI plan 2.10a); -1 = none --
+    int32_t warDeclaredOnTurn    = -1; ///< Turn the current war began (peace waits WAR_MIN_TURNS)
+    int32_t denouncedOnTurn      = -1; ///< This side denounced the other on that turn (per direction)
+    int32_t friendshipUntilTurn  = -1; ///< Declaration of Friendship active while turn < this
+    int32_t openBordersUntilTurn = -1; ///< Open borders granted by request expire at this turn
+    bool    hasDelegation        = false; ///< This side keeps a delegation at the other's court
+    bool    hasEmbassy           = false; ///< This side keeps an embassy there
 
     /// Highest intelligence tier achieved against this player (0=None,
     /// 1=Basic, 2=Military, 3=Economic, 4=Comprehensive, 5=Complete).
@@ -280,6 +287,10 @@ public:
      * Called once per turn during the DiplomacyDecay phase.
      */
     void tickModifiers();
+    /// Expire requested open borders and declarations of friendship whose turn
+    /// has come (DiplomacyActions.hpp). Open borders the AI granted without a
+    /// duration stay.
+    void expireAgreements(int32_t currentTurn);
 
     [[nodiscard]] uint8_t playerCount() const { return this->m_playerCount; }
 

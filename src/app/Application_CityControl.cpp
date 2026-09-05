@@ -16,6 +16,8 @@
 #include "aoc/simulation/unit/UnitOrders.hpp"
 #include "aoc/simulation/unit/Promotion.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyActions.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/culture/GreatWorks.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/game/Player.hpp"
@@ -709,6 +711,182 @@ void Application::executeGameControlCommand(const aoc::debug::BullyCityStateComm
         LOG_WARN("Bully by player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
                  static_cast<int>(describeError(rc).size()), describeError(rc).data());
     }
+}
+
+void Application::registerDiplomacyRoutes() {
+    using DSM = aoc::debug::DebugServer::Method;
+    using Query = std::unordered_map<std::string, std::string>;
+
+    // player + target, one command type per route; war also takes cb (CasusBelliType index).
+    const auto pairRoute = [this](const char* path, bool withCasusBelli, auto makeCommand) {
+        this->m_debugServer->routeJson(
+            DSM::Post, path,
+            [this, withCasusBelli, makeCommand](const Query& q, const std::string&) -> std::string {
+                if (this->m_appState != AppState::InGame) {
+                    throw aoc::debug::ServiceUnavailableError("no active game");
+                }
+                int32_t player = 0;
+                int32_t target = 0;
+                int32_t cb = 0;
+                std::string err;
+                if (!readIntParam(q, "player", player, err) || !readIntParam(q, "target", target, err)) {
+                    return err;
+                }
+                if (withCasusBelli && !readIntParam(q, "cb", cb, err)) {
+                    return err;
+                }
+                if (cb < 0 || cb >= aoc::sim::CASUS_BELLI_COUNT) {
+                    return std::string("{\"error\":\"cb out of range\"}");
+                }
+                if (player < 0 || target < 0 || player >= MAX_PLAYERS || target >= MAX_PLAYERS) {
+                    return std::string("{\"error\":\"player or target out of range\"}");
+                }
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(makeCommand(static_cast<aoc::PlayerId>(player),
+                                                              static_cast<aoc::PlayerId>(target),
+                                                              static_cast<uint8_t>(cb)));
+                return std::string("{\"queued\":true}");
+            });
+    };
+    pairRoute("/game/diplomacy/war", true,
+              [](aoc::PlayerId p, aoc::PlayerId t, uint8_t cb) -> aoc::debug::GameControlCommand {
+                  return aoc::debug::DeclareWarCommand{p, t, cb};
+              });
+    pairRoute("/game/diplomacy/peace", false,
+              [](aoc::PlayerId p, aoc::PlayerId t, uint8_t) -> aoc::debug::GameControlCommand {
+                  return aoc::debug::MakePeaceCommand{p, t};
+              });
+    pairRoute("/game/diplomacy/denounce", false,
+              [](aoc::PlayerId p, aoc::PlayerId t, uint8_t) -> aoc::debug::GameControlCommand {
+                  return aoc::debug::DenounceCommand{p, t};
+              });
+    pairRoute("/game/diplomacy/friendship", false,
+              [](aoc::PlayerId p, aoc::PlayerId t, uint8_t) -> aoc::debug::GameControlCommand {
+                  return aoc::debug::DeclareFriendshipCommand{p, t};
+              });
+    pairRoute("/game/diplomacy/delegation", false,
+              [](aoc::PlayerId p, aoc::PlayerId t, uint8_t) -> aoc::debug::GameControlCommand {
+                  return aoc::debug::SendDelegationCommand{p, t};
+              });
+    pairRoute("/game/diplomacy/embassy", false,
+              [](aoc::PlayerId p, aoc::PlayerId t, uint8_t) -> aoc::debug::GameControlCommand {
+                  return aoc::debug::EstablishEmbassyCommand{p, t};
+              });
+    pairRoute("/game/diplomacy/borders", false,
+              [](aoc::PlayerId p, aoc::PlayerId t, uint8_t) -> aoc::debug::GameControlCommand {
+                  return aoc::debug::OpenBordersCommand{p, t};
+              });
+
+    this->m_debugServer->routeJson(
+        DSM::Get, "/game/diplomacy",
+        [this](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            std::string err;
+            if (!readIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (player < 0 || player >= static_cast<int32_t>(this->m_diplomacy.playerCount())) {
+                return std::string("{\"error\":\"player out of range\"}");
+            }
+            const aoc::PlayerId me = static_cast<aoc::PlayerId>(player);
+            const int32_t turn    = this->m_gameState.currentTurn();
+            std::string json      = "{\"turn\":" + std::to_string(turn) + ",\"relations\":[";
+            bool first            = true;
+            for (const std::unique_ptr<aoc::game::Player>& other : this->m_gameState.players()) {
+                if (other == nullptr || other->id() == me
+                    || other->id() >= this->m_diplomacy.playerCount()) {
+                    continue;
+                }
+                const aoc::sim::PairwiseRelation& rel = this->m_diplomacy.relation(me, other->id());
+                if (!first) { json += ","; }
+                first = false;
+                json += "{\"id\":" + std::to_string(static_cast<unsigned>(other->id()))
+                        + ",\"met\":" + (rel.hasMet ? "true" : "false")
+                        + ",\"atWar\":" + (rel.isAtWar ? "true" : "false")
+                        + ",\"score\":" + std::to_string(rel.totalScore())
+                        + ",\"stance\":\"" + std::string(aoc::sim::stanceName(rel.stance())) + "\""
+                        + ",\"openBorders\":" + (rel.hasOpenBorders ? "true" : "false")
+                        + ",\"openBordersUntil\":" + std::to_string(rel.openBordersUntilTurn)
+                        + ",\"friendsUntil\":" + std::to_string(rel.friendshipUntilTurn)
+                        + ",\"denouncedOn\":" + std::to_string(rel.denouncedOnTurn)
+                        + ",\"delegation\":" + (rel.hasDelegation ? "true" : "false")
+                        + ",\"embassy\":" + (rel.hasEmbassy ? "true" : "false")
+                        + ",\"turnsSincePeace\":" + std::to_string(rel.turnsSincePeace)
+                        + ",\"warDeclaredOn\":" + std::to_string(rel.warDeclaredOnTurn)
+                        + ",\"casusBelli\":[";
+                bool firstCb = true;
+                for (const aoc::sim::CasusBelliType cb : aoc::sim::availableCasusBelli(
+                         this->m_gameState, this->m_diplomacy, me, other->id(), turn)) {
+                    if (!firstCb) { json += ","; }
+                    firstCb = false;
+                    json += std::to_string(static_cast<int>(cb));
+                }
+                json += "]}";
+            }
+            json += "]}";
+            return json;
+        });
+}
+
+namespace {
+
+void logDiplomacyResult(const char* what, aoc::PlayerId player, aoc::PlayerId target, ErrorCode rc) {
+    if (rc != ErrorCode::Ok) {
+        LOG_WARN("%s by player %u toward %u rejected: %.*s", what, static_cast<unsigned>(player),
+                 static_cast<unsigned>(target), static_cast<int>(describeError(rc).size()),
+                 describeError(rc).data());
+    }
+}
+
+} // namespace
+
+void Application::executeGameControlCommand(const aoc::debug::DeclareWarCommand& cmd) {
+    logDiplomacyResult("Declare war", cmd.player, cmd.target,
+                       aoc::sim::requestDeclareWar(this->m_gameState, this->m_diplomacy, cmd.player,
+                                                   cmd.target,
+                                                   static_cast<aoc::sim::CasusBelliType>(cmd.casusBelli),
+                                                   this->m_gameState.currentTurn(),
+                                                   &this->m_allianceTracker));
+}
+
+void Application::executeGameControlCommand(const aoc::debug::MakePeaceCommand& cmd) {
+    logDiplomacyResult("Peace", cmd.player, cmd.target,
+                       aoc::sim::requestMakePeace(this->m_gameState, this->m_diplomacy, cmd.player,
+                                                  cmd.target, this->m_gameState.currentTurn()));
+}
+
+void Application::executeGameControlCommand(const aoc::debug::DenounceCommand& cmd) {
+    logDiplomacyResult("Denounce", cmd.player, cmd.target,
+                       aoc::sim::requestDenounce(this->m_gameState, this->m_diplomacy, cmd.player,
+                                                 cmd.target, this->m_gameState.currentTurn()));
+}
+
+void Application::executeGameControlCommand(const aoc::debug::DeclareFriendshipCommand& cmd) {
+    logDiplomacyResult("Friendship", cmd.player, cmd.target,
+                       aoc::sim::requestDeclareFriendship(this->m_gameState, this->m_diplomacy,
+                                                          cmd.player, cmd.target,
+                                                          this->m_gameState.currentTurn()));
+}
+
+void Application::executeGameControlCommand(const aoc::debug::SendDelegationCommand& cmd) {
+    logDiplomacyResult("Delegation", cmd.player, cmd.target,
+                       aoc::sim::requestSendDelegation(this->m_gameState, this->m_diplomacy, cmd.player,
+                                                       cmd.target));
+}
+
+void Application::executeGameControlCommand(const aoc::debug::EstablishEmbassyCommand& cmd) {
+    logDiplomacyResult("Embassy", cmd.player, cmd.target,
+                       aoc::sim::requestEstablishEmbassy(this->m_gameState, this->m_diplomacy,
+                                                         cmd.player, cmd.target));
+}
+
+void Application::executeGameControlCommand(const aoc::debug::OpenBordersCommand& cmd) {
+    logDiplomacyResult("Open borders", cmd.player, cmd.target,
+                       aoc::sim::requestOpenBorders(this->m_gameState, this->m_diplomacy, cmd.player,
+                                                    cmd.target, this->m_gameState.currentTurn()));
 }
 
 } // namespace aoc::app

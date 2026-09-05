@@ -202,7 +202,8 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                 // pseudo-RNG that the GA harness could not reproduce
                 // across hosts (audit 2026-05-10 #WP11.3).
                 const int32_t warChance = rng.nextInt(0, 99);
-                if (warChance < warChanceThreshold) {
+                if (warChance < warChanceThreshold
+                    && rel.friendshipUntilTurn <= gameState.currentTurn()) {
                     diplomacy.declareWar(this->m_player, other,
                                          rel.casusBelliGranted()
                                              ? aoc::sim::CasusBelliType::FormalWar
@@ -235,7 +236,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                     // reproduce identical event logs across runs and hosts.
                     const int32_t warChance = rng.nextInt(0, 99);
                     const int32_t threshold = hardAI ? 3 : 2;
-                    if (warChance < threshold) {
+                    if (warChance < threshold && rel.friendshipUntilTurn <= gameState.currentTurn()) {
                         diplomacy.declareWar(this->m_player, other,
                                              aoc::sim::CasusBelliType::SurpriseWar,
                                              nullptr, &gameState,
@@ -640,7 +641,8 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
 
                 const int32_t violationTurns = violatorRel.turnsWithViolation;
 
-                if (violationTurns > baseTolerance && violatorRel.casusBelliGranted()) {
+                if (violationTurns > baseTolerance && violatorRel.casusBelliGranted()
+                    && violatorRel.friendshipUntilTurn <= gameState.currentTurn()) {
                     // Beyond tolerance and casus belli granted: declare war
                     // (if not already at war and we have military capability)
                     if (ourMilitary > 0 && beh.militaryAggression > 0.3f) {

@@ -74,6 +74,7 @@
 #include "aoc/simulation/city/CityBombardment.hpp"
 #include "aoc/simulation/city/CityConnection.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyActions.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/economy/Maintenance.hpp"
 #include "aoc/simulation/economy/AdvancedEconomics.hpp"
@@ -1467,6 +1468,7 @@ ErrorCode Application::initialize(const Config& config) {
     this->registerReligionRoutes();
     this->registerCultureRoutes();
     this->registerCityStateRoutes();
+    this->registerDiplomacyRoutes();
 
     // POST /game/governor/promote?player=&q=&r=&promotion=
     this->m_debugServer->routeJson(
@@ -6666,9 +6668,15 @@ void Application::handleContextAction() {
             const int32_t turn         = this->m_gameState.currentTurn();
             if (targetOwner != aoc::INVALID_PLAYER && this->m_pendingWarTarget == targetOwner
                 && this->m_pendingWarTurn == turn) {
-                this->m_diplomacy.declareWar(attacker, targetOwner, aoc::sim::CasusBelliType::SurpriseWar,
-                                             &this->m_allianceTracker, &this->m_gameState, turn);
+                const ErrorCode warRc = aoc::sim::requestDeclareWar(
+                    this->m_gameState, this->m_diplomacy, attacker, targetOwner,
+                    aoc::sim::CasusBelliType::SurpriseWar, turn, &this->m_allianceTracker);
                 this->m_pendingWarTarget = aoc::INVALID_PLAYER;
+                if (warRc != ErrorCode::Ok) { // peace lock or friendship
+                    this->m_notificationManager.push(
+                        "Cannot declare war: " + std::string(describeError(warRc)), 4.0f, 1.0f, 0.5f, 0.3f);
+                    return;
+                }
                 this->m_notificationManager.push("War declared!", 3.0f, 1.0f, 0.4f, 0.3f);
                 result = aoc::sim::requestAttack(this->m_gameState, this->m_gameRng, this->m_hexGrid,
                                                  attacker, from, targetTile, &this->m_diplomacy);

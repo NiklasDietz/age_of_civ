@@ -296,7 +296,8 @@ void Application::buildHUD() {
     makeTopBtn(this->m_topBar, "Diplo", aoc::ui::theme().scaled(50.0f), [this]() {
         if (!this->m_diplomacyScreen.isOpen()) {
             this->m_diplomacyScreen.setContext(&this->m_gameState, 0, &this->m_diplomacy,
-                                               &this->m_hexGrid, &this->m_dealTracker);
+                                               &this->m_hexGrid, &this->m_dealTracker,
+                                               &this->m_allianceTracker);
             this->m_diplomacyScreen.open(this->m_uiManager);
         } else {
             this->m_diplomacyScreen.close(this->m_uiManager);
@@ -689,7 +690,8 @@ void Application::updateDiploStrip() {
             icon.onClick = [this]() {
                 if (!this->m_diplomacyScreen.isOpen()) {
                     this->m_diplomacyScreen.setContext(&this->m_gameState, PlayerId{0},
-                                                       &this->m_diplomacy);
+                                                       &this->m_diplomacy, &this->m_hexGrid,
+                                                       &this->m_dealTracker, &this->m_allianceTracker);
                     this->m_diplomacyScreen.open(this->m_uiManager);
                 }
             };

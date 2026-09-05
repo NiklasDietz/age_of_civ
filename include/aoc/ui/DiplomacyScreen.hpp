@@ -14,6 +14,7 @@
 namespace aoc::sim {
 class DiplomacyManager;
 struct GlobalDealTracker;
+struct AllianceObligationTracker;
 }
 
 namespace aoc::game {
@@ -31,7 +32,8 @@ public:
     void setContext(aoc::game::GameState* gameState, PlayerId humanPlayer,
                     aoc::sim::DiplomacyManager* diplomacy,
                     aoc::map::HexGrid* grid = nullptr,
-                    aoc::sim::GlobalDealTracker* dealTracker = nullptr);
+                    aoc::sim::GlobalDealTracker* dealTracker = nullptr,
+                    aoc::sim::AllianceObligationTracker* obligations = nullptr);
 
     void open(UIManager& ui) override;
     void close(UIManager& ui) override;
@@ -42,6 +44,9 @@ private:
     aoc::sim::DiplomacyManager*    m_diplomacy   = nullptr;
     aoc::map::HexGrid*             m_grid        = nullptr;
     aoc::sim::GlobalDealTracker*   m_dealTracker = nullptr;
+    aoc::sim::AllianceObligationTracker* m_obligations = nullptr;
+    /// Civ whose casus belli picker is open (Declare War is a two-step choice).
+    PlayerId                       m_warTarget   = INVALID_PLAYER;
     PlayerId                       m_player      = INVALID_PLAYER;
     WidgetId                       m_playerList  = INVALID_WIDGET;
 };

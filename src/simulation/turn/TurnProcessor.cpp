@@ -1448,6 +1448,7 @@ void processTurn(TurnContext& turnContext) {
     // Decay per-turn diplomacy relation modifiers.
     if (turnContext.diplomacy != nullptr) {
         turnContext.diplomacy->tickModifiers();
+        turnContext.diplomacy->expireAgreements(static_cast<int32_t>(turnContext.currentTurn));
     }
 
     // Espionage: resolve spy mission outcomes for all players.

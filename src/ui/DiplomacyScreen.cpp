@@ -13,6 +13,7 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyActions.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
@@ -21,6 +22,7 @@
 
 #include <array>
 #include <climits>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -29,12 +31,15 @@ namespace aoc::ui {
 void DiplomacyScreen::setContext(aoc::game::GameState* gameState, PlayerId humanPlayer,
                                   aoc::sim::DiplomacyManager* diplomacy,
                                   aoc::map::HexGrid* grid,
-                                  aoc::sim::GlobalDealTracker* dealTracker) {
+                                  aoc::sim::GlobalDealTracker* dealTracker,
+                                  aoc::sim::AllianceObligationTracker* obligations) {
     this->m_gameState   = gameState;
     this->m_player      = humanPlayer;
     this->m_diplomacy   = diplomacy;
     this->m_grid        = grid;
     this->m_dealTracker = dealTracker;
+    this->m_obligations = obligations;
+    this->m_warTarget   = INVALID_PLAYER;
 }
 
 void DiplomacyScreen::open(UIManager& ui) {
@@ -143,6 +148,21 @@ void DiplomacyScreen::open(UIManager& ui) {
         }
         if (rel.hasOpenBorders) {
             relationText += "  [Open Borders]";
+            if (rel.openBordersUntilTurn >= 0) {
+                relationText += " until " + std::to_string(rel.openBordersUntilTurn);
+            }
+        }
+        const int32_t nowTurn = this->m_gameState->currentTurn();
+        if (rel.friendshipUntilTurn > nowTurn) {
+            relationText += "  [Friends until " + std::to_string(rel.friendshipUntilTurn) + "]";
+        }
+        if (rel.denouncedOnTurn >= 0 && nowTurn - rel.denouncedOnTurn <= aoc::sim::DENOUNCE_TURNS) {
+            relationText += "  [Denounced]";
+        }
+        if (rel.hasEmbassy) {
+            relationText += "  [Embassy]";
+        } else if (rel.hasDelegation) {
+            relationText += "  [Delegation]";
         }
         if (rel.hasDefensiveAlliance) {
             relationText += "  [Alliance]";
@@ -187,59 +207,123 @@ void DiplomacyScreen::open(UIManager& ui) {
 
         aoc::sim::DiplomacyManager* diplomacy = this->m_diplomacy;
         const PlayerId humanPlayer = this->m_player;
+        aoc::game::GameState* gsForActions = this->m_gameState;
+        aoc::sim::AllianceObligationTracker* obligations = this->m_obligations;
 
-        if (!rel.isAtWar) {
-            // Declare War button
+        // Every action goes through DiplomacyActions.hpp and closes the screen;
+        // the HUD re-opens it with fresh state.
+        const auto addAction = [&ui, this](WidgetId row, const char* label, float width,
+                                          const Color& normal,
+                                          std::function<aoc::ErrorCode()> action) {
+            ButtonData btn;
+            btn.label        = label;
+            btn.fontSize     = 11.0f;
+            btn.normalColor  = normal;
+            btn.hoverColor   = tokens::BRONZE_LIGHT;
+            btn.pressedColor = tokens::STATE_PRESSED;
+            btn.cornerRadius = 3.0f;
+            btn.onClick      = [action, label, &ui, this]() {
+                const aoc::ErrorCode rc = action();
+                if (rc != aoc::ErrorCode::Ok) {
+                    LOG_INFO("%s rejected: %.*s", label, static_cast<int>(aoc::describeError(rc).size()),
+                             aoc::describeError(rc).data());
+                }
+                this->m_warTarget = INVALID_PLAYER;
+                this->close(ui);
+            };
+            (void)ui.createButton(row, {0.0f, 0.0f, width, 22.0f}, std::move(btn));
+        };
+
+        if (!rel.isAtWar && this->m_warTarget == otherId) {
+            // Casus belli picker: one button per justified casus belli, plus Cancel.
+            for (const aoc::sim::CasusBelliType cb :
+                 aoc::sim::availableCasusBelli(*gsForActions, *diplomacy, humanPlayer, otherId, nowTurn)) {
+                const aoc::sim::CasusBelliDef& def = aoc::sim::casusBelliDef(cb);
+                addAction(btnRow, def.name.data(), 120.0f, tokens::STATE_DANGER,
+                          [gsForActions, diplomacy, humanPlayer, otherId, cb, nowTurn, obligations]() {
+                              return aoc::sim::requestDeclareWar(*gsForActions, *diplomacy, humanPlayer,
+                                                                 otherId, cb, nowTurn, obligations);
+                          });
+            }
+            ButtonData cancelBtn;
+            cancelBtn.label        = "Cancel";
+            cancelBtn.fontSize     = 11.0f;
+            cancelBtn.normalColor  = tokens::BRONZE_BASE;
+            cancelBtn.hoverColor   = tokens::BRONZE_LIGHT;
+            cancelBtn.pressedColor = tokens::STATE_PRESSED;
+            cancelBtn.cornerRadius = 3.0f;
+            cancelBtn.onClick      = [&ui, this]() {
+                this->m_warTarget = INVALID_PLAYER;
+                this->close(ui);
+                this->open(ui);
+            };
+            (void)ui.createButton(btnRow, {0.0f, 0.0f, 80.0f, 22.0f}, std::move(cancelBtn));
+        } else if (!rel.isAtWar) {
             ButtonData warBtn;
-            warBtn.label = "Declare War";
-            warBtn.fontSize = 11.0f;
+            warBtn.label        = "Declare War";
+            warBtn.fontSize     = 11.0f;
             warBtn.normalColor  = tokens::STATE_DANGER;
             warBtn.hoverColor   = {0.767f, 0.272f, 0.197f, 1.0f};
             warBtn.pressedColor = {0.511f, 0.182f, 0.131f, 1.0f};
             warBtn.cornerRadius = 3.0f;
-            warBtn.onClick = [diplomacy, humanPlayer, otherId, &ui, this]() {
-                diplomacy->declareWar(humanPlayer, otherId,
-                                       aoc::sim::CasusBelliType::SurpriseWar,
-                                       nullptr, this->m_gameState,
-                                       this->m_gameState != nullptr
-                                           ? this->m_gameState->currentTurn()
-                                           : 0);
-                LOG_INFO("Declared war on player %u", static_cast<unsigned>(otherId));
+            warBtn.onClick      = [otherId, &ui, this]() {
+                this->m_warTarget = otherId; // second step: pick the casus belli
                 this->close(ui);
+                this->open(ui);
             };
             (void)ui.createButton(btnRow, {0.0f, 0.0f, 100.0f, 22.0f}, std::move(warBtn));
         } else {
-            // Propose Peace button
-            ButtonData peaceBtn;
-            peaceBtn.label = "Propose Peace";
-            peaceBtn.fontSize = 11.0f;
-            peaceBtn.normalColor  = tokens::STATE_SUCCESS;
-            peaceBtn.hoverColor   = {0.432f, 0.654f, 0.292f, 1.0f};
-            peaceBtn.pressedColor = {0.288f, 0.436f, 0.194f, 1.0f};
-            peaceBtn.cornerRadius = 3.0f;
-            peaceBtn.onClick = [diplomacy, humanPlayer, otherId, &ui, this]() {
-                diplomacy->makePeace(humanPlayer, otherId);
-                LOG_INFO("Made peace with player %u", static_cast<unsigned>(otherId));
-                this->close(ui);
-            };
-            (void)ui.createButton(btnRow, {0.0f, 0.0f, 110.0f, 22.0f}, std::move(peaceBtn));
+            addAction(btnRow, "Propose Peace", 110.0f, tokens::STATE_SUCCESS,
+                      [gsForActions, diplomacy, humanPlayer, otherId, nowTurn]() {
+                          return aoc::sim::requestMakePeace(*gsForActions, *diplomacy, humanPlayer, otherId,
+                                                            nowTurn);
+                      });
         }
 
         if (!rel.hasOpenBorders && !rel.isAtWar) {
-            // Open Borders button
-            ButtonData bordersBtn;
-            bordersBtn.label = "Open Borders";
-            bordersBtn.fontSize = 11.0f;
-            bordersBtn.normalColor  = tokens::BRONZE_BASE;
-            bordersBtn.hoverColor   = tokens::BRONZE_LIGHT;
-            bordersBtn.pressedColor = tokens::STATE_PRESSED;
-            bordersBtn.cornerRadius = 3.0f;
-            bordersBtn.onClick = [diplomacy, humanPlayer, otherId, &ui, this]() {
-                diplomacy->grantOpenBorders(humanPlayer, otherId);
-                LOG_INFO("Granted open borders with player %u", static_cast<unsigned>(otherId));
-                this->close(ui);
-            };
-            (void)ui.createButton(btnRow, {0.0f, 0.0f, 110.0f, 22.0f}, std::move(bordersBtn));
+            addAction(btnRow, "Open Borders", 110.0f, tokens::BRONZE_BASE,
+                      [gsForActions, diplomacy, humanPlayer, otherId, nowTurn]() {
+                          return aoc::sim::requestOpenBorders(*gsForActions, *diplomacy, humanPlayer, otherId,
+                                                              nowTurn);
+                      });
+        }
+
+        if (!rel.isAtWar) {
+            WidgetId stanceRow = ui.createPanel(playerPanel, {0.0f, 0.0f, 490.0f, 26.0f},
+                                                PanelData{Color{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+            if (Widget* sr = ui.getWidget(stanceRow); sr != nullptr) {
+                sr->layoutDirection = LayoutDirection::Horizontal;
+                sr->childSpacing    = 6.0f;
+            }
+            const bool denounced = rel.denouncedOnTurn >= 0
+                                   && nowTurn - rel.denouncedOnTurn <= aoc::sim::DENOUNCE_TURNS;
+            const bool friends = rel.friendshipUntilTurn > nowTurn;
+            if (!denounced && !friends) {
+                addAction(stanceRow, "Denounce", 90.0f, tokens::DIPLO_UNFRIENDLY,
+                          [gsForActions, diplomacy, humanPlayer, otherId, nowTurn]() {
+                              return aoc::sim::requestDenounce(*gsForActions, *diplomacy, humanPlayer, otherId,
+                                                               nowTurn);
+                          });
+                addAction(stanceRow, "Friendship", 90.0f, tokens::STATE_SUCCESS,
+                          [gsForActions, diplomacy, humanPlayer, otherId, nowTurn]() {
+                              return aoc::sim::requestDeclareFriendship(*gsForActions, *diplomacy, humanPlayer,
+                                                                        otherId, nowTurn);
+                          });
+            }
+            if (!rel.hasDelegation && !rel.hasEmbassy) {
+                addAction(stanceRow, "Delegation (25 gold)", 140.0f, tokens::BRONZE_BASE,
+                          [gsForActions, diplomacy, humanPlayer, otherId]() {
+                              return aoc::sim::requestSendDelegation(*gsForActions, *diplomacy, humanPlayer,
+                                                                     otherId);
+                          });
+            }
+            if (!rel.hasEmbassy) {
+                addAction(stanceRow, "Embassy (50 gold)", 130.0f, tokens::BRONZE_BASE,
+                          [gsForActions, diplomacy, humanPlayer, otherId]() {
+                              return aoc::sim::requestEstablishEmbassy(*gsForActions, *diplomacy, humanPlayer,
+                                                                       otherId);
+                          });
+            }
         }
 
         // Alliance buttons (only available when relations > 20 and not at war)
