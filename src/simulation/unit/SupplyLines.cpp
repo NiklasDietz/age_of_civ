@@ -85,9 +85,9 @@ void computeSupplyLines(aoc::game::GameState& gameState,
             if (!grid.isValid(nbr)) { continue; }
             const int32_t nbrIdx = grid.toIndex(nbr);
 
-            // Can only supply through passable land
-            if (aoc::map::isWater(grid.terrain(nbrIdx))
-                || aoc::map::isImpassable(grid.terrain(nbrIdx))) {
+            // Supply flows over land and along water. Until 2026-09-05 the BFS
+            // skipped water, so no ship or embarked unit was ever supplied.
+            if (grid.terrain(nbrIdx) == aoc::map::TerrainType::Mountain) {
                 continue;
             }
 
@@ -129,6 +129,7 @@ void applySupplyAttrition(aoc::game::GameState& gameState, PlayerId player) {
     for (const std::unique_ptr<aoc::game::Unit>& unit : gsPlayer->units()) {
         const UnitSupplyComponent& supply = unit->supply();
         if (supply.isSupplied) { continue; }
+        if (unit->isNaval()) { continue; }  // ships carry their own stores
 
         unit->setHitPoints(unit->hitPoints() - UNSUPPLIED_ATTRITION_HP);
         LOG_INFO("Supply attrition: player %u unit at (%d,%d) hp=%d (dist=%d)",

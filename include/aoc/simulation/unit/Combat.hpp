@@ -71,9 +71,13 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
 /**
  * @brief Count friendly units adjacent to a position (for flanking bonus).
  */
+/// Military units of `friendlyPlayer` adjacent to `position`, excluding
+/// `exclude` (the attacker itself). Until 2026-09-05 the attacker and civilians
+/// counted, so every melee attack got a free +10 percent flank.
 [[nodiscard]] int32_t countAdjacentFriendlies(const aoc::game::GameState& gameState,
                                                aoc::hex::AxialCoord position,
-                                               PlayerId friendlyPlayer);
+                                               PlayerId friendlyPlayer,
+                                               const aoc::game::Unit* exclude = nullptr);
 
 /**
  * @brief Terrain defense modifier for a tile. Hills/forest/jungle give bonus.

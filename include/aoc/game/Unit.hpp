@@ -70,7 +70,12 @@ public:
 
     [[nodiscard]] int32_t movementRemaining() const { return this->m_movementRemaining; }
     void setMovementRemaining(int32_t mp) { this->m_movementRemaining = mp; }
-    void refreshMovement() { this->m_movementRemaining = this->typeDef().movementPoints; }
+    /// Full movement for a new turn: the row's points plus promotion bonuses
+    /// (Commando, Blitz, Depredation; unread until 2026-09-05).
+    void refreshMovement() {
+        this->m_movementRemaining =
+            this->typeDef().movementPoints + this->m_experience.totalMovementBonus();
+    }
     bool consumeMovement(int32_t cost);  ///< Returns false if insufficient
 
     [[nodiscard]] const std::vector<aoc::hex::AxialCoord>& pendingPath() const { return this->m_pendingPath; }

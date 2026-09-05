@@ -148,5 +148,9 @@ TEST_CASE("a patrolling enemy fighter in range intercepts the bomber and spends 
     CHECK(a.attack(P0, {5, 5}, {10, 5}) == ErrorCode::Ok);
     CHECK(bomber.hitPoints() == 38); // intercepted: 25 / 2 from the fighter, 30 for the abort
     CHECK(fighter.airUnit().sortiesRemaining == 0);
-    CHECK(a.w.gameState.player(P1)->unitAt({10, 5}) == nullptr); // 20 hp, bombed for 80: gone
+    // The interception aborts the run (Civ VI): the target keeps its 20 hp and
+    // the bomber's sortie is spent. Until 2026-09-05 the bomb still landed.
+    REQUIRE(a.w.gameState.player(P1)->unitAt({10, 5}) != nullptr);
+    CHECK(a.w.gameState.player(P1)->unitAt({10, 5})->hitPoints() == 20);
+    CHECK(bomber.airUnit().sortiesRemaining == 0);
 }

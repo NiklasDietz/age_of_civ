@@ -533,6 +533,9 @@ public:
     /// All water tiles and canal tiles cost 1 MP. Other land is impassable.
     [[nodiscard]] int32_t navalMovementCost(int32_t index) const {
         TerrainType t = this->terrain(index);
+        if (this->feature(index) == FeatureType::Ice) {
+            return 0; // Ice shelves block ships (unread until 2026-09-05)
+        }
         if (aoc::map::isWater(t)) {
             return 1;
         }
@@ -545,6 +548,9 @@ public:
     /// Naval movement cost excluding canals (water-only pathfinding).
     /// Used to find alternative routes that avoid canal tolls.
     [[nodiscard]] int32_t navalMovementCostNoCanals(int32_t index) const {
+        if (this->feature(index) == FeatureType::Ice) {
+            return 0;
+        }
         return aoc::map::isWater(this->terrain(index)) ? 1 : 0;
     }
 
@@ -552,6 +558,9 @@ public:
     /// Can only traverse Coast, ShallowWater, and canals (not deep Ocean).
     [[nodiscard]] int32_t shallowNavalMovementCost(int32_t index) const {
         TerrainType t = this->terrain(index);
+        if (this->feature(index) == FeatureType::Ice) {
+            return 0;
+        }
         if (aoc::map::isShallowWater(t)) {
             return 1;
         }

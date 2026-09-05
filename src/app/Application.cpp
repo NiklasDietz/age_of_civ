@@ -6557,7 +6557,9 @@ void Application::handleContextAction() {
     if (!aoc::sim::isNaval(def.unitClass) && unit.state() != aoc::sim::UnitState::Embarked &&
         targetTerrain == aoc::map::TerrainType::Coast &&
         this->m_hexGrid.distance(unit.position(), targetTile) == 1) {
-        (void)aoc::sim::tryEmbark(unit, targetTile, this->m_hexGrid);
+        const aoc::game::Player* embarkOwner = this->m_gameState.player(unit.owner());
+        (void)aoc::sim::tryEmbark(unit, targetTile, this->m_hexGrid,
+                                  embarkOwner != nullptr ? &embarkOwner->tech() : nullptr);
         return;
     }
 

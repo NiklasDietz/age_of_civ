@@ -21,6 +21,9 @@
 
 namespace aoc::sim {
 
+/// Turns of fallout a nuclear strike leaves on every blast tile.
+constexpr int16_t NUCLEAR_FALLOUT_TURNS = 20;
+
 // ============================================================================
 // Corps / Armies
 // ============================================================================
@@ -195,11 +198,11 @@ ErrorCode launchNuclearStrike(aoc::game::GameState& gameState,
         }
     }
 
-    // Apply Fallout to all blast tiles
+    // Fallout on every blast tile (until 2026-09-05 this only cleared features).
     for (const hex::AxialCoord& tile : blastTiles) {
         const int32_t idx = grid.toIndex(tile);
         grid.setImprovement(idx, aoc::map::ImprovementType::None);
-        grid.setFeature(idx, aoc::map::FeatureType::None);
+        grid.applyFallout(idx, NUCLEAR_FALLOUT_TURNS);
     }
 
     // Add grievance with ALL civilizations (+50 each)
@@ -251,12 +254,18 @@ ErrorCode executeBombingRun(aoc::game::GameState& gameState,
             if (!intAir.isIntercepting) { continue; }
 
             if (attemptInterception(gameState, *interceptorUnit, bomber)) {
-                // Bomber was intercepted -- take damage, abort mission
+                // Intercepted: the bomber takes damage and the run is aborted with
+                // the sortie spent. Until 2026-09-05 the run went on regardless and
+                // a shot-down bomber stayed in its owner's unit list.
                 bomber.takeDamage(30);
+                --air.sortiesRemaining;
                 if (bomber.isDead()) {
-                    return ErrorCode::Ok;  // Bomber destroyed
+                    aoc::game::Player* bomberOwner = gameState.player(bomber.owner());
+                    if (bomberOwner != nullptr) {
+                        bomberOwner->removeUnit(&bomber);  // `bomber` dangles from here
+                    }
                 }
-                break;
+                return ErrorCode::Ok;
             }
         }
     }
@@ -269,7 +278,8 @@ ErrorCode executeBombingRun(aoc::game::GameState& gameState,
 
     // Damage improvements
     aoc::map::ImprovementType imp = grid.improvement(targetIdx);
-    if (imp != aoc::map::ImprovementType::None && imp != aoc::map::ImprovementType::Road) {
+    if (imp != aoc::map::ImprovementType::None && imp != aoc::map::ImprovementType::Road
+        && grid.owner(targetIdx) != bomber.owner()) {
         grid.setImprovement(targetIdx, aoc::map::ImprovementType::None);
         LOG_INFO("Bombing destroyed improvement at (%d,%d)", targetTile.q, targetTile.r);
     }

@@ -13,6 +13,8 @@ namespace aoc::map  { class HexGrid; }
 
 namespace aoc::sim {
 
+struct PlayerTechComponent;
+
 /**
  * @brief Attempt to embark a land unit onto an adjacent coast tile.
  *
@@ -24,9 +26,13 @@ namespace aoc::sim {
  * @param grid       Hex grid for terrain checks.
  * @return true if embarkation succeeded.
  */
+/// With `tech` given, Civ VI's gate applies: civilians embark after Sailing
+/// (31), military units after Shipbuilding (42). Before 2026-09-05 a turn-1
+/// Warrior could embark.
 [[nodiscard]] bool tryEmbark(aoc::game::Unit& unit,
                               hex::AxialCoord coastTile,
-                              const aoc::map::HexGrid& grid);
+                              const aoc::map::HexGrid& grid,
+                              const PlayerTechComponent* tech = nullptr);
 
 /**
  * @brief Attempt to disembark an embarked unit onto an adjacent land tile.

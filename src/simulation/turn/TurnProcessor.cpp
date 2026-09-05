@@ -524,6 +524,8 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         if (unitPtr->state() == UnitState::Fortified) {
             healAmount += 5;
         }
+        // Medic / Survivalism / Elite promotions (unread until 2026-09-05).
+        healAmount += unitPtr->experience().totalHealingBonus();
 
         const int32_t newHP = std::min(
             unitPtr->hitPoints() + healAmount,

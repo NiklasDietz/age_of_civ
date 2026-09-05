@@ -5,6 +5,7 @@
 
 #include "aoc/simulation/unit/Naval.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -16,7 +17,8 @@ namespace aoc::sim {
 
 bool tryEmbark(aoc::game::Unit& unit,
                hex::AxialCoord coastTile,
-               const aoc::map::HexGrid& grid) {
+               const aoc::map::HexGrid& grid,
+               const PlayerTechComponent* tech) {
     const UnitTypeDef& def = unit.typeDef();
 
     // Only land units can embark (not naval, not already embarked)
@@ -25,6 +27,12 @@ bool tryEmbark(aoc::game::Unit& unit,
     }
     if (unit.state() == UnitState::Embarked) {
         return false;
+    }
+    if (tech != nullptr) {
+        const TechId needed = unit.isMilitary() ? TechId{42} : TechId{31};
+        if (!tech->hasResearched(needed)) {
+            return false;
+        }
     }
 
     if (!grid.isValid(coastTile)) {

@@ -113,7 +113,7 @@ std::optional<PathResult> findPath(const HexGrid& grid,
                     ? grid.navalMovementCostNoCanals(grid.toIndex(neighbor))
                     : grid.navalMovementCost(grid.toIndex(neighbor));
             } else {
-                moveCost = grid.movementCost(grid.toIndex(neighbor));
+                moveCost = grid.movementCost(grid.toIndex(current), grid.toIndex(neighbor));
             }
             if (moveCost == 0) {
                 continue;  // Impassable
@@ -182,7 +182,8 @@ std::vector<ReachableTile> findReachable(const HexGrid& grid,
                 continue;
             }
 
-            int32_t moveCost = grid.movementCost(grid.toIndex(neighbor));
+            int32_t moveCost =
+                grid.movementCost(grid.toIndex(current.coord), grid.toIndex(neighbor));
             if (moveCost == 0) {
                 continue;
             }

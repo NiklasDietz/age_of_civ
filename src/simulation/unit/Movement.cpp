@@ -60,6 +60,24 @@ static bool canOccupyTile(const aoc::game::GameState& gameState,
             return false;  // Same classification already occupies this tile
         }
     }
+    // Another seat's unit blocks a military mover outright; attacks go through
+    // requestAttack. Civilians keep passing (Traders, Missionaries and Spies
+    // enter foreign cities). Until 2026-09-05 only the mover's own units counted.
+    if (!isMilitaryUnit) {
+        return true;
+    }
+    for (const std::unique_ptr<aoc::game::Player>& seat : gameState.players()) {
+        if (seat == nullptr || seat->id() == owner) { continue; }
+        if (seat->unitAt(tile) != nullptr) { return false; }
+    }
+    for (const std::unique_ptr<aoc::game::Player>& seat : gameState.cityStatePlayers()) {
+        if (seat == nullptr || seat->id() == owner) { continue; }
+        if (seat->unitAt(tile) != nullptr) { return false; }
+    }
+    if (const aoc::game::Player* barbarians = gameState.barbarianPlayer();
+        barbarians != nullptr && barbarians->id() != owner && barbarians->unitAt(tile) != nullptr) {
+        return false;
+    }
     return true;
 }
 
@@ -114,8 +132,13 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
             } else {
                 cost = 0;  // Lakes / other water types still blocked
             }
+            if (grid.feature(tileIndex) == aoc::map::FeatureType::Ice) {
+                cost = 0;  // ice shelves block embarked units like ships
+            }
         } else {
-            cost = grid.movementCost(tileIndex);
+            // Directional cost: a river edge costs +1 (the one-arg overload
+            // ignored rivers, so crossings were free until 2026-09-05).
+            cost = grid.movementCost(grid.toIndex(unit.position()), tileIndex);
         }
 
         if (cost == 0) {

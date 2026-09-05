@@ -11,6 +11,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/CombatExtensions.hpp"
+#include "aoc/simulation/unit/SupplyLines.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/simulation/economy/DomesticCourier.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
@@ -45,9 +46,25 @@ float terrainDefenseModifier(const aoc::map::HexGrid& grid, aoc::hex::AxialCoord
     return modifier;
 }
 
+namespace {
+
+/// Civ VI: barbarians teach nothing past a unit's first promotion.
+void capBarbarianExperience(const aoc::game::Unit& attacker, const aoc::game::Unit& defender,
+                            CombatResult& result) {
+    if (defender.owner() == BARBARIAN_PLAYER && attacker.experience().level >= 1) {
+        result.attackerXpGained = 0;
+    }
+    if (attacker.owner() == BARBARIAN_PLAYER && defender.experience().level >= 1) {
+        result.defenderXpGained = 0;
+    }
+}
+
+} // namespace
+
 int32_t countAdjacentFriendlies(const aoc::game::GameState& gameState,
                                  aoc::hex::AxialCoord position,
-                                 PlayerId friendlyPlayer) {
+                                 PlayerId friendlyPlayer,
+                                 const aoc::game::Unit* exclude) {
     std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(position);
     int32_t count = 0;
 
@@ -56,6 +73,9 @@ int32_t countAdjacentFriendlies(const aoc::game::GameState& gameState,
             continue;
         }
         for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
+            if (unit.get() == exclude || !unit->isMilitary()) {
+                continue;
+            }
             for (const aoc::hex::AxialCoord& nbr : nbrs) {
                 if (unit->position() == nbr) {
                     ++count;
@@ -273,9 +293,21 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     atkStrength *= atkHealthMod;
     defStrength *= defHealthMod;
 
+    // Out of supply: SupplyLines.hpp promised this penalty; nothing read it.
+    if (!attacker.supply().isSupplied) {
+        atkStrength *= UNSUPPLIED_COMBAT_PENALTY;
+    }
+    if (!defender.supply().isSupplied) {
+        defStrength *= UNSUPPLIED_COMBAT_PENALTY;
+    }
+
     // Terrain defense bonus for defender
     float terrainMod = terrainDefenseModifier(grid, defender.position());
     defStrength *= terrainMod;
+    if (terrainMod > 1.0f) {
+        // Tortoise / Camouflage / Elite: extra defence on defensive terrain.
+        defStrength *= 1.0f + defender.experience().totalTerrainDefenseBonus();
+    }
 
     // River crossing penalty: defender gets +25% if attacker must cross a river
     {
@@ -294,7 +326,7 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     // single defender produces 1.6x strength plus reduced counter-damage,
     // snowballing into near-zero-loss kills every turn.
     int32_t flanking = std::min(3,
-        countAdjacentFriendlies(gameState, defender.position(), attacker.owner()));
+        countAdjacentFriendlies(gameState, defender.position(), attacker.owner(), &attacker));
     atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
 
     // Class matchup bonus (rock-paper-scissors)
@@ -340,6 +372,7 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     // XP: base 5, bonus for killing.
     result.attackerXpGained = 5;
     result.defenderXpGained = 4;
+    capBarbarianExperience(attacker, defender, result);
     if (result.defenderKilled) {
         result.attackerXpGained += 10;
     }
@@ -596,8 +629,20 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
     atkStrength *= atkHealthMod;
     defStrength *= defHealthMod;
 
+    // Out of supply: SupplyLines.hpp promised this penalty; nothing read it.
+    if (!attacker.supply().isSupplied) {
+        atkStrength *= UNSUPPLIED_COMBAT_PENALTY;
+    }
+    if (!defender.supply().isSupplied) {
+        defStrength *= UNSUPPLIED_COMBAT_PENALTY;
+    }
+
     float terrainMod = terrainDefenseModifier(grid, defender.position());
     defStrength *= terrainMod;
+    if (terrainMod > 1.0f) {
+        // Tortoise / Camouflage / Elite: extra defence on defensive terrain.
+        defStrength *= 1.0f + defender.experience().totalTerrainDefenseBonus();
+    }
 
     // River crossing penalty and elevation advantage
     {
@@ -612,7 +657,7 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
 
     // Flanking bonus: matches melee rules (capped at 3 adjacent).
     int32_t flanking = std::min(3,
-        countAdjacentFriendlies(gameState, defender.position(), attacker.owner()));
+        countAdjacentFriendlies(gameState, defender.position(), attacker.owner(), &attacker));
     atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
 
     // Class matchup bonus applied symmetrically to both sides.
@@ -648,6 +693,7 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
 
     result.attackerXpGained = 3;
     result.defenderXpGained = 2;
+    capBarbarianExperience(attacker, defender, result);
     if (result.defenderKilled) {
         result.attackerXpGained += 8;
     }
@@ -724,9 +770,21 @@ CombatPreview previewCombat(const aoc::game::GameState& gameState,
     atkStrength *= atkHealthMod;
     defStrength *= defHealthMod;
 
+    // Out of supply: SupplyLines.hpp promised this penalty; nothing read it.
+    if (!attacker.supply().isSupplied) {
+        atkStrength *= UNSUPPLIED_COMBAT_PENALTY;
+    }
+    if (!defender.supply().isSupplied) {
+        defStrength *= UNSUPPLIED_COMBAT_PENALTY;
+    }
+
     // Terrain defense bonus for defender
     float terrainMod = terrainDefenseModifier(grid, defender.position());
     defStrength *= terrainMod;
+    if (terrainMod > 1.0f) {
+        // Tortoise / Camouflage / Elite: extra defence on defensive terrain.
+        defStrength *= 1.0f + defender.experience().totalTerrainDefenseBonus();
+    }
 
     // River crossing penalty and elevation advantage
     {
@@ -742,7 +800,7 @@ CombatPreview previewCombat(const aoc::game::GameState& gameState,
     // Flanking bonus for melee (capped at 3 adjacent, matching resolution).
     if (!isRanged) {
         int32_t flanking = std::min(3,
-            countAdjacentFriendlies(gameState, defender.position(), attacker.owner()));
+            countAdjacentFriendlies(gameState, defender.position(), attacker.owner(), &attacker));
         atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
     }
 

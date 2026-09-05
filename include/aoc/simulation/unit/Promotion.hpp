@@ -106,6 +106,24 @@ struct UnitExperienceComponent {
         }
         return total;
     }
+
+    /// Extra HP healed per turn (Medic, Survivalism, ...).
+    [[nodiscard]] int32_t totalHealingBonus() const {
+        int32_t total = 0;
+        for (PromotionId pid : this->promotions) {
+            total += PROMOTION_DEFS[pid.value].healingBonus;
+        }
+        return total;
+    }
+
+    /// Extra defence multiplier on defensive terrain (Tortoise, Camouflage, ...).
+    [[nodiscard]] float totalTerrainDefenseBonus() const {
+        float total = 0.0f;
+        for (PromotionId pid : this->promotions) {
+            total += PROMOTION_DEFS[pid.value].terrainDefenseBonus;
+        }
+        return total;
+    }
 };
 
 [[nodiscard]] inline bool hasPromotion(const UnitExperienceComponent& xp, PromotionId pid) {

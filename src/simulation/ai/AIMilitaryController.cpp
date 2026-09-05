@@ -418,11 +418,12 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                 if (enemyPlayer != nullptr) {
                     aoc::game::Unit* targetUnit = enemyPlayer->unitAt(bestTarget->position);
                     if (targetUnit != nullptr) {
+                        bool struck = true;
                         if (aoc::sim::isAirUnit(def.unitClass)) {
                             // Aircraft strike through the air system (sorties, range,
                             // interception); the ranged formula stays for everyone else.
-                            static_cast<void>(aoc::sim::executeBombingRun(
-                                gameState, grid, *unit, targetUnit->position()));
+                            struck = aoc::sim::executeBombingRun(
+                                gameState, grid, *unit, targetUnit->position()) == ErrorCode::Ok;
                         } else {
                             aoc::sim::resolveRangedCombat(gameState, rng, grid, *unit,
                                                           *targetUnit);
@@ -436,6 +437,13 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                         // combat ever gain retaliation; `unit` stays valid.
                         unit = gsPlayer->unitAt(snap.position);
                         if (unit == nullptr) {
+                            continue;
+                        }
+                        if (struck) {
+                            // The strike is the unit's action for the turn, as in
+                            // requestAttack; until 2026-09-05 the AI shot, then moved
+                            // or attacked again in the same turn.
+                            unit->setMovementRemaining(0);
                             continue;
                         }
                     }
