@@ -141,8 +141,8 @@ struct UnitTypeDef {
 // Unit type IDs: keep stable for serialization. Gaps are fine.
 // Format: {id, name, class, era, hp, melee, ranged, range, move, cost, reqTech, upgradesTo, upgradeCost}
 
-inline constexpr int32_t UNIT_TYPE_COUNT = 79;
-inline constexpr std::array<UnitTypeDef, 79> UNIT_TYPE_DEFS = {{
+inline constexpr int32_t UNIT_TYPE_COUNT = 77;
+inline constexpr std::array<UnitTypeDef, 77> UNIT_TYPE_DEFS = {{
     // ========================================================================
     // MELEE INFANTRY: Warrior -> Swordsman -> Man-at-Arms -> Musketman -> Infantry -> Mech Infantry
     // ========================================================================

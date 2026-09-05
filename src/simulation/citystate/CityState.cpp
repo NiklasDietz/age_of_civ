@@ -16,6 +16,7 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
@@ -306,14 +307,34 @@ void processCityStateDiplomacy(aoc::game::GameState& gameState,
 namespace {
 /// Ordered list of defender unit types CS will try to build, best first.
 /// Uses UnitTypeId sentinels rather than raw numbers; falls back to Warrior.
-constexpr std::array<uint16_t, 5> CS_DEFENDER_CANDIDATES = {
-    /*Musketman*/ 3, /*Rifleman*/ 7, /*Pikeman*/ 5,
-    /*Swordsman*/ 1, /*Warrior*/  0
+/// Defender ladder, strongest first; cityStateDefenderFor picks the first row
+/// whose era the world has reached. Until 2026-09-05 the ids were wrong (3 is
+/// the Settler, 7 the Caravel, 1 the Slinger) and the loop took the first row
+/// unconditionally, so every city-state built Settlers forever.
+constexpr std::array<uint16_t, 6> CS_DEFENDER_CANDIDATES = {
+    /*Mech Infantry*/ 35, /*Infantry*/ 15, /*Musketman*/ 34,
+    /*Man-at-Arms*/   33, /*Swordsman*/ 10, /*Warrior*/    0
 };
 } // namespace
 
+UnitTypeId cityStateDefenderFor(uint8_t worldEra) {
+    for (uint16_t candidate : CS_DEFENDER_CANDIDATES) {
+        const UnitTypeDef& def = unitTypeDef(UnitTypeId{candidate});
+        if (static_cast<uint8_t>(def.era) <= worldEra) {
+            return UnitTypeId{candidate};
+        }
+    }
+    return UnitTypeId{0};
+}
+
 void processCityStateAI(aoc::game::GameState& gameState,
                          const aoc::map::HexGrid& grid) {
+    // The most advanced era any major has reached decides the defender tier.
+    uint8_t worldEra = 0;
+    for (const std::unique_ptr<aoc::game::Player>& major : gameState.players()) {
+        if (major == nullptr) { continue; }
+        worldEra = std::max<uint8_t>(worldEra, static_cast<uint8_t>(effectiveEraFromTech(*major).value));
+    }
     const std::vector<std::unique_ptr<aoc::game::Player>>& csPlayers =
         gameState.cityStatePlayers();
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : csPlayers) {
@@ -325,16 +346,14 @@ void processCityStateAI(aoc::game::GameState& gameState,
             if (!cityPtr->production().queue.empty()) { continue; }
 
             ProductionQueueItem item{};
-            for (uint16_t candidate : CS_DEFENDER_CANDIDATES) {
-                const UnitTypeDef& def = unitTypeDef(UnitTypeId{candidate});
-                if (!def.name.empty()) {
-                    item.type      = ProductionItemType::Unit;
-                    item.itemId    = candidate;
-                    item.name      = std::string(def.name);
-                    item.totalCost = static_cast<float>(def.productionCost);
-                    item.progress  = 0.0f;
-                    break;
-                }
+            {
+                const UnitTypeId defenderId = cityStateDefenderFor(worldEra);
+                const UnitTypeDef& def = unitTypeDef(defenderId);
+                item.type      = ProductionItemType::Unit;
+                item.itemId    = defenderId.value;
+                item.name      = std::string(def.name);
+                item.totalCost = static_cast<float>(def.productionCost);
+                item.progress  = 0.0f;
             }
             if (!item.name.empty()) {
                 cityPtr->production().queue.push_back(std::move(item));

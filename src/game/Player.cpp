@@ -189,6 +189,12 @@ Unit& Player::addUnit(UnitTypeId typeId, aoc::hex::AxialCoord position) {
         newUnit.autoSpreadReligion = !this->m_isHuman;
     }
 
+    // Aircraft fly the range of their row; until 2026-09-05 every type used the
+    // component default (8) in a fresh game while the loader read the row.
+    if (aoc::sim::isAirUnit(newUnit.typeDef().unitClass)) {
+        newUnit.airUnit().operationalRange = newUnit.typeDef().range;
+    }
+
     return newUnit;
 }
 

@@ -27,7 +27,7 @@ struct UpgradePathEntry {
 constexpr std::array<UpgradePathEntry, 8> UPGRADE_PATHS = {{
     { 0, 10,  8},  // Warrior -> Swordsman, requires Metallurgy
     { 1, 11,  7},  // Slinger -> Crossbowman, requires Apprenticeship
-    { 9, 13, 10},  // Spearman -> Musketman, requires Gunpowder
+    { 9, 46, 10},  // Spearman -> Pike and Shot, requires Gunpowder (13 never existed)
     {10, 15, 11},  // Swordsman -> Infantry, requires Industrialization
     {11, 16, 14},  // Crossbowman -> Artillery, requires Electricity
     {12, 14, 11},  // Knight -> Cavalry, requires Industrialization

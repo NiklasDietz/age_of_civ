@@ -190,6 +190,11 @@ void processCityStateDiplomacy(aoc::game::GameState& gameState,
 /// advances the per-turn production queue for each city-state (CS players
 /// are not in allPlayers, so the standard tick never runs for them).
 /// Explicitly never queues settlers/wonders/districts, so CS cannot spread.
+/// The unit a city-state queues as its defender once the world has reached
+/// `worldEra` (0 Ancient .. 7 Information): the strongest ladder entry of that
+/// era or earlier.
+[[nodiscard]] UnitTypeId cityStateDefenderFor(uint8_t worldEra);
+
 void processCityStateAI(aoc::game::GameState& gameState,
                           const aoc::map::HexGrid& grid);
 

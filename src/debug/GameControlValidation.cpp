@@ -9,7 +9,11 @@ namespace aoc::debug {
 bool isProductionItemValid(aoc::sim::ProductionItemType type, int32_t itemId) {
     switch (type) {
     case aoc::sim::ProductionItemType::Unit:
-        return itemId < aoc::sim::UNIT_TYPE_COUNT;
+        // Ids are sparse (0..102 with gaps); a row must exist. The old
+        // `itemId < UNIT_TYPE_COUNT` accepted the phantom 13 and rejected the Spy.
+        return itemId >= 0 && itemId <= 255
+            && aoc::sim::unitTypeDef(aoc::UnitTypeId{static_cast<uint16_t>(itemId)}).id.value
+                   == static_cast<uint16_t>(itemId);
     case aoc::sim::ProductionItemType::Building:
         return itemId < static_cast<int32_t>(aoc::sim::BUILDING_DEFS.size());
     case aoc::sim::ProductionItemType::Wonder:
