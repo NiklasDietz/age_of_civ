@@ -341,51 +341,98 @@ ErrorCode rushBuildingWithFaith(aoc::game::Player& player,
 // processAIReligionFounding
 // ============================================================================
 
-void processAIReligionFounding(aoc::game::GameState& gameState) {
-    GlobalReligionTracker& tracker = gameState.religionTracker();
+uint8_t firstFreeBelief(const aoc::game::GameState& gameState, BeliefType type) {
+    const GlobalReligionTracker& tracker = gameState.religionTracker();
+    for (const BeliefDef& belief : BELIEFS) {
+        if (belief.type != type) {
+            continue;
+        }
+        bool taken = false;
+        for (uint8_t r = 0; r < tracker.religionsFoundedCount && !taken; ++r) {
+            const ReligionDef& def = tracker.religions[r];
+            taken = def.founderBelief == belief.id || def.followerBelief == belief.id
+                 || def.worshipBelief == belief.id || def.enhancerBelief == belief.id;
+        }
+        for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+            if (other->faith().hasPantheon && other->faith().pantheonBelief == belief.id) {
+                taken = true;
+            }
+        }
+        if (!taken) {
+            return belief.id;
+        }
+    }
+    return 255;
+}
 
+bool foundPantheonFor(aoc::game::GameState& gameState, PlayerId player) {
+    aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer == nullptr || gsPlayer->faith().hasPantheon
+        || gsPlayer->faith().faith < PANTHEON_FAITH_COST) {
+        return false;
+    }
+    uint8_t belief = firstFreeBelief(gameState, BeliefType::Follower);
+    if (belief == 255) {
+        belief = 4;   // every follower belief is claimed: share the first one
+    }
+    PlayerFaithComponent& faith = gsPlayer->faith();
+    faith.hasPantheon    = true;
+    faith.pantheonBelief = belief;
+    faith.faith -= PANTHEON_FAITH_COST;
+    LOG_INFO("Player %u founded pantheon with belief %.*s (faith remaining: %.1f)",
+             static_cast<unsigned>(player), static_cast<int>(BELIEFS[belief].name.size()),
+             BELIEFS[belief].name.data(), static_cast<double>(faith.faith));
+    return true;
+}
+
+ReligionId foundReligionFor(aoc::game::GameState& gameState, PlayerId player) {
+    aoc::game::Player* gsPlayer = gameState.player(player);
+    GlobalReligionTracker& tracker = gameState.religionTracker();
+    if (gsPlayer == nullptr || !gsPlayer->faith().hasPantheon
+        || gsPlayer->faith().foundedReligion != NO_RELIGION
+        || gsPlayer->faith().faith < RELIGION_FAITH_COST || !tracker.canFoundReligion()) {
+        return NO_RELIGION;
+    }
+    // Pick the beliefs before founding so the new religion does not block itself.
+    uint8_t founder  = firstFreeBelief(gameState, BeliefType::Founder);
+    uint8_t worship  = firstFreeBelief(gameState, BeliefType::Worship);
+    uint8_t enhancer = firstFreeBelief(gameState, BeliefType::Enhancer);
+    if (founder == 255)  { founder = 0; }
+    if (worship == 255)  { worship = 8; }
+    if (enhancer == 255) { enhancer = 13; }
+
+    const std::string religionName(
+        RELIGION_NAMES[tracker.religionsFoundedCount % RELIGION_NAMES.size()]);
+    const ReligionId newId = tracker.foundReligion(religionName, player);
+    ReligionDef& def       = tracker.religions[newId];
+    def.founderBelief      = founder;
+    def.followerBelief     = gsPlayer->faith().pantheonBelief;
+    def.worshipBelief      = worship;
+    def.enhancerBelief     = enhancer;
+
+    PlayerFaithComponent& faith = gsPlayer->faith();
+    faith.foundedReligion = newId;
+    faith.faith -= RELIGION_FAITH_COST;
+
+    // Seed pressure in the founder's own cities so the religion exists on the map.
+    for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+        city->religion().addPressure(newId, 5.0f);
+    }
+    LOG_INFO("Player %u founded religion '%s' (id %u, beliefs %u/%u/%u/%u, faith remaining: %.1f)",
+             static_cast<unsigned>(player), religionName.c_str(), static_cast<unsigned>(newId),
+             static_cast<unsigned>(founder), static_cast<unsigned>(def.followerBelief),
+             static_cast<unsigned>(worship), static_cast<unsigned>(enhancer),
+             static_cast<double>(faith.faith));
+    return newId;
+}
+
+void processAIReligionFounding(aoc::game::GameState& gameState) {
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         if (playerPtr == nullptr) { continue; }
-        // Human players use the UI screen to found religions manually
+        // Human players found through the Religion screen (same two functions).
         if (playerPtr->isHuman()) { continue; }
-
-        PlayerFaithComponent& faith = playerPtr->faith();
-
-        // Step 1: Found a pantheon once PANTHEON_FAITH_COST is reached
-        if (!faith.hasPantheon && faith.faith >= PANTHEON_FAITH_COST) {
-            faith.hasPantheon = true;
-            faith.pantheonBelief = 4;  // "Choral Music" -- amenities (index 4 in BELIEFS)
-            faith.faith -= PANTHEON_FAITH_COST;
-            LOG_INFO("Player %u [Religion.cpp:processAIReligionFounding] founded pantheon "
-                     "(faith remaining: %.1f)",
-                     static_cast<unsigned>(playerPtr->id()),
-                     static_cast<double>(faith.faith));
-        }
-
-        // Step 2: Found a religion once RELIGION_FAITH_COST is reached and slots remain
-        if (faith.hasPantheon
-                && faith.foundedReligion == NO_RELIGION
-                && faith.faith >= RELIGION_FAITH_COST
-                && tracker.canFoundReligion()) {
-            // Pick religion name by cycling through the available names
-            const std::string religionName(
-                RELIGION_NAMES[tracker.religionsFoundedCount % RELIGION_NAMES.size()]);
-            const ReligionId newId = tracker.foundReligion(religionName, playerPtr->id());
-            faith.foundedReligion = newId;
-            faith.faith -= RELIGION_FAITH_COST;
-
-            // Seed initial pressure in the player's own cities
-            for (const std::unique_ptr<aoc::game::City>& city : playerPtr->cities()) {
-                city->religion().addPressure(newId, 5.0f);
-            }
-
-            LOG_INFO("Player %u [Religion.cpp:processAIReligionFounding] founded religion "
-                     "'%s' (id %u, faith remaining: %.1f)",
-                     static_cast<unsigned>(playerPtr->id()),
-                     religionName.c_str(),
-                     static_cast<unsigned>(newId),
-                     static_cast<double>(faith.faith));
-        }
+        static_cast<void>(foundPantheonFor(gameState, playerPtr->id()));
+        static_cast<void>(foundReligionFor(gameState, playerPtr->id()));
     }
 }
 

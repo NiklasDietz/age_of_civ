@@ -176,6 +176,19 @@ Unit& Player::addUnit(UnitTypeId typeId, aoc::hex::AxialCoord position) {
             ? aoc::sim::SpyLevel::Agent : aoc::sim::SpyLevel::Recruit;
     }
 
+    // Religious units (Missionary 19, Apostle 20, Inquisitor 21) carry their
+    // owner's religion and their spread charges; AI units spread on their own.
+    // Until 2026-09-05 nothing set these on the object model, so every spread
+    // and purge path was dead.
+    if (typeId.value == 19 || typeId.value == 20 || typeId.value == 21) {
+        int8_t charges = 2;   // Inquisitor
+        if (typeId.value == 19) { charges = 3; }
+        if (typeId.value == 20) { charges = 4; }
+        newUnit.spreadCharges      = charges;
+        newUnit.spreadingReligion  = this->m_faith.foundedReligion;
+        newUnit.autoSpreadReligion = !this->m_isHuman;
+    }
+
     return newUnit;
 }
 

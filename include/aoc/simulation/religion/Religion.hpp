@@ -188,6 +188,22 @@ void applyReligionBonuses(aoc::game::Player& player);
  */
 void processAIReligionFounding(aoc::game::GameState& gameState);
 
+/// First belief of `type` no founded religion and no pantheon has claimed yet,
+/// or 255 when the type is exhausted. Beliefs are exclusive, as in Civ VI.
+[[nodiscard]] uint8_t firstFreeBelief(const aoc::game::GameState& gameState, BeliefType type);
+
+/// Found a pantheon for `player` (PANTHEON_FAITH_COST, first free follower
+/// belief). Shared by the AI and the Religion screen. False when the player has
+/// one already or cannot afford it.
+bool foundPantheonFor(aoc::game::GameState& gameState, PlayerId player);
+
+/// Found a religion for `player` (RELIGION_FAITH_COST): the next name, the first
+/// free founder / worship / enhancer beliefs, the pantheon as follower belief,
+/// and +5 pressure in every own city. Shared by the AI and the Religion screen.
+/// Returns NO_RELIGION when the player has no pantheon, already founded one,
+/// cannot afford it, or no slot is left.
+[[nodiscard]] ReligionId foundReligionFor(aoc::game::GameState& gameState, PlayerId player);
+
 /// Cost to found a pantheon.
 inline constexpr float PANTHEON_FAITH_COST = 25.0f;
 

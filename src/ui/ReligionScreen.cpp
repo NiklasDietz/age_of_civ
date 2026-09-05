@@ -8,6 +8,7 @@
 #include "aoc/ui/StyleTokens.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
+#include "aoc/game/Unit.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
@@ -148,18 +149,8 @@ void ReligionScreen::buildBeliefList(UIManager& ui) {
             aoc::game::GameState* gsPtr = this->m_gameState;
             const PlayerId playerId = this->m_player;
             btnData.onClick = [gsPtr, playerId]() {
-                const std::array<aoc::sim::BeliefDef, aoc::sim::BELIEF_COUNT>& b = aoc::sim::allBeliefs();
-                aoc::game::Player* p = gsPtr->player(playerId);
-                if (p == nullptr) {
-                    return;
-                }
-                aoc::sim::PlayerFaithComponent& fp = p->faith();
-                fp.faith -= aoc::sim::PANTHEON_FAITH_COST;
-                fp.hasPantheon = true;
-                fp.pantheonBelief = 4; // Divine Inspiration
-                LOG_INFO("Player %u founded pantheon with belief: %.*s",
-                         static_cast<unsigned>(playerId),
-                         static_cast<int>(b[4].name.size()), b[4].name.data());
+                // Same path as the AI: faith check, first free follower belief.
+                static_cast<void>(aoc::sim::foundPantheonFor(*gsPtr, playerId));
             };
         }
 
@@ -193,32 +184,8 @@ void ReligionScreen::buildBeliefList(UIManager& ui) {
             aoc::game::GameState* gsPtr = this->m_gameState;
             const PlayerId playerId = this->m_player;
             btnData.onClick = [gsPtr, playerId]() {
-                aoc::sim::GlobalReligionTracker& tracker = gsPtr->religionTracker();
-                if (!tracker.canFoundReligion()) {
-                    return;
-                }
-
-                std::string religionName = std::string(
-                    aoc::sim::RELIGION_NAMES[tracker.religionsFoundedCount %
-                                             aoc::sim::RELIGION_NAMES.size()]);
-
-                aoc::sim::ReligionId newId = tracker.foundReligion(religionName, playerId);
-
-                tracker.religions[newId].founderBelief  = 0;  // Tithe
-                tracker.religions[newId].worshipBelief  = 8;  // Cathedral
-                tracker.religions[newId].enhancerBelief = 12; // Missionary Zeal
-
-                aoc::game::Player* p = gsPtr->player(playerId);
-                if (p == nullptr) {
-                    return;
-                }
-                aoc::sim::PlayerFaithComponent& fp = p->faith();
-                fp.faith -= aoc::sim::RELIGION_FAITH_COST;
-                fp.foundedReligion = newId;
-                tracker.religions[newId].followerBelief = fp.pantheonBelief;
-
-                LOG_INFO("Player %u founded religion: %s",
-                         static_cast<unsigned>(playerId), religionName.c_str());
+                // Same path as the AI: free beliefs, pressure seeded in own cities.
+                static_cast<void>(aoc::sim::foundReligionFor(*gsPtr, playerId));
             };
         }
 
@@ -378,9 +345,8 @@ void ReligionScreen::spawnReligiousUnit(UnitTypeId typeId, aoc::sim::ReligionId 
         return;
     }
 
-    player->addUnit(typeId, spawnLocation);
-    // NOTE: religion spreading stored separately when Unit gains spreadingReligion field.
-    (void)religion;
+    aoc::game::Unit& unit  = player->addUnit(typeId, spawnLocation);
+    unit.spreadingReligion = religion;   // addUnit derives it too; the purchase names it
 
     const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(typeId);
     LOG_INFO("Player %u purchased %.*s at (%d,%d)",
