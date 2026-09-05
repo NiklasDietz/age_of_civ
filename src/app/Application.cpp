@@ -6492,22 +6492,24 @@ void Application::handleContextAction() {
 
         aoc::game::Player* gsFounder = this->m_gameState.player(cityOwner);
         if (gsFounder != nullptr) {
-            // cityCount() (raw vector size): "have they ever founded
-            // anything before this addCity()". Founding-event semantics,
-            // not current-ownership.
-            const bool isFirstCity  = gsFounder->cityCount() == 0;
-            aoc::game::City& gsCity = gsFounder->addCity(cityPos, cityName);
-            gsCity.autoAssignWorkers(this->m_hexGrid, aoc::sim::WorkerFocus::Balanced, gsFounder);
-            if (isFirstCity) {
-                gsCity.setOriginalCapital(true);
-                gsCity.setOriginalOwner(cityOwner);
+            if (aoc::sim::cityFoundingBlocked(this->m_gameState, this->m_hexGrid, cityPos)) {
+                this->m_notificationManager.push(
+                    "Cannot found a city here: another city is within 3 tiles", 4.0f, 1.0f, 0.4f,
+                    0.4f);
+                return;
             }
-            aoc::sim::claimInitialTerritory(this->m_hexGrid, cityPos, cityOwner);
+            // The shared founding path (spacing, capital flag, Town stage, worked
+            // tiles, territory), the same one the AI and the debug route use.
+            aoc::game::City* gsCity = aoc::sim::foundCity(this->m_gameState, this->m_hexGrid,
+                                                          cityOwner, cityPos, cityName);
+            if (gsCity == nullptr) {
+                return;
+            }
 
             // Remove the settler unit
             gsFounder->removeUnit(&unit);
             this->m_selectedUnit = nullptr;
-            this->m_selectedCity = &gsCity;
+            this->m_selectedCity = gsCity;
             LOG_INFO("City founded!");
 
             aoc::sim::checkEurekaConditions(*gsFounder, aoc::sim::EurekaCondition::FoundCity);

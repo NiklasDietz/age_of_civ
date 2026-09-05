@@ -122,6 +122,17 @@ struct TurnContext {
     VictoryResult lastVictoryResult;
 };
 
+/// Minimum hex distance between any two cities (Civ VI: 3 tiles, any owner).
+inline constexpr int32_t MIN_CITY_DISTANCE = 3;
+
+/// True when `location` cannot host a new city: water, impassable terrain, or a
+/// city of ANY seat (major or city-state) closer than MIN_CITY_DISTANCE. The
+/// human paths check this before foundCity so a refusal is explicit; foundCity
+/// itself relocates an AI request to the nearest legal tile.
+[[nodiscard]] bool cityFoundingBlocked(const aoc::game::GameState& gameState,
+                                       const aoc::map::HexGrid& grid,
+                                       aoc::hex::AxialCoord location);
+
 /**
  * @brief Found a new city at the given location for the given player.
  *

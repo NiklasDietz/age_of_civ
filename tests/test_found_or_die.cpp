@@ -16,6 +16,8 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/map/HexGrid.hpp"
+#include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/turn/TurnProcessor.hpp"
 #include "aoc/simulation/unit/SupplyLines.hpp"
 #include "aoc/simulation/victory/VictoryCondition.hpp"
 
@@ -80,4 +82,44 @@ TEST_CASE("a settler still on the road is not eliminated") {
 
     aoc::sim::checkCollapseConditions(gs, 50);
     CHECK_FALSE(walker.victoryTracker().isEliminated);
+}
+
+TEST_CASE("founding runs through one path: any city within 3 tiles blocks, the capital is a Town with one City Center") {
+    aoc::game::GameState gameState;
+    gameState.initialize(2);
+    aoc::map::HexGrid grid;
+    makeLand(grid);
+
+    aoc::game::City* capital =
+        aoc::sim::foundCity(gameState, grid, aoc::PlayerId{0}, aoc::hex::AxialCoord{5, 5}, "Capital");
+    REQUIRE(capital != nullptr);
+    CHECK(capital->isOriginalCapital());
+    CHECK(capital->stage() == aoc::game::CitySize::Town);
+    int32_t centers = 0;
+    for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& d : capital->districts().districts) {
+        if (d.type == aoc::sim::DistrictType::CityCenter) {
+            ++centers;
+        }
+    }
+    CHECK(centers == 1);
+    CHECK(grid.owner(grid.toIndex(aoc::hex::AxialCoord{5, 5})) == aoc::PlayerId{0});
+
+    // Two tiles from a rival's city is refused for the human; three is allowed; water never.
+    CHECK(aoc::sim::cityFoundingBlocked(gameState, grid, aoc::hex::AxialCoord{7, 5}));
+    CHECK_FALSE(aoc::sim::cityFoundingBlocked(gameState, grid, aoc::hex::AxialCoord{8, 5}));
+    grid.setTerrain(grid.toIndex(aoc::hex::AxialCoord{12, 12}), aoc::map::TerrainType::Ocean);
+    CHECK(aoc::sim::cityFoundingBlocked(gameState, grid, aoc::hex::AxialCoord{12, 12}));
+
+    // The AI path relocates a too-close request to a legal tile instead.
+    aoc::game::City* rival =
+        aoc::sim::foundCity(gameState, grid, aoc::PlayerId{1}, aoc::hex::AxialCoord{7, 5}, "Rival");
+    REQUIRE(rival != nullptr);
+    CHECK(grid.distance(rival->location(), aoc::hex::AxialCoord{5, 5}) >= aoc::sim::MIN_CITY_DISTANCE);
+    CHECK(rival->stage() == aoc::game::CitySize::Town); // first city of its player
+
+    aoc::game::City* outpost =
+        aoc::sim::foundCity(gameState, grid, aoc::PlayerId{1}, aoc::hex::AxialCoord{15, 10}, "Outpost");
+    REQUIRE(outpost != nullptr);
+    CHECK(outpost->stage() == aoc::game::CitySize::Hamlet);
+    CHECK_FALSE(outpost->isOriginalCapital());
 }

@@ -151,6 +151,7 @@
 #include "aoc/core/Deterministic.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <cassert>
 #include <string>
 
@@ -167,8 +168,36 @@ namespace aoc::sim {
  * on yield scoring, claims the surrounding tiles on the hex grid, and logs
  * the event. Returns a reference to the newly created City.
  */
-/// Minimum hex distance between any two cities (Civ 6 rule: 3 tiles apart).
-static constexpr int32_t MIN_CITY_DISTANCE = 3;
+/// Hex distance from `location` to the nearest city of any seat (majors and
+/// city-states), or a large value when the map has no city yet.
+static int32_t nearestCityDistance(const aoc::game::GameState& gameState,
+                                   const aoc::map::HexGrid& grid,
+                                   aoc::hex::AxialCoord location) {
+    int32_t best = std::numeric_limits<int32_t>::max();
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
+            best = std::min(best, grid.distance(location, city->location()));
+        }
+    }
+    for (const std::unique_ptr<aoc::game::Player>& seat : gameState.cityStatePlayers()) {
+        for (const std::unique_ptr<aoc::game::City>& city : seat->cities()) {
+            best = std::min(best, grid.distance(location, city->location()));
+        }
+    }
+    return best;
+}
+
+bool cityFoundingBlocked(const aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                         aoc::hex::AxialCoord location) {
+    if (!grid.isValid(location)) {
+        return true;
+    }
+    const aoc::map::TerrainType terrain = grid.terrain(grid.toIndex(location));
+    if (aoc::map::isWater(terrain) || aoc::map::isImpassable(terrain)) {
+        return true;
+    }
+    return nearestCityDistance(gameState, grid, location) < MIN_CITY_DISTANCE;
+}
 
 aoc::game::City* foundCity(aoc::game::GameState& gameState,
                             aoc::map::HexGrid& grid,
@@ -180,54 +209,45 @@ aoc::game::City* foundCity(aoc::game::GameState& gameState,
     aoc::game::Player* gsPlayer = gameState.player(owner);
     assert(gsPlayer != nullptr && "foundCity: player not found in GameState");
 
-    // Enforce minimum distance from the SAME player's existing cities.
-    // In Civ 6, the 3-tile rule applies to your own cities only.
-    for (const std::unique_ptr<aoc::game::City>& existingCity : gsPlayer->cities()) {
-        const int32_t dist = grid.distance(location, existingCity->location());
-        if (dist < MIN_CITY_DISTANCE) {
-            // Too close to own city - find the nearest valid tile by spiraling outward.
-            std::vector<aoc::hex::AxialCoord> candidates;
-            candidates.reserve(50);
-            aoc::hex::spiral(location, MIN_CITY_DISTANCE + 2, std::back_inserter(candidates));
+    // Enforce the spacing rule against every seat's cities (Civ VI: any city
+    // within 3 tiles blocks founding, not only your own). An AI request that is
+    // too close is relocated to the nearest legal tile; the human paths ask
+    // cityFoundingBlocked first and refuse instead.
+    if (nearestCityDistance(gameState, grid, location) < MIN_CITY_DISTANCE) {
+        std::vector<aoc::hex::AxialCoord> candidates;
+        candidates.reserve(50);
+        aoc::hex::spiral(location, MIN_CITY_DISTANCE + 2, std::back_inserter(candidates));
 
-            bool relocated = false;
-            for (const aoc::hex::AxialCoord& alt : candidates) {
-                if (!grid.isValid(alt)) { continue; }
-                const int32_t altIdx = grid.toIndex(alt);
-                if (aoc::map::isWater(grid.terrain(altIdx))
-                    || aoc::map::isImpassable(grid.terrain(altIdx))) {
-                    continue;
-                }
-                bool tooCloseToOwn = false;
-                for (const std::unique_ptr<aoc::game::City>& ownCity : gsPlayer->cities()) {
-                    if (grid.distance(alt, ownCity->location()) < MIN_CITY_DISTANCE) {
-                        tooCloseToOwn = true;
-                        break;
-                    }
-                }
-                if (!tooCloseToOwn) {
-                    location = alt;
-                    relocated = true;
-                    LOG_INFO("foundCity: relocated from too-close position to (%d,%d)",
-                             location.q, location.r);
-                    break;
-                }
+        bool relocated = false;
+        for (const aoc::hex::AxialCoord& alt : candidates) {
+            if (!grid.isValid(alt)) { continue; }
+            const int32_t altIdx = grid.toIndex(alt);
+            if (aoc::map::isWater(grid.terrain(altIdx))
+                || aoc::map::isImpassable(grid.terrain(altIdx))) {
+                continue;
             }
-            if (!relocated) {
-                LOG_WARN("foundCity: could not find valid location %d+ tiles from own cities",
-                         MIN_CITY_DISTANCE);
-                // Mark the player's AI as expansion-exhausted so the settler
-                // production/purchase paths stop wasting cycles until the
-                // map state changes (war outcome, new tech, etc.).
-                aoc::sim::ai::AIBlackboard& aiBb = gsPlayer->blackboard();
-                aiBb.expansionExhausted = true;
-                aiBb.expansionExhaustedTurn = gameState.currentTurn();
-                aiBb.expansionOpportunity = 0.0f;
-                // No valid location honors the 3-tile spacing rule -- do not
-                // found at the original, too-close location.
-                return nullptr;
+            if (nearestCityDistance(gameState, grid, alt) < MIN_CITY_DISTANCE) {
+                continue;
             }
+            location  = alt;
+            relocated = true;
+            LOG_INFO("foundCity: relocated from too-close position to (%d,%d)",
+                     location.q, location.r);
             break;
+        }
+        if (!relocated) {
+            LOG_WARN("foundCity: could not find valid location %d+ tiles from existing cities",
+                     MIN_CITY_DISTANCE);
+            // Mark the player's AI as expansion-exhausted so the settler
+            // production/purchase paths stop wasting cycles until the
+            // map state changes (war outcome, new tech, etc.).
+            aoc::sim::ai::AIBlackboard& aiBb = gsPlayer->blackboard();
+            aiBb.expansionExhausted = true;
+            aiBb.expansionExhaustedTurn = gameState.currentTurn();
+            aiBb.expansionOpportunity = 0.0f;
+            // No valid location honors the spacing rule: do not found at the
+            // original, too-close location.
+            return nullptr;
         }
     }
 
@@ -321,11 +341,8 @@ aoc::game::City* foundCity(aoc::game::GameState& gameState,
         ++assigned;
     }
 
-    // Districts: CityCenter is always present at founding
-    aoc::sim::CityDistrictsComponent::PlacedDistrict centerDistrict{};
-    centerDistrict.type = DistrictType::CityCenter;
-    centerDistrict.location = location;
-    city.districts().districts.push_back(std::move(centerDistrict));
+    // The City constructor already placed the City Center district; a second
+    // push here doubled it in every founded city until 2026-09-05.
 
     // Loyalty starts at full
     city.loyalty().loyalty = 100.0f;

@@ -31,6 +31,7 @@
 #include "aoc/simulation/city/CityScience.hpp"
 #include "aoc/simulation/city/BorderExpansion.hpp"
 #include "aoc/simulation/map/Improvement.hpp"
+#include "aoc/simulation/turn/TurnProcessor.hpp"
 #include "aoc/save/Serializer.hpp"
 
 #define GLFW_INCLUDE_VULKAN
@@ -1212,22 +1213,21 @@ void Application::rebuildUnitActionPanel() {
             if (gsFounder == nullptr) {
                 return;
             }
+            if (aoc::sim::cityFoundingBlocked(this->m_gameState, this->m_hexGrid, cityPos)) {
+                this->m_notificationManager.push(
+                    "Cannot found a city here: another city is within 3 tiles", 4.0f, 1.0f, 0.4f,
+                    0.4f);
+                return;
+            }
 
             const std::string cityName = aoc::sim::getNextCityName(this->m_gameState, cityOwner);
-            // cityCount() (raw vector size): pre-addCity check for
-            // first-ever founding. Founding-event semantics, not
-            // current-ownership.
-            const bool isFirstCity = (gsFounder->cityCount() == 0);
-
-            aoc::sim::claimInitialTerritory(this->m_hexGrid, cityPos, cityOwner);
-
-            aoc::game::City& newGsCity = gsFounder->addCity(cityPos, cityName);
-            if (isFirstCity) {
-                newGsCity.setOriginalCapital(true);
-                newGsCity.setOriginalOwner(cityOwner);
+            // The shared founding path (spacing, capital flag, Town stage, worked
+            // tiles, territory), the same one the AI and the debug route use.
+            aoc::game::City* newGsCity = aoc::sim::foundCity(this->m_gameState, this->m_hexGrid,
+                                                             cityOwner, cityPos, cityName);
+            if (newGsCity == nullptr) {
+                return;
             }
-            newGsCity.autoAssignWorkers(this->m_hexGrid, aoc::sim::WorkerFocus::Balanced,
-                                        gsFounder);
 
             // Remove the settler from the owning player and clear selection
             gsFounder->removeUnit(selectedUnitPtr);
