@@ -104,6 +104,8 @@ enum class WonderLockReason : uint8_t {
     NeedFlat          = 13,
     NeedDistrict      = 14, ///< Building requires a district that doesn't exist
     NoResource        = 15, ///< Strategic resource missing (e.g. uranium for nuke)
+    NeedBuilding      = 16, ///< An earlier tier is missing (Library before University)
+    PopulationCap     = 17, ///< Specialty districts are capped at one per three citizens
 };
 
 /// Alias — generic name for the same enum used by buildings/units/districts.

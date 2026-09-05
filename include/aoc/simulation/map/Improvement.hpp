@@ -18,6 +18,7 @@
 namespace aoc::sim {
 
 struct CityStockpileComponent;  // fwd-decl for plantGreenhouseCrop
+struct PlayerTechComponent;     // fwd-decl for the improvement tech gate
 
 /// Static definition of a tile improvement.
 struct ImprovementDef {
@@ -95,9 +96,12 @@ inline constexpr std::array<ImprovementDef, 41> IMPROVEMENT_DEFS = {{
  * @param type   The improvement to check.
  * @return true if the improvement can be placed.
  */
-[[nodiscard]] bool canPlaceImprovement(const aoc::map::HexGrid& grid,
-                                       int32_t index,
-                                       aoc::map::ImprovementType type);
+/// When `tech` is given, an improvement whose ImprovementDef::requiredTech is not
+/// researched is refused; until 2026-09-05 requiredTech had no reader outside
+/// the Civilopedia and a turn-1 Builder could place a Kelp Farm.
+[[nodiscard]] bool canPlaceImprovement(const aoc::map::HexGrid& grid, int32_t index,
+                                       aoc::map::ImprovementType type,
+                                       const PlayerTechComponent* tech = nullptr);
 
 /**
  * @brief Auto-pick the best improvement for a tile based on terrain and features.
@@ -107,7 +111,7 @@ inline constexpr std::array<ImprovementDef, 41> IMPROVEMENT_DEFS = {{
  * @return The recommended improvement, or ImprovementType::None if none is suitable.
  */
 [[nodiscard]] aoc::map::ImprovementType bestImprovementForTile(
-    const aoc::map::HexGrid& grid, int32_t index);
+    const aoc::map::HexGrid& grid, int32_t index, const PlayerTechComponent* tech = nullptr);
 
 /**
  * @brief Compute the farm adjacency food bonus for a tile.

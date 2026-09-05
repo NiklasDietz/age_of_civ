@@ -35,6 +35,8 @@
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/map/Pathfinding.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
+
+#include <string_view>
 #include "aoc/simulation/map/Improvement.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/core/Log.hpp"
@@ -46,6 +48,37 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+
+namespace {
+
+/// Short tooltip text for a production-card lock (aoc::sim::BuildLockReason).
+std::string_view lockReasonLabel(uint8_t reason) {
+    using aoc::sim::BuildLockReason;
+    switch (static_cast<BuildLockReason>(reason)) {
+        case BuildLockReason::None:              return "buildable";
+        case BuildLockReason::AlreadyBuilt:      return "already built elsewhere";
+        case BuildLockReason::AlreadyOwned:      return "already owned";
+        case BuildLockReason::TechMissing:       return "needs a technology";
+        case BuildLockReason::CivicMissing:      return "needs a civic";
+        case BuildLockReason::NeedMountain:      return "needs a mountain";
+        case BuildLockReason::NeedCoast:         return "needs the coast";
+        case BuildLockReason::NeedRiver:         return "needs a river";
+        case BuildLockReason::NeedForest:        return "needs a forest";
+        case BuildLockReason::NeedJungle:        return "needs a jungle";
+        case BuildLockReason::NeedNaturalWonder: return "needs a natural wonder";
+        case BuildLockReason::NeedDesert:        return "needs desert";
+        case BuildLockReason::NeedHill:          return "needs hills";
+        case BuildLockReason::NeedFlat:          return "needs flat land";
+        case BuildLockReason::NeedDistrict:      return "needs its district";
+        case BuildLockReason::NoResource:        return "needs a strategic resource";
+        case BuildLockReason::NeedBuilding:      return "needs the earlier building";
+        case BuildLockReason::PopulationCap:     return "one district per 3 citizens";
+    }
+    return "prereq unmet";
+}
+
+} // namespace
+
 
 namespace aoc::ui {
 
@@ -601,7 +634,9 @@ void ProductionScreen::open(UIManager& ui) {
                 card, std::string(buildable.name) + "\n" + buildableTypeLabel(buildable.type) +
                           "  ·  " + std::to_string(static_cast<int>(buildable.cost)) +
                           " production" +
-                          (buildable.locked ? "\n(locked: prereq unmet)" : std::string{}));
+                          (buildable.locked
+                               ? "\n(locked: " + std::string(lockReasonLabel(buildable.lockReason)) + ")"
+                               : std::string{}));
 
             // Left: portrait icon column
             IconData portrait;

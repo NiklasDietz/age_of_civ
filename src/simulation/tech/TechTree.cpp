@@ -21,36 +21,36 @@ std::vector<TechDef> buildTechDefs() {
     // Era 0: Ancient -- costs 20-40 (fast early game: 2-5 turns each)
     techs.push_back({TechId{0}, "Mining", EraId{0}, 20, {}, {}, {BuildingId{0}}, {}});
     techs.push_back({TechId{1}, "Animal Husbandry", EraId{0}, 20, {}, {}, {}, {UnitTypeId{4}}});
-    techs.push_back({TechId{2}, "Pottery", EraId{0}, 20, {}, {}, {BuildingId{1}}, {}});
+    techs.push_back({TechId{2}, "Pottery", EraId{0}, 20, {}, {}, {BuildingId{1}, BuildingId{15}}, {}});
     techs.push_back({TechId{3}, "Writing", EraId{0}, 40, {{TechId{2}}}, {}, {BuildingId{7}}, {}});
 
     // Era 1: Classical -- costs 50-80 (5-10 turns each)
     // 2026-05-03: Bronze Working moved Classical → Ancient (matches Civ6;
     // it's a Mining-tier metallurgy tech, not Classical). Cost dropped 60→35.
-    techs.push_back({TechId{4}, "Bronze Working", EraId{0}, 35, {{TechId{0}}}, {}, {}, {UnitTypeId{0}}});
+    techs.push_back({TechId{4}, "Bronze Working", EraId{0}, 35, {{TechId{0}}}, {}, {BuildingId{18}}, {UnitTypeId{0}}});
     techs.push_back({TechId{5}, "Currency", EraId{1}, 65, {{TechId{3}}}, {}, {BuildingId{6}}, {}});
-    techs.push_back({TechId{6}, "Engineering", EraId{1}, 80, {{TechId{0}, TechId{2}}}, {}, {}, {}});
+    techs.push_back({TechId{6}, "Engineering", EraId{1}, 80, {{TechId{0}, TechId{2}}}, {}, {BuildingId{42}}, {}});
 
     // Era 2: Medieval -- costs 160-240
     techs.push_back({TechId{7}, "Apprenticeship", EraId{2}, 190, {{TechId{5}, TechId{6}}}, {}, {BuildingId{1}}, {}});
     techs.push_back({TechId{8}, "Metallurgy", EraId{2}, 220, {{TechId{4}}}, {}, {BuildingId{3}}, {}});
 
     // Era 3: Renaissance -- costs 300-420
-    techs.push_back({TechId{9}, "Banking", EraId{3}, 350, {{TechId{5}, TechId{7}}}, {}, {}, {}});
+    techs.push_back({TechId{9}, "Banking", EraId{3}, 350, {{TechId{5}, TechId{7}}}, {}, {BuildingId{20}}, {}});
     techs.push_back({TechId{10}, "Gunpowder", EraId{3}, 380, {{TechId{8}}}, {}, {}, {}});
 
     // Era 4: Industrial -- costs ~900-1200 (raised from 480-650 so the Steam Age
     // fires near turn ~250/500 instead of turn ~120, matching Civ 6 pacing).
     techs.push_back({TechId{11}, "Industrialization", EraId{4}, 1150, {{TechId{8}, TechId{9}}},
-        {}, {BuildingId{3}}, {}});
+        {}, {BuildingId{3}, BuildingId{26}}, {}});
     techs.push_back({TechId{12}, "Refining", EraId{4}, 1040, {{TechId{11}}},
-        {}, {BuildingId{2}}, {}});
-    techs.push_back({TechId{13}, "Economics", EraId{4}, 960, {{TechId{9}}}, {}, {}, {}});
+        {}, {BuildingId{2}, BuildingId{27}, BuildingId{32}}, {}});
+    techs.push_back({TechId{13}, "Economics", EraId{4}, 960, {{TechId{9}}}, {}, {BuildingId{21}}, {}});
 
     // Era 5: Modern. Costs restored to 1500-1800 band — bulk era-5 cuts
     // backfired in audit. Late-era pacing now adjusted at era-6/7 only.
     techs.push_back({TechId{14}, "Electricity", EraId{5}, 1500, {{TechId{11}}},
-        {}, {BuildingId{4}}, {}});
+        {}, {BuildingId{4}, BuildingId{28}, BuildingId{31}}, {}});
     techs.push_back({TechId{15}, "Mass Production", EraId{5}, 1700, {{TechId{19}, TechId{12}}},
         {}, {BuildingId{5}}, {}});
 
@@ -58,7 +58,7 @@ std::vector<TechDef> buildTechDefs() {
     // 2026-05-03: pushed lower again so IR #3 Digital Age fires beyond once-per-audit.
     techs.push_back({TechId{16}, "Computers", EraId{6}, 950, {{TechId{14}, TechId{23}}},
         {}, {BuildingId{12}}, {}});
-    techs.push_back({TechId{17}, "Nuclear Fission", EraId{6}, 1100, {{TechId{14}}}, {}, {}, {}});
+    techs.push_back({TechId{17}, "Nuclear Fission", EraId{6}, 1100, {{TechId{14}}}, {}, {BuildingId{29}}, {}});
 
     // ================================================================
     // NEW TECHS (18-27)
@@ -136,7 +136,7 @@ std::vector<TechDef> buildTechDefs() {
     // Era 6: Atomic -- ecology (biofuel).
     techs.push_back({TechId{29}, "Ecology", EraId{6}, 2400,
         {{TechId{24}}},  // Advanced Chemistry
-        {}, {BuildingId{33}}, {}});  // Unlocks Biofuel Plant
+        {}, {BuildingId{33}, BuildingId{25}, BuildingId{30}, BuildingId{34}}, {}});  // Unlocks Biofuel Plant
 
     // Era 3: Medieval/Renaissance -- Navigation. Unlocks ocean tile traversal
     // for embarked land units and naval units. Coastal / shallow-water
@@ -162,10 +162,10 @@ std::vector<TechDef> buildTechDefs() {
     // Era 0: Ancient -- naval bootstrap
     techs.push_back({TechId{31}, "Sailing", EraId{0}, 30, {}, {}, {}, {}});
     // Era 0: Ancient -- shrine, religion seed
-    techs.push_back({TechId{32}, "Astrology", EraId{0}, 30, {}, {}, {}, {}});
+    techs.push_back({TechId{32}, "Astrology", EraId{0}, 30, {}, {}, {BuildingId{36}}, {}});
     // Era 0: Ancient -- masonry / walls
     techs.push_back({TechId{33}, "Masonry", EraId{0}, 35,
-        {{TechId{0}}}, {}, {}, {}});  // Mining
+        {{TechId{0}}}, {}, {BuildingId{17}}, {}});  // Mining
     // Era 0: Ancient -- wheel / chariots
     techs.push_back({TechId{34}, "The Wheel", EraId{0}, 35,
         {{TechId{0}}}, {}, {}, {}});  // Mining
@@ -193,13 +193,13 @@ std::vector<TechDef> buildTechDefs() {
         {{TechId{31}}}, {}, {}, {}});  // Sailing
     // Era 1: Classical -- larger ships
     techs.push_back({TechId{42}, "Shipbuilding", EraId{1}, 75,
-        {{TechId{31}}}, {}, {}, {}});  // Sailing
+        {{TechId{31}}}, {}, {BuildingId{23}}, {}});  // Sailing
     // Era 2: Medieval -- military engineering
     techs.push_back({TechId{43}, "Military Engineering", EraId{2}, 200,
         {{TechId{6}, TechId{39}}}, {}, {}, {}});  // Engineering + Construction
     // Era 2: Medieval -- university branch
     techs.push_back({TechId{44}, "Education", EraId{2}, 220,
-        {{TechId{38}, TechId{7}}}, {}, {}, {}});  // Math + Apprenticeship
+        {{TechId{38}, TechId{7}}}, {}, {BuildingId{19}}, {}});  // Math + Apprenticeship
     // Era 3: Renaissance -- astronomy
     techs.push_back({TechId{45}, "Astronomy", EraId{3}, 360,
         {{TechId{44}}}, {}, {}, {}});  // Education
@@ -251,7 +251,7 @@ std::vector<TechDef> buildTechDefs() {
     techs.push_back({TechId{61}, "Steam Power", EraId{4}, 1100,
         {{TechId{11}}}, {}, {}, {}});  // Industrialization
     techs.push_back({TechId{62}, "Sanitation", EraId{4}, 980,
-        {{TechId{59}}}, {}, {}, {}});  // Scientific Theory
+        {{TechId{59}}}, {}, {BuildingId{22}}, {}});  // Scientific Theory
     techs.push_back({TechId{63}, "Rifling", EraId{4}, 1050,
         {{TechId{60}, TechId{10}}}, {}, {}, {}});  // Ballistics + Gunpowder
     // Era 5: Modern

@@ -4,15 +4,35 @@
  */
 
 #include "aoc/simulation/map/Improvement.hpp"
+#include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/map/Terrain.hpp"
 
 namespace aoc::sim {
 
+/// ImprovementDef::requiredTech researched (or no gate / no tech given).
+static bool improvementTechKnown(aoc::map::ImprovementType type, const PlayerTechComponent* tech) {
+    if (tech == nullptr) {
+        return true;
+    }
+    for (const ImprovementDef& def : IMPROVEMENT_DEFS) {
+        if (def.type == type) {
+            return !def.requiredTech.isValid() || tech->hasResearched(def.requiredTech);
+        }
+    }
+    return true;
+}
+
+static aoc::map::ImprovementType pickImprovementForTile(const aoc::map::HexGrid& grid, int32_t index);
+
 bool canPlaceImprovement(const aoc::map::HexGrid& grid,
                           int32_t index,
-                          aoc::map::ImprovementType type) {
+                          aoc::map::ImprovementType type,
+                          const PlayerTechComponent* tech) {
+    if (!improvementTechKnown(type, tech)) {
+        return false;
+    }
     aoc::map::TerrainType terrain = grid.terrain(index);
     aoc::map::FeatureType feature = grid.feature(index);
 
@@ -295,8 +315,13 @@ bool canPlaceImprovement(const aoc::map::HexGrid& grid,
     return false;
 }
 
-aoc::map::ImprovementType bestImprovementForTile(
-    const aoc::map::HexGrid& grid, int32_t index) {
+aoc::map::ImprovementType bestImprovementForTile(const aoc::map::HexGrid& grid, int32_t index,
+                                                 const PlayerTechComponent* tech) {
+    const aoc::map::ImprovementType pick = pickImprovementForTile(grid, index);
+    return improvementTechKnown(pick, tech) ? pick : aoc::map::ImprovementType::None;
+}
+
+static aoc::map::ImprovementType pickImprovementForTile(const aoc::map::HexGrid& grid, int32_t index) {
     aoc::map::TerrainType terrain = grid.terrain(index);
     aoc::map::FeatureType feature = grid.feature(index);
 

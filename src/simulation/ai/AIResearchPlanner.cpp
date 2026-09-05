@@ -12,6 +12,7 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/ai/AIBlackboard.hpp"
 #include "aoc/simulation/ai/AIResearchPlanner.hpp"
+#include "aoc/simulation/tech/TechGating.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/core/DecisionLog.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -133,6 +134,11 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                         }
                     }
                     score += unlocksNew ? 10000 : 5000;
+                }
+                // Districts gate whole building lines (Campus, Holy Site, ...); value
+                // their techs like a new building so the gate does not stall the AI.
+                if (districtUnlockedByTech(def.id)) {
+                    score += 8000;
                 }
 
                 // Priority 2: Techs that unlock military units when threatened

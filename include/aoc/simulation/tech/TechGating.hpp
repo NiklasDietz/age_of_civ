@@ -65,6 +65,13 @@ struct BuildableItem {
                                           const aoc::map::HexGrid* grid = nullptr);
 
 /// Detailed district availability: stage, presence, adjacency.
+/// True when researching `tech` unlocks a district (DISTRICT_PREREQS); the
+/// research planner values such techs like a new building.
+[[nodiscard]] bool districtUnlockedByTech(TechId tech);
+
+/// Civ VI cap on specialty (non City Center) districts: one per three citizens.
+[[nodiscard]] int32_t maxSpecialtyDistricts(int32_t population);
+
 [[nodiscard]] uint8_t districtLockReason(const aoc::game::GameState& gameState,
                                           PlayerId player,
                                           const aoc::game::City& city,

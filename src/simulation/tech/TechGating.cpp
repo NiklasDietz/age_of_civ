@@ -11,12 +11,94 @@
 #include "aoc/map/Terrain.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/tech/TechGating.hpp"
+
+#include <array>
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 
 namespace aoc::sim {
+
+namespace {
+
+/// Tech or civic that unlocks a district (Civ VI, adapted: the Industrial
+/// district is this game's smelting hub and opens with Mining; the Harbor
+/// opens with Sailing). Until 2026-09-05 every district was buildable from
+/// turn 1.
+struct DistrictPrereq {
+    DistrictType type;
+    TechId       tech;
+    CivicId      civic;
+};
+constexpr std::array<DistrictPrereq, 7> DISTRICT_PREREQS = {{
+    {DistrictType::Campus,     TechId{3},  CivicId{}},   // Writing
+    {DistrictType::HolySite,   TechId{32}, CivicId{}},   // Astrology
+    {DistrictType::Encampment, TechId{4},  CivicId{}},   // Bronze Working
+    {DistrictType::Commercial, TechId{5},  CivicId{}},   // Currency
+    {DistrictType::Harbor,     TechId{31}, CivicId{}},   // Sailing
+    {DistrictType::Industrial, TechId{0},  CivicId{}},   // Mining
+    {DistrictType::Theatre,    TechId{},   CivicId{17}}, // Drama and Poetry
+}};
+
+/// Civic prerequisites of buildings whose BuildingDef row predates requiredCivic.
+struct BuildingCivicPrereq {
+    BuildingId building;
+    CivicId    civic;
+};
+constexpr std::array<BuildingCivicPrereq, 5> BUILDING_CIVIC_PREREQS = {{
+    {BuildingId{37}, CivicId{21}},  // Temple: Theology
+    {BuildingId{38}, CivicId{24}},  // Cathedral: Divine Right
+    {BuildingId{39}, CivicId{17}},  // Amphitheater: Drama and Poetry
+    {BuildingId{40}, CivicId{27}},  // Art Museum: Humanism
+    {BuildingId{41}, CivicId{27}},  // Archaeological Museum: Humanism
+}};
+
+/// Tier chain: the earlier building a later one needs in the same city.
+struct BuildingTierPrereq {
+    BuildingId building;
+    BuildingId needs;
+};
+constexpr std::array<BuildingTierPrereq, 12> BUILDING_TIER_PREREQS = {{
+    {BuildingId{19}, BuildingId{7}},   // University <- Library
+    {BuildingId{12}, BuildingId{19}},  // Research Lab <- University
+    {BuildingId{37}, BuildingId{36}},  // Temple <- Shrine
+    {BuildingId{38}, BuildingId{37}},  // Cathedral <- Temple
+    {BuildingId{20}, BuildingId{6}},   // Bank <- Market
+    {BuildingId{21}, BuildingId{20}},  // Stock Exchange <- Bank
+    {BuildingId{40}, BuildingId{39}},  // Art Museum <- Amphitheater
+    {BuildingId{41}, BuildingId{39}},  // Archaeological Museum <- Amphitheater
+    {BuildingId{1},  BuildingId{0}},   // Workshop <- Forge
+    {BuildingId{3},  BuildingId{1}},   // Factory <- Workshop
+    {BuildingId{4},  BuildingId{3}},   // Electronics Plant <- Factory
+    {BuildingId{5},  BuildingId{3}},   // Industrial Complex <- Factory
+}};
+
+const DistrictPrereq* districtPrereq(DistrictType type) {
+    for (const DistrictPrereq& pr : DISTRICT_PREREQS) {
+        if (pr.type == type) { return &pr; }
+    }
+    return nullptr;
+}
+
+/// Lock reason for a building's civic (table) and tier prerequisites; None otherwise.
+uint8_t buildingChainLockReason(const aoc::game::Player& player, const aoc::game::City& city,
+                                BuildingId buildingId) {
+    for (const BuildingCivicPrereq& pr : BUILDING_CIVIC_PREREQS) {
+        if (pr.building == buildingId && !player.civics().hasCompleted(pr.civic)) {
+            return static_cast<uint8_t>(BuildLockReason::CivicMissing);
+        }
+    }
+    for (const BuildingTierPrereq& pr : BUILDING_TIER_PREREQS) {
+        if (pr.building == buildingId && !city.hasBuilding(pr.needs)) {
+            return static_cast<uint8_t>(BuildLockReason::NeedBuilding);
+        }
+    }
+    return static_cast<uint8_t>(BuildLockReason::None);
+}
+
+} // namespace
+
 
 // Forward decl — definition lower in file.
 static uint8_t checkSpatial(const aoc::map::HexGrid* grid,
@@ -136,6 +218,10 @@ bool canBuildBuilding(const aoc::game::GameState& gameState, PlayerId player,
     }
 
     if (gatedByTech && !techResearched) {
+        return false;
+    }
+    if (buildingChainLockReason(*gsPlayer, city, buildingId)
+        != static_cast<uint8_t>(BuildLockReason::None)) {
         return false;
     }
 
@@ -347,6 +433,11 @@ uint8_t buildingLockReason(const aoc::game::GameState& gameState,
      && !gsPlayer->civics().hasCompleted(bdef.requiredCivic)) {
         return static_cast<uint8_t>(BuildLockReason::CivicMissing);
     }
+    // Civic table + tier chain (Library before University, Shrine before Temple, ...).
+    if (const uint8_t chain = buildingChainLockReason(*gsPlayer, city, buildingId);
+        chain != static_cast<uint8_t>(BuildLockReason::None)) {
+        return chain;
+    }
     // Spatial: union of per-def `spatial` field and external lookup
     // table buildingSpatialReq (for pre-existing constexpr entries that
     // didn't get designated-init updates).
@@ -368,19 +459,50 @@ uint8_t buildingLockReason(const aoc::game::GameState& gameState,
     return static_cast<uint8_t>(BuildLockReason::None);
 }
 
+bool districtUnlockedByTech(TechId tech) {
+    for (const DistrictPrereq& pr : DISTRICT_PREREQS) {
+        if (pr.tech.isValid() && pr.tech == tech) { return true; }
+    }
+    return false;
+}
+
+int32_t maxSpecialtyDistricts(int32_t population) {
+    if (population < 1) { return 0; }
+    return 1 + (population - 1) / 3;
+}
+
 uint8_t districtLockReason(const aoc::game::GameState& gameState,
                             PlayerId player,
                             const aoc::game::City& city,
                             uint8_t districtTypeIdx,
                             const aoc::map::HexGrid* grid) {
-    (void)gameState;
-    (void)player;
     if (districtTypeIdx >= DISTRICT_TYPE_COUNT) {
         return static_cast<uint8_t>(BuildLockReason::AlreadyOwned);
     }
     const DistrictType dtype = static_cast<DistrictType>(districtTypeIdx);
     if (city.hasDistrict(dtype)) {
         return static_cast<uint8_t>(BuildLockReason::AlreadyOwned);
+    }
+    const aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer == nullptr) {
+        return static_cast<uint8_t>(BuildLockReason::TechMissing);
+    }
+    if (const DistrictPrereq* pr = districtPrereq(dtype); pr != nullptr) {
+        if (pr->tech.isValid() && !gsPlayer->tech().hasResearched(pr->tech)) {
+            return static_cast<uint8_t>(BuildLockReason::TechMissing);
+        }
+        if (pr->civic.isValid() && !gsPlayer->civics().hasCompleted(pr->civic)) {
+            return static_cast<uint8_t>(BuildLockReason::CivicMissing);
+        }
+    }
+    if (dtype != DistrictType::CityCenter) {
+        int32_t specialty = 0;
+        for (const CityDistrictsComponent::PlacedDistrict& d : city.districts().districts) {
+            if (d.type != DistrictType::CityCenter) { ++specialty; }
+        }
+        if (specialty >= maxSpecialtyDistricts(city.population())) {
+            return static_cast<uint8_t>(BuildLockReason::PopulationCap);
+        }
     }
     return checkSpatial(grid, city, districtSpatialReq(dtype));
 }

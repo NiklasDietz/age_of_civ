@@ -8,6 +8,7 @@
 #include "aoc/game/Unit.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/ai/AIBuilderController.hpp"
+#include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/map/Improvement.hpp"
@@ -113,9 +114,12 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
         if (grid.owner(currentIdx) == this->m_player &&
             grid.improvement(currentIdx) == aoc::map::ImprovementType::None &&
             grid.movementCost(currentIdx) > 0) {
-            const aoc::map::ImprovementType bestImpr = bestImprovementForTile(grid, currentIdx);
+            const aoc::game::Player* techOwner = gameState.player(this->m_player);
+            const PlayerTechComponent* aiTech  = techOwner != nullptr ? &techOwner->tech() : nullptr;
+            const aoc::map::ImprovementType bestImpr =
+                bestImprovementForTile(grid, currentIdx, aiTech);
             if (bestImpr != aoc::map::ImprovementType::None &&
-                canPlaceImprovement(grid, currentIdx, bestImpr)) {
+                canPlaceImprovement(grid, currentIdx, bestImpr, aiTech)) {
                 grid.setImprovement(currentIdx, bestImpr);
                 builder.ptr->useCharge();
                 if (!builder.ptr->hasCharges()) {

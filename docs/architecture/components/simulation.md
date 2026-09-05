@@ -35,7 +35,7 @@ that sequences them all.
 | `diplomacy/` | `DiplomacyState.cpp`, `EspionageSystem.cpp`, `WorldCongress.cpp`, `Grievance.cpp`, `WarWeariness.cpp`, `AllianceObligations.cpp`, … | Pairwise relations, espionage, World Congress votes, grievances, war weariness, alliances, border violations |
 | `city/` | `CityGrowth.cpp`, `CityScience.cpp`, `CityLoyalty.cpp`, `CityBombardment.cpp`, `Governor.cpp`, `ProductionSystem.cpp`, `DistrictAdjacency.cpp`, `Happiness.cpp`, `Secession.cpp`, … | City lifecycle: growth, science, loyalty, bombardment, district bonuses, governor assignments, production queue processing |
 | `unit/` | `Combat.cpp`, `Movement.cpp`, `Naval.cpp`, `Promotion.cpp`, `UnitUpgrade.cpp`, `SupplyLines.cpp`, `CombatExtensions.cpp` | Unit combat resolution, movement costs, naval rules, promotion trees, upgrade paths, ZoC |
-| `tech/` | `TechTree.cpp`, `CivicTree.cpp`, `EurekaBoost.cpp`, `TechGating.cpp`, `EraScore.cpp` | Research tree, civic tree, Eureka triggers, era transitions, tech-gated unit/building unlocks |
+| `tech/` | `TechTree.cpp`, `CivicTree.cpp`, `EurekaBoost.cpp`, `TechGating.cpp`, `EraScore.cpp` | Research tree, civic tree, Eureka triggers, era transitions, tech-gated unit/building unlocks; `TechGating.cpp` also holds the district prerequisite table (tech or civic), the building civic and tier tables (Library before University) and the one-specialty-district-per-3-citizens cap |
 | `religion/` | `Religion.cpp`, `TheologicalCombat.cpp` | Faith generation, religion founding/spread, theological combat between missionaries |
 | `culture/` | `Tourism.cpp` | Tourism accumulation and the culture victory counter |
 | `government/` | `Government.cpp`, `GovernmentComponent.cpp` | Policy slots, anarchy transitions, government-type bonuses |

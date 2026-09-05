@@ -1252,11 +1252,15 @@ void Application::rebuildUnitActionPanel() {
             }
 
             const int32_t tileIndex = this->m_hexGrid.toIndex(selectedUnitPtr->position());
+            const aoc::game::Player* builderOwner = this->m_gameState.player(selectedUnitPtr->owner());
+            const aoc::sim::PlayerTechComponent* ownerTech =
+                builderOwner != nullptr ? &builderOwner->tech() : nullptr;
             const aoc::map::ImprovementType bestImpr =
-                aoc::sim::bestImprovementForTile(this->m_hexGrid, tileIndex);
+                aoc::sim::bestImprovementForTile(this->m_hexGrid, tileIndex, ownerTech);
 
             if (bestImpr != aoc::map::ImprovementType::None &&
-                this->m_hexGrid.improvement(tileIndex) == aoc::map::ImprovementType::None) {
+                this->m_hexGrid.improvement(tileIndex) == aoc::map::ImprovementType::None &&
+                aoc::sim::canPlaceImprovement(this->m_hexGrid, tileIndex, bestImpr, ownerTech)) {
                 this->m_hexGrid.setImprovement(tileIndex, bestImpr);
                 selectedUnitPtr->useCharge();
                 LOG_INFO("Builder placed improvement via action panel");

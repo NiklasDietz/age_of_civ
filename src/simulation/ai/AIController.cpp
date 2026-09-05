@@ -915,7 +915,10 @@ static float scoreTrader(const LeaderBehavior& behavior,
     // common early, so allow 2 traders even in a single-city empire so
     // trade routes actually form and tech diffusion has volume.
     const int32_t maxTraders = std::max(2, std::min(cityCount + 1, 4));
-    const float tradeScore = (traderCount < maxTraders) ? 1.0f : 0.1f;
+    // Zero past the cap: a residual 0.1 kept the Trader a candidate in every
+    // city, and once tech gates locked the other candidates it won by default
+    // (2072 Traders in one seed-42 run, 2026-09-05).
+    const float tradeScore = (traderCount < maxTraders) ? 1.0f : 0.0f;
 
     // Lowered to 0.8 -- 1.2 caused 40+ traders per game, drowning out
     // military and builder production.  maxTraders already caps supply but
@@ -1405,6 +1408,12 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             for (const DistrictOption& opt : districtOptions) {
                 if (opt.utilityScore <= 0.0f) { continue; }
                 if (districts.hasDistrict(opt.type)) { continue; }
+                // Tech / civic prerequisite, population cap and coast rule.
+                if (districtLockReason(gameState, this->m_player, city,
+                                       static_cast<uint8_t>(opt.type), &grid)
+                    != static_cast<uint8_t>(BuildLockReason::None)) {
+                    continue;
+                }
 
                 ProductionCandidate candidate{};
                 candidate.item.type      = ProductionItemType::District;
@@ -1635,8 +1644,12 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
         // ----------------------------------------------------------------
 
         if (candidates.empty()) {
-            // Absolute last resort: produce the best available military unit
-            if (bestMilitaryId.isValid()) {
+            // Absolute last resort: fill the army up to the AI's own target. Past
+            // it the city idles; with districts gated by tech and population this
+            // branch fires often, and an unconditional unit tripled production and
+            // bankrupted every AI (measured 2026-09-05, seed 42).
+            const int32_t desiredMilitary = ownedCityCount * targets.desiredMilitaryPerCity + 2;
+            if (bestMilitaryId.isValid() && unitCounts.military < desiredMilitary) {
                 ProductionQueueItem fallbackItem{};
                 fallbackItem.type      = ProductionItemType::Unit;
                 fallbackItem.itemId    = bestMilitaryId.value;
