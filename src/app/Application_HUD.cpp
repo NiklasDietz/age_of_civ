@@ -346,7 +346,7 @@ void Application::buildHUD() {
             float dropY = 34.0f;
 
             this->m_menuDropdown =
-                this->m_uiManager.createPanel({dropX, dropY, 110.0f, 328.0f},
+                this->m_uiManager.createPanel({dropX, dropY, 110.0f, 392.0f},
                                               aoc::ui::PanelData{aoc::ui::tokens::SURFACE_PARCHMENT,
                                                                  aoc::ui::tokens::CORNER_PANEL});
             {
@@ -411,6 +411,46 @@ void Application::buildHUD() {
                 this->m_historicMomentsScreen.setContext(&this->m_gameState, &this->m_hexGrid,
                                                          this->m_gameState.humanPlayerId());
                 this->m_historicMomentsScreen.open(this->m_uiManager);
+            });
+
+            makeDropBtn(this->m_menuDropdown, "City List", [this]() {
+                this->m_uiManager.removeWidget(this->m_menuDropdown);
+                this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
+                this->m_cityListScreen.setContext(&this->m_gameState, &this->m_hexGrid,
+                                                  this->m_gameState.humanPlayerId());
+                this->m_cityListScreen.setCallbacks(
+                    [this](aoc::hex::AxialCoord loc) { this->centerCameraOn(loc); },
+                    [this](aoc::hex::AxialCoord loc) {
+                        aoc::game::Player* human = this->m_gameState.humanPlayer();
+                        aoc::game::City* city = human != nullptr ? human->cityAt(loc) : nullptr;
+                        if (city == nullptr) { return; }
+                        this->m_selectedCity = city;
+                        this->m_selectedUnit = nullptr;
+                        this->centerCameraOn(loc);
+                        this->m_cityDetailScreen.setContext(&this->m_gameState, &this->m_hexGrid, loc, 0);
+                        if (!this->m_cityDetailScreen.isOpen()) {
+                            this->m_cityDetailScreen.open(this->m_uiManager);
+                        }
+                    });
+                this->m_cityListScreen.open(this->m_uiManager);
+            });
+
+            makeDropBtn(this->m_menuDropdown, "Unit List", [this]() {
+                this->m_uiManager.removeWidget(this->m_menuDropdown);
+                this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
+                this->m_unitListScreen.setContext(&this->m_gameState, &this->m_hexGrid,
+                                                  this->m_gameState.humanPlayerId());
+                this->m_unitListScreen.setCallbacks(
+                    [this](aoc::hex::AxialCoord loc) { this->centerCameraOn(loc); },
+                    [this](aoc::hex::AxialCoord loc) {
+                        aoc::game::Player* human = this->m_gameState.humanPlayer();
+                        aoc::game::Unit* unit = human != nullptr ? human->unitAt(loc) : nullptr;
+                        if (unit == nullptr) { return; }
+                        this->m_selectedUnit = unit;
+                        this->m_selectedCity = nullptr;
+                        this->centerCameraOn(loc);
+                    });
+                this->m_unitListScreen.open(this->m_uiManager);
             });
 
             // Save / Load open the pause menu, which owns the numbered slot rows;
@@ -1567,6 +1607,13 @@ void Application::rebuildUnitActionPanel() {
     }
 
     this->m_uiManager.layout();
+}
+
+void Application::centerCameraOn(aoc::hex::AxialCoord location) {
+    float px = 0.0f;
+    float py = 0.0f;
+    aoc::hex::axialToPixel(location, this->m_gameRenderer.mapRenderer().hexSize(), px, py);
+    this->m_cameraController.setPosition(px, py);
 }
 
 } // namespace aoc::app

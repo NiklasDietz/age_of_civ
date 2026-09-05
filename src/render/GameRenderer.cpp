@@ -9,6 +9,9 @@
  */
 
 #include "aoc/render/GameRenderer.hpp"
+#include "aoc/simulation/city/CityActions.hpp"
+#include "aoc/simulation/city/ProductionSystem.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/render/CameraController.hpp"
 #include "aoc/render/MapOverlays.hpp"
 #include "aoc/game/GameState.hpp"
@@ -1933,11 +1936,17 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
             }
         }
 
-        // Layer 3.5: City name labels (world-space text above each city hex)
+        // Layer 3.5: City banners (world-space text above each city hex): the
+        // name, a summary line (population, production item and turns), a
+        // growth bar for own cities, a loyalty warning and a religion mark.
+        // Until 2026-09-05 the banner was the name alone.
+        this->m_cityBannerRects.clear();
         {
             const float invZoomLabel        = 1.0f / camera.zoom();
             constexpr float LABEL_FONT_SIZE = 10.0f;
+            constexpr float DETAIL_FONT_SIZE = 7.0f;
             const float labelOffsetY        = hexSize * 0.60f;
+            const int32_t currentTurn       = gameState.currentTurn();
 
             for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
                 for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
@@ -1982,6 +1991,47 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
 
                     aoc::ui::BitmapFont::drawText(renderer2d, city.name(), textX, textY,
                                                   LABEL_FONT_SIZE, labelColor, invZoomLabel);
+
+                    // Summary line, cached per turn (production per turn walks the tiles).
+                    const int32_t cityTileIdx = grid.toIndex(city.location());
+                    std::pair<int32_t, std::string>& cached = this->m_cityBannerCache[cityTileIdx];
+                    if (cached.first != currentTurn + 1 || cached.second.empty()) {
+                        const float perTurn = aoc::sim::cityProductionPerTurn(*playerPtr, city, grid, gameState);
+                        cached = {currentTurn + 1, aoc::sim::cityBannerSummary(city, perTurn)};
+                    }
+                    std::string detail = cached.second;
+                    if (city.loyalty().loyalty < 50.0f) {
+                        detail += " !";
+                    }
+                    if (city.religion().dominantReligion() != aoc::sim::NO_RELIGION) {
+                        detail += " +";
+                    }
+                    const aoc::ui::Rect detailBounds =
+                        aoc::ui::BitmapFont::measureText(detail, DETAIL_FONT_SIZE);
+                    const float detailW = detailBounds.w * invZoomLabel;
+                    const float detailH = detailBounds.h * invZoomLabel;
+                    const float detailX = cityCx - detailW * 0.5f;
+                    const float detailY = textY + textWorldH + 1.0f * invZoomLabel;
+                    const aoc::ui::Color detailColor{0.92f, 0.90f, 0.82f, 1.0f};
+                    aoc::ui::BitmapFont::drawText(renderer2d, detail, detailX, detailY,
+                                                  DETAIL_FONT_SIZE, detailColor, invZoomLabel);
+
+                    // Growth bar for own cities: food stored toward the next citizen.
+                    float barH = 0.0f;
+                    if (city.owner() == viewingPlayer) {
+                        const float barW    = std::max(textWorldW, detailW);
+                        barH                = 2.0f * invZoomLabel;
+                        const float barX    = cityCx - barW * 0.5f;
+                        const float barY    = detailY + detailH + 1.0f * invZoomLabel;
+                        const float fill    = aoc::sim::cityGrowthFraction(city);
+                        renderer2d.drawFilledRect(barX, barY, barW, barH, 0.15f, 0.12f, 0.10f, 0.8f);
+                        renderer2d.drawFilledRect(barX, barY, barW * fill, barH, 0.45f, 0.80f, 0.35f, 0.95f);
+                    }
+
+                    const float bannerW = std::max(textWorldW, detailW);
+                    this->m_cityBannerRects.push_back(CityBannerRect{
+                        city.owner(), city.location(), cityCx - bannerW * 0.5f, textY, bannerW,
+                        textWorldH + detailH + barH + 2.0f * invZoomLabel});
                 }
             }
         }

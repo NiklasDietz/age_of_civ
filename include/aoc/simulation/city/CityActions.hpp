@@ -19,6 +19,7 @@
 #include "aoc/simulation/city/ProductionQueue.hpp"
 
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 namespace aoc::game { class GameState; class City; class Player; }
@@ -83,5 +84,15 @@ namespace aoc::sim {
 /// Turns until the queue head completes at `productionPerTurn`; -1 when it
 /// never will (no production or empty queue).
 [[nodiscard]] int32_t turnsToComplete(const aoc::game::City& city, float productionPerTurn);
+
+/// "Monument 6t" or "idle": the queue head with its turns to complete.
+[[nodiscard]] std::string cityProductionSummary(const aoc::game::City& city, float productionPerTurn);
+
+/// One-line banner text under a city name: "Pop 4 | Monument 6t" or
+/// "Pop 4 | idle" (the map banner and the city list share it).
+[[nodiscard]] std::string cityBannerSummary(const aoc::game::City& city, float productionPerTurn);
+
+/// Food stored over food needed for the next citizen, clamped to [0, 1].
+[[nodiscard]] float cityGrowthFraction(const aoc::game::City& city);
 
 } // namespace aoc::sim

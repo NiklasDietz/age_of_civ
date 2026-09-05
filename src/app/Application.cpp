@@ -1757,6 +1757,8 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_screenRegistry.add(&this->m_encyclopediaScreen);
     this->m_screenRegistry.add(&this->m_greatPeopleScreen);
     this->m_screenRegistry.add(&this->m_historicMomentsScreen);
+    this->m_screenRegistry.add(&this->m_cityListScreen);
+    this->m_screenRegistry.add(&this->m_unitListScreen);
     this->m_screenRegistry.add(&this->m_demographicsScreen);
     this->m_screenRegistry.add(&this->m_worldCongressScreen);
     this->m_screenRegistry.add(&this->m_scoreScreen);
@@ -5409,6 +5411,8 @@ void Application::run() {
         this->m_encyclopediaScreen.refresh(this->m_uiManager);
         this->m_greatPeopleScreen.refresh(this->m_uiManager);
         this->m_historicMomentsScreen.refresh(this->m_uiManager);
+        this->m_cityListScreen.refresh(this->m_uiManager);
+        this->m_unitListScreen.refresh(this->m_uiManager);
         this->m_demographicsScreen.refresh(this->m_uiManager);
         this->m_worldCongressScreen.refresh(this->m_uiManager);
         this->m_scoreScreen.refresh(this->m_uiManager);
@@ -6282,6 +6286,27 @@ void Application::handleSelect() {
 
     float hexSize               = this->m_gameRenderer.mapRenderer().hexSize();
     hex::AxialCoord clickedTile = hex::pixelToAxial(worldX, worldY, hexSize);
+
+    // A click on an own city's banner opens its detail screen (Civ VI banners).
+    for (const aoc::render::CityBannerRect& banner : this->m_gameRenderer.cityBannerRects()) {
+        if (banner.owner != 0 || worldX < banner.x || worldX > banner.x + banner.w
+            || worldY < banner.y || worldY > banner.y + banner.h) {
+            continue;
+        }
+        aoc::game::Player* bannerOwner = this->m_gameState.humanPlayer();
+        aoc::game::City* bannerCity =
+            bannerOwner != nullptr ? bannerOwner->cityAt(banner.location) : nullptr;
+        if (bannerCity == nullptr) {
+            continue;
+        }
+        this->m_selectedCity = bannerCity;
+        this->m_selectedUnit = nullptr;
+        this->m_cityDetailScreen.setContext(&this->m_gameState, &this->m_hexGrid, banner.location, 0);
+        if (!this->m_cityDetailScreen.isOpen()) {
+            this->m_cityDetailScreen.open(this->m_uiManager);
+        }
+        return;
+    }
 
     if (!this->m_hexGrid.isValid(clickedTile)) {
         this->m_selectedUnit = nullptr;

@@ -42,6 +42,8 @@
 #include "aoc/ui/Encyclopedia.hpp"
 #include "aoc/ui/GreatPeopleScreen.hpp"
 #include "aoc/ui/HistoricMomentsScreen.hpp"
+#include "aoc/ui/CityListScreen.hpp"
+#include "aoc/ui/UnitListScreen.hpp"
 #include "aoc/ui/DemographicsScreen.hpp"
 #include "aoc/ui/WorldCongressScreen.hpp"
 #include "aoc/ui/EventLog.hpp"
@@ -323,6 +325,8 @@ private:
     aoc::ui::EncyclopediaScreen m_encyclopediaScreen;
     aoc::ui::GreatPeopleScreen m_greatPeopleScreen;
     aoc::ui::HistoricMomentsScreen m_historicMomentsScreen;
+    aoc::ui::CityListScreen m_cityListScreen;
+    aoc::ui::UnitListScreen m_unitListScreen;
     aoc::ui::DemographicsScreen m_demographicsScreen;
     aoc::ui::WorldCongressScreen m_worldCongressScreen;
     aoc::ui::ScoreScreen m_scoreScreen;
@@ -651,6 +655,9 @@ private:
 
     /// The five `/game/city/*` routes (Application_CityControl.cpp).
     void registerCityControlRoutes();
+
+    /// Centre the camera on a hex (the list screens' Go buttons).
+    void centerCameraOn(aoc::hex::AxialCoord location);
 
     /// UI-control commands (widget clicks/scrolls) queued by debug-server
     /// HTTP handlers. Deliberately a SEPARATE queue from

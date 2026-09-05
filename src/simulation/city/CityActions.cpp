@@ -10,6 +10,7 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/map/HexGrid.hpp"
+#include "aoc/simulation/city/CityGrowth.hpp"
 #include "aoc/simulation/city/ProductionSystem.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/tech/TechGating.hpp"
@@ -218,6 +219,32 @@ std::string_view amenityTierName(float happiness) {
     if (happiness >= -2.0f) { return "Displeased"; }
     if (happiness >= -4.0f) { return "Unhappy"; }
     return "Unrest";
+}
+
+std::string cityProductionSummary(const aoc::game::City& city, float productionPerTurn) {
+    const ProductionQueueItem* head = city.production().currentItem();
+    if (head == nullptr) {
+        return "idle";
+    }
+    std::string text = head->name;
+    const int32_t turns = turnsToComplete(city, productionPerTurn);
+    if (turns > 0) {
+        text += " " + std::to_string(turns) + "t";
+    }
+    return text;
+}
+
+std::string cityBannerSummary(const aoc::game::City& city, float productionPerTurn) {
+    return "Pop " + std::to_string(city.population()) + " | "
+         + cityProductionSummary(city, productionPerTurn);
+}
+
+float cityGrowthFraction(const aoc::game::City& city) {
+    const float needed = foodForGrowth(city.population());
+    if (needed <= 0.0f) {
+        return 0.0f;
+    }
+    return std::clamp(city.foodSurplus() / needed, 0.0f, 1.0f);
 }
 
 int32_t turnsToComplete(const aoc::game::City& city, float productionPerTurn) {

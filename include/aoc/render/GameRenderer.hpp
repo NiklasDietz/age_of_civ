@@ -20,6 +20,8 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 #include <vulkan/vulkan.h>
 
 namespace vulkan_app {
@@ -43,6 +45,16 @@ class FogOfWar;
 namespace aoc::render {
 
 class CameraController;
+
+/// A city banner drawn this frame, in world coordinates.
+struct CityBannerRect {
+    PlayerId owner;
+    aoc::hex::AxialCoord location;
+    float x;
+    float y;
+    float w;
+    float h;
+};
 
 class GameRenderer {
 public:
@@ -186,6 +198,11 @@ public:
     /// Cleared by setting to INVALID_SELECTION.
     hex::AxialCoord selectionHighlight = {0x7FFFFFFF, 0x7FFFFFFF};
     static inline constexpr hex::AxialCoord INVALID_SELECTION = {0x7FFFFFFF, 0x7FFFFFFF};
+    /// The banners drawn in the last frame (world coordinates), for click-to-open.
+    [[nodiscard]] const std::vector<CityBannerRect>& cityBannerRects() const {
+        return this->m_cityBannerRects;
+    }
+
     [[nodiscard]] bool hasSelection() const {
         return this->selectionHighlight.q != INVALID_SELECTION.q
             || this->selectionHighlight.r != INVALID_SELECTION.r;
@@ -205,6 +222,13 @@ private:
     /// rename (a renamed city becomes a different key). Font size for labels
     /// is constant, so the name alone is a sufficient key.
     std::unordered_map<std::string, aoc::ui::Rect> m_cityLabelSizeCache;
+
+    /// Banner summary per city tile, recomputed once per turn (production per
+    /// turn walks the worked tiles): tile index -> {turn, text}.
+    std::unordered_map<int32_t, std::pair<int32_t, std::string>> m_cityBannerCache;
+
+    /// World-space rects of the banners drawn this frame, for click-to-open.
+    std::vector<CityBannerRect> m_cityBannerRects;
 };
 
 } // namespace aoc::render

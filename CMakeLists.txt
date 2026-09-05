@@ -212,6 +212,8 @@ set(AOC_GFX_ONLY_SOURCES
     src/ui/EspionageScreen.cpp
     src/ui/GreatPeopleScreen.cpp
     src/ui/HistoricMomentsScreen.cpp
+    src/ui/CityListScreen.cpp
+    src/ui/UnitListScreen.cpp
     src/ui/DemographicsScreen.cpp
     src/ui/WorldCongressScreen.cpp
     src/ui/ScoreScreen.cpp
@@ -443,6 +445,8 @@ set(AOC_LIB_SOURCES
     src/ui/EspionageScreen.cpp
     src/ui/GreatPeopleScreen.cpp
     src/ui/HistoricMomentsScreen.cpp
+    src/ui/CityListScreen.cpp
+    src/ui/UnitListScreen.cpp
     src/ui/DemographicsScreen.cpp
     src/ui/WorldCongressScreen.cpp
     src/ui/ScoreScreen.cpp
@@ -983,6 +987,8 @@ if(AOC_BUILD_TESTS)
         list(APPEND AOC_SMOKE_TESTS test_demographics_screen)
         list(APPEND AOC_SMOKE_TESTS test_government_screen)
         list(APPEND AOC_SMOKE_TESTS test_city_detail_screen)
+        list(APPEND AOC_SMOKE_TESTS test_city_list_screen)
+        list(APPEND AOC_SMOKE_TESTS test_unit_list_screen)
         list(APPEND AOC_SMOKE_TESTS test_world_congress_screen)
     endif()
 
