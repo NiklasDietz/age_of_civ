@@ -214,6 +214,7 @@ set(AOC_GFX_ONLY_SOURCES
     src/ui/HistoricMomentsScreen.cpp
     src/ui/CityListScreen.cpp
     src/ui/GreatWorksScreen.cpp
+    src/ui/CityStatesScreen.cpp
     src/ui/UnitListScreen.cpp
     src/ui/DemographicsScreen.cpp
     src/ui/WorldCongressScreen.cpp
@@ -450,6 +451,7 @@ set(AOC_LIB_SOURCES
     src/ui/HistoricMomentsScreen.cpp
     src/ui/CityListScreen.cpp
     src/ui/GreatWorksScreen.cpp
+    src/ui/CityStatesScreen.cpp
     src/ui/UnitListScreen.cpp
     src/ui/DemographicsScreen.cpp
     src/ui/WorldCongressScreen.cpp
@@ -961,6 +963,7 @@ if(AOC_BUILD_TESTS)
         test_spaceport
         test_government_plaza_and_dam
         test_great_works
+        test_city_states
         test_promotions
         test_formations
         test_governors
@@ -996,6 +999,7 @@ if(AOC_BUILD_TESTS)
         list(APPEND AOC_SMOKE_TESTS test_city_detail_screen)
         list(APPEND AOC_SMOKE_TESTS test_city_list_screen)
         list(APPEND AOC_SMOKE_TESTS test_great_works_screen)
+        list(APPEND AOC_SMOKE_TESTS test_city_states_screen)
         list(APPEND AOC_SMOKE_TESTS test_unit_list_screen)
         list(APPEND AOC_SMOKE_TESTS test_religion_screen)
         list(APPEND AOC_SMOKE_TESTS test_world_congress_screen)

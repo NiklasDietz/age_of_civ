@@ -837,6 +837,8 @@ void writeGovernmentSection(WriteBuffer& out, const aoc::game::GameState& gameSt
         section.writeU8(gov.autoPolicies ? uint8_t{1} : uint8_t{0});   // v17
         section.writeU8(gov.policySwapFree ? uint8_t{1} : uint8_t{0}); // v18
         section.writeI32(gov.lastGovernmentChangeTurn);                // v18
+        section.writeI32(player->envoys().available);                  // v20
+        section.writeI32(player->envoys().lifetime);                   // v20
     }
 
     writeSection(out, SectionId::GovernmentState, section);
@@ -2642,8 +2644,12 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 gov.autoPolicies          = buf.readU8() != 0;   // v17
                 gov.policySwapFree        = buf.readU8() != 0;   // v18
                 gov.lastGovernmentChangeTurn = buf.readI32();    // v18
+                const int32_t envoysAvailable = buf.readI32();  // v20
+                const int32_t envoysLifetime  = buf.readI32();  // v20
                 if (player != nullptr) {
-                    player->government() = std::move(gov);
+                    player->government()       = std::move(gov);
+                    player->envoys().available = envoysAvailable;
+                    player->envoys().lifetime  = envoysLifetime;
                 }
             }
             break;

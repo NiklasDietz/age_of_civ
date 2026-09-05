@@ -1466,6 +1466,7 @@ ErrorCode Application::initialize(const Config& config) {
     this->registerUnitOrderRoutes();
     this->registerReligionRoutes();
     this->registerCultureRoutes();
+    this->registerCityStateRoutes();
 
     // POST /game/governor/promote?player=&q=&r=&promotion=
     this->m_debugServer->routeJson(
@@ -1774,6 +1775,7 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_screenRegistry.add(&this->m_historicMomentsScreen);
     this->m_screenRegistry.add(&this->m_cityListScreen);
     this->m_screenRegistry.add(&this->m_greatWorksScreen);
+    this->m_screenRegistry.add(&this->m_cityStatesScreen);
     this->m_screenRegistry.add(&this->m_unitListScreen);
     this->m_screenRegistry.add(&this->m_demographicsScreen);
     this->m_screenRegistry.add(&this->m_worldCongressScreen);
@@ -5430,6 +5432,7 @@ void Application::run() {
         this->m_historicMomentsScreen.refresh(this->m_uiManager);
         this->m_cityListScreen.refresh(this->m_uiManager);
         this->m_greatWorksScreen.refresh(this->m_uiManager);
+        this->m_cityStatesScreen.refresh(this->m_uiManager);
         this->m_unitListScreen.refresh(this->m_uiManager);
         this->m_demographicsScreen.refresh(this->m_uiManager);
         this->m_worldCongressScreen.refresh(this->m_uiManager);

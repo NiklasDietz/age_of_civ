@@ -9,6 +9,8 @@
  */
 
 #include "aoc/render/GameRenderer.hpp"
+
+#include "aoc/render/PlayerColors.hpp"
 #include "aoc/simulation/city/CityActions.hpp"
 #include "aoc/simulation/city/ProductionSystem.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
@@ -30,18 +32,6 @@
 #include <renderer/RenderPipeline.hpp>
 
 namespace {
-
-/// Player colors for city name labels (matches UnitRenderer).
-constexpr std::array<std::array<float, 3>, 8> LABEL_PLAYER_COLORS = {{
-    {0.20f, 0.40f, 0.90f},
-    {0.90f, 0.20f, 0.20f},
-    {0.20f, 0.80f, 0.20f},
-    {0.90f, 0.80f, 0.10f},
-    {0.70f, 0.30f, 0.80f},
-    {0.90f, 0.50f, 0.10f},
-    {0.10f, 0.80f, 0.80f},
-    {0.80f, 0.40f, 0.60f},
-}};
 
 } // anonymous namespace
 
@@ -2019,11 +2009,11 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                     const float textX              = cityCx - textWorldW * 0.5f;
                     const float textY              = cityCy - labelOffsetY - textWorldH * 0.5f;
 
-                    const std::size_t cIdx =
-                        static_cast<std::size_t>(city.owner()) % LABEL_PLAYER_COLORS.size();
-                    const aoc::ui::Color labelColor{LABEL_PLAYER_COLORS[cIdx][0],
-                                                    LABEL_PLAYER_COLORS[cIdx][1],
-                                                    LABEL_PLAYER_COLORS[cIdx][2], 1.0f};
+                    float labelR = 0.0f;
+                    float labelG = 0.0f;
+                    float labelB = 0.0f;
+                    aoc::render::ownerColor(city.owner(), labelR, labelG, labelB);
+                    const aoc::ui::Color labelColor{labelR, labelG, labelB, 1.0f};
 
                     aoc::ui::BitmapFont::drawText(renderer2d, city.name(), textX, textY,
                                                   LABEL_FONT_SIZE, labelColor, invZoomLabel);

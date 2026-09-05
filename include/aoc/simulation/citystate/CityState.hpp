@@ -7,6 +7,7 @@
 ///        include-order fragility between the component (which embeds the
 ///        quest struct) and the quest definitions.
 
+#include "aoc/core/ErrorCodes.hpp"
 #include "aoc/core/Types.hpp"
 #include "aoc/core/Random.hpp"
 #include "aoc/map/HexCoord.hpp"
@@ -65,6 +66,14 @@ inline constexpr std::array<CityStateDef, CITY_STATE_COUNT> CITY_STATE_DEFS = {{
 /// Special player ID range for city-states (CITY_STATE_PLAYER_BASE..+).
 /// GameState::player(id) dispatches IDs >= base into the CS slot vector.
 inline constexpr PlayerId CITY_STATE_PLAYER_BASE = 200;
+
+inline constexpr int32_t CS_SUZERAIN_MIN_ENVOYS = 3;
+inline constexpr int32_t CS_LEVY_GOLD           = 200;
+inline constexpr int32_t CS_LEVY_TURNS          = 15;
+inline constexpr int32_t CS_BULLY_GOLD          = 50;
+inline constexpr int32_t CS_BULLY_COOLDOWN      = 5;
+
+[[nodiscard]] std::string_view cityStateTypeName(CityStateType type);
 
 // ============================================================================
 // Quest types
@@ -155,16 +164,23 @@ struct CityStateComponent {
     }
 
     /// Player with the most envoys (>=3). INVALID_PLAYER if none qualifies.
+    /// Suzerain: at least CS_SUZERAIN_MIN_ENVOYS and a strict lead. A tie
+    /// leaves the city-state independent (passive accrual used to tie everyone
+    /// and hand the seat to player 0).
     [[nodiscard]] PlayerId computeSuzerain() const {
-        PlayerId best = INVALID_PLAYER;
+        PlayerId best    = INVALID_PLAYER;
         int8_t bestCount = 0;
+        bool tied        = false;
         for (uint8_t i = 0; i < MAX_PLAYERS; ++i) {
             if (this->envoys[i] > bestCount) {
                 bestCount = this->envoys[i];
-                best = static_cast<PlayerId>(i);
+                best      = static_cast<PlayerId>(i);
+                tied      = false;
+            } else if (this->envoys[i] == bestCount && bestCount > 0) {
+                tied = true;
             }
         }
-        if (bestCount < 3) { return INVALID_PLAYER; }
+        if (bestCount < 3 || tied) { return INVALID_PLAYER; }
         return best;
     }
 };
@@ -223,5 +239,20 @@ void checkCityStateQuests(aoc::game::GameState& gameState);
 [[nodiscard]] bool levyCityStateMilitary(aoc::game::GameState& gameState,
                                            PlayerId player,
                                            std::size_t cityStateIndex);
+
+[[nodiscard]] std::string_view cityStateQuestName(CityStateQuestType type);
+
+/// Human and AI requests, shared by the City-States screen, the debug routes
+/// and the MCP tools. `cityStateIndex` indexes GameState::cityStates().
+/// EntityNotFound for a bad index or player, InvalidState when the player has
+/// not met the city-state (envoy, bully), is not its suzerain (levy), a rival
+/// is (bully), the levy is already running or the bully cooldown is active;
+/// InsufficientResources without an envoy or the gold.
+ErrorCode requestSendEnvoy(aoc::game::GameState& gameState, PlayerId player,
+                           std::size_t cityStateIndex);
+ErrorCode requestLevyCityState(aoc::game::GameState& gameState, PlayerId player,
+                               std::size_t cityStateIndex);
+ErrorCode requestBullyCityState(aoc::game::GameState& gameState, PlayerId player,
+                                std::size_t cityStateIndex);
 
 } // namespace aoc::sim

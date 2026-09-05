@@ -487,6 +487,40 @@ def aoc_move_great_work(player: int, q: int, r: int, index: int, to_q: int, to_r
 
 
 @mcp.tool()
+def aoc_list_city_states(player: int) -> dict:
+    """List every city-state with its index, name, type, whether `player` has met it, the
+    player's envoys there, the suzerain seat (255 = none), its hex, whether it has an active
+    quest for the player, and the levying seat; plus the player's available envoys.
+    """
+    return _get("/game/citystates", player=player)
+
+
+@mcp.tool()
+def aoc_send_envoy(player: int, index: int) -> dict:
+    """Send one envoy from `player`'s pool (earned per completed civic) to the met city-state
+    at `index` (from aoc_list_city_states). Three envoys and a strict lead make the player
+    suzerain. Queues the request.
+    """
+    return _post("/game/citystate/envoy", player=player, index=index)
+
+
+@mcp.tool()
+def aoc_levy_city_state(player: int, index: int) -> dict:
+    """Levy the military of the city-state at `index` for 15 turns for 200 gold. The player
+    must be its suzerain and no levy may be running. Queues the request.
+    """
+    return _post("/game/citystate/levy", player=player, index=index)
+
+
+@mcp.tool()
+def aoc_bully_city_state(player: int, index: int) -> dict:
+    """Bully the met city-state at `index` for 50 gold: costs 2 envoys there, angers every
+    civ with envoys there, needs no rival suzerain and a 5-turn cooldown. Queues the request.
+    """
+    return _post("/game/citystate/bully", player=player, index=index)
+
+
+@mcp.tool()
 def aoc_set_production(player: int, q: int, r: int, item_type: str, item_id: int) -> dict:
     """Queue a production item onto the city owned by `player` at hex (q, r).
 

@@ -4,6 +4,7 @@
  */
 
 #include "aoc/render/Minimap.hpp"
+#include "aoc/render/PlayerColors.hpp"
 #include "aoc/render/CameraController.hpp"
 #include "aoc/render/GameRenderer.hpp"
 #include "aoc/map/HexGrid.hpp"
@@ -20,24 +21,6 @@
 
 namespace aoc::render {
 
-/// Player colors for ownership tinting on the minimap. Mirrors the 8-slot
-/// palette in UnitRenderer.cpp so minimap and unit colors stay consistent.
-/// The game supports up to 16 players (Types.hpp MAX_PLAYERS); PlayerIds
-/// beyond slot 7 wrap via modulo rather than being skipped, which matches
-/// UnitRenderer's `% PLAYER_COLORS.size()` fallback and avoids leaving
-/// territory for players 4-15 untinted on the minimap.
-static constexpr float PLAYER_COLORS[][3] = {
-    {0.20f, 0.40f, 0.90f}, // Player 0: blue
-    {0.90f, 0.20f, 0.20f}, // Player 1: red
-    {0.20f, 0.80f, 0.20f}, // Player 2: green
-    {0.90f, 0.80f, 0.10f}, // Player 3: yellow
-    {0.70f, 0.30f, 0.80f}, // Player 4: purple
-    {0.90f, 0.50f, 0.10f}, // Player 5: orange
-    {0.10f, 0.80f, 0.80f}, // Player 6: cyan
-    {0.80f, 0.40f, 0.60f}, // Player 7: pink
-};
-
-static constexpr uint8_t PLAYER_COLOR_COUNT = 8;
 
 Minimap::Rect Minimap::computeRect(const aoc::map::HexGrid& grid, uint32_t screenHeight,
                                    float bottomReservedPx) {
@@ -348,11 +331,14 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
             // slot) instead of being rendered as unowned territory.
             const PlayerId tileOwner = grid.owner(index);
             if (tileOwner != INVALID_PLAYER) {
-                const std::size_t ci = static_cast<std::size_t>(tileOwner) % PLAYER_COLOR_COUNT;
+                float ownerR = 0.0f;
+                float ownerG = 0.0f;
+                float ownerB = 0.0f;
+                aoc::render::ownerColor(tileOwner, ownerR, ownerG, ownerB);
                 const float blend    = 0.4f;
-                tc.r                 = tc.r * (1.0f - blend) + PLAYER_COLORS[ci][0] * blend;
-                tc.g                 = tc.g * (1.0f - blend) + PLAYER_COLORS[ci][1] * blend;
-                tc.b                 = tc.b * (1.0f - blend) + PLAYER_COLORS[ci][2] * blend;
+                tc.r                 = tc.r * (1.0f - blend) + ownerR * blend;
+                tc.g                 = tc.g * (1.0f - blend) + ownerG * blend;
+                tc.b                 = tc.b * (1.0f - blend) + ownerB * blend;
             }
 
             const float px = mapX + static_cast<float>(col) * tileW;
@@ -472,10 +458,10 @@ void Minimap::drawOverlays(vulkan_app::renderer::Renderer2D& renderer2d,
         const float py = mapY + static_cast<float>(offset.row) * tileH + tileH * 0.5f;
 
         // Player color
-        const std::size_t ci = static_cast<std::size_t>(pip.owner) % PLAYER_COLOR_COUNT;
-        const float cr       = PLAYER_COLORS[ci][0];
-        const float cg       = PLAYER_COLORS[ci][1];
-        const float cb       = PLAYER_COLORS[ci][2];
+        float cr = 0.0f;
+        float cg = 0.0f;
+        float cb = 0.0f;
+        aoc::render::ownerColor(pip.owner, cr, cg, cb);
 
         if (pip.isCity) {
             // City markers: slightly larger filled circle

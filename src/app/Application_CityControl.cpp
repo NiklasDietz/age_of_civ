@@ -15,6 +15,7 @@
 #include "aoc/simulation/unit/BuilderActions.hpp"
 #include "aoc/simulation/unit/UnitOrders.hpp"
 #include "aoc/simulation/unit/Promotion.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/culture/GreatWorks.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/game/Player.hpp"
@@ -22,7 +23,9 @@
 
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace aoc::app {
 
@@ -605,6 +608,105 @@ void Application::executeGameControlCommand(const aoc::debug::MoveGreatWorkComma
                                                         cmd.index, cmd.to);
     if (rc != ErrorCode::Ok) {
         LOG_WARN("Great Work move for player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
+                 static_cast<int>(describeError(rc).size()), describeError(rc).data());
+    }
+}
+
+void Application::registerCityStateRoutes() {
+    using DSM = aoc::debug::DebugServer::Method;
+    using Query = std::unordered_map<std::string, std::string>;
+
+    // player + index, then one command type per route.
+    const auto csRoute = [this](const char* path, auto makeCommand) {
+        this->m_debugServer->routeJson(
+            DSM::Post, path,
+            [this, makeCommand](const Query& q, const std::string&) -> std::string {
+                if (this->m_appState != AppState::InGame) {
+                    throw aoc::debug::ServiceUnavailableError("no active game");
+                }
+                int32_t player = 0;
+                int32_t index = 0;
+                std::string err;
+                if (!readIntParam(q, "player", player, err) || !readIntParam(q, "index", index, err)) {
+                    return err;
+                }
+                if (index < 0 || static_cast<std::size_t>(index) >= this->m_gameState.cityStates().size()) {
+                    return std::string("{\"error\":\"index out of range\"}");
+                }
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(makeCommand(static_cast<aoc::PlayerId>(player), index));
+                return std::string("{\"queued\":true}");
+            });
+    };
+    csRoute("/game/citystate/envoy", [](aoc::PlayerId p, int32_t i) -> aoc::debug::GameControlCommand {
+        return aoc::debug::SendEnvoyCommand{p, i};
+    });
+    csRoute("/game/citystate/levy", [](aoc::PlayerId p, int32_t i) -> aoc::debug::GameControlCommand {
+        return aoc::debug::LevyCityStateCommand{p, i};
+    });
+    csRoute("/game/citystate/bully", [](aoc::PlayerId p, int32_t i) -> aoc::debug::GameControlCommand {
+        return aoc::debug::BullyCityStateCommand{p, i};
+    });
+
+    this->m_debugServer->routeJson(
+        DSM::Get, "/game/citystates",
+        [this](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            std::string err;
+            if (!readIntParam(q, "player", player, err)) {
+                return err;
+            }
+            const aoc::PlayerId pid = static_cast<aoc::PlayerId>(player);
+            const aoc::game::Player* me = this->m_gameState.player(pid);
+            std::string json = "{\"available\":" + std::to_string(me != nullptr ? me->envoys().available : 0)
+                               + ",\"cityStates\":[";
+            const std::vector<aoc::sim::CityStateComponent>& states = this->m_gameState.cityStates();
+            for (std::size_t i = 0; i < states.size(); ++i) {
+                const aoc::sim::CityStateComponent& cs = states[i];
+                const int32_t mine = pid < MAX_PLAYERS ? cs.envoys[pid] : 0;
+                const std::string_view name = cs.defId < aoc::sim::CITY_STATE_DEFS.size()
+                                                  ? aoc::sim::CITY_STATE_DEFS[cs.defId].name
+                                                  : std::string_view("?");
+                if (i > 0) { json += ","; }
+                json += "{\"index\":" + std::to_string(i) + ",\"name\":\"" + std::string(name) + "\",\"type\":\""
+                        + std::string(aoc::sim::cityStateTypeName(cs.type)) + "\",\"met\":"
+                        + (cs.hasMet(pid) ? "true" : "false") + ",\"envoys\":" + std::to_string(mine)
+                        + ",\"suzerain\":" + std::to_string(static_cast<unsigned>(cs.suzerain))
+                        + ",\"q\":" + std::to_string(cs.location.q) + ",\"r\":" + std::to_string(cs.location.r)
+                        + ",\"questActive\":" + (cs.activeQuest.isActive && cs.activeQuest.assignedTo == pid ? "true" : "false")
+                        + ",\"levyPlayer\":" + std::to_string(static_cast<unsigned>(cs.levyPlayer)) + "}";
+            }
+            json += "]}";
+            return json;
+        });
+}
+
+void Application::executeGameControlCommand(const aoc::debug::SendEnvoyCommand& cmd) {
+    const ErrorCode rc = aoc::sim::requestSendEnvoy(this->m_gameState, cmd.player,
+                                                    static_cast<std::size_t>(cmd.index));
+    if (rc != ErrorCode::Ok) {
+        LOG_WARN("Envoy from player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
+                 static_cast<int>(describeError(rc).size()), describeError(rc).data());
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::LevyCityStateCommand& cmd) {
+    const ErrorCode rc = aoc::sim::requestLevyCityState(this->m_gameState, cmd.player,
+                                                        static_cast<std::size_t>(cmd.index));
+    if (rc != ErrorCode::Ok) {
+        LOG_WARN("Levy by player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
+                 static_cast<int>(describeError(rc).size()), describeError(rc).data());
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::BullyCityStateCommand& cmd) {
+    const ErrorCode rc = aoc::sim::requestBullyCityState(this->m_gameState, cmd.player,
+                                                         static_cast<std::size_t>(cmd.index));
+    if (rc != ErrorCode::Ok) {
+        LOG_WARN("Bully by player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
                  static_cast<int>(describeError(rc).size()), describeError(rc).data());
     }
 }

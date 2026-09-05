@@ -217,8 +217,6 @@ void processCityStateBonuses(aoc::game::GameState& gameState, PlayerId player) {
 // ============================================================================
 namespace {
 constexpr int32_t CS_MEET_RADIUS       = 6;   ///< hexes to auto-meet
-constexpr int32_t CS_PASSIVE_TURNS     = 10;  ///< +1 envoy every N turns per met player
-constexpr int32_t CS_PASSIVE_MAX       = 6;   ///< cap from passive-only accrual
 } // namespace
 
 void processCityStateDiplomacy(aoc::game::GameState& gameState,
@@ -265,15 +263,8 @@ void processCityStateDiplomacy(aoc::game::GameState& gameState,
         // Passive accrual every CS_PASSIVE_TURNS for each met player,
         // but capped so passive alone cannot promote to suzerain by itself
         // beyond a reasonable bound.
-        if (currentTurn > 0 && (currentTurn % CS_PASSIVE_TURNS) == 0) {
-            for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-                if (playerPtr == nullptr) { continue; }
-                const PlayerId pid = playerPtr->id();
-                if (!cs.hasMet(pid)) { continue; }
-                if (cs.envoys[pid] >= CS_PASSIVE_MAX) { continue; }
-                cs.addEnvoys(pid, 1);
-            }
-        }
+        // No passive accrual: envoys come from civics (Envoys.hpp) and quests.
+        static_cast<void>(currentTurn);
 
         // Recompute suzerain. Log only on change.
         const PlayerId newSuzerain = cs.computeSuzerain();
@@ -378,7 +369,7 @@ bool bullyCityState(aoc::game::GameState& gameState, PlayerId player,
     if (cs.suzerain != INVALID_PLAYER && cs.suzerain != player) {
         return false;  // protected by another suzerain
     }
-    if (cs.turnsSinceBully < 5) { return false; }  // rate limit
+    if (cs.turnsSinceBully < CS_BULLY_COOLDOWN) { return false; }  // rate limit
 
     aoc::game::Player* gsPlayer = gameState.player(player);
     if (gsPlayer == nullptr) { return false; }
@@ -386,7 +377,7 @@ bool bullyCityState(aoc::game::GameState& gameState, PlayerId player,
     // Bullying: player gains 50 gold, loses 2 envoys at this CS, every
     // OTHER major player that has at least one envoy here gets a grievance
     // against the bully — reputation cost baked in, not caller-dependent.
-    gsPlayer->addGold(50);
+    gsPlayer->addGold(CS_BULLY_GOLD);
     cs.addEnvoys(player, -2);
     cs.turnsSinceBully = 0;
 
@@ -417,11 +408,11 @@ bool levyCityStateMilitary(aoc::game::GameState& gameState, PlayerId player,
 
     aoc::game::Player* gsPlayer = gameState.player(player);
     if (gsPlayer == nullptr) { return false; }
-    if (gsPlayer->treasury() < 200) { return false; }
-    gsPlayer->addGold(-200);
+    if (gsPlayer->treasury() < CS_LEVY_GOLD) { return false; }
+    gsPlayer->addGold(-CS_LEVY_GOLD);
 
     cs.levyPlayer    = player;
-    cs.levyTurnsLeft = 15;  // roughly a half-era
+    cs.levyTurnsLeft = CS_LEVY_TURNS;  // roughly a half-era
 
     LOG_INFO("Player %u levied CS at (%d,%d) military for 15 turns",
              static_cast<unsigned>(player),
@@ -454,7 +445,7 @@ int32_t computeQuestSnapshot(const aoc::game::Player& p,
             return count;
         }
         case CityStateQuestType::TrainUnit:
-            return static_cast<int32_t>(p.units().size());
+            return p.militaryUnitCount(); // a Settler used to complete it
         default:
             return 0;
     }
@@ -509,7 +500,7 @@ bool questCompleted(const aoc::game::GameState& gs,
             return count > q.snapshot;
         }
         case CityStateQuestType::TrainUnit:
-            return static_cast<int32_t>(p->units().size()) > q.snapshot;
+            return p->militaryUnitCount() > q.snapshot;
         case CityStateQuestType::SendTradeRoute: {
             const PlayerId csPlayer =
                 static_cast<PlayerId>(CITY_STATE_PLAYER_BASE + csIndex);
@@ -521,9 +512,16 @@ bool questCompleted(const aoc::game::GameState& gs,
             return false;
         }
         case CityStateQuestType::ConvertToReligion: {
-            // Heuristic: player has founded a religion and CS is religious.
-            return p->faith().foundedReligion != NO_RELIGION &&
-                   cs.type == CityStateType::Religious;
+            // The city-state's own city has to follow the player's religion;
+            // merely having founded one used to complete the quest.
+            const ReligionId mine = p->faith().foundedReligion;
+            if (mine == NO_RELIGION) { return false; }
+            const aoc::game::Player* seat =
+                gs.player(static_cast<PlayerId>(CITY_STATE_PLAYER_BASE + csIndex));
+            if (seat == nullptr || seat->cities().empty() || seat->cities().front() == nullptr) {
+                return false;
+            }
+            return seat->cities().front()->religion().dominantReligion() == mine;
         }
         case CityStateQuestType::DefeatBarbarian:
         default:
@@ -597,6 +595,97 @@ void checkCityStateQuests(aoc::game::GameState& gameState) {
             cs.activeQuest = CityStateQuest{};
         }
     }
+}
+
+std::string_view cityStateTypeName(CityStateType type) {
+    switch (type) {
+        case CityStateType::Militaristic: return "Militaristic";
+        case CityStateType::Scientific:   return "Scientific";
+        case CityStateType::Cultural:     return "Cultural";
+        case CityStateType::Trade:        return "Trade";
+        case CityStateType::Religious:    return "Religious";
+        case CityStateType::Industrial:   return "Industrial";
+        default:                          return "Unknown";
+    }
+}
+
+std::string_view cityStateQuestName(CityStateQuestType type) {
+    switch (type) {
+        case CityStateQuestType::BuildWonder:       return "Build a wonder";
+        case CityStateQuestType::TrainUnit:         return "Train a military unit";
+        case CityStateQuestType::ResearchTech:      return "Research a technology";
+        case CityStateQuestType::SendTradeRoute:    return "Send a trade route here";
+        case CityStateQuestType::ConvertToReligion: return "Convert this city to your religion";
+        case CityStateQuestType::DefeatBarbarian:   return "Defeat a barbarian nearby";
+        default:                                    return "Unknown";
+    }
+}
+
+namespace {
+
+CityStateComponent* cityStateFor(aoc::game::GameState& gameState, PlayerId player,
+                                 std::size_t cityStateIndex, aoc::game::Player** playerOut) {
+    if (cityStateIndex >= gameState.cityStates().size() || player >= MAX_PLAYERS) {
+        return nullptr;
+    }
+    aoc::game::Player* p = gameState.player(player);
+    if (p == nullptr) {
+        return nullptr;
+    }
+    *playerOut = p;
+    return &gameState.cityStates()[cityStateIndex];
+}
+
+} // namespace
+
+ErrorCode requestSendEnvoy(aoc::game::GameState& gameState, PlayerId player,
+                           std::size_t cityStateIndex) {
+    aoc::game::Player* p   = nullptr;
+    CityStateComponent* cs = cityStateFor(gameState, player, cityStateIndex, &p);
+    if (cs == nullptr) {
+        return ErrorCode::EntityNotFound;
+    }
+    if (!cs->hasMet(player)) {
+        return ErrorCode::InvalidState;
+    }
+    if (!p->envoys().spend(1)) {
+        return ErrorCode::InsufficientResources;
+    }
+    cs->addEnvoys(player, 1);
+    cs->suzerain = cs->computeSuzerain();
+    return ErrorCode::Ok;
+}
+
+ErrorCode requestLevyCityState(aoc::game::GameState& gameState, PlayerId player,
+                               std::size_t cityStateIndex) {
+    aoc::game::Player* p   = nullptr;
+    CityStateComponent* cs = cityStateFor(gameState, player, cityStateIndex, &p);
+    if (cs == nullptr) {
+        return ErrorCode::EntityNotFound;
+    }
+    if (cs->suzerain != player || cs->levyPlayer != INVALID_PLAYER) {
+        return ErrorCode::InvalidState;
+    }
+    if (p->treasury() < CS_LEVY_GOLD) {
+        return ErrorCode::InsufficientResources;
+    }
+    return levyCityStateMilitary(gameState, player, cityStateIndex) ? ErrorCode::Ok
+                                                                    : ErrorCode::InvalidState;
+}
+
+ErrorCode requestBullyCityState(aoc::game::GameState& gameState, PlayerId player,
+                                std::size_t cityStateIndex) {
+    aoc::game::Player* p   = nullptr;
+    CityStateComponent* cs = cityStateFor(gameState, player, cityStateIndex, &p);
+    if (cs == nullptr) {
+        return ErrorCode::EntityNotFound;
+    }
+    if (!cs->hasMet(player) || (cs->suzerain != INVALID_PLAYER && cs->suzerain != player)
+        || cs->turnsSinceBully < CS_BULLY_COOLDOWN) {
+        return ErrorCode::InvalidState;
+    }
+    return bullyCityState(gameState, player, cityStateIndex) ? ErrorCode::Ok
+                                                             : ErrorCode::InvalidState;
 }
 
 } // namespace aoc::sim

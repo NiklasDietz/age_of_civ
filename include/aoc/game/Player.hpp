@@ -44,6 +44,7 @@
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
 #include "aoc/simulation/diplomacy/DiplomaticFavor.hpp"
+#include "aoc/simulation/citystate/Envoys.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/monetary/ForexMarket.hpp"
 #include "aoc/simulation/monetary/CurrencyWar.hpp"
@@ -253,6 +254,8 @@ public:
 
     [[nodiscard]] aoc::sim::PlayerDiplomaticFavorComponent& diplomaticFavor() { return this->m_diplomaticFavor; }
     [[nodiscard]] const aoc::sim::PlayerDiplomaticFavorComponent& diplomaticFavor() const { return this->m_diplomaticFavor; }
+    [[nodiscard]] aoc::sim::PlayerEnvoyComponent& envoys() { return this->m_envoys; }
+    [[nodiscard]] const aoc::sim::PlayerEnvoyComponent& envoys() const { return this->m_envoys; }
 
     // ========================================================================
     // Currency
@@ -472,6 +475,7 @@ private:
     // Diplomacy (extended)
     aoc::sim::PlayerGrievanceComponent m_grievances;
     aoc::sim::PlayerDiplomaticFavorComponent m_diplomaticFavor;
+    aoc::sim::PlayerEnvoyComponent m_envoys;
 
     // Currency
     aoc::sim::CurrencyTrustComponent m_currencyTrust;

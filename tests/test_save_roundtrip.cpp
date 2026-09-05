@@ -227,6 +227,8 @@ void buildWorld(World& w) {
     w.grid.setPillaged(w.grid.toIndex(aoc::hex::AxialCoord{7, 7}), true);   // v19 layer
     p1.government().policySwapFree          = true;
     p1.government().lastGovernmentChangeTurn = 12;
+    p1.envoys().available                    = 3;
+    p1.envoys().lifetime                     = 7;
     w.diplomacy.meetPlayers(aoc::PlayerId{0}, aoc::PlayerId{1}, 21);
     w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).turnsSincePeace = 4;
     w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).passiveBonus    = 6;
@@ -431,6 +433,8 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK_FALSE(lp1.government().isPolicyUnlocked(3));
     CHECK(lp1.government().policySwapFree);
     CHECK(lp1.government().lastGovernmentChangeTurn == 12);
+    CHECK(lp1.envoys().available == 3);
+    CHECK(lp1.envoys().lifetime == 7);
     // v17: contact and the directional relation fields.
     CHECK(loaded.diplomacy.haveMet(aoc::PlayerId{0}, aoc::PlayerId{1}));
     CHECK(loaded.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).metOnTurn == 21);

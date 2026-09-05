@@ -795,6 +795,7 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
             && civicBeforeAdvance.isValid()) {
             applyCivicEffect(*turnContext.gameState, player,
                              static_cast<uint8_t>(civicBeforeAdvance.value));
+            gsPlayer->envoys().grant(aoc::sim::ENVOYS_PER_CIVIC);
             const aoc::sim::CivicDef& doneCivic = aoc::sim::civicDef(civicBeforeAdvance);
             gsPlayer->era().updateEra(doneCivic.era);
             addEraScore(*gsPlayer, static_cast<int32_t>(turnContext.currentTurn), 2,

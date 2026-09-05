@@ -10,6 +10,7 @@
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/ai/AIController.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
@@ -968,6 +969,27 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                 }
             }
             auto& cityStates = gameState.cityStates();
+            // Spend the envoy pool: the met city-state where we are closest to
+            // suzerainty without holding it, a rival's seat counting against.
+            aoc::game::Player* meMut = gameState.player(this->m_player);
+            while (meMut != nullptr && meMut->envoys().available > 0) {
+                std::size_t best  = cityStates.size();
+                int32_t bestScore = std::numeric_limits<int32_t>::min();
+                for (std::size_t i = 0; i < cityStates.size(); ++i) {
+                    const CityStateComponent& cs = cityStates[i];
+                    if (!cs.hasMet(this->m_player) || cs.suzerain == this->m_player) { continue; }
+                    const int32_t score = static_cast<int32_t>(cs.envoys[this->m_player]) * 10
+                                        - (cs.suzerain != INVALID_PLAYER ? 5 : 0);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        best      = i;
+                    }
+                }
+                if (best == cityStates.size()
+                    || requestSendEnvoy(gameState, this->m_player, best) != aoc::ErrorCode::Ok) {
+                    break;
+                }
+            }
             for (std::size_t i = 0; i < cityStates.size(); ++i) {
                 CityStateComponent& cs = cityStates[i];
                 if (!cs.hasMet(this->m_player)) { continue; }

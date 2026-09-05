@@ -209,6 +209,20 @@ struct MoveGreatWorkCommand {
     aoc::hex::AxialCoord to;
 };
 
+/// City-state actions; `index` indexes GameState::cityStates().
+struct SendEnvoyCommand {
+    aoc::PlayerId player;
+    int32_t index;
+};
+struct LevyCityStateCommand {
+    aoc::PlayerId player;
+    int32_t index;
+};
+struct BullyCityStateCommand {
+    aoc::PlayerId player;
+    int32_t index;
+};
+
 /// Merge the unit at `sourceAt` into the same-type unit at `at` (Corps / Army, Fleet / Armada).
 struct MergeUnitsCommand {
     aoc::PlayerId player;
@@ -242,6 +256,7 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         BuilderHarvestCommand, PillageCommand, RepairCommand,
                                         DeleteUnitCommand, SetAlertCommand, PromoteUnitCommand,
                                         FoundPantheonCommand, FoundReligionCommand,
-                                        MoveGreatWorkCommand, EndTurnCommand>;
+                                        MoveGreatWorkCommand, SendEnvoyCommand, LevyCityStateCommand,
+                                        BullyCityStateCommand, EndTurnCommand>;
 
 } // namespace aoc::debug

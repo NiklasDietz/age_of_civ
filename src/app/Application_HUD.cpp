@@ -350,7 +350,7 @@ void Application::buildHUD() {
             float dropY = 34.0f;
 
             this->m_menuDropdown =
-                this->m_uiManager.createPanel({dropX, dropY, 110.0f, 456.0f},
+                this->m_uiManager.createPanel({dropX, dropY, 110.0f, 488.0f},
                                               aoc::ui::PanelData{aoc::ui::tokens::SURFACE_PARCHMENT,
                                                                  aoc::ui::tokens::CORNER_PANEL});
             {
@@ -446,6 +446,14 @@ void Application::buildHUD() {
                                                     this->m_gameState.humanPlayerId(),
                                                     &this->m_diplomacy);
                 this->m_greatWorksScreen.open(this->m_uiManager);
+            });
+
+            makeDropBtn(this->m_menuDropdown, "City-States", [this]() {
+                this->m_uiManager.removeWidget(this->m_menuDropdown);
+                this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
+                this->m_cityStatesScreen.setContext(&this->m_gameState, &this->m_hexGrid,
+                                                    this->m_gameState.humanPlayerId());
+                this->m_cityStatesScreen.open(this->m_uiManager);
             });
 
             makeDropBtn(this->m_menuDropdown, "Religion Lens", [this]() {

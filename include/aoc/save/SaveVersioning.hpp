@@ -64,6 +64,10 @@
  *
  * v19 (2026-09-05): MapLayers carries the 18th game layer "pillaged" (a
  * pillaged improvement yields nothing until a Builder repairs it).
+ *
+ * v20 (2026-09-05): GovernmentState carries the per-player envoy pool
+ * (available, lifetime). Envoys come from civics and are spent on
+ * city-states; passive accrual is gone.
  */
 
 #include <cstdint>
@@ -71,6 +75,6 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 19;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 20;
 
 } // namespace aoc::save

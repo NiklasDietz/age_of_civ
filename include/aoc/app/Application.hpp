@@ -44,6 +44,7 @@
 #include "aoc/ui/HistoricMomentsScreen.hpp"
 #include "aoc/ui/CityListScreen.hpp"
 #include "aoc/ui/GreatWorksScreen.hpp"
+#include "aoc/ui/CityStatesScreen.hpp"
 #include "aoc/ui/UnitListScreen.hpp"
 #include "aoc/ui/DemographicsScreen.hpp"
 #include "aoc/ui/WorldCongressScreen.hpp"
@@ -329,6 +330,7 @@ private:
     aoc::ui::HistoricMomentsScreen m_historicMomentsScreen;
     aoc::ui::CityListScreen m_cityListScreen;
     aoc::ui::GreatWorksScreen m_greatWorksScreen;
+    aoc::ui::CityStatesScreen m_cityStatesScreen;
     aoc::ui::UnitListScreen m_unitListScreen;
     aoc::ui::DemographicsScreen m_demographicsScreen;
     aoc::ui::WorldCongressScreen m_worldCongressScreen;
@@ -666,6 +668,9 @@ private:
     void executeGameControlCommand(const aoc::debug::FoundPantheonCommand& cmd);
     void executeGameControlCommand(const aoc::debug::FoundReligionCommand& cmd);
     void executeGameControlCommand(const aoc::debug::MoveGreatWorkCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::SendEnvoyCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::LevyCityStateCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::BullyCityStateCommand& cmd);
 
     /// The five `/game/city/*` routes (Application_CityControl.cpp).
     void registerCityControlRoutes();
@@ -682,6 +687,7 @@ private:
     /// The two religion routes: pantheon and religion with chosen beliefs.
     void registerReligionRoutes();
     void registerCultureRoutes();
+    void registerCityStateRoutes();
 
     /// A right-click attack on a civ at peace arms this; the next right-click on
     /// the same civ declares war and attacks (Civ VI's confirmation, without a modal).

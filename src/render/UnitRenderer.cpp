@@ -10,6 +10,7 @@
 #include "aoc/game/Unit.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/render/PlayerColors.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/HexGrid.hpp"
@@ -26,27 +27,8 @@ namespace aoc::render {
 
 namespace {
 
-/// Player colors (up to 16 players).
-constexpr std::array<std::array<float, 3>, 8> PLAYER_COLORS = {{
-    {0.20f, 0.40f, 0.90f},  // Player 0: blue
-    {0.90f, 0.20f, 0.20f},  // Player 1: red
-    {0.20f, 0.80f, 0.20f},  // Player 2: green
-    {0.90f, 0.80f, 0.10f},  // Player 3: yellow
-    {0.70f, 0.30f, 0.80f},  // Player 4: purple
-    {0.90f, 0.50f, 0.10f},  // Player 5: orange
-    {0.10f, 0.80f, 0.80f},  // Player 6: cyan
-    {0.80f, 0.40f, 0.60f},  // Player 7: pink
-}};
-
 void playerColor(PlayerId player, float& r, float& g, float& b) {
-    if (player == BARBARIAN_PLAYER) {
-        r = 0.55f; g = 0.08f; b = 0.08f; // dark red, never a civ colour
-        return;
-    }
-    std::size_t idx = static_cast<std::size_t>(player) % PLAYER_COLORS.size();
-    r = PLAYER_COLORS[idx][0];
-    g = PLAYER_COLORS[idx][1];
-    b = PLAYER_COLORS[idx][2];
+    aoc::render::ownerColor(player, r, g, b);
 }
 
 } // anonymous namespace
@@ -362,9 +344,10 @@ void UnitRenderer::drawCities(vulkan_app::renderer::Renderer2D& renderer2d,
 
         // City fill: SDF hexagon (single primitive, no seams).
         {
-            float fillR = isCityState ? 0.40f : r * 0.25f;
-            float fillG = isCityState ? 0.40f : g * 0.25f;
-            float fillB = isCityState ? 0.42f : b * 0.25f;
+            // City-states keep their own (lighter) colour so they read as minor powers.
+            float fillR = isCityState ? r * 0.55f : r * 0.25f;
+            float fillG = isCityState ? g * 0.55f : g * 0.25f;
+            float fillB = isCityState ? b * 0.55f : b * 0.25f;
             renderer2d.drawFilledHexagon(cx, cy, hexSize * 0.866f, hexSize,
                                           fillR, fillG, fillB, 0.90f);
         }
@@ -411,17 +394,10 @@ void UnitRenderer::drawCities(vulkan_app::renderer::Renderer2D& renderer2d,
         renderer2d.drawLine(flagX, flagY + hexSize * 0.25f, flagX, flagY,
                              1.5f, 0.6f, 0.55f, 0.5f, 0.9f);
         // Flag (small triangle in player color)
-        if (!isCityState) {
-            renderer2d.drawFilledTriangle(flagX, flagY,
-                                          flagX + hexSize * 0.15f, flagY + hexSize * 0.06f,
-                                          flagX, flagY + hexSize * 0.12f,
-                                          r, g, b, 0.9f);
-        } else {
-            renderer2d.drawFilledTriangle(flagX, flagY,
-                                          flagX + hexSize * 0.15f, flagY + hexSize * 0.06f,
-                                          flagX, flagY + hexSize * 0.12f,
-                                          0.85f, 0.85f, 0.85f, 0.9f);
-        }
+        renderer2d.drawFilledTriangle(flagX, flagY,
+                                      flagX + hexSize * 0.15f, flagY + hexSize * 0.06f,
+                                      flagX, flagY + hexSize * 0.12f,
+                                      r, g, b, 0.9f);
         } // end city loop
     } // end player loop
 }
