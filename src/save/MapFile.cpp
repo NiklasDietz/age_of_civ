@@ -241,12 +241,13 @@ struct LayerBinder {
 /// The per-tile state HexGrid::initialize() sizes. Every other layer is a
 /// worldgen product with an absent-layer fallback (HexGrid.cpp), so the save
 /// omits it: 17 MB -> about 2 MB for a 400x200 map (Block 0.2, 2026-09-04).
-constexpr std::array<std::string_view, 17> GAME_GRID_LAYERS = {
+constexpr std::array<std::string_view, 18> GAME_GRID_LAYERS = {
     "terrain",     "feature",       "elevation",      "riverEdges",
     "resource",    "reserves",      "prospectCooldown", "owner",
     "improvement", "road",          "tileInfra",      "greenhouseCrop",
     "naturalWonder", "chokepoint",  "falloutTurns",   "preFalloutFeature",
     "antiquitySite",   // v14
+    "pillaged",        // v19
 };
 
 void writeLayerBlock(WriteBuffer& out, const aoc::map::HexGrid& grid, bool gameLayersOnly) {

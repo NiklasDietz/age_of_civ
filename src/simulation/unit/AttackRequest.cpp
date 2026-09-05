@@ -5,6 +5,9 @@
  */
 
 #include "aoc/simulation/unit/AttackRequest.hpp"
+#include "aoc/core/Log.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -47,7 +50,8 @@ aoc::game::Unit* enemyUnitAt(aoc::game::GameState& gameState, PlayerId viewer, h
 }
 
 ErrorCode requestAttack(aoc::game::GameState& gameState, aoc::Random& rng, aoc::map::HexGrid& grid,
-                        PlayerId player, hex::AxialCoord from, hex::AxialCoord to) {
+                        PlayerId player, hex::AxialCoord from, hex::AxialCoord to,
+                        const DiplomacyManager* diplomacy) {
     aoc::game::Player* owner = gameState.player(player);
     if (owner == nullptr) {
         return ErrorCode::InvalidArgument;
@@ -77,6 +81,35 @@ ErrorCode requestAttack(aoc::game::GameState& gameState, aoc::Random& rng, aoc::
     }
     if (attacker->movementRemaining() <= 0) {
         return ErrorCode::InvalidUnitAction;
+    }
+    // Civ VI: no attack on a major civ without a war. City-states and
+    // barbarians need no declaration.
+    const PlayerId defenderOwner = defender->owner();
+    if (diplomacy != nullptr && defenderOwner < CITY_STATE_PLAYER_BASE
+        && !diplomacy->isAtWar(player, defenderOwner)) {
+        return ErrorCode::InvalidState;
+    }
+    // Civilians are captured, not killed: the unit changes hands and the
+    // attacker steps onto its tile (melee reach only).
+    if (!defender->isMilitary() && !isAirUnit(def.unitClass)) {
+        if (distance != 1) {
+            return ErrorCode::InvalidUnitAction;
+        }
+        aoc::game::Player* loser = gameState.player(defenderOwner);
+        if (loser == nullptr) {
+            return ErrorCode::InvalidArgument;
+        }
+        const UnitTypeId capturedType = defender->typeId();
+        const int32_t charges         = defender->chargesRemaining();
+        loser->removeUnit(defender);
+        aoc::game::Unit& captured = owner->addUnit(capturedType, to);
+        captured.setChargesRemaining(charges);
+        attacker->setPosition(to);
+        attacker->setMovementRemaining(0);
+        LOG_INFO("Player %u captured a %.*s from player %u at (%d,%d)", static_cast<unsigned>(player),
+                 static_cast<int>(captured.typeDef().name.size()), captured.typeDef().name.data(),
+                 static_cast<unsigned>(defenderOwner), to.q, to.r);
+        return ErrorCode::Ok;
     }
     if (def.rangedStrength > 0 && def.range > 0) {
         if (distance > def.range) {

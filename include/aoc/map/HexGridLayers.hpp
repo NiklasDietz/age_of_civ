@@ -191,6 +191,7 @@ void HexGrid::visitLayersImpl(Self& self, Visitor&& visitor) {
     visitor("chokepoint", self.m_chokepoint);
     visitor("falloutTurns", self.m_falloutTurns);
     visitor("preFalloutFeature", self.m_preFalloutFeature);
+    visitor("pillaged", self.m_pillaged);   // v19
 }
 
 template <class Visitor>

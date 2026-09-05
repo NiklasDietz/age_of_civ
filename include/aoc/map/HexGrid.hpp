@@ -518,7 +518,8 @@ public:
         }
         TileYield base = baseTerrainYield(this->terrain(index));
         TileYield feat = featureYieldModifier(this->feature(index));
-        TileYield imp  = improvementYieldBonus(this->improvement(index));
+        TileYield imp  = this->isPillaged(index) ? TileYield{0, 0, 0, 0, 0, 0}
+                                                 : improvementYieldBonus(this->improvement(index));
         TileYield nw   = naturalWonderYieldBonus(this->naturalWonder(index));
         return {
             static_cast<int8_t>(base.food + feat.food + imp.food + nw.food),
@@ -1989,6 +1990,7 @@ private:
 
     // Nuclear fallout tracking
     std::vector<int16_t> m_falloutTurns;          ///< Turns of fallout remaining (0 = no fallout)
+    std::vector<uint8_t> m_pillaged;              ///< 1 = improvement pillaged (yields nothing until repaired); v19 layer
     std::vector<FeatureType> m_preFalloutFeature; ///< Feature before fallout (restored after decay)
 
 public:
@@ -2027,6 +2029,16 @@ public:
     }
 
     /// Check if a tile has active fallout.
+    /// Pillaged improvement: its yield bonus is suspended until a Builder repairs it.
+    [[nodiscard]] bool isPillaged(int32_t index) const {
+        this->assertIndex(index);
+        return this->m_pillaged[static_cast<std::size_t>(index)] != 0;
+    }
+    void setPillaged(int32_t index, bool pillaged) {
+        this->assertIndex(index);
+        this->m_pillaged[static_cast<std::size_t>(index)] = pillaged ? uint8_t{1} : uint8_t{0};
+    }
+
     [[nodiscard]] bool hasFallout(int32_t index) const {
         this->assertIndex(index);
         return this->m_falloutTurns[static_cast<std::size_t>(index)] > 0;

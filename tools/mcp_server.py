@@ -226,9 +226,10 @@ def aoc_attack_unit(player: int, q: int, r: int, target_q: int, target_r: int) -
     melee needs an adjacent target and movement left, ranged a target within its range
     and movement left (either spends the unit's movement), aircraft fly a bombing run
     within their operational range while they have a sortie (patrolling enemy fighters
-    in range may intercept). Queues the request; a rejection (no enemy there, out of
-    reach, no movement or sortie) is logged in the game log. Poll aoc_list_units
-    afterward to see HP/death.
+    in range may intercept). A major civ at peace cannot be attacked (rejected; declare
+    war first); an adjacent civilian is captured instead of killed. Queues the request; a
+    rejection (no enemy there, out of reach, no movement or sortie) is logged in the game
+    log. Poll aoc_list_units afterward to see HP/death.
     """
     return _post("/game/unit/attack", player=player, q=q, r=r, targetQ=target_q, targetR=target_r)
 
@@ -412,6 +413,38 @@ def aoc_builder_harvest(player: int, q: int, r: int) -> dict:
     tiles gets 20 + 10 per era food; the resource is gone. Spends a charge. Queues the request.
     """
     return _post("/game/builder/harvest", player=player, q=q, r=r)
+
+
+@mcp.tool()
+def aoc_pillage(player: int, q: int, r: int) -> dict:
+    """The military unit on (q, r) pillages the improvement under it: the tile must belong to a
+    civ the player is at war with (or a city-state / barbarians), hold an improvement other than
+    a road and not be pillaged already. Heals 50 HP, pays 25 + 10 per era gold, ends the unit's
+    movement. The pillaged tile yields nothing until a Builder repairs it. Queues the request.
+    """
+    return _post("/game/unit/pillage", player=player, q=q, r=r)
+
+
+@mcp.tool()
+def aoc_builder_repair(player: int, q: int, r: int) -> dict:
+    """The Builder on (q, r) repairs the pillaged tile the player owns there (one charge)."""
+    return _post("/game/builder/repair", player=player, q=q, r=r)
+
+
+@mcp.tool()
+def aoc_delete_unit(player: int, q: int, r: int) -> dict:
+    """Disband the unit on (q, r); inside own territory a quarter of its production cost comes
+    back as gold. Queues the request.
+    """
+    return _post("/game/unit/delete", player=player, q=q, r=r)
+
+
+@mcp.tool()
+def aoc_set_alert(player: int, q: int, r: int, on: bool = True) -> dict:
+    """Put the military unit on (q, r) on alert (it sleeps and wakes when an enemy comes within
+    3 tiles) or clear the stance with on=False. Queues the request.
+    """
+    return _post("/game/unit/alert", player=player, q=q, r=r, on=1 if on else 0)
 
 
 @mcp.tool()

@@ -13,6 +13,7 @@
 #include "aoc/debug/GameControlCommand.hpp"
 #include "aoc/simulation/city/CityActions.hpp"
 #include "aoc/simulation/unit/BuilderActions.hpp"
+#include "aoc/simulation/unit/UnitOrders.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
 
@@ -273,6 +274,74 @@ void Application::registerBuilderControlRoutes() {
         });
 }
 
+void Application::registerUnitOrderRoutes() {
+    using DSM = aoc::debug::DebugServer::Method;
+    using Query = std::unordered_map<std::string, std::string>;
+    const auto readUnit = [](const Query& q, int32_t& player, aoc::hex::AxialCoord& at,
+                             std::string& err) -> bool {
+        int32_t uq = 0;
+        int32_t ur = 0;
+        if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", uq, err)
+            || !readIntParam(q, "r", ur, err)) {
+            return false;
+        }
+        at = aoc::hex::AxialCoord{uq, ur};
+        return true;
+    };
+    const auto queued = [this](const aoc::debug::GameControlCommand& cmd) -> std::string {
+        std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+        this->m_pendingCommands.push_back(cmd);
+        return std::string("{\"queued\":true}");
+    };
+    const auto simpleRoute = [this, readUnit, queued](const char* path, auto makeCommand) {
+        this->m_debugServer->routeJson(
+            DSM::Post, path,
+            [this, readUnit, queued, makeCommand](const Query& q, const std::string&) -> std::string {
+                if (this->m_appState != AppState::InGame) {
+                    throw aoc::debug::ServiceUnavailableError("no active game");
+                }
+                int32_t player = 0;
+                aoc::hex::AxialCoord at{};
+                std::string err;
+                if (!readUnit(q, player, at, err)) {
+                    return err;
+                }
+                return queued(makeCommand(static_cast<aoc::PlayerId>(player), at));
+            });
+    };
+    // POST /game/unit/pillage?player=&q=&r=
+    simpleRoute("/game/unit/pillage", [](aoc::PlayerId player, aoc::hex::AxialCoord at) {
+        return aoc::debug::GameControlCommand{aoc::debug::PillageCommand{player, at}};
+    });
+    // POST /game/builder/repair?player=&q=&r=
+    simpleRoute("/game/builder/repair", [](aoc::PlayerId player, aoc::hex::AxialCoord at) {
+        return aoc::debug::GameControlCommand{aoc::debug::RepairCommand{player, at}};
+    });
+    // POST /game/unit/delete?player=&q=&r=
+    simpleRoute("/game/unit/delete", [](aoc::PlayerId player, aoc::hex::AxialCoord at) {
+        return aoc::debug::GameControlCommand{aoc::debug::DeleteUnitCommand{player, at}};
+    });
+    // POST /game/unit/alert?player=&q=&r=&on=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/unit/alert",
+        [this, readUnit, queued](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t on     = 1;
+            aoc::hex::AxialCoord at{};
+            std::string err;
+            if (!readUnit(q, player, at, err)) {
+                return err;
+            }
+            if (q.count("on") != 0 && !readIntParam(q, "on", on, err)) {
+                return err;
+            }
+            return queued(aoc::debug::SetAlertCommand{static_cast<aoc::PlayerId>(player), at, on != 0});
+        });
+}
+
 namespace {
 
 void warnRejected(const char* what, aoc::PlayerId player, aoc::hex::AxialCoord at, ErrorCode rc) {
@@ -357,6 +426,45 @@ void Application::executeGameControlCommand(const aoc::debug::BuilderHarvestComm
         return;
     }
     this->finishBuilderAction(builder);
+}
+
+void Application::executeGameControlCommand(const aoc::debug::PillageCommand& cmd) {
+    const ErrorCode rc = aoc::sim::requestPillage(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at,
+                                                  &this->m_diplomacy);
+    if (rc != ErrorCode::Ok) {
+        warnRejected("Pillage", cmd.player, cmd.at, rc);
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::RepairCommand& cmd) {
+    aoc::game::Player* owner = this->m_gameState.player(cmd.player);
+    aoc::game::Unit* builder = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
+    const ErrorCode rc = aoc::sim::requestRepair(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
+    if (rc != ErrorCode::Ok) {
+        warnRejected("Repair", cmd.player, cmd.at, rc);
+        return;
+    }
+    this->finishBuilderAction(builder);
+}
+
+void Application::executeGameControlCommand(const aoc::debug::DeleteUnitCommand& cmd) {
+    aoc::game::Player* owner = this->m_gameState.player(cmd.player);
+    aoc::game::Unit* unit    = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
+    if (unit != nullptr && unit == this->m_selectedUnit) {
+        this->m_selectedUnit    = nullptr;
+        this->m_actionPanelUnit = nullptr;
+    }
+    const ErrorCode rc = aoc::sim::requestDeleteUnit(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
+    if (rc != ErrorCode::Ok) {
+        warnRejected("Delete", cmd.player, cmd.at, rc);
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::SetAlertCommand& cmd) {
+    const ErrorCode rc = aoc::sim::requestSetAlert(this->m_gameState, cmd.player, cmd.at, cmd.alert);
+    if (rc != ErrorCode::Ok) {
+        warnRejected("Alert", cmd.player, cmd.at, rc);
+    }
 }
 
 } // namespace aoc::app

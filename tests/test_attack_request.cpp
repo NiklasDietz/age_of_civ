@@ -17,6 +17,7 @@
 #include "aoc/game/Unit.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/simulation/unit/AttackRequest.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/unit/CombatExtensions.hpp"
 
 using aoc::ErrorCode;
@@ -153,4 +154,41 @@ TEST_CASE("a patrolling enemy fighter in range intercepts the bomber and spends 
     REQUIRE(a.w.gameState.player(P1)->unitAt({10, 5}) != nullptr);
     CHECK(a.w.gameState.player(P1)->unitAt({10, 5})->hitPoints() == 20);
     CHECK(bomber.airUnit().sortiesRemaining == 0);
+}
+
+TEST_CASE("with diplomacy, attacking a major at peace is refused until war is declared") {
+    Arena a;
+    aoc::sim::DiplomacyManager diplomacy;
+    diplomacy.initialize(2);
+    aoc::game::Unit& attacker = a.add(P0, WARRIOR, 5, 5);
+    a.add(P1, WARRIOR, 6, 5);
+    CHECK(aoc::sim::requestAttack(a.w.gameState, a.rng, a.w.grid, P0, {5, 5}, {6, 5}, &diplomacy)
+          == ErrorCode::InvalidState);
+    CHECK(attacker.movementRemaining() == attacker.typeDef().movementPoints);   // nothing spent
+    diplomacy.declareWar(P0, P1);
+    CHECK(aoc::sim::requestAttack(a.w.gameState, a.rng, a.w.grid, P0, {5, 5}, {6, 5}, &diplomacy)
+          == ErrorCode::Ok);
+}
+
+TEST_CASE("a civilian is captured, not killed: it changes owner and the attacker steps onto it") {
+    Arena a;
+    a.add(P0, WARRIOR, 5, 5);
+    aoc::game::Unit& builder = a.add(P1, BUILDER, 6, 5);
+    builder.setChargesRemaining(2);
+    CHECK(a.attack(P0, {5, 5}, {6, 5}) == ErrorCode::Ok);
+    CHECK(a.w.gameState.player(P1)->unitAt({6, 5}) == nullptr);
+    const aoc::game::Unit* captured = nullptr;
+    for (const std::unique_ptr<aoc::game::Unit>& u : a.w.gameState.player(P0)->units()) {
+        if (u->typeId() == BUILDER) { captured = u.get(); }
+    }
+    REQUIRE(captured != nullptr);
+    CHECK(captured->position() == AxialCoord{6, 5});
+    CHECK(captured->chargesRemaining() == 2);
+    const aoc::game::Unit* warrior = nullptr;
+    for (const std::unique_ptr<aoc::game::Unit>& u : a.w.gameState.player(P0)->units()) {
+        if (u->typeId() == WARRIOR) { warrior = u.get(); }
+    }
+    REQUIRE(warrior != nullptr);
+    CHECK(warrior->position() == AxialCoord{6, 5});
+    CHECK(warrior->movementRemaining() == 0);
 }

@@ -224,6 +224,7 @@ void buildWorld(World& w) {
     p0.tech().knownTechs[5]          = true;
     p1.government().autoPolicies     = true;
     p1.government().unlockPolicy(35);            // v18: bit 35 used to alias bit 3
+    w.grid.setPillaged(w.grid.toIndex(aoc::hex::AxialCoord{7, 7}), true);   // v19 layer
     p1.government().policySwapFree          = true;
     p1.government().lastGovernmentChangeTurn = 12;
     w.diplomacy.meetPlayers(aoc::PlayerId{0}, aoc::PlayerId{1}, 21);
@@ -425,6 +426,8 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(lp0.tech().knownTechs[5]);
     CHECK(lp1.government().autoPolicies);
     CHECK(lp1.government().isPolicyUnlocked(35));
+    CHECK(loaded.grid.isPillaged(loaded.grid.toIndex(aoc::hex::AxialCoord{7, 7})));
+    CHECK_FALSE(loaded.grid.isPillaged(loaded.grid.toIndex(aoc::hex::AxialCoord{8, 8})));
     CHECK_FALSE(lp1.government().isPolicyUnlocked(3));
     CHECK(lp1.government().policySwapFree);
     CHECK(lp1.government().lastGovernmentChangeTurn == 12);
@@ -473,7 +476,7 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     aoc::test::LayerCompare layerCompare{layers};
     GameLayersOnly gameLayers{layerCompare};
     loaded.grid.visitLayers(gameLayers);
-    CHECK(layerCompare.seen == 17);   // v14 added antiquitySite
+    CHECK(layerCompare.seen == 18);   // v14 added antiquitySite
     CHECK_MESSAGE(layerCompare.mismatched == 0,
                   "first game layer lost by save/load: " << layerCompare.firstMismatch);
     // v12: worldgen-only layers are not in the save; the loaded grid holds them

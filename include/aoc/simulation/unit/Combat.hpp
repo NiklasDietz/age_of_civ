@@ -108,6 +108,20 @@ struct CombatPreview {
     int32_t expectedDefenderDamage;
 };
 
+/// Effective strengths after every modifier (starvation, formation, promotions,
+/// unique units, civ and government bonuses, embarkation, health, supply,
+/// terrain, river, elevation, flanking, class matchup, fortification, war
+/// weariness). resolveMeleeCombat, resolveRangedCombat and previewCombat all
+/// use it, so the preview cannot drift from the resolution again (2026-09-05).
+struct CombatStrengths {
+    float attack;
+    float defense;
+};
+[[nodiscard]] CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
+                                                     const aoc::map::HexGrid& grid,
+                                                     const aoc::game::Unit& attacker,
+                                                     const aoc::game::Unit& defender, bool ranged);
+
 /**
  * @brief Preview expected combat damage without modifying any state.
  *

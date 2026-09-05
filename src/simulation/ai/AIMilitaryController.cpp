@@ -227,6 +227,12 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
         if (otherPlayer->id() == this->m_player) {
             continue;
         }
+        // Civ VI: only a civ at war is a target (until 2026-09-05 the AI shot at
+        // every neighbour, peace or not; the declaration path stays with the
+        // diplomacy controller).
+        if (diplomacy != nullptr && !diplomacy->isAtWar(this->m_player, otherPlayer->id())) {
+            continue;
+        }
         for (const std::unique_ptr<aoc::game::Unit>& unitPtr : otherPlayer->units()) {
             const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(unitPtr->typeId());
             enemySnapshots.push_back({unitPtr->position(), otherPlayer->id(), def.combatStrength});

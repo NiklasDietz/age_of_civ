@@ -61,6 +61,9 @@
  * v18 (2026-09-05): GovernmentState carries unlockedPolicies as 64 bits (36
  * cards overflowed the u32; card 35 aliased card 3), policySwapFree and
  * lastGovernmentChangeTurn.
+ *
+ * v19 (2026-09-05): MapLayers carries the 18th game layer "pillaged" (a
+ * pillaged improvement yields nothing until a Builder repairs it).
  */
 
 #include <cstdint>
@@ -68,6 +71,6 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 18;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 19;
 
 } // namespace aoc::save

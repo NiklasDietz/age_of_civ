@@ -188,166 +188,10 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
         return CombatResult{0, 0, false, false, 0, 0};
     }
 
-    const aoc::sim::UnitTypeDef& atkDef = attacker.typeDef();
-    const aoc::sim::UnitTypeDef& defDef = defender.typeDef();
-
-    // Effective strengths including formation bonus
-    float atkStrength = static_cast<float>(atkDef.combatStrength);
-    float defStrength = static_cast<float>(defDef.combatStrength);
-
-    // WP-P2: starvation derate. -10% per consecutive starving turn, floor 50%.
-    auto starveMult = [](int32_t turns) -> float {
-        if (turns <= 0) { return 1.0f; }
-        const float mult = 1.0f - 0.1f * static_cast<float>(turns);
-        return std::max(0.5f, mult);
-    };
-    atkStrength *= starveMult(attacker.turnsStarving());
-    defStrength *= starveMult(defender.turnsStarving());
-
-    atkStrength *= formationStrengthMultiplier(attacker.formationLevel());
-    defStrength *= formationStrengthMultiplier(defender.formationLevel());
-
-    // Promotion combat bonuses (Battlecry, Tortoise, Elite, etc.).
-    atkStrength += static_cast<float>(attacker.experience().totalCombatBonus());
-    defStrength += static_cast<float>(defender.experience().totalCombatBonus());
-
-    // Civ-specific unique unit bonuses. Applies only when the unit's type
-    // matches the civ's `uniqueUnit.baseUnit` — Civ-6 style: Romans get the
-    // Legion bonus only on Swordsmen, not on Warriors.
-    {
-        const aoc::game::Player* atkP = gameState.player(attacker.owner());
-        const aoc::game::Player* defP = gameState.player(defender.owner());
-        if (atkP != nullptr) {
-            const aoc::sim::CivilizationDef& cd = aoc::sim::civDef(atkP->civId());
-            if (cd.uniqueUnit.baseUnit == attacker.typeId()) {
-                atkStrength += static_cast<float>(cd.uniqueUnit.combatBonus);
-            }
-        }
-        if (defP != nullptr) {
-            const aoc::sim::CivilizationDef& cd = aoc::sim::civDef(defP->civId());
-            if (cd.uniqueUnit.baseUnit == defender.typeId()) {
-                defStrength += static_cast<float>(cd.uniqueUnit.combatBonus);
-            }
-        }
-    }
-
-    // Civ ability: flat combat strength bonus for land units.
-    {
-        const aoc::game::Player* atkPlayer = gameState.player(attacker.owner());
-        const aoc::game::Player* defPlayer = gameState.player(defender.owner());
-        if (atkPlayer != nullptr) {
-            const aoc::sim::CivAbilityModifiers& m =
-                aoc::sim::civDef(atkPlayer->civId()).modifiers;
-            atkStrength += m.combatStrengthBonus;
-            atkStrength += aoc::sim::computeGovernmentModifiers(
-                atkPlayer->government()).combatStrengthBonus;
-            // Conditional combat bonuses keyed off attacker tile / context.
-            const int32_t atkIdx = grid.toIndex(attacker.position());
-            if (m.combatBonusOwnTerritory > 0
-             && grid.owner(atkIdx) == attacker.owner()) {
-                atkStrength += static_cast<float>(m.combatBonusOwnTerritory);
-            }
-            if (m.combatBonusInForest > 0
-             && grid.feature(atkIdx) == aoc::map::FeatureType::Forest) {
-                atkStrength += static_cast<float>(m.combatBonusInForest);
-            }
-            if (m.combatBonusVsDifferentReligion > 0 && defPlayer != nullptr) {
-                const ReligionId atkR = atkPlayer->faith().foundedReligion;
-                const ReligionId defR = defPlayer->faith().foundedReligion;
-                if (atkR != aoc::sim::NO_RELIGION
-                 && defR != aoc::sim::NO_RELIGION
-                 && atkR != defR) {
-                    atkStrength += static_cast<float>(m.combatBonusVsDifferentReligion);
-                }
-            }
-        }
-        if (defPlayer != nullptr) {
-            const aoc::sim::CivAbilityModifiers& m =
-                aoc::sim::civDef(defPlayer->civId()).modifiers;
-            defStrength += m.combatStrengthBonus;
-            defStrength += aoc::sim::computeGovernmentModifiers(
-                defPlayer->government()).combatStrengthBonus;
-            const int32_t defIdx = grid.toIndex(defender.position());
-            if (m.combatBonusOwnTerritory > 0
-             && grid.owner(defIdx) == defender.owner()) {
-                defStrength += static_cast<float>(m.combatBonusOwnTerritory);
-            }
-            if (m.combatBonusInForest > 0
-             && grid.feature(defIdx) == aoc::map::FeatureType::Forest) {
-                defStrength += static_cast<float>(m.combatBonusInForest);
-            }
-        }
-    }
-
-    // Embarked units fight at 50% strength
-    if (attacker.state() == aoc::sim::UnitState::Embarked) {
-        atkStrength *= 0.5f;
-    }
-    if (defender.state() == aoc::sim::UnitState::Embarked) {
-        defStrength *= 0.5f;
-    }
-
-    // Health modifier: damaged units fight worse
-    float atkHealthMod = static_cast<float>(attacker.hitPoints()) / static_cast<float>(atkDef.maxHitPoints);
-    float defHealthMod = static_cast<float>(defender.hitPoints()) / static_cast<float>(defDef.maxHitPoints);
-    atkStrength *= atkHealthMod;
-    defStrength *= defHealthMod;
-
-    // Out of supply: SupplyLines.hpp promised this penalty; nothing read it.
-    if (!attacker.supply().isSupplied) {
-        atkStrength *= UNSUPPLIED_COMBAT_PENALTY;
-    }
-    if (!defender.supply().isSupplied) {
-        defStrength *= UNSUPPLIED_COMBAT_PENALTY;
-    }
-
-    // Terrain defense bonus for defender
-    float terrainMod = terrainDefenseModifier(grid, defender.position());
-    defStrength *= terrainMod;
-    if (terrainMod > 1.0f) {
-        // Tortoise / Camouflage / Elite: extra defence on defensive terrain.
-        defStrength *= 1.0f + defender.experience().totalTerrainDefenseBonus();
-    }
-
-    // River crossing penalty: defender gets +25% if attacker must cross a river
-    {
-        int32_t atkIdx = grid.toIndex(attacker.position());
-        int32_t defIdx = grid.toIndex(defender.position());
-        if (aoc::map::crossesRiver(grid, atkIdx, defIdx)) {
-            defStrength *= aoc::map::RIVER_DEFENSE_BONUS;
-        }
-        // Elevation advantage: +10% per level difference
-        float elevMod = aoc::map::elevationCombatModifier(grid, atkIdx, defIdx);
-        atkStrength *= elevMod;
-    }
-
-    // Flanking bonus: +10% per adjacent friendly for attacker, capped at 3
-    // adjacent (max +30%). Without the cap, a 3-unit Army surrounding a
-    // single defender produces 1.6x strength plus reduced counter-damage,
-    // snowballing into near-zero-loss kills every turn.
-    int32_t flanking = std::min(3,
-        countAdjacentFriendlies(gameState, defender.position(), attacker.owner(), &attacker));
-    atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
-
-    // Class matchup bonus (rock-paper-scissors)
-    atkStrength *= classMatchupModifier(atkDef.unitClass, defDef.unitClass);
-    defStrength *= classMatchupModifier(defDef.unitClass, atkDef.unitClass);
-
-    // Fortification bonus
-    if (defender.state() == aoc::sim::UnitState::Fortified) {
-        defStrength *= 1.25f;
-    }
-
-    // War weariness combat penalty: iterate players to find attacker and defender owners
-    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
-        const aoc::sim::PlayerWarWearinessComponent& ww = player->warWeariness();
-        if (player->id() == attacker.owner()) {
-            atkStrength *= warWearinessCombatModifier(ww.weariness);
-        }
-        if (player->id() == defender.owner()) {
-            defStrength *= warWearinessCombatModifier(ww.weariness);
-        }
-    }
+    const CombatStrengths strengths =
+        computeCombatStrengths(gameState, grid, attacker, defender, false);
+    const float atkStrength = strengths.attack;
+    const float defStrength = strengths.defense;
 
     // Calculate damage
     CombatResult result{};
@@ -583,102 +427,10 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
                                   const aoc::map::HexGrid& grid,
                                   aoc::game::Unit& attacker,
                                   aoc::game::Unit& defender) {
-    const aoc::sim::UnitTypeDef& atkDef = attacker.typeDef();
-    const aoc::sim::UnitTypeDef& defDef = defender.typeDef();
-
-    // Ranged uses rangedStrength for attack, combatStrength for defense
-    float atkStrength = static_cast<float>(atkDef.rangedStrength);
-    float defStrength = static_cast<float>(defDef.combatStrength);
-
-    // WP-P2: starvation derate.
-    auto rngStarveMult = [](int32_t turns) -> float {
-        if (turns <= 0) { return 1.0f; }
-        return std::max(0.5f, 1.0f - 0.1f * static_cast<float>(turns));
-    };
-    atkStrength *= rngStarveMult(attacker.turnsStarving());
-    defStrength *= rngStarveMult(defender.turnsStarving());
-
-    // Civ unique-unit bonuses (ranged uses rangedBonus for atk, combatBonus for def).
-    {
-        const aoc::game::Player* atkP = gameState.player(attacker.owner());
-        const aoc::game::Player* defP = gameState.player(defender.owner());
-        if (atkP != nullptr) {
-            const aoc::sim::CivilizationDef& cd = aoc::sim::civDef(atkP->civId());
-            if (cd.uniqueUnit.baseUnit == attacker.typeId()) {
-                atkStrength += static_cast<float>(cd.uniqueUnit.rangedBonus);
-            }
-        }
-        if (defP != nullptr) {
-            const aoc::sim::CivilizationDef& cd = aoc::sim::civDef(defP->civId());
-            if (cd.uniqueUnit.baseUnit == defender.typeId()) {
-                defStrength += static_cast<float>(cd.uniqueUnit.combatBonus);
-            }
-        }
-    }
-
-    // Formation multiplier (symmetric with melee).
-    atkStrength *= formationStrengthMultiplier(attacker.formationLevel());
-    defStrength *= formationStrengthMultiplier(defender.formationLevel());
-
-    // Promotion combat bonuses (symmetric with melee).
-    atkStrength += static_cast<float>(attacker.experience().totalCombatBonus());
-    defStrength += static_cast<float>(defender.experience().totalCombatBonus());
-
-    float atkHealthMod = static_cast<float>(attacker.hitPoints()) / static_cast<float>(atkDef.maxHitPoints);
-    float defHealthMod = static_cast<float>(defender.hitPoints()) / static_cast<float>(defDef.maxHitPoints);
-    atkStrength *= atkHealthMod;
-    defStrength *= defHealthMod;
-
-    // Out of supply: SupplyLines.hpp promised this penalty; nothing read it.
-    if (!attacker.supply().isSupplied) {
-        atkStrength *= UNSUPPLIED_COMBAT_PENALTY;
-    }
-    if (!defender.supply().isSupplied) {
-        defStrength *= UNSUPPLIED_COMBAT_PENALTY;
-    }
-
-    float terrainMod = terrainDefenseModifier(grid, defender.position());
-    defStrength *= terrainMod;
-    if (terrainMod > 1.0f) {
-        // Tortoise / Camouflage / Elite: extra defence on defensive terrain.
-        defStrength *= 1.0f + defender.experience().totalTerrainDefenseBonus();
-    }
-
-    // River crossing penalty and elevation advantage
-    {
-        int32_t atkIdx = grid.toIndex(attacker.position());
-        int32_t defIdx = grid.toIndex(defender.position());
-        if (aoc::map::crossesRiver(grid, atkIdx, defIdx)) {
-            defStrength *= aoc::map::RIVER_DEFENSE_BONUS;
-        }
-        float elevMod = aoc::map::elevationCombatModifier(grid, atkIdx, defIdx);
-        atkStrength *= elevMod;
-    }
-
-    // Flanking bonus: matches melee rules (capped at 3 adjacent).
-    int32_t flanking = std::min(3,
-        countAdjacentFriendlies(gameState, defender.position(), attacker.owner(), &attacker));
-    atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
-
-    // Class matchup bonus applied symmetrically to both sides.
-    atkStrength *= classMatchupModifier(atkDef.unitClass, defDef.unitClass);
-    defStrength *= classMatchupModifier(defDef.unitClass, atkDef.unitClass);
-
-    // Fortification bonus for defender (same as melee).
-    if (defender.state() == aoc::sim::UnitState::Fortified) {
-        defStrength *= 1.25f;
-    }
-
-    // War weariness combat penalty (ranged)
-    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
-        const aoc::sim::PlayerWarWearinessComponent& ww = player->warWeariness();
-        if (player->id() == attacker.owner()) {
-            atkStrength *= warWearinessCombatModifier(ww.weariness);
-        }
-        if (player->id() == defender.owner()) {
-            defStrength *= warWearinessCombatModifier(ww.weariness);
-        }
-    }
+    const CombatStrengths strengths =
+        computeCombatStrengths(gameState, grid, attacker, defender, true);
+    const float atkStrength = strengths.attack;
+    const float defStrength = strengths.defense;
 
     CombatResult result{};
     // Ranged: attacker deals damage but takes none (no retaliation)
@@ -736,84 +488,11 @@ CombatPreview previewCombat(const aoc::game::GameState& gameState,
                              const aoc::map::HexGrid& grid,
                              const aoc::game::Unit& attacker,
                              const aoc::game::Unit& defender) {
-    const aoc::sim::UnitTypeDef& atkDef = attacker.typeDef();
-    const aoc::sim::UnitTypeDef& defDef = defender.typeDef();
-
-    // Determine if ranged or melee
-    const bool isRanged = (atkDef.rangedStrength > 0);
-
-    // Effective strengths
-    float atkStrength = isRanged
-        ? static_cast<float>(atkDef.rangedStrength)
-        : static_cast<float>(atkDef.combatStrength);
-    float defStrength = static_cast<float>(defDef.combatStrength);
-
-    // WP-P2: starvation derate (preview must match resolution).
-    auto previewStarveMult = [](int32_t turns) -> float {
-        if (turns <= 0) { return 1.0f; }
-        return std::max(0.5f, 1.0f - 0.1f * static_cast<float>(turns));
-    };
-    atkStrength *= previewStarveMult(attacker.turnsStarving());
-    defStrength *= previewStarveMult(defender.turnsStarving());
-
-    // Embarked modifier
-    if (attacker.state() == aoc::sim::UnitState::Embarked) {
-        atkStrength *= 0.5f;
-    }
-    if (defender.state() == aoc::sim::UnitState::Embarked) {
-        defStrength *= 0.5f;
-    }
-
-    // Health modifier
-    float atkHealthMod = static_cast<float>(attacker.hitPoints()) / static_cast<float>(atkDef.maxHitPoints);
-    float defHealthMod = static_cast<float>(defender.hitPoints()) / static_cast<float>(defDef.maxHitPoints);
-    atkStrength *= atkHealthMod;
-    defStrength *= defHealthMod;
-
-    // Out of supply: SupplyLines.hpp promised this penalty; nothing read it.
-    if (!attacker.supply().isSupplied) {
-        atkStrength *= UNSUPPLIED_COMBAT_PENALTY;
-    }
-    if (!defender.supply().isSupplied) {
-        defStrength *= UNSUPPLIED_COMBAT_PENALTY;
-    }
-
-    // Terrain defense bonus for defender
-    float terrainMod = terrainDefenseModifier(grid, defender.position());
-    defStrength *= terrainMod;
-    if (terrainMod > 1.0f) {
-        // Tortoise / Camouflage / Elite: extra defence on defensive terrain.
-        defStrength *= 1.0f + defender.experience().totalTerrainDefenseBonus();
-    }
-
-    // River crossing penalty and elevation advantage
-    {
-        int32_t atkIdx = grid.toIndex(attacker.position());
-        int32_t defIdx = grid.toIndex(defender.position());
-        if (aoc::map::crossesRiver(grid, atkIdx, defIdx)) {
-            defStrength *= aoc::map::RIVER_DEFENSE_BONUS;
-        }
-        float elevMod = aoc::map::elevationCombatModifier(grid, atkIdx, defIdx);
-        atkStrength *= elevMod;
-    }
-
-    // Flanking bonus for melee (capped at 3 adjacent, matching resolution).
-    if (!isRanged) {
-        int32_t flanking = std::min(3,
-            countAdjacentFriendlies(gameState, defender.position(), attacker.owner(), &attacker));
-        atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
-    }
-
-    // Class matchup bonus
-    atkStrength *= classMatchupModifier(atkDef.unitClass, defDef.unitClass);
-    if (!isRanged) {
-        defStrength *= classMatchupModifier(defDef.unitClass, atkDef.unitClass);
-    }
-
-    // Fortification bonus
-    if (defender.state() == aoc::sim::UnitState::Fortified) {
-        defStrength *= 1.25f;
-    }
+    const bool isRanged = (attacker.typeDef().rangedStrength > 0);
+    const CombatStrengths strengths =
+        computeCombatStrengths(gameState, grid, attacker, defender, isRanged);
+    const float atkStrength = strengths.attack;
+    const float defStrength = strengths.defense;
 
     // Compute damage with randomFactor = 1.0 (average outcome)
     CombatPreview preview{};
@@ -824,6 +503,10 @@ CombatPreview previewCombat(const aoc::game::GameState& gameState,
         float ratio = atkStrength / defStrength;
         float baseDamage = 30.0f * ratio * 1.0f;
         preview.expectedDefenderDamage = std::clamp(static_cast<int32_t>(baseDamage), 0, 100);
+    }
+    if (!isRanged) {
+        // Melee resolution discounts both sides to 80 percent; ranged does not.
+        preview.expectedDefenderDamage = preview.expectedDefenderDamage * 8 / 10;
     }
 
     if (isRanged) {
@@ -865,6 +548,274 @@ static aoc::game::Unit* findUnitByEntity(aoc::game::GameState& gameState, Entity
         remaining -= count;
     }
     return nullptr;
+}
+
+CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
+                                       const aoc::map::HexGrid& grid,
+                                       const aoc::game::Unit& attacker,
+                                       const aoc::game::Unit& defender, bool ranged) {
+    float atkStrength = 0.0f;
+    float defStrength = 0.0f;
+    if (ranged) {
+        const aoc::sim::UnitTypeDef& atkDef = attacker.typeDef();
+        const aoc::sim::UnitTypeDef& defDef = defender.typeDef();
+
+        // Ranged uses rangedStrength for attack, combatStrength for defense
+        atkStrength = static_cast<float>(atkDef.rangedStrength);
+        defStrength = static_cast<float>(defDef.combatStrength);
+
+        // WP-P2: starvation derate.
+        auto rngStarveMult = [](int32_t turns) -> float {
+            if (turns <= 0) { return 1.0f; }
+            return std::max(0.5f, 1.0f - 0.1f * static_cast<float>(turns));
+        };
+        atkStrength *= rngStarveMult(attacker.turnsStarving());
+        defStrength *= rngStarveMult(defender.turnsStarving());
+
+        // Civ unique-unit bonuses (ranged uses rangedBonus for atk, combatBonus for def).
+        {
+            const aoc::game::Player* atkP = gameState.player(attacker.owner());
+            const aoc::game::Player* defP = gameState.player(defender.owner());
+            if (atkP != nullptr) {
+                const aoc::sim::CivilizationDef& cd = aoc::sim::civDef(atkP->civId());
+                if (cd.uniqueUnit.baseUnit == attacker.typeId()) {
+                    atkStrength += static_cast<float>(cd.uniqueUnit.rangedBonus);
+                }
+            }
+            if (defP != nullptr) {
+                const aoc::sim::CivilizationDef& cd = aoc::sim::civDef(defP->civId());
+                if (cd.uniqueUnit.baseUnit == defender.typeId()) {
+                    defStrength += static_cast<float>(cd.uniqueUnit.combatBonus);
+                }
+            }
+        }
+
+        // Formation multiplier (symmetric with melee).
+        atkStrength *= formationStrengthMultiplier(attacker.formationLevel());
+        defStrength *= formationStrengthMultiplier(defender.formationLevel());
+
+        // Promotion combat bonuses (symmetric with melee).
+        atkStrength += static_cast<float>(attacker.experience().totalCombatBonus());
+        defStrength += static_cast<float>(defender.experience().totalCombatBonus());
+
+        float atkHealthMod = static_cast<float>(attacker.hitPoints()) / static_cast<float>(atkDef.maxHitPoints);
+        float defHealthMod = static_cast<float>(defender.hitPoints()) / static_cast<float>(defDef.maxHitPoints);
+        atkStrength *= atkHealthMod;
+        defStrength *= defHealthMod;
+
+        // Out of supply: SupplyLines.hpp promised this penalty; nothing read it.
+        if (!attacker.supply().isSupplied) {
+            atkStrength *= UNSUPPLIED_COMBAT_PENALTY;
+        }
+        if (!defender.supply().isSupplied) {
+            defStrength *= UNSUPPLIED_COMBAT_PENALTY;
+        }
+
+        float terrainMod = terrainDefenseModifier(grid, defender.position());
+        defStrength *= terrainMod;
+        if (terrainMod > 1.0f) {
+            // Tortoise / Camouflage / Elite: extra defence on defensive terrain.
+            defStrength *= 1.0f + defender.experience().totalTerrainDefenseBonus();
+        }
+
+        // River crossing penalty and elevation advantage
+        {
+            int32_t atkIdx = grid.toIndex(attacker.position());
+            int32_t defIdx = grid.toIndex(defender.position());
+            if (aoc::map::crossesRiver(grid, atkIdx, defIdx)) {
+                defStrength *= aoc::map::RIVER_DEFENSE_BONUS;
+            }
+            float elevMod = aoc::map::elevationCombatModifier(grid, atkIdx, defIdx);
+            atkStrength *= elevMod;
+        }
+
+        // Flanking bonus: matches melee rules (capped at 3 adjacent).
+        int32_t flanking = std::min(3,
+            countAdjacentFriendlies(gameState, defender.position(), attacker.owner(), &attacker));
+        atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
+
+        // Class matchup bonus applied symmetrically to both sides.
+        atkStrength *= classMatchupModifier(atkDef.unitClass, defDef.unitClass);
+        defStrength *= classMatchupModifier(defDef.unitClass, atkDef.unitClass);
+
+        // Fortification bonus for defender (same as melee).
+        if (defender.state() == aoc::sim::UnitState::Fortified) {
+            defStrength *= 1.25f;
+        }
+
+        // War weariness combat penalty (ranged)
+        for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+            const aoc::sim::PlayerWarWearinessComponent& ww = player->warWeariness();
+            if (player->id() == attacker.owner()) {
+                atkStrength *= warWearinessCombatModifier(ww.weariness);
+            }
+            if (player->id() == defender.owner()) {
+                defStrength *= warWearinessCombatModifier(ww.weariness);
+            }
+        }
+    } else {
+        const aoc::sim::UnitTypeDef& atkDef = attacker.typeDef();
+        const aoc::sim::UnitTypeDef& defDef = defender.typeDef();
+
+        // Effective strengths including formation bonus
+        atkStrength = static_cast<float>(atkDef.combatStrength);
+        defStrength = static_cast<float>(defDef.combatStrength);
+
+        // WP-P2: starvation derate. -10% per consecutive starving turn, floor 50%.
+        auto starveMult = [](int32_t turns) -> float {
+            if (turns <= 0) { return 1.0f; }
+            const float mult = 1.0f - 0.1f * static_cast<float>(turns);
+            return std::max(0.5f, mult);
+        };
+        atkStrength *= starveMult(attacker.turnsStarving());
+        defStrength *= starveMult(defender.turnsStarving());
+
+        atkStrength *= formationStrengthMultiplier(attacker.formationLevel());
+        defStrength *= formationStrengthMultiplier(defender.formationLevel());
+
+        // Promotion combat bonuses (Battlecry, Tortoise, Elite, etc.).
+        atkStrength += static_cast<float>(attacker.experience().totalCombatBonus());
+        defStrength += static_cast<float>(defender.experience().totalCombatBonus());
+
+        // Civ-specific unique unit bonuses. Applies only when the unit's type
+        // matches the civ's `uniqueUnit.baseUnit` — Civ-6 style: Romans get the
+        // Legion bonus only on Swordsmen, not on Warriors.
+        {
+            const aoc::game::Player* atkP = gameState.player(attacker.owner());
+            const aoc::game::Player* defP = gameState.player(defender.owner());
+            if (atkP != nullptr) {
+                const aoc::sim::CivilizationDef& cd = aoc::sim::civDef(atkP->civId());
+                if (cd.uniqueUnit.baseUnit == attacker.typeId()) {
+                    atkStrength += static_cast<float>(cd.uniqueUnit.combatBonus);
+                }
+            }
+            if (defP != nullptr) {
+                const aoc::sim::CivilizationDef& cd = aoc::sim::civDef(defP->civId());
+                if (cd.uniqueUnit.baseUnit == defender.typeId()) {
+                    defStrength += static_cast<float>(cd.uniqueUnit.combatBonus);
+                }
+            }
+        }
+
+        // Civ ability: flat combat strength bonus for land units.
+        {
+            const aoc::game::Player* atkPlayer = gameState.player(attacker.owner());
+            const aoc::game::Player* defPlayer = gameState.player(defender.owner());
+            if (atkPlayer != nullptr) {
+                const aoc::sim::CivAbilityModifiers& m =
+                    aoc::sim::civDef(atkPlayer->civId()).modifiers;
+                atkStrength += m.combatStrengthBonus;
+                atkStrength += aoc::sim::computeGovernmentModifiers(
+                    atkPlayer->government()).combatStrengthBonus;
+                // Conditional combat bonuses keyed off attacker tile / context.
+                const int32_t atkIdx = grid.toIndex(attacker.position());
+                if (m.combatBonusOwnTerritory > 0
+                 && grid.owner(atkIdx) == attacker.owner()) {
+                    atkStrength += static_cast<float>(m.combatBonusOwnTerritory);
+                }
+                if (m.combatBonusInForest > 0
+                 && grid.feature(atkIdx) == aoc::map::FeatureType::Forest) {
+                    atkStrength += static_cast<float>(m.combatBonusInForest);
+                }
+                if (m.combatBonusVsDifferentReligion > 0 && defPlayer != nullptr) {
+                    const ReligionId atkR = atkPlayer->faith().foundedReligion;
+                    const ReligionId defR = defPlayer->faith().foundedReligion;
+                    if (atkR != aoc::sim::NO_RELIGION
+                     && defR != aoc::sim::NO_RELIGION
+                     && atkR != defR) {
+                        atkStrength += static_cast<float>(m.combatBonusVsDifferentReligion);
+                    }
+                }
+            }
+            if (defPlayer != nullptr) {
+                const aoc::sim::CivAbilityModifiers& m =
+                    aoc::sim::civDef(defPlayer->civId()).modifiers;
+                defStrength += m.combatStrengthBonus;
+                defStrength += aoc::sim::computeGovernmentModifiers(
+                    defPlayer->government()).combatStrengthBonus;
+                const int32_t defIdx = grid.toIndex(defender.position());
+                if (m.combatBonusOwnTerritory > 0
+                 && grid.owner(defIdx) == defender.owner()) {
+                    defStrength += static_cast<float>(m.combatBonusOwnTerritory);
+                }
+                if (m.combatBonusInForest > 0
+                 && grid.feature(defIdx) == aoc::map::FeatureType::Forest) {
+                    defStrength += static_cast<float>(m.combatBonusInForest);
+                }
+            }
+        }
+
+        // Embarked units fight at 50% strength
+        if (attacker.state() == aoc::sim::UnitState::Embarked) {
+            atkStrength *= 0.5f;
+        }
+        if (defender.state() == aoc::sim::UnitState::Embarked) {
+            defStrength *= 0.5f;
+        }
+
+        // Health modifier: damaged units fight worse
+        float atkHealthMod = static_cast<float>(attacker.hitPoints()) / static_cast<float>(atkDef.maxHitPoints);
+        float defHealthMod = static_cast<float>(defender.hitPoints()) / static_cast<float>(defDef.maxHitPoints);
+        atkStrength *= atkHealthMod;
+        defStrength *= defHealthMod;
+
+        // Out of supply: SupplyLines.hpp promised this penalty; nothing read it.
+        if (!attacker.supply().isSupplied) {
+            atkStrength *= UNSUPPLIED_COMBAT_PENALTY;
+        }
+        if (!defender.supply().isSupplied) {
+            defStrength *= UNSUPPLIED_COMBAT_PENALTY;
+        }
+
+        // Terrain defense bonus for defender
+        float terrainMod = terrainDefenseModifier(grid, defender.position());
+        defStrength *= terrainMod;
+        if (terrainMod > 1.0f) {
+            // Tortoise / Camouflage / Elite: extra defence on defensive terrain.
+            defStrength *= 1.0f + defender.experience().totalTerrainDefenseBonus();
+        }
+
+        // River crossing penalty: defender gets +25% if attacker must cross a river
+        {
+            int32_t atkIdx = grid.toIndex(attacker.position());
+            int32_t defIdx = grid.toIndex(defender.position());
+            if (aoc::map::crossesRiver(grid, atkIdx, defIdx)) {
+                defStrength *= aoc::map::RIVER_DEFENSE_BONUS;
+            }
+            // Elevation advantage: +10% per level difference
+            float elevMod = aoc::map::elevationCombatModifier(grid, atkIdx, defIdx);
+            atkStrength *= elevMod;
+        }
+
+        // Flanking bonus: +10% per adjacent friendly for attacker, capped at 3
+        // adjacent (max +30%). Without the cap, a 3-unit Army surrounding a
+        // single defender produces 1.6x strength plus reduced counter-damage,
+        // snowballing into near-zero-loss kills every turn.
+        int32_t flanking = std::min(3,
+            countAdjacentFriendlies(gameState, defender.position(), attacker.owner(), &attacker));
+        atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
+
+        // Class matchup bonus (rock-paper-scissors)
+        atkStrength *= classMatchupModifier(atkDef.unitClass, defDef.unitClass);
+        defStrength *= classMatchupModifier(defDef.unitClass, atkDef.unitClass);
+
+        // Fortification bonus
+        if (defender.state() == aoc::sim::UnitState::Fortified) {
+            defStrength *= 1.25f;
+        }
+
+        // War weariness combat penalty: iterate players to find attacker and defender owners
+        for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+            const aoc::sim::PlayerWarWearinessComponent& ww = player->warWeariness();
+            if (player->id() == attacker.owner()) {
+                atkStrength *= warWearinessCombatModifier(ww.weariness);
+            }
+            if (player->id() == defender.owner()) {
+                defStrength *= warWearinessCombatModifier(ww.weariness);
+            }
+        }
+    }
+    return CombatStrengths{atkStrength, defStrength};
 }
 
 CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,

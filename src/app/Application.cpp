@@ -1462,6 +1462,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     this->registerCityControlRoutes();
     this->registerBuilderControlRoutes();
+    this->registerUnitOrderRoutes();
 
     // POST /game/governor/promote?player=&q=&r=&promotion=
     this->m_debugServer->routeJson(
@@ -1707,6 +1708,10 @@ ErrorCode Application::initialize(const Config& config) {
                 "{\"method\":\"POST\",\"path\":\"/game/builder/improve?player=&q=&r=&type=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/builder/chop?player=&q=&r=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/builder/harvest?player=&q=&r=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/builder/repair?player=&q=&r=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/unit/pillage?player=&q=&r=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/unit/delete?player=&q=&r=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/unit/alert?player=&q=&r=&on=\"},"
                 "{\"method\":\"GET\",\"path\":\"/ui/tree\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click?widgetId=N\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click-at?x=&y=\"},"
@@ -2537,7 +2542,8 @@ void Application::executeGameControlCommand(const aoc::debug::AttackUnitCommand&
         selectionWasDefender ? this->m_selectedUnit->owner() : aoc::INVALID_PLAYER;
 
     const ErrorCode result = aoc::sim::requestAttack(this->m_gameState, this->m_gameRng,
-                                                     this->m_hexGrid, cmd.player, cmd.from, cmd.to);
+                                                     this->m_hexGrid, cmd.player, cmd.from, cmd.to,
+                                                     &this->m_diplomacy);
     if (result != ErrorCode::Ok) {
         LOG_WARN("Attack by player %u from (%d,%d) on (%d,%d) rejected: %.*s",
                  static_cast<unsigned>(cmd.player), cmd.from.q, cmd.from.r, cmd.to.q, cmd.to.r,
@@ -5443,11 +5449,42 @@ void Application::run() {
                     this->m_gameRenderer.tooltipManager().hide();
                 }
             } else if (mapClickable) {
-                this->m_gameRenderer.tooltipManager().update(
-                    static_cast<float>(this->m_inputManager.mouseX()),
-                    static_cast<float>(this->m_inputManager.mouseY()), this->m_gameState,
-                    this->m_hexGrid, this->m_cameraController, this->m_fogOfWar, PlayerId{0},
-                    fbWidth, fbHeight, NULL_ENTITY);
+                // Combat preview: a selected military unit hovering an enemy unit
+                // shows the expected damage both ways (previewCombat shares the
+                // resolution's modifiers since 2026-09-05).
+                std::string previewText;
+                if (this->m_selectedUnit != nullptr && this->m_selectedUnit->isMilitary()) {
+                    float hoverX = 0.0f;
+                    float hoverY = 0.0f;
+                    this->m_cameraController.screenToWorld(this->m_inputManager.mouseX(),
+                                                           this->m_inputManager.mouseY(), hoverX,
+                                                           hoverY, fbWidth, fbHeight);
+                    const hex::AxialCoord hoverTile = hex::pixelToAxial(
+                        hoverX, hoverY, this->m_gameRenderer.mapRenderer().hexSize());
+                    if (this->m_hexGrid.isValid(hoverTile)) {
+                        const aoc::game::Unit* target = aoc::sim::enemyUnitAt(
+                            this->m_gameState, this->m_selectedUnit->owner(), hoverTile);
+                        if (target != nullptr && target->isMilitary()) {
+                            const aoc::sim::CombatPreview preview = aoc::sim::previewCombat(
+                                this->m_gameState, this->m_hexGrid, *this->m_selectedUnit, *target);
+                            previewText = std::string(this->m_selectedUnit->typeDef().name) + " vs "
+                                        + std::string(target->typeDef().name) + "\nExpected: deal "
+                                        + std::to_string(preview.expectedDefenderDamage) + ", take "
+                                        + std::to_string(preview.expectedAttackerDamage);
+                        }
+                    }
+                }
+                if (!previewText.empty()) {
+                    this->m_gameRenderer.tooltipManager().showText(
+                        previewText, static_cast<float>(this->m_inputManager.mouseX()),
+                        static_cast<float>(this->m_inputManager.mouseY()), fbWidth, fbHeight);
+                } else {
+                    this->m_gameRenderer.tooltipManager().update(
+                        static_cast<float>(this->m_inputManager.mouseX()),
+                        static_cast<float>(this->m_inputManager.mouseY()), this->m_gameState,
+                        this->m_hexGrid, this->m_cameraController, this->m_fogOfWar, PlayerId{0},
+                        fbWidth, fbHeight, NULL_ENTITY);
+                }
             } else {
                 this->m_gameRenderer.tooltipManager().hide();
             }
@@ -6606,8 +6643,33 @@ void Application::handleContextAction() {
         aoc::sim::enemyUnitAt(this->m_gameState, unit.owner(), targetTile) != nullptr) {
         const PlayerId attacker    = unit.owner();
         const hex::AxialCoord from = unit.position();
-        const ErrorCode result     = aoc::sim::requestAttack(
-            this->m_gameState, this->m_gameRng, this->m_hexGrid, attacker, from, targetTile);
+        ErrorCode result           = aoc::sim::requestAttack(
+            this->m_gameState, this->m_gameRng, this->m_hexGrid, attacker, from, targetTile,
+            &this->m_diplomacy);
+        if (result == ErrorCode::InvalidState) {
+            // At peace with the target's civ: the first right-click arms a war
+            // declaration, the second one on the same civ declares it and attacks.
+            const aoc::game::Unit* target =
+                aoc::sim::enemyUnitAt(this->m_gameState, attacker, targetTile);
+            const PlayerId targetOwner = target != nullptr ? target->owner() : aoc::INVALID_PLAYER;
+            const int32_t turn         = this->m_gameState.currentTurn();
+            if (targetOwner != aoc::INVALID_PLAYER && this->m_pendingWarTarget == targetOwner
+                && this->m_pendingWarTurn == turn) {
+                this->m_diplomacy.declareWar(attacker, targetOwner, aoc::sim::CasusBelliType::SurpriseWar,
+                                             &this->m_allianceTracker, &this->m_gameState, turn);
+                this->m_pendingWarTarget = aoc::INVALID_PLAYER;
+                this->m_notificationManager.push("War declared!", 3.0f, 1.0f, 0.4f, 0.3f);
+                result = aoc::sim::requestAttack(this->m_gameState, this->m_gameRng, this->m_hexGrid,
+                                                 attacker, from, targetTile, &this->m_diplomacy);
+            } else {
+                this->m_pendingWarTarget = targetOwner;
+                this->m_pendingWarTurn   = turn;
+                this->m_notificationManager.push(
+                    "At peace with this civ: right-click again this turn to declare war and attack",
+                    4.0f, 1.0f, 0.8f, 0.3f);
+                return;
+            }
+        }
         if (result != ErrorCode::Ok) {
             this->m_notificationManager.push(
                 "Cannot attack: " + std::string(describeError(result)), 2.0f, 1.0f, 0.3f, 0.3f);

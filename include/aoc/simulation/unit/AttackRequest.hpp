@@ -27,6 +27,8 @@ class HexGrid;
 
 namespace aoc::sim {
 
+class DiplomacyManager;
+
 /// The first unit of any other seat (major civs and city-states) standing on
 /// `at`, or nullptr. Barbarians are not Player objects and are not found.
 [[nodiscard]] aoc::game::Unit* enemyUnitAt(aoc::game::GameState& gameState, PlayerId viewer,
@@ -41,8 +43,13 @@ namespace aoc::sim {
 ///     (InvalidUnitAction). The attack spends the unit's movement.
 /// InvalidArgument for an unknown seat, no unit at `from` or an invalid `to`;
 /// InvalidUnitAction for a non-military attacker.
+///   - With `diplomacy` given, attacking a major civ the player is at peace
+///     with returns InvalidState (the caller declares war first, Civ VI style).
+///   - A civilian defender (Settler, Builder, Trader, ...) adjacent to a melee
+///     attacker is captured: it changes owner and the attacker steps onto it.
 [[nodiscard]] ErrorCode requestAttack(aoc::game::GameState& gameState, aoc::Random& rng,
                                       aoc::map::HexGrid& grid, PlayerId player,
-                                      hex::AxialCoord from, hex::AxialCoord to);
+                                      hex::AxialCoord from, hex::AxialCoord to,
+                                      const DiplomacyManager* diplomacy = nullptr);
 
 } // namespace aoc::sim

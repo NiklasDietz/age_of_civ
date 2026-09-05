@@ -32,6 +32,7 @@
 #include "aoc/simulation/city/BorderExpansion.hpp"
 #include "aoc/simulation/map/Improvement.hpp"
 #include "aoc/simulation/unit/BuilderActions.hpp"
+#include "aoc/simulation/unit/UnitOrders.hpp"
 #include "aoc/simulation/turn/TurnProcessor.hpp"
 #include "aoc/save/Serializer.hpp"
 
@@ -1070,11 +1071,22 @@ void Application::rebuildUnitActionPanel() {
     const bool canChopHere     = unitTileIdx >= 0 && aoc::sim::canChopAt(this->m_hexGrid, unitTileIdx);
     const bool canHarvestHere  = unitTileIdx >= 0 && aoc::sim::canHarvestAt(this->m_hexGrid, unitTileIdx);
 
+    const bool canPillageHere = unitTileIdx >= 0 && aoc::sim::isMilitary(def.unitClass)
+        && this->m_hexGrid.owner(unitTileIdx) != unit.owner()
+        && this->m_hexGrid.owner(unitTileIdx) != aoc::INVALID_PLAYER
+        && this->m_hexGrid.improvement(unitTileIdx) != aoc::map::ImprovementType::None
+        && this->m_hexGrid.improvement(unitTileIdx) != aoc::map::ImprovementType::Road
+        && !this->m_hexGrid.isPillaged(unitTileIdx);
+    const bool canRepairHere = unitTileIdx >= 0 && def.unitClass == aoc::sim::UnitClass::Civilian
+        && this->m_hexGrid.owner(unitTileIdx) == unit.owner() && this->m_hexGrid.isPillaged(unitTileIdx);
+
     // Count buttons to size the panel
-    int32_t buttonCount = 2; // Skip + Sleep always
+    int32_t buttonCount = 3; // Skip + Sleep + Delete always
     if (aoc::sim::isMilitary(def.unitClass)) {
-        ++buttonCount; // Fortify
+        buttonCount += 2; // Fortify + Alert
+        if (canPillageHere) { ++buttonCount; }
     }
+    if (canRepairHere) { ++buttonCount; }
     if (def.unitClass == aoc::sim::UnitClass::Scout) {
         ++buttonCount; // Auto-Explore
     }
@@ -1290,6 +1302,57 @@ void Application::rebuildUnitActionPanel() {
                     aoc::sim::checkEurekaConditions(*eurekaP, aoc::sim::EurekaCondition::FoundCity);
                 }
             }
+        });
+    }
+
+    // -- Pillage / Alert (military), Delete (any): Civ VI unit orders, 2026-09-05 --
+    if (aoc::sim::isMilitary(def.unitClass)) {
+        if (canPillageHere) {
+            makeActionBtn("Pillage", {0.35f, 0.15f, 0.12f, 0.9f}, [this, selectedUnitPtr]() {
+                if (selectedUnitPtr == nullptr) { return; }
+                const ErrorCode rc = aoc::sim::requestPillage(this->m_gameState, this->m_hexGrid,
+                                                              selectedUnitPtr->owner(),
+                                                              selectedUnitPtr->position(),
+                                                              &this->m_diplomacy);
+                if (rc != ErrorCode::Ok) {
+                    this->m_notificationManager.push(
+                        std::string("Cannot pillage: ") + std::string(describeError(rc)), 3.0f, 1.0f,
+                        0.5f, 0.4f);
+                    return;
+                }
+                this->rebuildUnitActionPanel();
+            });
+        }
+        makeActionBtn(unit.alertStance ? "Alert: on" : "Alert", {0.25f, 0.25f, 0.35f, 0.9f},
+                      [this, selectedUnitPtr]() {
+            if (selectedUnitPtr == nullptr) { return; }
+            const ErrorCode rc = aoc::sim::requestSetAlert(this->m_gameState, selectedUnitPtr->owner(),
+                                                           selectedUnitPtr->position(),
+                                                           !selectedUnitPtr->alertStance);
+            if (rc == ErrorCode::Ok) { this->rebuildUnitActionPanel(); }
+        });
+    }
+    makeActionBtn("Delete", {0.35f, 0.12f, 0.12f, 0.9f}, [this, selectedUnitPtr]() {
+        if (selectedUnitPtr == nullptr) { return; }
+        const PlayerId ownerId       = selectedUnitPtr->owner();
+        const hex::AxialCoord where  = selectedUnitPtr->position();
+        this->m_selectedUnit    = nullptr;
+        this->m_actionPanelUnit = nullptr;
+        const ErrorCode rc = aoc::sim::requestDeleteUnit(this->m_gameState, this->m_hexGrid, ownerId, where);
+        if (rc != ErrorCode::Ok) {
+            LOG_WARN("Delete refused: %.*s", static_cast<int>(describeError(rc).size()), describeError(rc).data());
+        }
+    });
+    if (canRepairHere) {
+        makeActionBtn("Repair", {0.20f, 0.30f, 0.20f, 0.9f}, [this, selectedUnitPtr]() {
+            if (selectedUnitPtr == nullptr) { return; }
+            const ErrorCode rc = aoc::sim::requestRepair(this->m_gameState, this->m_hexGrid,
+                                                         selectedUnitPtr->owner(), selectedUnitPtr->position());
+            if (rc != ErrorCode::Ok) {
+                LOG_WARN("Repair refused: %.*s", static_cast<int>(describeError(rc).size()), describeError(rc).data());
+                return;
+            }
+            this->finishBuilderAction(selectedUnitPtr);
         });
     }
 

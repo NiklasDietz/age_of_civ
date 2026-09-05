@@ -655,6 +655,10 @@ private:
     void executeGameControlCommand(const aoc::debug::PlaceImprovementCommand& cmd);
     void executeGameControlCommand(const aoc::debug::BuilderChopCommand& cmd);
     void executeGameControlCommand(const aoc::debug::BuilderHarvestCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::PillageCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::RepairCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::DeleteUnitCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::SetAlertCommand& cmd);
 
     /// The five `/game/city/*` routes (Application_CityControl.cpp).
     void registerCityControlRoutes();
@@ -664,6 +668,14 @@ private:
 
     /// The three builder routes (Application_CityControl.cpp).
     void registerBuilderControlRoutes();
+
+    /// The four unit-order routes: pillage, repair, delete, alert (Application_CityControl.cpp).
+    void registerUnitOrderRoutes();
+
+    /// A right-click attack on a civ at peace arms this; the next right-click on
+    /// the same civ declares war and attacks (Civ VI's confirmation, without a modal).
+    aoc::PlayerId m_pendingWarTarget = aoc::INVALID_PLAYER;
+    int32_t m_pendingWarTurn         = -1;
 
     /// Remove a civilian unit that spent its last charge and drop the selection.
     void finishBuilderAction(aoc::game::Unit* builder);

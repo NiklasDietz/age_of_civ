@@ -154,6 +154,31 @@ struct BuilderHarvestCommand {
     aoc::hex::AxialCoord at;
 };
 
+/// Pillage the improvement under the military unit on `at`.
+struct PillageCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+};
+
+/// Repair the pillaged tile under the Builder on `at`.
+struct RepairCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+};
+
+/// Disband the unit on `at`.
+struct DeleteUnitCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+};
+
+/// Set or clear the alert stance of the unit on `at`.
+struct SetAlertCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+    bool alert;
+};
+
 /// Merge the unit at `sourceAt` into the same-type unit at `at` (Corps / Army, Fleet / Armada).
 struct MergeUnitsCommand {
     aoc::PlayerId player;
@@ -184,6 +209,7 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         SetCityFocusCommand, ToggleTileLockCommand,
                                         RemoveQueueItemCommand, QueueProjectCommand,
                                         PlaceImprovementCommand, BuilderChopCommand,
-                                        BuilderHarvestCommand, EndTurnCommand>;
+                                        BuilderHarvestCommand, PillageCommand, RepairCommand,
+                                        DeleteUnitCommand, SetAlertCommand, EndTurnCommand>;
 
 } // namespace aoc::debug

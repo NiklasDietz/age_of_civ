@@ -55,6 +55,7 @@ void HexGrid::initialize(int32_t width, int32_t height, MapTopology topology) {
     this->m_chokepoint.assign(count, ChokepointType::None);
     this->m_falloutTurns.assign(count, 0);
     this->m_preFalloutFeature.assign(count, FeatureType::None);
+    this->m_pillaged.assign(count, 0);
     // Everything else -- m_plateId (lazy-allocated by setPlateId), the hotspot
     // and per-plate tables, the row-latitude table, and the ~140 derived
     // geology / climate / biogeography layers -- is already empty from the reset
