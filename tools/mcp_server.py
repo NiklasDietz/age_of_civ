@@ -342,6 +342,52 @@ def aoc_change_government(player: int, government: int) -> dict:
 
 
 @mcp.tool()
+def aoc_purchase(player: int, q: int, r: int, item_type: int, item_id: int, faith: bool = False) -> dict:
+    """Buy in the city at (q, r): item_type 0 = unit, 1 = building (gold, 4x production cost,
+    same tech/civic/district gates as building it). With faith=True buy a religious unit
+    (19 Missionary, 20 Apostle, 21 Inquisitor) for production x 2 faith; needs a founded
+    religion. Queues the request; a rejection is logged in the game log.
+    """
+    return _post("/game/city/purchase", player=player, q=q, r=r, type=item_type, item=item_id,
+                 faith=1 if faith else 0)
+
+
+@mcp.tool()
+def aoc_set_city_focus(player: int, q: int, r: int, focus: int) -> dict:
+    """Set the citizen focus of the city at (q, r): 0 Balanced, 1 Growth, 2 Production,
+    3 Science, 4 Gold, 5 Military. Worked tiles are re-assigned for it. Queues the request.
+    """
+    return _post("/game/city/focus", player=player, q=q, r=r, focus=focus)
+
+
+@mcp.tool()
+def aoc_lock_tile(player: int, q: int, r: int, tile_q: int, tile_r: int) -> dict:
+    """Pin or unpin tile (tile_q, tile_r) for the city at (q, r); a pinned tile keeps its
+    citizen through re-assignment (pinning works it when a citizen is free). Queues the request.
+    """
+    return _post("/game/city/lock-tile", player=player, q=q, r=r, tq=tile_q, tr=tile_r)
+
+
+@mcp.tool()
+def aoc_remove_queue_item(player: int, q: int, r: int, index: int) -> dict:
+    """Drop entry `index` (0 = head) from the production queue of the city at (q, r); its
+    progress is lost. Queues the request.
+    """
+    return _post("/game/city/queue/remove", player=player, q=q, r=r, index=index)
+
+
+@mcp.tool()
+def aoc_queue_project(player: int, q: int, r: int, project: int) -> dict:
+    """Queue a repeatable city project in the city at (q, r): 0 Bread and Circuses (+20
+    loyalty, City Center), 1 Campus Research Grant (+50 science, Campus), 2 Industrial Surge
+    (+50 production, Industrial), 3 Commercial Investment (+100 gold, Commercial), 4 Shipyard
+    Rush (Harbor), 5 Military Training (Encampment). The city needs the district. Queues the
+    request.
+    """
+    return _post("/game/city/project", player=player, q=q, r=r, project=project)
+
+
+@mcp.tool()
 def aoc_set_production(player: int, q: int, r: int, item_type: str, item_id: int) -> dict:
     """Queue a production item onto the city owned by `player` at hex (q, r).
 

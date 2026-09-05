@@ -41,6 +41,8 @@
 namespace aoc::map { class HexGrid; }
 namespace aoc::game { class GameState; }
 
+namespace aoc::game { class City; }
+
 namespace aoc::sim {
 
 // ============================================================================
@@ -172,7 +174,7 @@ inline constexpr std::array<CityProjectDef, 6> CITY_PROJECT_DEFS = {{
 /**
  * @brief Complete a city project. Applies the one-time effect.
  */
-void completeCityProject(aoc::game::GameState& gameState, EntityId cityEntity,
+void completeCityProject(aoc::game::GameState& gameState, aoc::game::City& city,
                          CityProjectType project);
 
 } // namespace aoc::sim

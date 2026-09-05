@@ -1,4 +1,5 @@
 #include "aoc/debug/GameControlValidation.hpp"
+#include "aoc/simulation/city/DistrictAdjacency.hpp"
 
 #include "aoc/simulation/city/District.hpp"  // BUILDING_DEFS, DISTRICT_TYPE_COUNT
 #include "aoc/simulation/unit/UnitTypes.hpp" // UNIT_TYPE_COUNT
@@ -20,6 +21,8 @@ bool isProductionItemValid(aoc::sim::ProductionItemType type, int32_t itemId) {
         return itemId < static_cast<int32_t>(aoc::sim::WONDER_COUNT);
     case aoc::sim::ProductionItemType::District:
         return itemId < static_cast<int32_t>(aoc::sim::DISTRICT_TYPE_COUNT);
+    case aoc::sim::ProductionItemType::Project:
+        return itemId >= 0 && itemId < static_cast<int32_t>(aoc::sim::CityProjectType::Count);
     default:
         return false;
     }

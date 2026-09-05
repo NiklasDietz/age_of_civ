@@ -23,6 +23,10 @@
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/city/ProductionSystem.hpp"
+#include "aoc/simulation/city/CityActions.hpp"
+#include "aoc/simulation/city/CityGrowth.hpp"
+#include "aoc/simulation/city/Governor.hpp"
+#include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/city/CityLoyalty.hpp"
@@ -404,6 +408,98 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
     (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
         PanelData{kSeparatorColor, 0.0f});
 
+    // -- Housing, amenities, growth and completion (Civ VI readouts, 2026-09-05) --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
+        PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Housing & Growth", kHeaderTextColor, 11.0f});
+    {
+        const aoc::game::Player* ownerPlayer = this->m_gameState->player(this->m_player);
+        const int32_t housing = (this->m_grid != nullptr)
+            ? aoc::sim::computeCityHousing(*city, *this->m_grid) : 0;
+        char housingBuf[128];
+        std::snprintf(housingBuf, sizeof(housingBuf), "  Housing: %d / %d%s",
+            city->population(), housing,
+            (city->population() >= housing) ? "   (growth capped)" : "");
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{std::string(housingBuf), kBodyTextColor, 11.0f});
+
+        const aoc::sim::CityHappinessComponent& happy = city->happiness();
+        char amenityBuf[128];
+        std::snprintf(amenityBuf, sizeof(amenityBuf), "  Amenities: %.0f of %.0f needed   (%.*s)",
+            static_cast<double>(happy.amenities), static_cast<double>(happy.demand),
+            static_cast<int>(aoc::sim::amenityTierName(happy.happiness).size()),
+            aoc::sim::amenityTierName(happy.happiness).data());
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{std::string(amenityBuf), kBodyTextColor, 11.0f});
+
+        char growthBuf[128];
+        std::snprintf(growthBuf, sizeof(growthBuf), "  Food stored: %.0f / %.0f to grow",
+            static_cast<double>(city->foodSurplus()),
+            static_cast<double>(aoc::sim::foodForGrowth(city->population())));
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{std::string(growthBuf), kBodyTextColor, 11.0f});
+
+        if (ownerPlayer != nullptr && this->m_grid != nullptr) {
+            const float perTurn = aoc::sim::cityProductionPerTurn(
+                *ownerPlayer, *city, *this->m_grid, *this->m_gameState);
+            const int32_t turns = aoc::sim::turnsToComplete(*city, perTurn);
+            char turnsBuf[128];
+            if (turns > 0) {
+                std::snprintf(turnsBuf, sizeof(turnsBuf), "  Production: %.1f per turn, %d turns to complete",
+                    static_cast<double>(perTurn), turns);
+            } else {
+                std::snprintf(turnsBuf, sizeof(turnsBuf), "  Production: %.1f per turn",
+                    static_cast<double>(perTurn));
+            }
+            (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+                LabelData{std::string(turnsBuf), kBodyTextColor, 11.0f});
+        }
+    }
+
+    // -- Governor seat --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
+        PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Governor", kHeaderTextColor, 11.0f});
+    {
+        const aoc::game::Player* ownerPlayer = this->m_gameState->player(this->m_player);
+        const aoc::sim::CityGovernorComponent& seat = city->governor();
+        const int32_t titles = (ownerPlayer != nullptr)
+            ? aoc::sim::governorTitlesAvailable(*ownerPlayer) : 0;
+        std::string seatText = "  Seated: ";
+        seatText += (seat.assignedGovernor == aoc::sim::GovernorType::None)
+            ? std::string("nobody")
+            : std::string(aoc::sim::governorTypeName(seat.assignedGovernor));
+        seatText += "   Titles available: " + std::to_string(titles);
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{std::move(seatText), kBodyTextColor, 11.0f});
+        if (titles > 0) {
+            aoc::game::GameState* gsPtr = this->m_gameState;
+            const PlayerId playerId     = this->m_player;
+            const hex::AxialCoord loc   = city->location();
+            for (uint8_t g = 1; g < static_cast<uint8_t>(aoc::sim::GovernorType::Count); ++g) {
+                const aoc::sim::GovernorType type = static_cast<aoc::sim::GovernorType>(g);
+                if (type == seat.assignedGovernor) { continue; }
+                ButtonData seatBtn;
+                seatBtn.label        = "Seat " + std::string(aoc::sim::governorTypeName(type));
+                seatBtn.fontSize     = 10.0f;
+                seatBtn.cornerRadius = 3.0f;
+                seatBtn.normalColor  = tokens::BRONZE_BASE;
+                seatBtn.hoverColor   = tokens::BRONZE_LIGHT;
+                seatBtn.pressedColor = tokens::BRONZE_DARK;
+                seatBtn.onClick      = [gsPtr, playerId, loc, type]() {
+                    const ErrorCode rc = aoc::sim::requestAssignGovernor(*gsPtr, playerId, loc, type);
+                    if (rc != ErrorCode::Ok) {
+                        LOG_WARN("Seating governor rejected: %.*s",
+                                 static_cast<int>(describeError(rc).size()), describeError(rc).data());
+                    }
+                };
+                (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 18.0f}, std::move(seatBtn));
+            }
+        }
+    }
+
     // -- Purchase hint --
     (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
         PanelData{tokens::BRONZE_DARK, 0.0f});
@@ -462,6 +558,28 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
                 static_cast<int>(item.totalCost));
             (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
                 LabelData{std::string(itemBuf), kBodyTextColor, 11.0f});
+            {
+                // Drop this entry (its progress is lost); through the shared request.
+                const int32_t queueIndex = static_cast<int32_t>(&item - queue.queue.data());
+                aoc::game::GameState* gsPtr = this->m_gameState;
+                const PlayerId playerId     = this->m_player;
+                const hex::AxialCoord loc   = city->location();
+                ButtonData removeBtn;
+                removeBtn.label        = "Remove from queue";
+                removeBtn.fontSize     = 9.0f;
+                removeBtn.cornerRadius = 3.0f;
+                removeBtn.normalColor  = tokens::SURFACE_PARCHMENT_DIM;
+                removeBtn.hoverColor   = tokens::BRONZE_LIGHT;
+                removeBtn.pressedColor = tokens::BRONZE_DARK;
+                removeBtn.onClick      = [gsPtr, playerId, loc, queueIndex]() {
+                    const ErrorCode rc = aoc::sim::requestRemoveQueueItem(*gsPtr, playerId, loc, queueIndex);
+                    if (rc != ErrorCode::Ok) {
+                        LOG_WARN("Queue removal rejected: %.*s",
+                                 static_cast<int>(describeError(rc).size()), describeError(rc).data());
+                    }
+                };
+                (void)ui.createButton(scrollArea, {0.0f, 0.0f, 140.0f, 14.0f}, std::move(removeBtn));
+            }
 
             // Progress bar per queue item
             constexpr float kProdBarWidth = 470.0f;
@@ -526,6 +644,7 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
                 btn.hoverColor   = tokens::BRONZE_LIGHT;
                 btn.pressedColor = tokens::BRONZE_DARK;
                 break;
+            case aoc::sim::ProductionItemType::Project:
             case aoc::sim::ProductionItemType::District:
                 btn.normalColor  = tokens::SURFACE_PARCHMENT_DIM;
                 btn.hoverColor   = tokens::BRONZE_LIGHT;
@@ -550,7 +669,7 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
             LOG_INFO("Enqueued: %s", itemName.c_str());
         };
 
-        (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth - 60.0f, 22.0f}, std::move(btn));
+        (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth - 120.0f, 22.0f}, std::move(btn));
 
         // "Build Now" — interrupt current production. Active item keeps its
         // progress field, just gets shifted to index 1; resumes after the
@@ -577,6 +696,107 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
             LOG_INFO("Interrupted production -- now building: %s", itemName.c_str());
         };
         (void)ui.createButton(scrollArea, {0.0f, 0.0f, 56.0f, 22.0f}, std::move(nowBtn));
+
+        // Buy with gold (units and buildings only; the request re-checks the gates).
+        if (itemType == aoc::sim::ProductionItemType::Unit
+            || itemType == aoc::sim::ProductionItemType::Building) {
+            ButtonData buyBtn;
+            buyBtn.label        = "Buy " + std::to_string(aoc::sim::purchaseCost(itemCost)) + "g";
+            buyBtn.fontSize     = 10.0f;
+            buyBtn.cornerRadius = 3.0f;
+            buyBtn.normalColor  = tokens::BRONZE_BASE;
+            buyBtn.hoverColor   = tokens::BRONZE_LIGHT;
+            buyBtn.pressedColor = tokens::BRONZE_DARK;
+            buyBtn.labelColor   = tokens::TEXT_GILT;
+            aoc::game::GameState* gsPtr    = this->m_gameState;
+            const aoc::map::HexGrid* grid  = this->m_grid;
+            const PlayerId playerId        = this->m_player;
+            const hex::AxialCoord loc      = city->location();
+            buyBtn.onClick = [gsPtr, grid, playerId, loc, itemType, itemId]() {
+                const ErrorCode rc = aoc::sim::requestPurchase(*gsPtr, grid, playerId, loc, itemType, itemId);
+                if (rc != ErrorCode::Ok) {
+                    LOG_WARN("Purchase rejected: %.*s",
+                             static_cast<int>(describeError(rc).size()), describeError(rc).data());
+                }
+            };
+            (void)ui.createButton(scrollArea, {0.0f, 0.0f, 60.0f, 22.0f}, std::move(buyBtn));
+        }
+    }
+
+    // -- Faith and city projects --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
+        PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Faith & Projects", kHeaderTextColor, 11.0f});
+    {
+        aoc::game::GameState* gsPtr   = this->m_gameState;
+        const PlayerId playerId       = this->m_player;
+        const hex::AxialCoord loc     = city->location();
+        const aoc::game::Player* ownerPlayer = this->m_gameState->player(this->m_player);
+        const float faith = (ownerPlayer != nullptr) ? ownerPlayer->faith().faith : 0.0f;
+        char faithBuf[96];
+        std::snprintf(faithBuf, sizeof(faithBuf), "  Faith: %.0f", static_cast<double>(faith));
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{std::string(faithBuf), kBodyTextColor, 11.0f});
+
+        const aoc::sim::ProductionQueueItem* head = city->production().currentItem();
+        if (head != nullptr && head->type == aoc::sim::ProductionItemType::Building) {
+            ButtonData rushBtn;
+            rushBtn.label        = "Finish " + head->name + " with faith";
+            rushBtn.fontSize     = 10.0f;
+            rushBtn.cornerRadius = 3.0f;
+            rushBtn.normalColor  = tokens::BRONZE_BASE;
+            rushBtn.hoverColor   = tokens::BRONZE_LIGHT;
+            rushBtn.pressedColor = tokens::BRONZE_DARK;
+            rushBtn.onClick      = [gsPtr, playerId, loc]() {
+                const ErrorCode rc = aoc::sim::requestFaithRush(*gsPtr, playerId, loc);
+                if (rc != ErrorCode::Ok) {
+                    LOG_WARN("Faith rush rejected: %.*s",
+                             static_cast<int>(describeError(rc).size()), describeError(rc).data());
+                }
+            };
+            (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f}, std::move(rushBtn));
+        }
+        for (uint16_t unitId : {uint16_t{19}, uint16_t{20}, uint16_t{21}}) {
+            const aoc::sim::UnitTypeDef& udef = aoc::sim::unitTypeDef(aoc::UnitTypeId{unitId});
+            const int32_t cost =
+                static_cast<int32_t>(aoc::sim::religiousUnitFaithCost(aoc::UnitTypeId{unitId}));
+            ButtonData faithBtn;
+            faithBtn.label        = "Buy " + std::string(udef.name) + " (" + std::to_string(cost) + " faith)";
+            faithBtn.fontSize     = 10.0f;
+            faithBtn.cornerRadius = 3.0f;
+            faithBtn.normalColor  = tokens::SURFACE_PARCHMENT_DIM;
+            faithBtn.hoverColor   = tokens::BRONZE_LIGHT;
+            faithBtn.pressedColor = tokens::BRONZE_DARK;
+            faithBtn.onClick      = [gsPtr, playerId, loc, unitId]() {
+                const ErrorCode rc = aoc::sim::requestFaithPurchase(*gsPtr, playerId, loc, aoc::UnitTypeId{unitId});
+                if (rc != ErrorCode::Ok) {
+                    LOG_WARN("Faith purchase rejected: %.*s",
+                             static_cast<int>(describeError(rc).size()), describeError(rc).data());
+                }
+            };
+            (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 18.0f}, std::move(faithBtn));
+        }
+
+        for (const aoc::sim::CityProjectDef& pdef : aoc::sim::CITY_PROJECT_DEFS) {
+            if (!aoc::sim::cityProjectAvailable(*city, pdef.type)) { continue; }
+            const aoc::sim::CityProjectType project = pdef.type;
+            ButtonData projBtn;
+            projBtn.label        = "Queue " + std::string(pdef.name) + " (" + std::to_string(pdef.productionCost) + ")";
+            projBtn.fontSize     = 10.0f;
+            projBtn.cornerRadius = 3.0f;
+            projBtn.normalColor  = tokens::SURFACE_PARCHMENT_DIM;
+            projBtn.hoverColor   = tokens::BRONZE_LIGHT;
+            projBtn.pressedColor = tokens::BRONZE_DARK;
+            projBtn.onClick      = [gsPtr, playerId, loc, project]() {
+                const ErrorCode rc = aoc::sim::requestQueueProject(*gsPtr, playerId, loc, project);
+                if (rc != ErrorCode::Ok) {
+                    LOG_WARN("Project rejected: %.*s",
+                             static_cast<int>(describeError(rc).size()), describeError(rc).data());
+                }
+            };
+            (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f}, std::move(projBtn));
+        }
     }
 }
 
@@ -856,6 +1076,41 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
         }
     }
 
+    // -- Citizen focus (re-assigns worked tiles through the request) --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
+        PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Citizen Focus", kHeaderTextColor, 11.0f});
+    {
+        const aoc::sim::CityFocus current = city->governor().focus;
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{"  Focus: " + std::string(aoc::sim::cityFocusName(current)), kBodyTextColor, 11.0f});
+        aoc::game::GameState* gsPtr   = this->m_gameState;
+        const aoc::map::HexGrid* grid = this->m_grid;
+        const PlayerId playerId       = this->m_player;
+        const hex::AxialCoord loc     = city->location();
+        for (uint8_t f = 0; f < static_cast<uint8_t>(aoc::sim::CityFocus::Count); ++f) {
+            const aoc::sim::CityFocus focus = static_cast<aoc::sim::CityFocus>(f);
+            if (focus == current) { continue; }
+            ButtonData focusBtn;
+            focusBtn.label        = "Focus " + std::string(aoc::sim::cityFocusName(focus));
+            focusBtn.fontSize     = 10.0f;
+            focusBtn.cornerRadius = 3.0f;
+            focusBtn.normalColor  = tokens::SURFACE_PARCHMENT_DIM;
+            focusBtn.hoverColor   = tokens::BRONZE_LIGHT;
+            focusBtn.pressedColor = tokens::BRONZE_DARK;
+            focusBtn.onClick      = [gsPtr, grid, playerId, loc, focus]() {
+                if (grid == nullptr) { return; }
+                const ErrorCode rc = aoc::sim::requestSetCityFocus(*gsPtr, *grid, playerId, loc, focus);
+                if (rc != ErrorCode::Ok) {
+                    LOG_WARN("Focus rejected: %.*s",
+                             static_cast<int>(describeError(rc).size()), describeError(rc).data());
+                }
+            };
+            (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 18.0f}, std::move(focusBtn));
+        }
+    }
+
     // -- Population and growth info --
     (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
         PanelData{kHeaderBg, 3.0f});
@@ -935,16 +1190,43 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
                                         citizenBtn.normalColor.b - 0.04f, 0.9f};
             citizenBtn.cornerRadius = 3.0f;
 
-            aoc::game::City* cityPtr = city;
             const hex::AxialCoord toggleTile = tile;
-            citizenBtn.onClick = [cityPtr, toggleTile]() {
-                if (cityPtr == nullptr) { return; }
-                cityPtr->toggleWorker(toggleTile);
+            aoc::game::GameState* gsPtr      = this->m_gameState;
+            const aoc::map::HexGrid* gridPtr = this->m_grid;
+            const PlayerId playerId          = this->m_player;
+            const hex::AxialCoord loc        = city->location();
+            citizenBtn.onClick = [gsPtr, gridPtr, playerId, loc, toggleTile]() {
+                if (gridPtr == nullptr) { return; }
+                const ErrorCode rc = aoc::sim::requestToggleWorkedTile(*gsPtr, *gridPtr, playerId, loc, toggleTile);
+                if (rc != ErrorCode::Ok) {
+                    LOG_INFO("Citizen toggle on (%d,%d) refused: %.*s", toggleTile.q, toggleTile.r,
+                             static_cast<int>(describeError(rc).size()), describeError(rc).data());
+                    return;
+                }
                 LOG_INFO("Citizen toggled on tile (%d,%d)", toggleTile.q, toggleTile.r);
             };
 
             (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
                                    std::move(citizenBtn));
+
+            // Pin the tile against re-assignment (Civ VI tile lock).
+            {
+                ButtonData lockBtn;
+                lockBtn.label        = city->isTileLocked(tile) ? "   Unlock tile" : "   Lock tile";
+                lockBtn.fontSize     = 9.0f;
+                lockBtn.cornerRadius = 3.0f;
+                lockBtn.normalColor  = city->isTileLocked(tile) ? tokens::BRONZE_BASE : tokens::SURFACE_PARCHMENT_DIM;
+                lockBtn.hoverColor   = tokens::BRONZE_LIGHT;
+                lockBtn.pressedColor = tokens::BRONZE_DARK;
+                lockBtn.onClick      = [gsPtr, playerId, loc, toggleTile]() {
+                    const ErrorCode rc = aoc::sim::requestToggleTileLock(*gsPtr, playerId, loc, toggleTile);
+                    if (rc != ErrorCode::Ok) {
+                        LOG_WARN("Tile lock rejected: %.*s",
+                                 static_cast<int>(describeError(rc).size()), describeError(rc).data());
+                    }
+                };
+                (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f}, std::move(lockBtn));
+            }
 
             // Reassign-to-city cycle button: nearest -> city0 -> city1 -> ... -> nearest
             ButtonData assignBtn;

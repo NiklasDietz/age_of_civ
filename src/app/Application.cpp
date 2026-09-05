@@ -4,6 +4,7 @@
  */
 
 #include "aoc/app/Application.hpp"
+#include "aoc/simulation/city/CityActions.hpp"
 #include "aoc/app/UnitSelection.hpp"
 #include "aoc/core/PathGuard.hpp"
 
@@ -1459,6 +1460,8 @@ ErrorCode Application::initialize(const Config& config) {
             return std::string("{\"queued\":true}");
         });
 
+    this->registerCityControlRoutes();
+
     // POST /game/governor/promote?player=&q=&r=&promotion=
     this->m_debugServer->routeJson(
         DSM::Post, "/game/governor/promote",
@@ -1695,6 +1698,11 @@ ErrorCode Application::initialize(const Config& config) {
                 "{\"method\":\"POST\",\"path\":\"/game/governor/promote?player=&q=&r=&promotion=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/policy/slot?player=&slot=&policy=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/government/change?player=&government=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/city/purchase?player=&q=&r=&type=&item=&faith=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/city/focus?player=&q=&r=&focus=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/city/lock-tile?player=&q=&r=&tq=&tr=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/city/queue/remove?player=&q=&r=&index=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/city/project?player=&q=&r=&project=\"},"
                 "{\"method\":\"GET\",\"path\":\"/ui/tree\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click?widgetId=N\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click-at?x=&y=\"},"
@@ -2600,6 +2608,18 @@ void Application::executeGameControlCommand(const aoc::debug::SetProductionComma
         item.name      = std::string(aoc::sim::districtTypeName(districtType));
         item.totalCost = 60.0f; // Base district cost, matches GameScreens.cpp
         break;
+    }
+    case aoc::sim::ProductionItemType::Project: {
+        // Projects go through their own validated request (district check).
+        const ErrorCode rc = aoc::sim::requestQueueProject(
+            this->m_gameState, cmd.player, cmd.cityLocation,
+            static_cast<aoc::sim::CityProjectType>(cmd.itemId));
+        if (rc != ErrorCode::Ok) {
+            LOG_WARN("Project %u for player %u rejected: %.*s", static_cast<unsigned>(cmd.itemId),
+                     static_cast<unsigned>(cmd.player), static_cast<int>(describeError(rc).size()),
+                     describeError(rc).data());
+        }
+        return;
     }
     default:
         return;

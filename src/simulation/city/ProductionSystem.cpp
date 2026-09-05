@@ -462,6 +462,12 @@ void processProductionQueues(aoc::game::GameState& gameState,
                              city->name().c_str());
                     break;
                 }
+                case ProductionItemType::Project: {
+                    // Repeatable: the effect fires and the entry pops like any other.
+                    completeCityProject(gameState, *city,
+                                        static_cast<CityProjectType>(item.itemId));
+                    break;
+                }
                 case ProductionItemType::District: {
                     CityDistrictsComponent& districts = city->districts();
                     CityDistrictsComponent::PlacedDistrict newDistrict;
@@ -567,6 +573,12 @@ void processProductionQueues(aoc::game::GameState& gameState,
             queue.popCompleted();
         }
     }
+}
+
+float cityProductionPerTurn(const aoc::game::Player& player, const aoc::game::City& city,
+                            const aoc::map::HexGrid& grid, const aoc::game::GameState& gameState) {
+    const GovernmentModifiers govMods = computeGovernmentModifiers(player.government());
+    return computeCityProductionGS(player, city, grid, gameState, govMods);
 }
 
 ErrorCode purchaseInCity(aoc::game::GameState& /*gameState*/,

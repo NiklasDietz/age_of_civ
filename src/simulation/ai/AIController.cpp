@@ -35,6 +35,7 @@
 #include "aoc/simulation/monetary/Bonds.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/tech/TechGating.hpp"
+#include "aoc/simulation/city/CityActions.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
@@ -1641,11 +1642,24 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
         // ----------------------------------------------------------------
 
         if (candidates.empty()) {
-            // Absolute last resort: fill the army up to the AI's own target. Past
-            // it the city idles; with districts gated by tech and population this
-            // branch fires often, and an unconditional unit tripled production and
-            // bankrupted every AI (measured 2026-09-05, seed 42).
+            // Absolute last resort: fill the army up to the AI's own target; past
+            // it the city runs a project (Civ VI's answer to an empty build list)
+            // instead of idling. An unconditional unit here tripled production
+            // and bankrupted every AI (measured 2026-09-05, seed 42).
             const int32_t desiredMilitary = ownedCityCount * targets.desiredMilitaryPerCity + 2;
+            if (!bestMilitaryId.isValid() || unitCounts.military >= desiredMilitary) {
+                constexpr std::array<CityProjectType, 4> PROJECT_ORDER = {
+                    CityProjectType::IndustrialSurge, CityProjectType::CampusResearch,
+                    CityProjectType::CommercialInvestment, CityProjectType::BreadAndCircuses};
+                for (CityProjectType project : PROJECT_ORDER) {
+                    if (requestQueueProject(gameState, this->m_player, city.location(), project)
+                        == ErrorCode::Ok) {
+                        break;
+                    }
+                }
+                ++cityIndex;
+                continue;
+            }
             if (bestMilitaryId.isValid() && unitCounts.military < desiredMilitary) {
                 ProductionQueueItem fallbackItem{};
                 fallbackItem.type      = ProductionItemType::Unit;
@@ -1707,6 +1721,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 switch (t) {
                     case ProductionItemType::Unit:     return aoc::core::ProductionItemKind::Unit;
                     case ProductionItemType::Building: return aoc::core::ProductionItemKind::Building;
+                    case ProductionItemType::Project:  // logged as a district-tier build
                     case ProductionItemType::District: return aoc::core::ProductionItemKind::District;
                     case ProductionItemType::Wonder:   return aoc::core::ProductionItemKind::Wonder;
                 }

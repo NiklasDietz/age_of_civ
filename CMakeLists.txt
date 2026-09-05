@@ -188,6 +188,7 @@ set(AOC_GFX_ONLY_SOURCES
     src/app/DebugCommandFile.cpp
     src/debug/DebugServer.cpp
     src/app/Application_HUD.cpp
+    src/app/Application_CityControl.cpp
     src/app/Window.cpp
     src/app/InputManager.cpp
     src/app/UnitSelection.cpp
@@ -392,6 +393,7 @@ set(AOC_LIB_SOURCES
     src/simulation/economy/BlackMarket.cpp
     src/simulation/economy/HumanCapital.cpp
     src/simulation/city/Governor.cpp
+    src/simulation/city/CityActions.cpp
     src/simulation/automation/Automation.cpp
     src/simulation/empire/CommunicationSpeed.cpp
     src/simulation/city/CityConnection.cpp
@@ -470,6 +472,7 @@ set(AOC_LIB_SOURCES
     src/debug/GameSnapshot.cpp
     src/debug/GameControlValidation.cpp
     src/app/Application_HUD.cpp
+    src/app/Application_CityControl.cpp
     src/app/ScreenshotEncoder.cpp
 
     # Scripting
@@ -963,6 +966,7 @@ if(AOC_BUILD_TESTS)
         test_movement
         test_combat_rules
         test_government_policies
+        test_city_actions
     )
 
     # UI tests link against src/ui/UIManager.cpp and src/ui/ScreenRegistry.cpp,
@@ -978,6 +982,7 @@ if(AOC_BUILD_TESTS)
         list(APPEND AOC_SMOKE_TESTS test_historic_moments_screen)
         list(APPEND AOC_SMOKE_TESTS test_demographics_screen)
         list(APPEND AOC_SMOKE_TESTS test_government_screen)
+        list(APPEND AOC_SMOKE_TESTS test_city_detail_screen)
         list(APPEND AOC_SMOKE_TESTS test_world_congress_screen)
     endif()
 

@@ -11,6 +11,7 @@
 #include <variant>
 #include "aoc/simulation/city/Governor.hpp"
 #include "aoc/simulation/government/Government.hpp"
+#include "aoc/simulation/city/DistrictAdjacency.hpp"
 
 namespace aoc::debug {
 
@@ -96,6 +97,43 @@ struct ChangeGovernmentCommand {
     aoc::sim::GovernmentType government;
 };
 
+/// Buy a unit or building in the city at `at` (gold), or a religious unit with faith.
+struct CityPurchaseCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+    aoc::sim::ProductionItemType type;
+    uint16_t itemId;
+    bool withFaith;
+};
+
+/// Set the citizen focus of the city at `at`.
+struct SetCityFocusCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+    aoc::sim::CityFocus focus;
+};
+
+/// Pin or unpin `tile` for the city at `at`.
+struct ToggleTileLockCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+    aoc::hex::AxialCoord tile;
+};
+
+/// Drop entry `index` from the queue of the city at `at`.
+struct RemoveQueueItemCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+    int32_t index;
+};
+
+/// Queue a city project in the city at `at`.
+struct QueueProjectCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+    aoc::sim::CityProjectType project;
+};
+
 /// Merge the unit at `sourceAt` into the same-type unit at `at` (Corps / Army, Fleet / Armada).
 struct MergeUnitsCommand {
     aoc::PlayerId player;
@@ -122,6 +160,9 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         CongressVoteCommand, CongressProposalCommand,
                                         MergeUnitsCommand, AssignGovernorCommand,
                                         PromoteGovernorCommand, SlotPolicyCommand,
-                                        ChangeGovernmentCommand, EndTurnCommand>;
+                                        ChangeGovernmentCommand, CityPurchaseCommand,
+                                        SetCityFocusCommand, ToggleTileLockCommand,
+                                        RemoveQueueItemCommand, QueueProjectCommand,
+                                        EndTurnCommand>;
 
 } // namespace aoc::debug

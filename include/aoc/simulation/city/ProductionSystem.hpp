@@ -56,6 +56,13 @@ void processProductionQueues(aoc::game::GameState& gameState,
  *
  * @return ErrorCode::Ok on success, InsufficientResources if not enough gold.
  */
+/// Production a city adds to its queue head per turn (the same number the
+/// turn processing uses), for readouts such as turns-to-complete.
+[[nodiscard]] float cityProductionPerTurn(const aoc::game::Player& player,
+                                          const aoc::game::City& city,
+                                          const aoc::map::HexGrid& grid,
+                                          const aoc::game::GameState& gameState);
+
 [[nodiscard]] ErrorCode purchaseInCity(aoc::game::GameState& gameState,
                                        aoc::game::Player& player,
                                        aoc::game::City& city,

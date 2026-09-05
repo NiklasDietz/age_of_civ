@@ -24,6 +24,7 @@
 #include "aoc/simulation/tech/EurekaBoost.hpp"
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
+#include "aoc/simulation/city/CityActions.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
@@ -213,6 +214,7 @@ const char* buildableIconKey(const aoc::sim::BuildableItem& item) {
     }
     case PT::Wonder:
         return "wonders.generic";
+    case PT::Project:
     case PT::District:
         return "districts.citycenter";
     }
@@ -228,6 +230,7 @@ Color buildableAccent(aoc::sim::ProductionItemType t) {
         return tokens::RES_PRODUCTION;
     case PT::Wonder:
         return tokens::RES_GOLD;
+    case PT::Project:
     case PT::District:
         return tokens::RES_CULTURE;
     }
@@ -243,6 +246,8 @@ const char* buildableTypeLabel(aoc::sim::ProductionItemType t) {
         return "Building";
     case PT::Wonder:
         return "Wonder";
+    case PT::Project:
+        return "Project";
     case PT::District:
         return "District";
     }
@@ -2813,21 +2818,17 @@ void CityDetailScreen::toggleWorkerOnTile(aoc::hex::AxialCoord tile) {
         return;
     }
 
-    if (this->m_grid == nullptr || !this->m_grid->isValid(tile)) {
+    if (this->m_grid == nullptr) {
         return;
     }
-    const int32_t tileIdx = this->m_grid->toIndex(tile);
-    if (this->m_grid->owner(tileIdx) != this->m_player) {
+    // Ownership, radius, passability and the free-citizen check live in the request.
+    const ErrorCode rc = aoc::sim::requestToggleWorkedTile(*this->m_gameState, *this->m_grid,
+                                                           this->m_player, city->location(), tile);
+    if (rc != ErrorCode::Ok) {
+        LOG_INFO("Citizen toggle on (%d,%d) refused: %.*s", tile.q, tile.r,
+                 static_cast<int>(describeError(rc).size()), describeError(rc).data());
         return;
     }
-    if (this->m_grid->distance(city->location(), tile) > 3) {
-        return;
-    }
-    if (this->m_grid->movementCost(tileIdx) == 0) {
-        return;
-    }
-
-    city->toggleWorker(tile);
     LOG_INFO("Citizen toggled on tile (%d,%d) via map click", tile.q, tile.r);
 }
 

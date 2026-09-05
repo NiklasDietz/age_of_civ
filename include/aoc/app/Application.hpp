@@ -643,6 +643,14 @@ private:
     void executeGameControlCommand(const aoc::debug::PromoteGovernorCommand& cmd);
     void executeGameControlCommand(const aoc::debug::SlotPolicyCommand& cmd);
     void executeGameControlCommand(const aoc::debug::ChangeGovernmentCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::CityPurchaseCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::SetCityFocusCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::ToggleTileLockCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::RemoveQueueItemCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::QueueProjectCommand& cmd);
+
+    /// The five `/game/city/*` routes (Application_CityControl.cpp).
+    void registerCityControlRoutes();
 
     /// UI-control commands (widget clicks/scrolls) queued by debug-server
     /// HTTP handlers. Deliberately a SEPARATE queue from

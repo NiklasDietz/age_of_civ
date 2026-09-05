@@ -37,6 +37,7 @@ enum class ProductionItemType : uint8_t {
     Building,
     District,
     Wonder,
+    Project,   ///< A repeatable city project (CityProjectType in itemId); 2026-09-05
 };
 
 struct ProductionQueueItem {
