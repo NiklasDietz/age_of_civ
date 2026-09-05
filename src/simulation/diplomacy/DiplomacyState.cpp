@@ -43,8 +43,8 @@ void DiplomacyManager::initialize(uint8_t playerCount) {
 PairwiseRelation& DiplomacyManager::relation(PlayerId a, PlayerId b) {
     assert(a < this->m_playerCount && b < this->m_playerCount);
     if (a >= this->m_playerCount || b >= this->m_playerCount) {
-        // Catches INVALID_PLAYER (255) and BARBARIAN_PLAYER (255) which are
-        // unsigned and pass any < signed-bounds check at call sites.
+        // Catches INVALID_PLAYER (255), BARBARIAN_PLAYER (254) and city-state
+        // ids, which are unsigned and pass any < signed-bounds check at call sites.
         LOG_ERROR("DiplomacyManager::relation invalid PlayerId: a=%u b=%u count=%u",
                   static_cast<unsigned>(a), static_cast<unsigned>(b),
                   static_cast<unsigned>(this->m_playerCount));

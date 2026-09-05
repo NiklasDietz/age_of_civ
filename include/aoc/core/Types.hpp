@@ -45,8 +45,12 @@ inline constexpr TurnNumber TURN_ZERO      = 0;
 
 inline constexpr uint8_t MAX_PLAYERS = 20;
 
-/// Special player ID for barbarian-controlled units and encampments.
-inline constexpr PlayerId BARBARIAN_PLAYER = 255;
+/// Special player ID for barbarian-controlled units and encampments. Distinct
+/// from INVALID_PLAYER (255) so an owner field can tell "nobody" from
+/// "barbarians", and above the city-state range (CITY_STATE_PLAYER_BASE + n).
+/// GameState::player() routes it to the dedicated barbarian Player, which is
+/// never part of players() or cityStatePlayers().
+inline constexpr PlayerId BARBARIAN_PLAYER = 254;
 
 // ============================================================================
 // Resource / economy quantities

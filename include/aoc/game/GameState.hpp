@@ -76,9 +76,16 @@ public:
 
     /// Get a player by ID. Returns nullptr if invalid.
     /// IDs 0..majorCount-1 resolve into the major-players vector; IDs
-    /// CITY_STATE_PLAYER_BASE..+ resolve into the city-state slots.
+    /// CITY_STATE_PLAYER_BASE..+ resolve into the city-state slots;
+    /// BARBARIAN_PLAYER resolves to the barbarian seat.
     [[nodiscard]] Player* player(PlayerId id);
     [[nodiscard]] const Player* player(PlayerId id) const;
+
+    /// The barbarian seat: owns every barbarian unit. Created by initialize(),
+    /// never in players() or cityStatePlayers(), never serialised (barbarians
+    /// reset on load). Null only before initialize().
+    [[nodiscard]] Player* barbarianPlayer() { return this->m_barbarianPlayer.get(); }
+    [[nodiscard]] const Player* barbarianPlayer() const { return this->m_barbarianPlayer.get(); }
 
     /// Get the player currently under human control. Defaults to
     /// PlayerId{0}; WP-H takeover changes this via `setHumanPlayerId`.
@@ -223,6 +230,9 @@ private:
     /// PlayerId = CITY_STATE_PLAYER_BASE + i. Separate from m_players so
     /// major-player iteration (victory, turn loop) does not pick them up.
     std::vector<std::unique_ptr<Player>> m_cityStatePlayers;
+
+    /// Barbarian seat (PlayerId = BARBARIAN_PLAYER), see barbarianPlayer().
+    std::unique_ptr<Player> m_barbarianPlayer;
     int32_t m_currentTurn = 0;
     std::vector<TileEvent> m_tileEvents;
     std::vector<SpyMissionRecord> m_spyMissionRecords;

@@ -37,6 +37,12 @@ aoc::game::Unit* enemyUnitAt(aoc::game::GameState& gameState, PlayerId viewer, h
             return unit;
         }
     }
+    if (aoc::game::Player* barbarians = gameState.barbarianPlayer();
+        barbarians != nullptr && barbarians->id() != viewer) {
+        if (aoc::game::Unit* unit = barbarians->unitAt(at); unit != nullptr) {
+            return unit;
+        }
+    }
     return nullptr;
 }
 

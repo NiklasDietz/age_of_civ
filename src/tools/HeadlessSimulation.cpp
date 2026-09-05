@@ -129,6 +129,10 @@ struct PlayerSnapshot {
     int32_t era = 0;
     /// True once victoryTracker reports the player out of the game.
     int32_t eliminated = 0;
+    /// Live barbarian units on the map (the same on every row of a turn). Logged
+    /// because barbarians never spawned in any game until 2026-09-05 and the
+    /// health gate (H10) needs the signal.
+    int32_t barbarianUnits = 0;
     float avgHappiness = 0.0f;
     float corruption = 0.0f;
     uint8_t crisisType = 0;
@@ -201,6 +205,9 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
         snap.cultureTotal = vt.totalCultureAccumulated;
     }
     snap.era = static_cast<int32_t>(player->era().currentEra.value);
+    if (const aoc::game::Player* barbarians = gameState.barbarianPlayer(); barbarians != nullptr) {
+        snap.barbarianUnits = barbarians->unitCount();
+    }
 
     // Currency crisis
     snap.crisisType = static_cast<uint8_t>(player->currencyCrisis().activeCrisis);
@@ -344,7 +351,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         << "IncomeCapital,IncomeTax,IncomeCommercial,IncomeIndustrial,IncomeTileGold,"
         << "IncomeGoodsEcon,TotalIncome,EffectiveIncome,"
         << "ExpenseUnits,ExpenseBuildings,TotalExpense,NetFlow,GoodsStockpiled,"
-        << "FoodPerTurn,FamineCities,ScienceDiffusion,CultureDiffusion\n";
+        << "FoodPerTurn,FamineCities,ScienceDiffusion,CultureDiffusion,BarbarianUnits\n";
 
     aoc::map::HexGrid grid;
     // 2026-05-03: honour --seed CLI/yaml override so audit_matrix.sh sims are
@@ -960,7 +967,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 csv << "0,0,0,0,0,0,0,0,0,0,0,0,0";
             }
             csv << "," << snap.foodPerTurn << "," << snap.famineCities
-                << "," << snap.scienceDiffusion << "," << snap.cultureDiffusion;
+                << "," << snap.scienceDiffusion << "," << snap.cultureDiffusion
+                << "," << snap.barbarianUnits;
             csv << "\n";
         }
 

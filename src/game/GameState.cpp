@@ -32,6 +32,10 @@ void GameState::initialize(int32_t playerCount) {
     // Player 0 is always the human player
     this->m_players[0]->setHuman(true);
 
+    // The barbarian seat exists in every game; BarbarianController spawns
+    // camps and units into it from turn 15 (see BARBARIAN_PLAYER).
+    this->m_barbarianPlayer = std::make_unique<Player>(BARBARIAN_PLAYER);
+
     // Allocate a commodity hoard slot per player so speculation APIs can
     // find an owner-tagged entry without lazy-creating from the sim layer.
     this->m_commodityHoards.clear();
@@ -56,6 +60,9 @@ void GameState::initializeCityStateSlots(int32_t count) {
 }
 
 Player* GameState::player(PlayerId id) {
+    if (id == BARBARIAN_PLAYER) {
+        return this->m_barbarianPlayer.get();
+    }
     if (id >= aoc::sim::CITY_STATE_PLAYER_BASE) {
         const std::size_t idx =
             static_cast<std::size_t>(id - aoc::sim::CITY_STATE_PLAYER_BASE);
@@ -69,6 +76,9 @@ Player* GameState::player(PlayerId id) {
 }
 
 const Player* GameState::player(PlayerId id) const {
+    if (id == BARBARIAN_PLAYER) {
+        return this->m_barbarianPlayer.get();
+    }
     if (id >= aoc::sim::CITY_STATE_PLAYER_BASE) {
         const std::size_t idx =
             static_cast<std::size_t>(id - aoc::sim::CITY_STATE_PLAYER_BASE);

@@ -941,7 +941,7 @@ void processGlobalSystems(TurnContext& turnContext) {
     // Barbarians
     if (turnContext.barbarians != nullptr) {
         aoc::Random barbarianRng = turnContext.rng->fork();
-        turnContext.barbarians->executeTurn(gameState, grid, barbarianRng);
+        turnContext.barbarians->executeTurn(gameState, grid, barbarianRng, turnContext.eventLog);
     }
 
     // Communication speed (affects all players)

@@ -39,6 +39,10 @@ constexpr std::array<std::array<float, 3>, 8> PLAYER_COLORS = {{
 }};
 
 void playerColor(PlayerId player, float& r, float& g, float& b) {
+    if (player == BARBARIAN_PLAYER) {
+        r = 0.55f; g = 0.08f; b = 0.08f; // dark red, never a civ colour
+        return;
+    }
     std::size_t idx = static_cast<std::size_t>(player) % PLAYER_COLORS.size();
     r = PLAYER_COLORS[idx][0];
     g = PLAYER_COLORS[idx][1];
@@ -66,7 +70,17 @@ void UnitRenderer::drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
 
     float unitRadius = hexSize * 0.30f;
 
+    // Every seat whose units are drawn: the major players plus the barbarian seat.
+    std::vector<const aoc::game::Player*> drawnSeats;
+    drawnSeats.reserve(gameState.players().size() + 1);
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        drawnSeats.push_back(playerPtr.get());
+    }
+    if (const aoc::game::Player* barbarians = gameState.barbarianPlayer(); barbarians != nullptr) {
+        drawnSeats.push_back(barbarians);
+    }
+
+    for (const aoc::game::Player* playerPtr : drawnSeats) {
         for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerPtr->units()) {
             const aoc::game::Unit& unit = *unitPtr;
 
@@ -477,6 +491,10 @@ void UnitRenderer::drawRangedRange(vulkan_app::renderer::Renderer2D& renderer2d,
                     hasEnemy = true;
                     break;
                 }
+            }
+            if (const aoc::game::Player* barbarians = gameState.barbarianPlayer();
+                !hasEnemy && barbarians != nullptr && barbarians->unitAt(tile) != nullptr) {
+                hasEnemy = true;
             }
 
             if (hasEnemy) {

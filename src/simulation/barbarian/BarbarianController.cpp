@@ -12,6 +12,7 @@
 #include "aoc/simulation/unit/Combat.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/event/VisibilityEvents.hpp"
+#include "aoc/simulation/turn/TurnEventLog.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/map/HexCoord.hpp"
@@ -104,6 +105,13 @@ static bool isTooCloseToCity(const aoc::game::GameState& gameState,
             }
         }
     }
+    for (const std::unique_ptr<aoc::game::Player>& cityState : gameState.cityStatePlayers()) {
+        for (const std::unique_ptr<aoc::game::City>& city : cityState->cities()) {
+            if (grid.distance(city->location(), tile) < minDistance) {
+                return true;
+            }
+        }
+    }
     return false;
 }
 
@@ -121,19 +129,20 @@ void BarbarianController::removeEncampment(std::size_t index) {
 
 /// H5.6: a camp is "destroyed" when a non-barbarian unit stands on its tile.
 /// Mirrors Civ-style clearance (step onto camp after killing defender).
-static bool isCampOverrun(const aoc::game::GameState& gameState, hex::AxialCoord tile) {
+/// Returns the overrunning unit's owner, or INVALID_PLAYER when the camp stands.
+static PlayerId campOverrunBy(const aoc::game::GameState& gameState, hex::AxialCoord tile) {
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
-        if (player->id() == BARBARIAN_PLAYER) { continue; }
         for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
-            if (unit->position() == tile) { return true; }
+            if (unit->position() == tile) { return player->id(); }
         }
     }
-    return false;
+    return INVALID_PLAYER;
 }
 
 void BarbarianController::executeTurn(aoc::game::GameState& gameState,
                                        const aoc::map::HexGrid& grid,
-                                       aoc::Random& rng) {
+                                       aoc::Random& rng,
+                                       TurnEventLog* eventLog) {
     ++this->m_turnCounter;
 
     // Restore movement points for all barbarian-owned units.
@@ -141,24 +150,36 @@ void BarbarianController::executeTurn(aoc::game::GameState& gameState,
 
     // H5.6: purge destroyed encampments before spawning so MAX_ENCAMPMENTS
     // reflects live camps only. Iterate backwards because removeEncampment
-    // swap-pops.
+    // swap-pops. Clearing a camp pays the Civ-style reward; the clan strength
+    // grows with the game clock until camps carry a clan of their own.
     for (std::size_t i = this->m_encampments.size(); i-- > 0; ) {
-        if (isCampOverrun(gameState, this->m_encampments[i].location)) {
-            LOG_INFO("Barbarian encampment destroyed at (%d,%d)",
-                     this->m_encampments[i].location.q,
-                     this->m_encampments[i].location.r);
-            this->removeEncampment(i);
+        const hex::AxialCoord campTile = this->m_encampments[i].location;
+        const PlayerId clearer         = campOverrunBy(gameState, campTile);
+        if (clearer == INVALID_PLAYER) {
+            continue;
         }
+        const int32_t reward = encampmentDestroyReward(1 + this->m_turnCounter / 50);
+        if (aoc::game::Player* clearerPlayer = gameState.player(clearer); clearerPlayer != nullptr) {
+            clearerPlayer->addGold(reward);
+        }
+        if (eventLog != nullptr) {
+            eventLog->record(TurnEventType::BarbarianCampCleared, clearer, BARBARIAN_PLAYER, reward,
+                             0, "Barbarian encampment cleared");
+        }
+        LOG_INFO("Barbarian encampment at (%d,%d) cleared by player %u for %d gold",
+                 campTile.q, campTile.r, static_cast<unsigned>(clearer), reward);
+        this->removeEncampment(i);
     }
 
-    this->spawnEncampments(gameState, grid, rng);
+    this->spawnEncampments(gameState, grid, rng, eventLog);
     this->spawnUnitsFromEncampments(gameState, grid, rng);
     this->moveBarbarianUnits(gameState, grid, rng);
 }
 
 void BarbarianController::spawnEncampments(aoc::game::GameState& gameState,
                                             const aoc::map::HexGrid& grid,
-                                            aoc::Random& rng) {
+                                            aoc::Random& rng,
+                                            TurnEventLog* eventLog) {
     if (this->m_turnCounter % ENCAMPMENT_SPAWN_INTERVAL != 0) {
         return;
     }
@@ -197,13 +218,15 @@ void BarbarianController::spawnEncampments(aoc::game::GameState& gameState,
         }
 
         // Place the encampment.
+        // The founding warrior below is this camp's first spawn, so the camp
+        // starts on cooldown instead of spawning a second unit the same turn.
         BarbarianEncampmentComponent camp{};
         camp.location      = candidate;
-        camp.spawnCooldown = 0;
-        camp.unitsSpawned  = 0;
+        camp.spawnCooldown = SPAWN_COOLDOWN_TURNS;
+        camp.unitsSpawned  = 1;
         this->m_encampments.push_back(camp);
 
-        // Also spawn an initial warrior at the encampment.
+        // Spawn the founding warrior at the encampment.
         barbPlayer->addUnit(
             barbarianSpawnUnit(this->m_turnCounter, leadingPlayerEra(gameState)),
             candidate);
@@ -216,6 +239,10 @@ void BarbarianController::spawnEncampments(aoc::game::GameState& gameState,
             gameState.visibilityBus().emit(ev);
         }
 
+        if (eventLog != nullptr) {
+            eventLog->record(TurnEventType::BarbarianCampSpawned, BARBARIAN_PLAYER, INVALID_PLAYER,
+                             candidate.q, candidate.r, "Barbarian encampment spawned");
+        }
         LOG_INFO("Barbarian encampment spawned at (%d,%d)", candidate.q, candidate.r);
         return;
     }

@@ -232,6 +232,13 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
             enemySnapshots.push_back({unitPtr->position(), otherPlayer->id(), def.combatStrength});
         }
     }
+    // Barbarian units are hostile to everyone and live on their own seat.
+    if (const aoc::game::Player* barbarians = gameState.barbarianPlayer(); barbarians != nullptr) {
+        for (const std::unique_ptr<aoc::game::Unit>& unitPtr : barbarians->units()) {
+            const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(unitPtr->typeId());
+            enemySnapshots.push_back({unitPtr->position(), barbarians->id(), def.combatStrength});
+        }
+    }
 
     // ----------------------------------------------------------------
     // Cache own city locations. `cityCount()` is fine here -- it's a

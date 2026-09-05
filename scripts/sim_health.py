@@ -175,6 +175,18 @@ def evaluate(rows: list[dict[str, str]], quiet: bool = False) -> int:
         f"players without a city by turn {FOUND_BY_TURN}: {late}" if late else "all founded",
     )
 
+    # H10 Barbarians exist. Until 2026-09-05 BARBARIAN_PLAYER (255) routed into
+    #     the city-state branch of GameState::player() and returned null, so no
+    #     encampment or barbarian unit ever appeared in any game. The column is
+    #     the live barbarian unit count, identical on every player row of a turn.
+    barb_turns = [t for t in by_turn if t <= 30 and any(int(r["BarbarianUnits"]) > 0 for r in by_turn[t])]
+    check(
+        "barbarian units appear by turn 30",
+        bool(barb_turns),
+        f"first turn with barbarian units: {min(barb_turns)}" if barb_turns
+        else "no barbarian unit in the first 30 turns",
+    )
+
     # H8  The income breakdown reconciles with its own total. The CSV used to
     #     omit IncomeCapital, so the channels never summed to TotalIncome.
     channels = (
@@ -209,14 +221,15 @@ COLUMNS = [
     "Turn", "Player", "GDP", "Cities", "TechsResearched", "TradePartners",
     "EraVP", "Era", "Eliminated", "MetPlayersMask", "IncomeCapital",
     "IncomeTax", "IncomeCommercial", "IncomeIndustrial", "IncomeTileGold",
-    "IncomeGoodsEcon", "TotalIncome",
+    "IncomeGoodsEcon", "TotalIncome", "BarbarianUnits",
 ]
 
 
 def _row(turn: int, player: int, **over: object) -> dict[str, str]:
     base = {c: "0" for c in COLUMNS}
     base.update({"Turn": str(turn), "Player": str(player), "Cities": "5",
-                 "Era": "4", "MetPlayersMask": "2", "TradePartners": "1"})
+                 "Era": "4", "MetPlayersMask": "2", "TradePartners": "1",
+                 "BarbarianUnits": "2" if turn <= 30 else "0"})
     base.update({k: str(v) for k, v in over.items()})
     return base
 
@@ -285,6 +298,12 @@ def selftest() -> int:
         if r["Player"] == "3" and int(r["Turn"]) <= FOUND_BY_TURN:
             r["Cities"] = "0"
     cases.append(("H9 never founded", rows))
+
+    # H10: no barbarian ever spawns.
+    rows = _healthy()
+    for r in rows:
+        r["BarbarianUnits"] = "0"
+    cases.append(("no barbarians", rows))
 
     # H8: the income breakdown does not reconcile.
     rows = _healthy()

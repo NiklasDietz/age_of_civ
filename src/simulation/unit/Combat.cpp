@@ -132,13 +132,22 @@ int32_t computeDamage(float attackStrength, float defenseStrength, aoc::Random& 
  * Searches all players by pointer identity. Returns nullptr if not found,
  * which indicates a programming error (unit not registered with any player).
  */
+/// Resolve the seat that owns `unit` through GameState::player(), so city-state
+/// and barbarian units are found too. Until 2026-09-05 this scanned only the
+/// major players, and a killed barbarian was never removed: the corpse stayed
+/// on the map and every further attack on it paid the 25-gold clearance bonus.
 aoc::game::Player* findOwningPlayer(aoc::game::GameState& gameState,
                                     const aoc::game::Unit* unit) {
-    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
-        for (const std::unique_ptr<aoc::game::Unit>& u : player->units()) {
-            if (u.get() == unit) {
-                return player.get();
-            }
+    if (unit == nullptr) {
+        return nullptr;
+    }
+    aoc::game::Player* owner = gameState.player(unit->owner());
+    if (owner == nullptr) {
+        return nullptr;
+    }
+    for (const std::unique_ptr<aoc::game::Unit>& u : owner->units()) {
+        if (u.get() == unit) {
+            return owner;
         }
     }
     return nullptr;

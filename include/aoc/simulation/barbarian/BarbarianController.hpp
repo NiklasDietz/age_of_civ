@@ -26,6 +26,8 @@ class HexGrid;
 
 namespace aoc::sim {
 
+class TurnEventLog;
+
 /// Data for a single barbarian encampment.
 struct BarbarianEncampmentComponent {
     hex::AxialCoord location;          ///< Tile where the encampment sits.
@@ -45,8 +47,10 @@ public:
      * @param gameState  Full game state (players, units, cities).
      * @param grid       The hex grid with terrain data.
      * @param rng        Deterministic PRNG for spawn and movement decisions.
+     * @param eventLog   Optional: camp spawns and clearances are recorded here.
      */
-    void executeTurn(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid, aoc::Random& rng);
+    void executeTurn(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid, aoc::Random& rng,
+                     TurnEventLog* eventLog = nullptr);
 
     /// Read-only access to active encampments (used by serialisation and combat).
     [[nodiscard]] const std::vector<BarbarianEncampmentComponent>& encampments() const {
@@ -65,7 +69,8 @@ public:
 
 private:
     /// Attempt to place new encampments on unowned land far from cities.
-    void spawnEncampments(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid, aoc::Random& rng);
+    void spawnEncampments(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid, aoc::Random& rng,
+                          TurnEventLog* eventLog);
 
     /// Spawn warrior units from existing encampments when their cooldown expires.
     void spawnUnitsFromEncampments(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid, aoc::Random& rng);

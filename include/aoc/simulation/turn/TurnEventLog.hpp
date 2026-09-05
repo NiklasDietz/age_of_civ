@@ -41,6 +41,8 @@ enum class TurnEventType : uint8_t {
     GoldPurchase,        ///< Item purchased with gold
     RevolutionAchieved,  ///< Industrial revolution milestone
     NaturalDisaster,     ///< Volcano, flood, etc.
+    BarbarianCampSpawned, ///< A barbarian encampment appeared (value1/value2 = q/r)
+    BarbarianCampCleared, ///< A player overran an encampment (value1 = gold reward)
 };
 
 /// A single mid-turn event.
@@ -108,6 +110,8 @@ public:
             case TurnEventType::GoldPurchase:        return "GoldPurchase";
             case TurnEventType::RevolutionAchieved:  return "RevolutionAchieved";
             case TurnEventType::NaturalDisaster:     return "NaturalDisaster";
+            case TurnEventType::BarbarianCampSpawned: return "BarbarianCampSpawned";
+            case TurnEventType::BarbarianCampCleared: return "BarbarianCampCleared";
         }
         return "Unknown";
     }

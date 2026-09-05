@@ -954,6 +954,7 @@ if(AOC_BUILD_TESTS)
         test_formations
         test_governors
         test_historic_moments
+        test_barbarians
     )
 
     # UI tests link against src/ui/UIManager.cpp and src/ui/ScreenRegistry.cpp,
