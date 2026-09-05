@@ -188,7 +188,7 @@ struct BuildingDef {
 
 // Format: {id, name, district, prodCost, maint, prodBonus, sciBonus, goldBonus, sciMult, resourceCosts, fuelGoodId, fuelPerTurn}
 // Resource costs and fuel added for mid/late-game buildings per plan Phase 1C/1D.
-inline constexpr std::array<BuildingDef, 46> BUILDING_DEFS = {{
+inline constexpr std::array<BuildingDef, 47> BUILDING_DEFS = {{
     //                                                                                                                     resourceCosts         fuel
     {BuildingId{0},  "Forge",              DistrictType::Industrial,  60, 1, 2, 0, 0, 1.0f},                            // no cost, no fuel
     {BuildingId{1},  "Workshop",           DistrictType::Industrial,  40, 1, 1, 0, 0, 1.0f},
@@ -258,6 +258,11 @@ inline constexpr std::array<BuildingDef, 46> BUILDING_DEFS = {{
     // rule. +4 housing via buildingHousing(); no district renumbering.
     {BuildingId{45}, "Neighborhood",          DistrictType::CityCenter, 120, 1, 0, 0, 0, 1.0f, {{44, 2}},
      0xFFFF, 0, 0, 0, 0, CivicId{34}},  // 2 Stone; Urbanization
+    // Space race (2026-09-05): the Spaceport is the building every space project
+    // needs (SpaceRace.cpp), unlocked by Surface Plate, the first project's own
+    // tech (TechTree.cpp). No resource cost:
+    // Steel is never produced in practice and would make it unbuildable.
+    {BuildingId{46}, "Spaceport",             DistrictType::Industrial, 300, 3, 0, 2, 0, 1.0f},
 }};
 
 [[nodiscard]] inline constexpr const BuildingDef& buildingDef(BuildingId id) {

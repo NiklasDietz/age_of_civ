@@ -34,7 +34,7 @@ constexpr BuildingId NEIGHBORHOOD{45};
 } // namespace
 
 TEST_CASE("the Neighborhood has a row, a City Center district and the Urbanization gate") {
-    CHECK(BUILDING_DEFS.size() == 46);
+    CHECK(BUILDING_DEFS.size() >= 46); // later rows (Spaceport 46) may follow
     const aoc::sim::BuildingDef& def = buildingDef(NEIGHBORHOOD);
     CHECK(def.name == "Neighborhood");
     CHECK(def.requiredDistrict == DistrictType::CityCenter);

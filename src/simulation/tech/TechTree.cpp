@@ -69,7 +69,10 @@ std::vector<TechDef> buildTechDefs() {
     // length. Audit: with 700 only 21% of civs hit all 3 era-4 rev gates.
     techs.push_back({TechId{18}, "Surface Plate", EraId{4}, 500,
         {{TechId{8}, TechId{11}}},  // Metallurgy + Industrialization
-        {}, {BuildingId{10}}, {}});  // Unlocks Precision Workshop
+        {}, {BuildingId{10}, BuildingId{46}}, {}});  // Unlocks Precision Workshop, Spaceport
+    // Spaceport on Surface Plate, the first space project's own tech: the AI
+    // research planner never reaches Flight (its prerequisites unlock nothing),
+    // measured 2026-09-05 on seed 42, so a Flight gate made the race unreachable.
 
     // 2026-05-03: Interchangeable Parts Industrial → Modern (era 4 → 5) to
     // match Civ6. Whitney's interchangeable-parts breakthrough was 1801,

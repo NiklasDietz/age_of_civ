@@ -134,6 +134,7 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
         case 11: score = 200.0f * b.techIndustrial; break;  // Semiconductor Fab (semiconductors, microchips)
         case 13: score = 140.0f * b.economicFocus; break;   // Telecom Hub (telecom goods)
         case 14: score = 130.0f * b.techIndustrial; break;  // Airport (aircraft)
+        case 46: score = 160.0f * b.scienceFocus; break;    // Spaceport (space race gate)
 
         // Encampment
         case 17: score = 60.0f * b.militaryAggression; break; // Walls

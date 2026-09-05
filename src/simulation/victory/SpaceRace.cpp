@@ -40,9 +40,11 @@ constexpr int32_t MARS_TITANIUM_COST       = 1;
 constexpr int32_t MARS_HELIUM3_COST        = 2;
 constexpr int32_t MARS_SEMICONDUCTORS_COST = 0;  // gate disabled
 
-[[nodiscard]] bool playerHasCampus(const aoc::game::Player& player) {
+/// The projects run in a Spaceport (BuildingId 46, Industrial Zone, Flight). Until
+/// 2026-09-05 a Campus stood in for it because no Spaceport existed.
+[[nodiscard]] bool playerHasSpaceport(const aoc::game::Player& player) {
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
-        if (city->districts().hasDistrict(DistrictType::Campus)) {
+        if (city->hasBuilding(BuildingId{46})) {
             return true;
         }
     }
@@ -87,7 +89,7 @@ void processSpaceRace(aoc::game::GameState& gameState, const aoc::map::HexGrid& 
         PlayerSpaceRaceComponent& race = player.spaceRace();
         if (race.allCompleted()) { continue; }
 
-        if (!playerHasCampus(player)) { continue; }
+        if (!playerHasSpaceport(player)) { continue; }
 
         const SpaceProjectId next = race.nextProject();
         if (next == SpaceProjectId::Count) { continue; }

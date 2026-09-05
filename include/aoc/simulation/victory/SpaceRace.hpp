@@ -4,9 +4,10 @@
  * @file SpaceRace.hpp
  * @brief Science Victory path: Space Race project chain.
  *
- * To win a Science Victory (Classic mode), a player must complete all 4
- * space race projects in order. Each requires a Spaceport district and
- * specific technologies.
+ * To win a Science Victory, a player completes the space race projects in
+ * order (4 of 5 count, see VictoryCondition.cpp). Each needs a Spaceport
+ * (BuildingId 46 in an Industrial Zone, unlocked by Surface Plate) and its
+ * technology; progress comes from the player's science.
  *
  * Project chain:
  *   1. Launch Earth Satellite  — requires Rocketry tech, 1500 production
@@ -14,8 +15,8 @@
  *   3. Mars Colony Ship        — requires Nuclear Fusion tech, 3000 production
  *   4. Exoplanet Expedition    — requires Nanotechnology tech, 4000 production
  *
- * Each project can only be worked on by one city (the one with a Spaceport).
- * Multiple Spaceport cities can work on different projects simultaneously.
+ * One project at a time per player; the Spaceport only gates it (progress is
+ * empire science, not a city's production).
  */
 
 #include "aoc/core/Types.hpp"
