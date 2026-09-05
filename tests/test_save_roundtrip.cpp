@@ -223,6 +223,9 @@ void buildWorld(World& w) {
     p0.researchQueue().researchQueue = {aoc::TechId{3}, aoc::TechId{9}};
     p0.tech().knownTechs[5]          = true;
     p1.government().autoPolicies     = true;
+    p1.government().unlockPolicy(35);            // v18: bit 35 used to alias bit 3
+    p1.government().policySwapFree          = true;
+    p1.government().lastGovernmentChangeTurn = 12;
     w.diplomacy.meetPlayers(aoc::PlayerId{0}, aoc::PlayerId{1}, 21);
     w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).turnsSincePeace = 4;
     w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).passiveBonus    = 6;
@@ -421,6 +424,10 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(lp0.researchQueue().researchQueue[1] == aoc::TechId{9});
     CHECK(lp0.tech().knownTechs[5]);
     CHECK(lp1.government().autoPolicies);
+    CHECK(lp1.government().isPolicyUnlocked(35));
+    CHECK_FALSE(lp1.government().isPolicyUnlocked(3));
+    CHECK(lp1.government().policySwapFree);
+    CHECK(lp1.government().lastGovernmentChangeTurn == 12);
     // v17: contact and the directional relation fields.
     CHECK(loaded.diplomacy.haveMet(aoc::PlayerId{0}, aoc::PlayerId{1}));
     CHECK(loaded.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).metOnTurn == 21);

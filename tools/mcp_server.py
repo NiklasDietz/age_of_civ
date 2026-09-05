@@ -321,6 +321,27 @@ def aoc_promote_governor(player: int, q: int, r: int, promotion: int) -> dict:
 
 
 @mcp.tool()
+def aoc_slot_policy(player: int, slot: int, policy: int) -> dict:
+    """Put policy card `policy` (0-35; -1 clears) into policy slot `slot` (0-5) for `player`.
+    Slots run Military, Economic, Diplomatic, then Wildcard (a wildcard takes any card).
+    The card must be unlocked by a civic and not slotted elsewhere; anarchy blocks it.
+    Slotting is free on a turn after a civic completed, else 50 gold; clearing is free.
+    Queues the request; a rejection is logged in the game log.
+    """
+    return _post("/game/policy/slot", player=player, slot=slot, policy=policy)
+
+
+@mcp.tool()
+def aoc_change_government(player: int, government: int) -> dict:
+    """Adopt an unlocked government: 0 Chiefdom, 1 Autocracy, 2 Oligarchy, 3 Monarchy,
+    4 Democracy, 5 Communism, 6 Fascism, 7 Theocracy, 8 Merchant Republic. Leaving
+    Chiefdom is free; every later change costs 5 turns of anarchy (no bonuses, slots
+    cleared) and there are 10 turns between changes. Queues the request.
+    """
+    return _post("/game/government/change", player=player, government=government)
+
+
+@mcp.tool()
 def aoc_set_production(player: int, q: int, r: int, item_type: str, item_id: int) -> dict:
     """Queue a production item onto the city owned by `player` at hex (q, r).
 

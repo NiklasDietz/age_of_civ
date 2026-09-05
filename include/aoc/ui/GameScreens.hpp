@@ -137,10 +137,15 @@ public:
     void refresh(UIManager& ui) override;
 
 private:
+    /// Cheap change detector: refresh rebuilds the screen when slots, unlocks,
+    /// anarchy or civic progress moved (buttons mutate through request*).
+    [[nodiscard]] uint64_t stateFingerprint() const;
+
     aoc::game::GameState* m_gameState = nullptr;
     PlayerId m_player = INVALID_PLAYER;
     WidgetId m_currentGovLabel = INVALID_WIDGET;
     WidgetId m_govList = INVALID_WIDGET;
+    uint64_t m_shownFingerprint = 0;
 };
 
 /// Economy overview and market screen.

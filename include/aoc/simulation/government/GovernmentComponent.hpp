@@ -41,8 +41,9 @@ struct PlayerGovernmentComponent {
     /// Bitfield of unlocked government types (1 bit per GovernmentType).
     uint16_t unlockedGovernments = 1u;  ///< Chiefdom (bit 0) always unlocked.
 
-    /// Bitfield of unlocked policy card IDs (1 bit per policy, up to 32).
-    uint32_t unlockedPolicies = 0u;
+    /// Bitfield of unlocked policy card IDs (1 bit per policy, 64 bits: the 36
+    /// cards overflowed the old 32-bit field, so card 35 aliased card 3).
+    uint64_t unlockedPolicies = 0u;
 
     /// Anarchy: turns remaining of no-bonus transition period.
     int32_t anarchyTurnsRemaining = 0;
@@ -54,6 +55,13 @@ struct PlayerGovernmentComponent {
     /// Player-enabled auto-policy manager: fill empty slots with best unlocked policies
     /// each turn using flat utility scoring. Ignored during anarchy.
     bool autoPolicies = false;
+
+    /// A civic completed since the player's last turn was processed: slotting
+    /// cards costs nothing until then (Civ VI's free rearrangement window).
+    bool policySwapFree = false;
+
+    /// Turn of the last government change (cooldown for the next one).
+    int32_t lastGovernmentChangeTurn = -1000;
 
     /// Wildcard slots granted by buildings (Government Plaza). Derived every turn
     /// by processGovernment from the player's cities, so it is not saved; after a
@@ -72,12 +80,14 @@ struct PlayerGovernmentComponent {
 
     /// Check if a policy card has been unlocked.
     [[nodiscard]] bool isPolicyUnlocked(uint8_t policyId) const {
-        return (this->unlockedPolicies & (1u << policyId)) != 0u;
+        if (policyId >= 64) { return false; }
+        return (this->unlockedPolicies & (uint64_t{1} << policyId)) != 0u;
     }
 
     /// Unlock a policy card.
     void unlockPolicy(uint8_t policyId) {
-        this->unlockedPolicies |= (1u << policyId);
+        if (policyId >= 64) { return; }
+        this->unlockedPolicies |= (uint64_t{1} << policyId);
     }
 
     /// Whether the player is currently in anarchy.
@@ -133,6 +143,33 @@ struct PlayerGovernmentComponent {
  * @return Ok if successful, InvalidArgument if action not available.
  */
 [[nodiscard]] ErrorCode executeGovernmentAction(aoc::game::GameState& gameState, PlayerId player);
+
+/// Gold a human pays to slot a card outside the free window after a civic.
+/// Balance knob (GA territory); unslotting is free.
+inline constexpr int64_t POLICY_SWAP_GOLD_COST = 50;
+
+/// Turns between two government changes.
+inline constexpr int32_t GOVERNMENT_CHANGE_COOLDOWN_TURNS = 10;
+
+/// Slots the player's government really has (fixed slots plus wildcards, capped).
+[[nodiscard]] uint8_t policySlotCount(const PlayerGovernmentComponent& gov);
+
+/// The type of slot `slot` (Military slots first, then Economic, Diplomatic, Wildcard).
+[[nodiscard]] PolicySlotType policySlotType(const PlayerGovernmentComponent& gov, uint8_t slot);
+
+/// Put card `policyId` into `slot` (EMPTY_POLICY_SLOT clears it). Validates the
+/// slot index, the card's unlock, the slot type (a wildcard takes any card), that
+/// the card is not slotted elsewhere and that the player is not in anarchy;
+/// charges POLICY_SWAP_GOLD_COST unless policySwapFree. Shared by the screen,
+/// the REST route and the MCP tool.
+[[nodiscard]] ErrorCode requestSlotPolicy(aoc::game::GameState& gameState, PlayerId player,
+                                          uint8_t slot, int8_t policyId);
+
+/// Adopt `type`: it must be unlocked and different, the player not in anarchy
+/// and the cooldown elapsed. Leaving Chiefdom is free; any later change costs
+/// ANARCHY_DURATION turns of no bonuses and clears every slot.
+[[nodiscard]] ErrorCode requestChangeGovernment(aoc::game::GameState& gameState, PlayerId player,
+                                                GovernmentType type);
 
 /**
  * @brief Per-turn government processing: tick anarchy, tick active actions.

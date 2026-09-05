@@ -77,6 +77,16 @@ std::string_view lockReasonLabel(uint8_t reason) {
     return "prereq unmet";
 }
 
+std::string_view policySlotTypeName(aoc::sim::PolicySlotType type) {
+    switch (type) {
+        case aoc::sim::PolicySlotType::Military:   return "Military";
+        case aoc::sim::PolicySlotType::Economic:   return "Economic";
+        case aoc::sim::PolicySlotType::Diplomatic: return "Diplomatic";
+        case aoc::sim::PolicySlotType::Wildcard:   return "Wildcard";
+    }
+    return "Slot";
+}
+
 } // namespace
 
 
@@ -1416,9 +1426,10 @@ void GovernmentScreen::open(UIManager& ui) {
     assert(this->m_gameState != nullptr);
     this->m_isOpen = true;
 
-    // Wider panel to fit the new Civic Research section.
-    WidgetId innerPanel = this->createScreenFrame(ui, "Government & Civics", 480.0f, 540.0f,
+    // Tall panel: governments, policy slots, unlocked cards and the civic tree.
+    WidgetId innerPanel = this->createScreenFrame(ui, "Government & Civics", 480.0f, 720.0f,
                                                   this->m_screenW, this->m_screenH);
+    this->m_shownFingerprint = this->stateFingerprint();
 
     // Find player government component through object model
     aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
@@ -1430,6 +1441,9 @@ void GovernmentScreen::open(UIManager& ui) {
     if (playerGov != nullptr) {
         const aoc::sim::GovernmentDef& def = aoc::sim::governmentDef(playerGov->government);
         currentText                        = "Current: " + std::string(def.name);
+        if (playerGov->isInAnarchy()) {
+            currentText += "  (anarchy, " + std::to_string(playerGov->anarchyTurnsRemaining) + " turns)";
+        }
     }
     this->m_currentGovLabel =
         ui.createLabel(innerPanel, {0.0f, 0.0f, 450.0f, 16.0f},
@@ -1439,7 +1453,7 @@ void GovernmentScreen::open(UIManager& ui) {
     (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 450.0f, 14.0f},
                          LabelData{"-- Available Governments --", tokens::TEXT_HEADER, 12.0f});
 
-    this->m_govList = ui.createScrollList(innerPanel, {0.0f, 0.0f, 450.0f, 140.0f});
+    this->m_govList = ui.createScrollList(innerPanel, {0.0f, 0.0f, 450.0f, 100.0f});
 
     Widget* listWidget = ui.getWidget(this->m_govList);
     if (listWidget != nullptr) {
@@ -1464,14 +1478,14 @@ void GovernmentScreen::open(UIManager& ui) {
             aoc::game::GameState* gsPtr = this->m_gameState;
             const PlayerId player       = this->m_player;
             btn.onClick                 = [gsPtr, player, govType]() {
-                aoc::game::Player* p = gsPtr->player(player);
-                if (p == nullptr) {
-                    return;
+                // Anarchy, cooldown and unlock checks live in the shared request.
+                const ErrorCode result = aoc::sim::requestChangeGovernment(*gsPtr, player, govType);
+                if (result != ErrorCode::Ok) {
+                    const aoc::sim::GovernmentDef& def = aoc::sim::governmentDef(govType);
+                    LOG_WARN("Government %.*s rejected: %.*s", static_cast<int>(def.name.size()),
+                             def.name.data(), static_cast<int>(describeError(result).size()),
+                             describeError(result).data());
                 }
-                p->government().government         = govType;
-                const aoc::sim::GovernmentDef& def = aoc::sim::governmentDef(govType);
-                LOG_INFO("Switched government to: %.*s", static_cast<int>(def.name.size()),
-                         def.name.data());
             };
 
             // w=0 → auto-fill parent content width; layout clamp
@@ -1484,28 +1498,141 @@ void GovernmentScreen::open(UIManager& ui) {
         }
     }
 
-    // Active policies section
+    // Active policies: one row per slot with a Remove button, then the unlocked
+    // cards with a Slot button. requestSlotPolicy validates the slot type, the
+    // unlock, duplicates, anarchy and the swap cost. Until 2026-09-05 the slots
+    // were labels and the human could not slot a card at all.
     (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 450.0f, 14.0f},
                          LabelData{"-- Active Policies --", tokens::TEXT_HEADER, 12.0f});
 
     if (playerGov != nullptr) {
-        // Slot count is gated by current government tier (style guide §9 +
-        // sweep-2 fix): only show slots actually granted.
-        const aoc::sim::GovernmentDef& govSlots = aoc::sim::governmentDef(playerGov->government);
-        const uint8_t availableSlots =
-            static_cast<uint8_t>(govSlots.militarySlots + govSlots.economicSlots +
-                                 govSlots.diplomaticSlots + aoc::sim::wildcardSlotCount(*playerGov));
+        aoc::game::GameState* gsPtr = this->m_gameState;
+        const PlayerId player       = this->m_player;
+
+        std::string costText;
+        if (playerGov->isInAnarchy()) {
+            costText = "Anarchy: " + std::to_string(playerGov->anarchyTurnsRemaining)
+                     + " turns without policies";
+        } else if (playerGov->policySwapFree) {
+            costText = "A civic completed: rearranging cards is free this turn";
+        } else {
+            costText = "Slotting a card costs " + std::to_string(aoc::sim::POLICY_SWAP_GOLD_COST)
+                     + " gold; removing one is free";
+        }
+        (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 450.0f, 14.0f},
+                             LabelData{std::move(costText), tokens::TEXT_DISABLED, 11.0f});
+
+        const uint8_t availableSlots = aoc::sim::policySlotCount(*playerGov);
         for (uint8_t slot = 0; slot < availableSlots; ++slot) {
-            std::string policyText;
-            if (playerGov->activePolicies[slot] != aoc::sim::EMPTY_POLICY_SLOT) {
-                uint8_t polId = static_cast<uint8_t>(playerGov->activePolicies[slot]);
-                const aoc::sim::PolicyCardDef& polDef = aoc::sim::policyCardDef(polId);
-                policyText = "Slot " + std::to_string(slot + 1) + ": " + std::string(polDef.name);
-            } else {
-                policyText = "Slot " + std::to_string(slot + 1) + ": [Empty]";
+            const aoc::sim::PolicySlotType slotType = aoc::sim::policySlotType(*playerGov, slot);
+            const int8_t polId                      = playerGov->activePolicies[slot];
+            std::string rowText = "[" + std::string(policySlotTypeName(slotType)) + "] ";
+            rowText += (polId != aoc::sim::EMPTY_POLICY_SLOT)
+                ? std::string(aoc::sim::policyCardDef(static_cast<uint8_t>(polId)).name)
+                : std::string("empty");
+
+            PanelData rowBg;
+            rowBg.backgroundColor = tokens::SURFACE_PARCHMENT_DIM;
+            rowBg.cornerRadius    = tokens::CORNER_BUTTON;
+            WidgetId row = ui.createPanel(innerPanel, {0.0f, 0.0f, 450.0f, 20.0f}, std::move(rowBg));
+            if (Widget* rw = ui.getWidget(row); rw != nullptr) {
+                rw->layoutDirection = LayoutDirection::Horizontal;
+                rw->childSpacing    = 6.0f;
+                rw->padding         = {2.0f, 4.0f, 2.0f, 4.0f};
             }
-            (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 450.0f, 16.0f},
-                                 LabelData{std::move(policyText), tokens::TEXT_INK, 12.0f});
+            (void)ui.createLabel(row, {0.0f, 0.0f, 340.0f, 16.0f},
+                                 LabelData{std::move(rowText), tokens::TEXT_INK, 12.0f});
+            if (polId != aoc::sim::EMPTY_POLICY_SLOT) {
+                ButtonData remove;
+                remove.label        = "Remove";
+                remove.fontSize     = 11.0f;
+                remove.normalColor  = tokens::BRONZE_BASE;
+                remove.hoverColor   = tokens::BRONZE_LIGHT;
+                remove.pressedColor = tokens::STATE_PRESSED;
+                remove.labelColor   = tokens::TEXT_GILT;
+                remove.cornerRadius = tokens::CORNER_BUTTON;
+                remove.onClick      = [gsPtr, player, slot]() {
+                    const ErrorCode result = aoc::sim::requestSlotPolicy(
+                        *gsPtr, player, slot, aoc::sim::EMPTY_POLICY_SLOT);
+                    if (result != ErrorCode::Ok) {
+                        LOG_WARN("Clearing policy slot %u rejected: %.*s",
+                                 static_cast<unsigned>(slot),
+                                 static_cast<int>(describeError(result).size()),
+                                 describeError(result).data());
+                    }
+                };
+                (void)ui.createButton(row, {0.0f, 0.0f, 80.0f, 16.0f}, std::move(remove));
+            }
+        }
+
+        (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 450.0f, 14.0f},
+                             LabelData{"-- Unlocked Cards --", tokens::TEXT_HEADER, 12.0f});
+        WidgetId cardList = ui.createScrollList(innerPanel, {0.0f, 0.0f, 450.0f, 80.0f});
+        if (Widget* lw = ui.getWidget(cardList); lw != nullptr) {
+            lw->padding      = {4.0f, 4.0f, 4.0f, 4.0f};
+            lw->childSpacing = 3.0f;
+        }
+        int32_t waiting = 0;
+        for (uint8_t pid = 0; pid < aoc::sim::POLICY_CARD_COUNT; ++pid) {
+            if (!playerGov->isPolicyUnlocked(pid)) {
+                continue;
+            }
+            bool slotted = false;
+            for (uint8_t s = 0; s < aoc::sim::MAX_POLICY_SLOTS; ++s) {
+                if (playerGov->activePolicies[s] == static_cast<int8_t>(pid)) { slotted = true; }
+            }
+            if (slotted) {
+                continue;
+            }
+            const aoc::sim::PolicyCardDef& card = aoc::sim::policyCardDef(pid);
+            ButtonData slotBtn;
+            slotBtn.label = "Slot " + std::string(card.name) + " ("
+                          + std::string(policySlotTypeName(card.slotType)) + ")";
+            slotBtn.fontSize     = 11.0f;
+            slotBtn.normalColor  = tokens::BRONZE_BASE;
+            slotBtn.hoverColor   = tokens::BRONZE_LIGHT;
+            slotBtn.pressedColor = tokens::STATE_PRESSED;
+            slotBtn.labelColor   = tokens::TEXT_GILT;
+            slotBtn.cornerRadius = tokens::CORNER_BUTTON;
+            slotBtn.onClick      = [gsPtr, player, pid]() {
+                const aoc::game::Player* p = gsPtr->player(player);
+                if (p == nullptr) {
+                    return;
+                }
+                const aoc::sim::PlayerGovernmentComponent& g = p->government();
+                const aoc::sim::PolicyCardDef& c             = aoc::sim::policyCardDef(pid);
+                const uint8_t slotCount                      = aoc::sim::policySlotCount(g);
+                // First empty slot of the card's type, else the first empty wildcard.
+                int32_t target = -1;
+                for (uint8_t s = 0; s < slotCount && target < 0; ++s) {
+                    if (g.activePolicies[s] == aoc::sim::EMPTY_POLICY_SLOT
+                        && aoc::sim::policySlotType(g, s) == c.slotType) { target = s; }
+                }
+                for (uint8_t s = 0; s < slotCount && target < 0; ++s) {
+                    if (g.activePolicies[s] == aoc::sim::EMPTY_POLICY_SLOT
+                        && aoc::sim::policySlotType(g, s) == aoc::sim::PolicySlotType::Wildcard) {
+                        target = s;
+                    }
+                }
+                if (target < 0) {
+                    LOG_WARN("No free slot for %.*s", static_cast<int>(c.name.size()), c.name.data());
+                    return;
+                }
+                const ErrorCode result = aoc::sim::requestSlotPolicy(
+                    *gsPtr, player, static_cast<uint8_t>(target), static_cast<int8_t>(pid));
+                if (result != ErrorCode::Ok) {
+                    LOG_WARN("Slotting %.*s rejected: %.*s", static_cast<int>(c.name.size()),
+                             c.name.data(), static_cast<int>(describeError(result).size()),
+                             describeError(result).data());
+                }
+            };
+            (void)ui.createButton(cardList, {0.0f, 0.0f, 0.0f, 20.0f}, std::move(slotBtn));
+            ++waiting;
+        }
+        if (waiting == 0) {
+            (void)ui.createLabel(cardList, {0.0f, 0.0f, 0.0f, 16.0f},
+                                 LabelData{"No unlocked card is waiting for a slot",
+                                           tokens::TEXT_DISABLED, 11.0f});
         }
     }
 
@@ -1551,7 +1678,7 @@ void GovernmentScreen::open(UIManager& ui) {
         canvasBg.borderColor     = tokens::BRONZE_DARK;
         canvasBg.borderWidth     = 1.0f;
         const float canvasW      = std::min(graphW, 450.0f);
-        const float canvasH      = std::min(graphH, 280.0f);
+        const float canvasH      = std::min(graphH, 220.0f);
         WidgetId civicCanvas =
             ui.createPanel(innerPanel, {0.0f, 0.0f, canvasW, canvasH}, std::move(canvasBg));
         {
@@ -1811,8 +1938,39 @@ void GovernmentScreen::close(UIManager& ui) {
     this->m_govList         = INVALID_WIDGET;
 }
 
+uint64_t GovernmentScreen::stateFingerprint() const {
+    if (this->m_gameState == nullptr) {
+        return 0;
+    }
+    const aoc::game::Player* owner = this->m_gameState->player(this->m_player);
+    if (owner == nullptr) {
+        return 0;
+    }
+    const aoc::sim::PlayerGovernmentComponent& gov = owner->government();
+    uint64_t h = 1469598103934665603ull;
+    const auto mix = [&h](uint64_t v) { h = (h ^ v) * 1099511628211ull; };
+    mix(static_cast<uint64_t>(gov.government));
+    mix(static_cast<uint64_t>(gov.anarchyTurnsRemaining + 1));
+    mix(gov.unlockedPolicies);
+    mix(gov.unlockedGovernments);
+    mix(gov.policySwapFree ? 1u : 2u);
+    for (int8_t slot : gov.activePolicies) {
+        mix(static_cast<uint64_t>(static_cast<uint8_t>(slot)) + 7u);
+    }
+    const aoc::sim::PlayerCivicComponent& civics = owner->civics();
+    mix(static_cast<uint64_t>(civics.currentResearch.value) + 11u);
+    mix(static_cast<uint64_t>(civics.researchProgress) + 13u);
+    return h;
+}
+
 void GovernmentScreen::refresh(UIManager& ui) {
     if (!this->m_isOpen || this->m_gameState == nullptr) {
+        return;
+    }
+    // Buttons mutate through request*; a changed fingerprint rebuilds the rows.
+    if (const uint64_t now = this->stateFingerprint(); now != this->m_shownFingerprint) {
+        this->close(ui);
+        this->open(ui);
         return;
     }
 

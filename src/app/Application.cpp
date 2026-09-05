@@ -1391,6 +1391,74 @@ ErrorCode Application::initialize(const Config& config) {
             return std::string("{\"queued\":true}");
         });
 
+    // POST /game/policy/slot?player=&slot=&policy=   (policy -1 clears the slot)
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/policy/slot",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t slot   = 0;
+            int32_t policy = 0;
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "slot", slot, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "policy", policy, err)) {
+                return err;
+            }
+            if (slot < 0 || slot >= static_cast<int32_t>(aoc::sim::MAX_POLICY_SLOTS)) {
+                return std::string("{\"error\":\"slot out of range\"}");
+            }
+            if (policy < -1 || policy >= static_cast<int32_t>(aoc::sim::POLICY_CARD_COUNT)) {
+                return std::string("{\"error\":\"policy out of range\"}");
+            }
+            aoc::debug::SlotPolicyCommand cmd{};
+            cmd.player = static_cast<aoc::PlayerId>(player);
+            cmd.slot   = static_cast<uint8_t>(slot);
+            cmd.policy = static_cast<int8_t>(policy);
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
+    // POST /game/government/change?player=&government=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/government/change",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player     = 0;
+            int32_t government = 0;
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "government", government, err)) {
+                return err;
+            }
+            if (government < 0 || government >= static_cast<int32_t>(aoc::sim::GOVERNMENT_COUNT)) {
+                return std::string("{\"error\":\"government out of range\"}");
+            }
+            aoc::debug::ChangeGovernmentCommand cmd{};
+            cmd.player     = static_cast<aoc::PlayerId>(player);
+            cmd.government = static_cast<aoc::sim::GovernmentType>(government);
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
     // POST /game/governor/promote?player=&q=&r=&promotion=
     this->m_debugServer->routeJson(
         DSM::Post, "/game/governor/promote",
@@ -1625,6 +1693,8 @@ ErrorCode Application::initialize(const Config& config) {
                 "{\"method\":\"POST\",\"path\":\"/game/unit/merge?player=&q=&r=&sourceQ=&sourceR=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/governor/assign?player=&q=&r=&type=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/governor/promote?player=&q=&r=&promotion=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/policy/slot?player=&slot=&policy=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/government/change?player=&government=\"},"
                 "{\"method\":\"GET\",\"path\":\"/ui/tree\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click?widgetId=N\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click-at?x=&y=\"},"
@@ -2623,6 +2693,26 @@ void Application::executeGameControlCommand(const aoc::debug::AssignGovernorComm
         LOG_WARN("Governor %d for player %u at (%d,%d) rejected: %.*s", static_cast<int>(cmd.type),
                  static_cast<unsigned>(cmd.player), cmd.at.q, cmd.at.r,
                  static_cast<int>(describeError(result).size()), describeError(result).data());
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::SlotPolicyCommand& cmd) {
+    const ErrorCode result =
+        aoc::sim::requestSlotPolicy(this->m_gameState, cmd.player, cmd.slot, cmd.policy);
+    if (result != ErrorCode::Ok) {
+        LOG_WARN("Policy %d into slot %u for player %u rejected: %.*s", static_cast<int>(cmd.policy),
+                 static_cast<unsigned>(cmd.slot), static_cast<unsigned>(cmd.player),
+                 static_cast<int>(describeError(result).size()), describeError(result).data());
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::ChangeGovernmentCommand& cmd) {
+    const ErrorCode result =
+        aoc::sim::requestChangeGovernment(this->m_gameState, cmd.player, cmd.government);
+    if (result != ErrorCode::Ok) {
+        LOG_WARN("Government %d for player %u rejected: %.*s", static_cast<int>(cmd.government),
+                 static_cast<unsigned>(cmd.player), static_cast<int>(describeError(result).size()),
+                 describeError(result).data());
     }
 }
 
@@ -6804,6 +6894,11 @@ void Application::handleEndTurn() {
             this->m_notificationManager.push("Civic complete: " + civicName, 4.0f, 0.8f, 0.5f,
                                              1.0f);
             this->m_soundQueue.push(aoc::audio::SoundEffect::CivicCompleted);
+            // Like a finished tech: prompt for the next civic and the free card swap.
+            if (!humanPost->civics().currentResearch.isValid()) {
+                this->m_governmentScreen.setContext(&this->m_gameState, 0);
+                this->m_governmentScreen.open(this->m_uiManager);
+            }
         }
 
         // Drain sim-layer notifications (war declarations, alliances, wonder

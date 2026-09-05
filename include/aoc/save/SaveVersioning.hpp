@@ -57,6 +57,10 @@
  * Still not carried: GlobalDealTracker, AllianceObligationTracker and goody huts
  * (not reachable from loadGame's signature), the barbarian seat (reset by design),
  * city-state districts / queues / stockpiles.
+ *
+ * v18 (2026-09-05): GovernmentState carries unlockedPolicies as 64 bits (36
+ * cards overflowed the u32; card 35 aliased card 3), policySwapFree and
+ * lastGovernmentChangeTurn.
  */
 
 #include <cstdint>
@@ -64,6 +68,6 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 17;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 18;
 
 } // namespace aoc::save

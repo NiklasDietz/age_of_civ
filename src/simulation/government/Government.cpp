@@ -180,8 +180,105 @@ ErrorCode executeGovernmentAction(aoc::game::GameState& gameState, PlayerId play
     return ErrorCode::Ok;
 }
 
+uint8_t policySlotCount(const PlayerGovernmentComponent& gov) {
+    const GovernmentDef& gdef = governmentDef(gov.government);
+    const int32_t total = gdef.militarySlots + gdef.economicSlots + gdef.diplomaticSlots
+                        + wildcardSlotCount(gov);
+    return static_cast<uint8_t>(std::min<int32_t>(total, MAX_POLICY_SLOTS));
+}
+
+PolicySlotType policySlotType(const PlayerGovernmentComponent& gov, uint8_t slot) {
+    const GovernmentDef& gdef = governmentDef(gov.government);
+    const uint8_t militaryEnd   = gdef.militarySlots;
+    const uint8_t economicEnd   = static_cast<uint8_t>(militaryEnd + gdef.economicSlots);
+    const uint8_t diplomaticEnd = static_cast<uint8_t>(economicEnd + gdef.diplomaticSlots);
+    if (slot < militaryEnd)   { return PolicySlotType::Military; }
+    if (slot < economicEnd)   { return PolicySlotType::Economic; }
+    if (slot < diplomaticEnd) { return PolicySlotType::Diplomatic; }
+    return PolicySlotType::Wildcard;
+}
+
+ErrorCode requestSlotPolicy(aoc::game::GameState& gameState, PlayerId player,
+                            uint8_t slot, int8_t policyId) {
+    aoc::game::Player* owner = gameState.player(player);
+    if (owner == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+    PlayerGovernmentComponent& gov = owner->government();
+    if (slot >= policySlotCount(gov)) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (gov.isInAnarchy()) {
+        return ErrorCode::InvalidState;
+    }
+    if (policyId == EMPTY_POLICY_SLOT) {
+        gov.activePolicies[slot] = EMPTY_POLICY_SLOT;   // removing is free
+        return ErrorCode::Ok;
+    }
+    if (policyId < 0 || static_cast<uint8_t>(policyId) >= POLICY_CARD_COUNT
+        || !gov.isPolicyUnlocked(static_cast<uint8_t>(policyId))) {
+        return ErrorCode::InvalidArgument;
+    }
+    const PolicyCardDef& card = policyCardDef(static_cast<uint8_t>(policyId));
+    const PolicySlotType slotType = policySlotType(gov, slot);
+    if (slotType != PolicySlotType::Wildcard && card.slotType != slotType) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (gov.activePolicies[slot] == policyId) {
+        return ErrorCode::Ok;
+    }
+    for (uint8_t s = 0; s < MAX_POLICY_SLOTS; ++s) {
+        if (s != slot && gov.activePolicies[s] == policyId) {
+            return ErrorCode::InvalidState;   // already slotted elsewhere
+        }
+    }
+    if (!gov.policySwapFree && !owner->spendGold(POLICY_SWAP_GOLD_COST)) {
+        return ErrorCode::InsufficientResources;
+    }
+    gov.activePolicies[slot] = policyId;
+    LOG_INFO("Player %u slotted %.*s into slot %u", static_cast<unsigned>(player),
+             static_cast<int>(card.name.size()), card.name.data(), static_cast<unsigned>(slot));
+    return ErrorCode::Ok;
+}
+
+ErrorCode requestChangeGovernment(aoc::game::GameState& gameState, PlayerId player,
+                                  GovernmentType type) {
+    aoc::game::Player* owner = gameState.player(player);
+    if (owner == nullptr || type >= GovernmentType::Count) {
+        return ErrorCode::InvalidArgument;
+    }
+    PlayerGovernmentComponent& gov = owner->government();
+    if (!gov.isGovernmentUnlocked(type)) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (type == gov.government) {
+        return ErrorCode::Ok;
+    }
+    if (gov.isInAnarchy()) {
+        return ErrorCode::InvalidState;
+    }
+    const int32_t turn = gameState.currentTurn();
+    if (turn - gov.lastGovernmentChangeTurn < GOVERNMENT_CHANGE_COOLDOWN_TURNS) {
+        return ErrorCode::InvalidState;
+    }
+    const bool leavingChiefdom = gov.government == GovernmentType::Chiefdom;
+    gov.changeGovernment(type);
+    if (leavingChiefdom) {
+        gov.anarchyTurnsRemaining = 0;   // the first real government costs nothing
+    }
+    gov.lastGovernmentChangeTurn = turn;
+    const GovernmentDef& def = governmentDef(type);
+    LOG_INFO("Player %u adopted %.*s (%d turns of anarchy)", static_cast<unsigned>(player),
+             static_cast<int>(def.name.size()), def.name.data(), gov.anarchyTurnsRemaining);
+    return ErrorCode::Ok;
+}
+
 void processGovernment(aoc::game::Player& player) {
     PlayerGovernmentComponent& gov = player.government();
+
+    // The free rearrangement window closes when the turn is processed; a civic
+    // completing later in this same processing pass reopens it.
+    gov.policySwapFree = false;
 
     // Building-granted wildcard slots, re-derived from the cities every turn.
     uint8_t bonus = 0;

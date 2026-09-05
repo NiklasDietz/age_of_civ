@@ -37,7 +37,7 @@ std::vector<CivicDef> buildCivicDefs() {
 
     // Era 3: Renaissance
     civics.push_back({CivicId{8}, "Mercantilism", EraId{3}, 200, {{CivicId{7}}}, {}, {9}});
-    civics.push_back({CivicId{9}, "Exploration", EraId{3}, 180, {{CivicId{4}}}, {}, {}});
+    civics.push_back({CivicId{9}, "Exploration", EraId{3}, 180, {{CivicId{4}}}, {8}, {}});  // Merchant Republic
 
     // Era 4: Industrial
     civics.push_back({CivicId{10}, "Capitalism", EraId{4}, 290, {{CivicId{8}}}, {}, {5}});
@@ -76,7 +76,7 @@ std::vector<CivicDef> buildCivicDefs() {
     // Era 3: Renaissance (Humanism→29 Public Schools, Dipl Service→30 Intl Law)
     civics.push_back({CivicId{27}, "Humanism", EraId{3}, 200, {{CivicId{18}}}, {}, {29}});
     civics.push_back({CivicId{28}, "Diplomatic Service", EraId{3}, 220, {{CivicId{23}}}, {}, {30}});
-    civics.push_back({CivicId{29}, "Reformed Church", EraId{3}, 200, {{CivicId{24}}}, {}, {}});
+    civics.push_back({CivicId{29}, "Reformed Church", EraId{3}, 200, {{CivicId{24}}}, {7}, {}});  // Theocracy
     civics.push_back({CivicId{30}, "Enlightenment", EraId{3}, 240, {{CivicId{27}, CivicId{29}}}, {}, {}});
 
     // Era 4: Industrial
@@ -153,6 +153,7 @@ bool advanceCivicResearch(PlayerCivicComponent& civic, float culturePoints,
                     gov->unlockPolicy(pid);
                 }
             }
+            gov->policySwapFree = true;   // Civ VI: rearrange cards for free after a civic
         }
 
         civic.completeResearch();

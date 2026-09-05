@@ -10,6 +10,7 @@
 #include <string>
 #include <variant>
 #include "aoc/simulation/city/Governor.hpp"
+#include "aoc/simulation/government/Government.hpp"
 
 namespace aoc::debug {
 
@@ -82,6 +83,19 @@ struct PromoteGovernorCommand {
     aoc::sim::GovernorPromotion promotion;
 };
 
+/// Put policy card `policy` (-1 clears) into policy slot `slot`.
+struct SlotPolicyCommand {
+    aoc::PlayerId player;
+    uint8_t slot;
+    int8_t policy;
+};
+
+/// Adopt an unlocked government (anarchy unless leaving Chiefdom; cooldown applies).
+struct ChangeGovernmentCommand {
+    aoc::PlayerId player;
+    aoc::sim::GovernmentType government;
+};
+
 /// Merge the unit at `sourceAt` into the same-type unit at `at` (Corps / Army, Fleet / Armada).
 struct MergeUnitsCommand {
     aoc::PlayerId player;
@@ -107,6 +121,7 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         AssignSpyMissionCommand, ActivateGreatPersonCommand,
                                         CongressVoteCommand, CongressProposalCommand,
                                         MergeUnitsCommand, AssignGovernorCommand,
-                                        PromoteGovernorCommand, EndTurnCommand>;
+                                        PromoteGovernorCommand, SlotPolicyCommand,
+                                        ChangeGovernmentCommand, EndTurnCommand>;
 
 } // namespace aoc::debug

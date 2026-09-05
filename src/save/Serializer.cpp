@@ -830,11 +830,13 @@ void writeGovernmentSection(WriteBuffer& out, const aoc::game::GameState& gameSt
             section.writeU8(static_cast<uint8_t>(gov.activePolicies[s]));
         }
         section.writeU16(gov.unlockedGovernments);
-        section.writeU32(gov.unlockedPolicies);
+        section.writeU64(gov.unlockedPolicies);                       // v18: 64 bits
         section.writeI32(gov.anarchyTurnsRemaining);
         section.writeU8(static_cast<uint8_t>(gov.activeAction));
         section.writeI32(gov.actionTurnsRemaining);
         section.writeU8(gov.autoPolicies ? uint8_t{1} : uint8_t{0});   // v17
+        section.writeU8(gov.policySwapFree ? uint8_t{1} : uint8_t{0}); // v18
+        section.writeI32(gov.lastGovernmentChangeTurn);                // v18
     }
 
     writeSection(out, SectionId::GovernmentState, section);
@@ -2633,11 +2635,13 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                     gov.activePolicies[s] = static_cast<int8_t>(buf.readU8());
                 }
                 gov.unlockedGovernments   = buf.readU16();
-                gov.unlockedPolicies      = buf.readU32();
+                gov.unlockedPolicies      = buf.readU64();       // v18
                 gov.anarchyTurnsRemaining = buf.readI32();
                 gov.activeAction          = static_cast<aoc::sim::GovernmentAction>(buf.readU8());
                 gov.actionTurnsRemaining  = buf.readI32();
                 gov.autoPolicies          = buf.readU8() != 0;   // v17
+                gov.policySwapFree        = buf.readU8() != 0;   // v18
+                gov.lastGovernmentChangeTurn = buf.readI32();    // v18
                 if (player != nullptr) {
                     player->government() = std::move(gov);
                 }
