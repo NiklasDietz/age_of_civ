@@ -1461,6 +1461,7 @@ ErrorCode Application::initialize(const Config& config) {
         });
 
     this->registerCityControlRoutes();
+    this->registerBuilderControlRoutes();
 
     // POST /game/governor/promote?player=&q=&r=&promotion=
     this->m_debugServer->routeJson(
@@ -1703,6 +1704,9 @@ ErrorCode Application::initialize(const Config& config) {
                 "{\"method\":\"POST\",\"path\":\"/game/city/lock-tile?player=&q=&r=&tq=&tr=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/city/queue/remove?player=&q=&r=&index=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/city/project?player=&q=&r=&project=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/builder/improve?player=&q=&r=&type=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/builder/chop?player=&q=&r=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/builder/harvest?player=&q=&r=\"},"
                 "{\"method\":\"GET\",\"path\":\"/ui/tree\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click?widgetId=N\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click-at?x=&y=\"},"

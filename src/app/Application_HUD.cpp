@@ -31,6 +31,7 @@
 #include "aoc/simulation/city/CityScience.hpp"
 #include "aoc/simulation/city/BorderExpansion.hpp"
 #include "aoc/simulation/map/Improvement.hpp"
+#include "aoc/simulation/unit/BuilderActions.hpp"
 #include "aoc/simulation/turn/TurnProcessor.hpp"
 #include "aoc/save/Serializer.hpp"
 
@@ -1059,6 +1060,16 @@ void Application::rebuildUnitActionPanel() {
     const aoc::game::Unit& unit      = *this->m_selectedUnit;
     const aoc::sim::UnitTypeDef& def = unit.typeDef();
 
+    // The improvement picker belongs to the previous selection.
+    if (this->m_improvementPicker != aoc::ui::INVALID_WIDGET) {
+        this->m_uiManager.removeWidget(this->m_improvementPicker);
+        this->m_improvementPicker = aoc::ui::INVALID_WIDGET;
+    }
+    const int32_t unitTileIdx  = this->m_hexGrid.isValid(unit.position())
+        ? this->m_hexGrid.toIndex(unit.position()) : -1;
+    const bool canChopHere     = unitTileIdx >= 0 && aoc::sim::canChopAt(this->m_hexGrid, unitTileIdx);
+    const bool canHarvestHere  = unitTileIdx >= 0 && aoc::sim::canHarvestAt(this->m_hexGrid, unitTileIdx);
+
     // Count buttons to size the panel
     int32_t buttonCount = 2; // Skip + Sleep always
     if (aoc::sim::isMilitary(def.unitClass)) {
@@ -1071,7 +1082,9 @@ void Application::rebuildUnitActionPanel() {
         ++buttonCount; // Found City
     }
     if (def.unitClass == aoc::sim::UnitClass::Civilian) {
-        buttonCount += 2; // Improve + Auto-Improve
+        buttonCount += 3; // Improve + Pick + Auto-Improve
+        if (canChopHere)    { ++buttonCount; }
+        if (canHarvestHere) { ++buttonCount; }
     }
 
     const std::vector<aoc::sim::UnitUpgradeDef> upgrades =
@@ -1294,24 +1307,120 @@ void Application::rebuildUnitActionPanel() {
             const aoc::map::ImprovementType bestImpr =
                 aoc::sim::bestImprovementForTile(this->m_hexGrid, tileIndex, ownerTech);
 
-            if (bestImpr != aoc::map::ImprovementType::None &&
-                this->m_hexGrid.improvement(tileIndex) == aoc::map::ImprovementType::None &&
-                aoc::sim::canPlaceImprovement(this->m_hexGrid, tileIndex, bestImpr, ownerTech)) {
-                this->m_hexGrid.setImprovement(tileIndex, bestImpr);
-                selectedUnitPtr->useCharge();
-                LOG_INFO("Builder placed improvement via action panel");
-                if (!selectedUnitPtr->hasCharges()) {
-                    const PlayerId ownerId   = selectedUnitPtr->owner();
-                    aoc::game::Player* owner = this->m_gameState.player(ownerId);
-                    if (owner != nullptr) {
-                        owner->removeUnit(selectedUnitPtr);
-                    }
-                    this->m_selectedUnit    = nullptr;
-                    this->m_actionPanelUnit = nullptr;
-                    LOG_INFO("Builder exhausted all charges");
-                }
+            if (bestImpr == aoc::map::ImprovementType::None) {
+                return;
             }
+            const ErrorCode rc = aoc::sim::requestPlaceImprovement(
+                this->m_gameState, this->m_hexGrid, selectedUnitPtr->owner(),
+                selectedUnitPtr->position(), bestImpr);
+            if (rc != ErrorCode::Ok) {
+                LOG_INFO("Improve refused: %.*s", static_cast<int>(describeError(rc).size()),
+                         describeError(rc).data());
+                return;
+            }
+            this->finishBuilderAction(selectedUnitPtr);
         });
+
+        // -- Pick: every improvement this unit may place here, one button each --
+        makeActionBtn("Pick...", {0.20f, 0.28f, 0.20f, 0.9f}, [this, selectedUnitPtr]() {
+            if (selectedUnitPtr == nullptr) {
+                return;
+            }
+            if (this->m_improvementPicker != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.removeWidget(this->m_improvementPicker);
+                this->m_improvementPicker = aoc::ui::INVALID_WIDGET;
+                return;
+            }
+            const aoc::game::Player* builderOwner = this->m_gameState.player(selectedUnitPtr->owner());
+            if (builderOwner == nullptr || !this->m_hexGrid.isValid(selectedUnitPtr->position())) {
+                return;
+            }
+            const int32_t tileIndex = this->m_hexGrid.toIndex(selectedUnitPtr->position());
+            const std::vector<aoc::map::ImprovementType> options = aoc::sim::placeableImprovements(
+                this->m_hexGrid, tileIndex, *selectedUnitPtr, builderOwner->tech());
+            const float rowH   = 22.0f;
+            const float panelH = 30.0f + rowH * static_cast<float>(std::max<std::size_t>(options.size(), 1)) + 12.0f;
+            aoc::ui::PanelData pickBg;
+            pickBg.backgroundColor = aoc::ui::tokens::SURFACE_PARCHMENT;
+            pickBg.borderColor     = aoc::ui::tokens::BRONZE_BASE;
+            pickBg.borderWidth     = aoc::ui::tokens::BORDER_HAIR;
+            pickBg.cornerRadius    = aoc::ui::tokens::CORNER_PANEL;
+            this->m_improvementPicker =
+                this->m_uiManager.createPanel({0.0f, 0.0f, 240.0f, panelH}, std::move(pickBg));
+            if (aoc::ui::Widget* pp = this->m_uiManager.getWidget(this->m_improvementPicker)) {
+                pp->padding      = {6.0f, 6.0f, 6.0f, 6.0f};
+                pp->childSpacing = 3.0f;
+                pp->anchor       = aoc::ui::Anchor::BottomRight;
+                pp->marginRight  = 300.0f;
+                pp->marginBottom = 10.0f;
+            }
+            (void)this->m_uiManager.createLabel(
+                this->m_improvementPicker, {0.0f, 0.0f, 228.0f, 16.0f},
+                aoc::ui::LabelData{options.empty() ? "Nothing can be built here" : "Build here:",
+                                   aoc::ui::tokens::TEXT_HEADER, 11.0f});
+            for (aoc::map::ImprovementType option : options) {
+                std::string name = "Improvement";
+                for (const aoc::sim::ImprovementDef& idef : aoc::sim::IMPROVEMENT_DEFS) {
+                    if (idef.type == option) { name = std::string(idef.name); }
+                }
+                aoc::ui::ButtonData ob;
+                ob.label        = name;
+                ob.fontSize     = 10.0f;
+                ob.cornerRadius = 3.0f;
+                ob.normalColor  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
+                ob.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+                ob.pressedColor = aoc::ui::tokens::BRONZE_DARK;
+                ob.onClick      = [this, selectedUnitPtr, option]() {
+                    const ErrorCode rc = aoc::sim::requestPlaceImprovement(
+                        this->m_gameState, this->m_hexGrid, selectedUnitPtr->owner(),
+                        selectedUnitPtr->position(), option);
+                    if (this->m_improvementPicker != aoc::ui::INVALID_WIDGET) {
+                        this->m_uiManager.removeWidget(this->m_improvementPicker);
+                        this->m_improvementPicker = aoc::ui::INVALID_WIDGET;
+                    }
+                    if (rc != ErrorCode::Ok) {
+                        LOG_WARN("Placing improvement refused: %.*s",
+                                 static_cast<int>(describeError(rc).size()), describeError(rc).data());
+                        return;
+                    }
+                    this->finishBuilderAction(selectedUnitPtr);
+                };
+                (void)this->m_uiManager.createButton(this->m_improvementPicker,
+                                                     {0.0f, 0.0f, 228.0f, rowH - 2.0f}, std::move(ob));
+            }
+            this->m_uiManager.layout();
+        });
+
+        if (canChopHere) {
+            makeActionBtn("Chop", {0.30f, 0.22f, 0.12f, 0.9f}, [this, selectedUnitPtr]() {
+                if (selectedUnitPtr == nullptr) { return; }
+                const ErrorCode rc = aoc::sim::requestChop(this->m_gameState, this->m_hexGrid,
+                                                           selectedUnitPtr->owner(),
+                                                           selectedUnitPtr->position());
+                if (rc != ErrorCode::Ok) {
+                    this->m_notificationManager.push(
+                        std::string("Cannot chop here: ") + std::string(describeError(rc)), 3.0f,
+                        1.0f, 0.5f, 0.4f);
+                    return;
+                }
+                this->finishBuilderAction(selectedUnitPtr);
+            });
+        }
+        if (canHarvestHere) {
+            makeActionBtn("Harvest", {0.30f, 0.28f, 0.12f, 0.9f}, [this, selectedUnitPtr]() {
+                if (selectedUnitPtr == nullptr) { return; }
+                const ErrorCode rc = aoc::sim::requestHarvest(this->m_gameState, this->m_hexGrid,
+                                                              selectedUnitPtr->owner(),
+                                                              selectedUnitPtr->position());
+                if (rc != ErrorCode::Ok) {
+                    this->m_notificationManager.push(
+                        std::string("Cannot harvest here: ") + std::string(describeError(rc)), 3.0f,
+                        1.0f, 0.5f, 0.4f);
+                    return;
+                }
+                this->finishBuilderAction(selectedUnitPtr);
+            });
+        }
 
         // -- Mine Mountain button: build MountainMine on an adjacent metal-bearing
         // mountain tile. The builder stays on its current passable tile; the
@@ -1614,6 +1723,23 @@ void Application::centerCameraOn(aoc::hex::AxialCoord location) {
     float py = 0.0f;
     aoc::hex::axialToPixel(location, this->m_gameRenderer.mapRenderer().hexSize(), px, py);
     this->m_cameraController.setPosition(px, py);
+}
+
+void Application::finishBuilderAction(aoc::game::Unit* builder) {
+    if (builder == nullptr || builder->hasCharges()) {
+        return;
+    }
+    aoc::game::Player* owner = this->m_gameState.player(builder->owner());
+    if (owner != nullptr) {
+        owner->removeUnit(builder);
+    }
+    this->m_selectedUnit    = nullptr;
+    this->m_actionPanelUnit = nullptr;
+    if (this->m_improvementPicker != aoc::ui::INVALID_WIDGET) {
+        this->m_uiManager.removeWidget(this->m_improvementPicker);
+        this->m_improvementPicker = aoc::ui::INVALID_WIDGET;
+    }
+    LOG_INFO("Builder exhausted all charges");
 }
 
 } // namespace aoc::app

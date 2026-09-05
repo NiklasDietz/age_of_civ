@@ -22,6 +22,9 @@ Unit::Unit(PlayerId owner, UnitTypeId typeId, aoc::hex::AxialCoord position)
         || def.unitClass == aoc::sim::UnitClass::Trader) {
         this->m_chargesRemaining = 3;
     }
+    if (typeId.value == 64) {
+        this->m_chargesRemaining = 2;   // Military Engineer (BuilderActions.hpp)
+    }
 }
 
 bool Unit::consumeMovement(int32_t cost) {

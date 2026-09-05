@@ -141,8 +141,8 @@ struct UnitTypeDef {
 // Unit type IDs: keep stable for serialization. Gaps are fine.
 // Format: {id, name, class, era, hp, melee, ranged, range, move, cost, reqTech, upgradesTo, upgradeCost}
 
-inline constexpr int32_t UNIT_TYPE_COUNT = 77;
-inline constexpr std::array<UnitTypeDef, 77> UNIT_TYPE_DEFS = {{
+inline constexpr int32_t UNIT_TYPE_COUNT = 78;
+inline constexpr std::array<UnitTypeDef, 78> UNIT_TYPE_DEFS = {{
     // ========================================================================
     // MELEE INFANTRY: Warrior -> Swordsman -> Man-at-Arms -> Musketman -> Infantry -> Mech Infantry
     // ========================================================================
@@ -258,6 +258,8 @@ inline constexpr std::array<UnitTypeDef, 77> UNIT_TYPE_DEFS = {{
     {UnitTypeId{2},  "Scout",           UnitClass::Scout,    UnitEra::Ancient,       80, 10,  0, 0, 3,  30, TechId{},   UnitTypeId{},   0},
     {UnitTypeId{3},  "Settler",         UnitClass::Settler,  UnitEra::Ancient,       80,  0,  0, 0, 3,  80, TechId{},   UnitTypeId{},   0},
     {UnitTypeId{5},  "Builder",         UnitClass::Civilian, UnitEra::Ancient,       80,  0,  0, 0, 2,  50, TechId{},   UnitTypeId{},   0},
+    // 2026-09-05: roads, railways and forts are the Military Engineer's charges (Civ VI).
+    {UnitTypeId{64}, "Military Engineer", UnitClass::Civilian, UnitEra::Medieval,    80,  0,  0, 0, 2,  90, TechId{43}, UnitTypeId{},   0},
     {UnitTypeId{22}, "Battering Ram",   UnitClass::Artillery,UnitEra::Ancient,       60, 10,  0, 0, 2,  65, TechId{},   UnitTypeId{23}, 40},
     {UnitTypeId{28}, "Medic",           UnitClass::Civilian, UnitEra::Medieval,      60,  0,  0, 0, 2,  80, TechId{5},  UnitTypeId{},   0},
     {UnitTypeId{29}, "Great General",   UnitClass::Civilian, UnitEra::Classical,     60,  0,  0, 0, 3,   0, TechId{},   UnitTypeId{},   0},

@@ -12,6 +12,9 @@
 #include "aoc/debug/DebugServer.hpp"
 #include "aoc/debug/GameControlCommand.hpp"
 #include "aoc/simulation/city/CityActions.hpp"
+#include "aoc/simulation/unit/BuilderActions.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/Unit.hpp"
 
 #include <mutex>
 #include <string>
@@ -187,6 +190,89 @@ void Application::registerCityControlRoutes() {
         });
 }
 
+void Application::registerBuilderControlRoutes() {
+    using DSM = aoc::debug::DebugServer::Method;
+    using Query = std::unordered_map<std::string, std::string>;
+    const auto readUnit = [](const Query& q, int32_t& player, aoc::hex::AxialCoord& at,
+                             std::string& err) -> bool {
+        int32_t uq = 0;
+        int32_t ur = 0;
+        if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", uq, err)
+            || !readIntParam(q, "r", ur, err)) {
+            return false;
+        }
+        at = aoc::hex::AxialCoord{uq, ur};
+        return true;
+    };
+    const auto queued = [this](const aoc::debug::GameControlCommand& cmd) -> std::string {
+        std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+        this->m_pendingCommands.push_back(cmd);
+        return std::string("{\"queued\":true}");
+    };
+
+    // POST /game/builder/improve?player=&q=&r=&type=   (ImprovementType value)
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/builder/improve",
+        [this, readUnit, queued](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t type   = 0;
+            aoc::hex::AxialCoord at{};
+            std::string err;
+            if (!readUnit(q, player, at, err) || !readIntParam(q, "type", type, err)) {
+                return err;
+            }
+            if (type <= 0 || type >= static_cast<int32_t>(aoc::map::ImprovementType::Count)) {
+                return std::string("{\"error\":\"type out of range\"}");
+            }
+            aoc::debug::PlaceImprovementCommand cmd{};
+            cmd.player = static_cast<aoc::PlayerId>(player);
+            cmd.at     = at;
+            cmd.type   = static_cast<aoc::map::ImprovementType>(type);
+            return queued(cmd);
+        });
+
+    // POST /game/builder/chop?player=&q=&r=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/builder/chop",
+        [this, readUnit, queued](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            aoc::hex::AxialCoord at{};
+            std::string err;
+            if (!readUnit(q, player, at, err)) {
+                return err;
+            }
+            aoc::debug::BuilderChopCommand cmd{};
+            cmd.player = static_cast<aoc::PlayerId>(player);
+            cmd.at     = at;
+            return queued(cmd);
+        });
+
+    // POST /game/builder/harvest?player=&q=&r=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/builder/harvest",
+        [this, readUnit, queued](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            aoc::hex::AxialCoord at{};
+            std::string err;
+            if (!readUnit(q, player, at, err)) {
+                return err;
+            }
+            aoc::debug::BuilderHarvestCommand cmd{};
+            cmd.player = static_cast<aoc::PlayerId>(player);
+            cmd.at     = at;
+            return queued(cmd);
+        });
+}
+
 namespace {
 
 void warnRejected(const char* what, aoc::PlayerId player, aoc::hex::AxialCoord at, ErrorCode rc) {
@@ -237,6 +323,40 @@ void Application::executeGameControlCommand(const aoc::debug::QueueProjectComman
     if (rc != ErrorCode::Ok) {
         warnRejected("City project", cmd.player, cmd.at, rc);
     }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::PlaceImprovementCommand& cmd) {
+    aoc::game::Player* owner = this->m_gameState.player(cmd.player);
+    aoc::game::Unit* builder = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
+    const ErrorCode rc = aoc::sim::requestPlaceImprovement(this->m_gameState, this->m_hexGrid,
+                                                           cmd.player, cmd.at, cmd.type);
+    if (rc != ErrorCode::Ok) {
+        warnRejected("Improvement", cmd.player, cmd.at, rc);
+        return;
+    }
+    this->finishBuilderAction(builder);
+}
+
+void Application::executeGameControlCommand(const aoc::debug::BuilderChopCommand& cmd) {
+    aoc::game::Player* owner = this->m_gameState.player(cmd.player);
+    aoc::game::Unit* builder = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
+    const ErrorCode rc = aoc::sim::requestChop(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
+    if (rc != ErrorCode::Ok) {
+        warnRejected("Chop", cmd.player, cmd.at, rc);
+        return;
+    }
+    this->finishBuilderAction(builder);
+}
+
+void Application::executeGameControlCommand(const aoc::debug::BuilderHarvestCommand& cmd) {
+    aoc::game::Player* owner = this->m_gameState.player(cmd.player);
+    aoc::game::Unit* builder = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
+    const ErrorCode rc = aoc::sim::requestHarvest(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
+    if (rc != ErrorCode::Ok) {
+        warnRejected("Harvest", cmd.player, cmd.at, rc);
+        return;
+    }
+    this->finishBuilderAction(builder);
 }
 
 } // namespace aoc::app

@@ -388,6 +388,33 @@ def aoc_queue_project(player: int, q: int, r: int, project: int) -> dict:
 
 
 @mcp.tool()
+def aoc_builder_improve(player: int, q: int, r: int, improvement_type: int) -> dict:
+    """Place an improvement (ImprovementType value: 1 Farm, 2 Mine, ... see the Civilopedia)
+    with the Builder or Military Engineer standing on (q, r). Builders place terrain
+    improvements their techs allow; Military Engineers place Road, Railway (Industrialization)
+    and Fort. Spends a charge. Queues the request; a rejection is logged.
+    """
+    return _post("/game/builder/improve", player=player, q=q, r=r, type=improvement_type)
+
+
+@mcp.tool()
+def aoc_builder_chop(player: int, q: int, r: int) -> dict:
+    """Chop the Forest (needs Mining), Jungle (Bronze Working) or Marsh under the Builder on
+    (q, r): the nearest own city within 3 tiles that is building something gets 20 + 10 per era
+    production. Spends a charge. Queues the request.
+    """
+    return _post("/game/builder/chop", player=player, q=q, r=r)
+
+
+@mcp.tool()
+def aoc_builder_harvest(player: int, q: int, r: int) -> dict:
+    """Harvest the bonus resource under the Builder on (q, r): the nearest own city within 3
+    tiles gets 20 + 10 per era food; the resource is gone. Spends a charge. Queues the request.
+    """
+    return _post("/game/builder/harvest", player=player, q=q, r=r)
+
+
+@mcp.tool()
 def aoc_set_production(player: int, q: int, r: int, item_type: str, item_id: int) -> dict:
     """Queue a production item onto the city owned by `player` at hex (q, r).
 

@@ -396,6 +396,7 @@ set(AOC_LIB_SOURCES
     src/simulation/economy/HumanCapital.cpp
     src/simulation/city/Governor.cpp
     src/simulation/city/CityActions.cpp
+    src/simulation/unit/BuilderActions.cpp
     src/simulation/automation/Automation.cpp
     src/simulation/empire/CommunicationSpeed.cpp
     src/simulation/city/CityConnection.cpp
@@ -971,6 +972,7 @@ if(AOC_BUILD_TESTS)
         test_combat_rules
         test_government_policies
         test_city_actions
+        test_builders
     )
 
     # UI tests link against src/ui/UIManager.cpp and src/ui/ScreenRegistry.cpp,

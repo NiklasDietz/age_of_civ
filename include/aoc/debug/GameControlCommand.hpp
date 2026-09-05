@@ -12,6 +12,7 @@
 #include "aoc/simulation/city/Governor.hpp"
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/city/DistrictAdjacency.hpp"
+#include "aoc/map/HexGrid.hpp"
 
 namespace aoc::debug {
 
@@ -134,6 +135,25 @@ struct QueueProjectCommand {
     aoc::sim::CityProjectType project;
 };
 
+/// Place improvement `type` with the civilian unit standing on `at`.
+struct PlaceImprovementCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+    aoc::map::ImprovementType type;
+};
+
+/// Chop the feature under the Builder on `at`.
+struct BuilderChopCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+};
+
+/// Harvest the bonus resource under the Builder on `at`.
+struct BuilderHarvestCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+};
+
 /// Merge the unit at `sourceAt` into the same-type unit at `at` (Corps / Army, Fleet / Armada).
 struct MergeUnitsCommand {
     aoc::PlayerId player;
@@ -163,6 +183,7 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         ChangeGovernmentCommand, CityPurchaseCommand,
                                         SetCityFocusCommand, ToggleTileLockCommand,
                                         RemoveQueueItemCommand, QueueProjectCommand,
-                                        EndTurnCommand>;
+                                        PlaceImprovementCommand, BuilderChopCommand,
+                                        BuilderHarvestCommand, EndTurnCommand>;
 
 } // namespace aoc::debug

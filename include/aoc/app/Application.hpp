@@ -652,12 +652,24 @@ private:
     void executeGameControlCommand(const aoc::debug::ToggleTileLockCommand& cmd);
     void executeGameControlCommand(const aoc::debug::RemoveQueueItemCommand& cmd);
     void executeGameControlCommand(const aoc::debug::QueueProjectCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::PlaceImprovementCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::BuilderChopCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::BuilderHarvestCommand& cmd);
 
     /// The five `/game/city/*` routes (Application_CityControl.cpp).
     void registerCityControlRoutes();
 
     /// Centre the camera on a hex (the list screens' Go buttons).
     void centerCameraOn(aoc::hex::AxialCoord location);
+
+    /// The three builder routes (Application_CityControl.cpp).
+    void registerBuilderControlRoutes();
+
+    /// Remove a civilian unit that spent its last charge and drop the selection.
+    void finishBuilderAction(aoc::game::Unit* builder);
+
+    /// Floating list of improvements the selected builder may place (Pick button).
+    aoc::ui::WidgetId m_improvementPicker = aoc::ui::INVALID_WIDGET;
 
     /// UI-control commands (widget clicks/scrolls) queued by debug-server
     /// HTTP handlers. Deliberately a SEPARATE queue from

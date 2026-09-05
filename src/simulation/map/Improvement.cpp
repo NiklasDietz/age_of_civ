@@ -292,6 +292,9 @@ bool canPlaceImprovement(const aoc::map::HexGrid& grid,
                     || grid.resource(index).value == aoc::sim::goods::FISH);
 
         case aoc::map::ImprovementType::Railway:
+            // Any land tile; the Military Engineer lays it (goods cost not modelled).
+            return !aoc::map::isWater(terrain) && !aoc::map::isImpassable(terrain);
+
         case aoc::map::ImprovementType::Highway:
         case aoc::map::ImprovementType::Dam:
         case aoc::map::ImprovementType::Vineyard:

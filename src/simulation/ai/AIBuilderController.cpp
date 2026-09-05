@@ -12,6 +12,7 @@
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/map/Improvement.hpp"
+#include "aoc/simulation/unit/BuilderActions.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/map/HexGrid.hpp"
@@ -118,6 +119,15 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
             const PlayerTechComponent* aiTech  = techOwner != nullptr ? &techOwner->tech() : nullptr;
             const aoc::map::ImprovementType bestImpr =
                 bestImprovementForTile(grid, currentIdx, aiTech);
+            // Nothing to build on a wooded tile: chop it for production (Civ VI
+            // builders; the request checks the tech and pays the nearest city).
+            if (bestImpr == aoc::map::ImprovementType::None && canChopAt(grid, currentIdx)
+                && requestChop(gameState, grid, this->m_player, builder.position) == ErrorCode::Ok) {
+                if (!builder.ptr->hasCharges()) {
+                    exhaustedBuilders.push_back(builder.ptr);
+                }
+                continue;
+            }
             if (bestImpr != aoc::map::ImprovementType::None &&
                 canPlaceImprovement(grid, currentIdx, bestImpr, aiTech)) {
                 grid.setImprovement(currentIdx, bestImpr);
