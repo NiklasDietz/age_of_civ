@@ -71,6 +71,11 @@ namespace aoc::sim::ai {
 /// Industrial/Encampment monopoly on specialty slots without inverting it.
 constexpr float DISTRICT_SATURATION = 0.3f;
 
+/// Settlers an empire may have in hand before it stops building them. Beyond
+/// this the bottleneck is somewhere other than settler supply, and building
+/// more only strands units on the map.
+constexpr int32_t MAX_PENDING_SETTLERS = 2;
+
 /// How many unspent great people an AI tolerates before it starts cashing the
 /// useless ones in. Below this a person is simply waiting for its moment.
 /// Measured over seeds 42-45: a limit of 3 left 59 people parked across the
@@ -814,6 +819,16 @@ static float scoreSettler(const LeaderBehavior& behavior,
     // another settler would strand it or force a disband.  Hard-zero the score
     // so the city picks military/infrastructure instead.
     if (expansionExhausted) { return 0.0f; }
+
+    // A settler that cannot found anything sits on the map forever, and the AI
+    // went on producing more. Measured on seed 20260906 at 8 players: one AI
+    // reached 27 live settlers, every one of them pathing to the SAME tile,
+    // and the run grew without bound until it died of bad_alloc at 24 GB. The
+    // `noSettlerScore` damping below is a multiplier, not a stop, so it slowed
+    // the pile-up and never prevented it. Past a couple of settlers in hand the
+    // problem is not that we want another one; it is that the ones we have
+    // cannot land.
+    if (settlerCount >= MAX_PENDING_SETTLERS) { return 0.0f; }
     // expansion_need: desire falls from 1.0 (no cities) to 0.0 (at target)
     const aoc::sim::ai::UtilityConsideration expansionNeed{
         0.0f, static_cast<float>(targetCities),
