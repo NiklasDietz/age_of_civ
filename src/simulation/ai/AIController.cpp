@@ -71,6 +71,18 @@ namespace aoc::sim::ai {
 /// Industrial/Encampment monopoly on specialty slots without inverting it.
 constexpr float DISTRICT_SATURATION = 0.3f;
 
+/// How many unspent great people an AI tolerates before it starts cashing the
+/// useless ones in. Below this a person is simply waiting for its moment.
+/// Measured over seeds 42-45: a limit of 3 left 59 people parked across the
+/// four runs, a limit of 2 left 61 but freed enough gold to raise conquest
+/// from 8 captures to 16. Most of that difference is one seed, so read it as
+/// "no worse, sometimes much better" rather than a doubling.
+constexpr std::size_t GP_HOARD_LIMIT = 2;
+
+/// A utility at or below this will not recover by waiting, so the person is
+/// worth more retired than held.
+constexpr float GP_HOPELESS_UTILITY = 0.0f;
+
 
 // ============================================================================
 // Helper: Find the best military unit type ID the player can produce.
@@ -710,6 +722,24 @@ void AIController::manageGreatPeople(aoc::game::GameState& gameState,
                      static_cast<unsigned>(type),
                      static_cast<double>(utility));
             activateGreatPerson(gameState, grid, *gp);
+            continue;
+        }
+
+        // Nothing here scored, and nothing about this person's score will
+        // change on its own: an Admiral wants damaged ships in a war it is not
+        // fighting, a Prophet wants a religion the civ already founded. Held
+        // forever they were dead weight -- measured over seeds 42-45, a quarter
+        // to two fifths of every great person recruited was never used at all,
+        // and Admirals were never used once. A person this far below the gate,
+        // in a queue that is already backing up, takes the payout instead.
+        if (gpUnits.size() >= GP_HOARD_LIMIT && utility <= GP_HOPELESS_UTILITY) {
+            const aoc::hex::AxialCoord where = gp->position();
+            if (requestRetireGreatPerson(gameState, this->m_player, where) == ErrorCode::Ok) {
+                LOG_INFO("AI %u retired Great Person defId=%u type=%u (utility %.2f)",
+                         static_cast<unsigned>(this->m_player),
+                         static_cast<unsigned>(comp.defId), static_cast<unsigned>(type),
+                         static_cast<double>(utility));
+            }
         }
     }
 }
