@@ -1381,7 +1381,21 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             const float religionCoefNow = aoc::sim::religionScienceCoefficient(
                 aoc::sim::effectiveEraFromTech(*gsPlayer),
                 aoc::sim::countRenaissancePlusTechs(*gsPlayer));
-            const float holySiteEraMult = std::clamp(1.0f + religionCoefNow, 0.2f, 1.8f);
+            // The lower clamp used to be 0.2, which did not slow religion down in
+            // later eras so much as end it: measured over seeds 42-45, not one
+            // Holy Site was ever completed in any game, so Great Prophets could
+            // not be recruited and Shrine, Temple and Cathedral could not be
+            // built at all. The cause is timing, not weight. Astrology lands
+            // around turn 25, by which point a young city has already spent its
+            // one or two specialty slots, and by the time it grows another the
+            // empire has left the eras where the coefficient is kind. A 0.4
+            // floor keeps the intended decline (Ancient civs weight it 1.5,
+            // Industrial ones 0.4) while leaving the district reachable.
+            // Measured over seeds 42-45: 0.2 gave no Holy Sites and 9 captures,
+            // 0.4 gives Holy Sites and Prophets and the same 9 captures, 0.6
+            // gives Holy Sites in every seed but costs two thirds of the
+            // conquest by spending slots that would have been Encampments.
+            const float holySiteEraMult = std::clamp(1.0f + religionCoefNow, 0.4f, 1.8f);
             const std::array<DistrictOption, 7> districtOptions = {{
                 { DistrictType::Industrial,
                   60.0f,
