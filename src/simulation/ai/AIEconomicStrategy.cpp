@@ -81,10 +81,12 @@ static void aiBondStrategy(aoc::game::GameState& gameState, PlayerId player,
         // treasury headroom to cover principal + expected interest at maturity
         // (principal + 50% accrual on a 10-turn, 5% bond). Without this gate
         // AIs force debt onto insolvent civs and defaults dominate maturities.
-        CurrencyAmount investAmount = std::min(
+        // The treasury floor above guarantees treasury > 500, so a quarter of
+        // it always exceeds the 100 cap and this is always exactly 100. The
+        // `investAmount <= 20` guard that used to sit here could never fire.
+        const CurrencyAmount investAmount = std::min(
             myState.treasury / 4,
             static_cast<CurrencyAmount>(100));
-        if (investAmount <= 20) { continue; }
 
         // Require target treasury to cover ~1.5x the principal + interest at
         // maturity. Not a perfect predictor since treasury drifts before then,

@@ -64,6 +64,7 @@ namespace aoc::sim::ai {
     }
 
     float score = 0.0f;
+    int32_t coastCount = 0;
 
     // Scan ring-1 and ring-2 yields using spiral.
     std::vector<aoc::hex::AxialCoord> tiles;
@@ -81,11 +82,20 @@ namespace aoc::sim::ai {
         score += static_cast<float>(yields.gold)        * 1.0f;
         score += static_cast<float>(yields.science)     * 1.5f;
 
-        // Coastal and fresh-water bonuses.
-        const aoc::map::TerrainType tileT = grid.terrain(idx);
-        if (aoc::map::isWater(tileT)) {
-            score += 6.0f;
+        // Coast is counted, not scored, here. See the flat bonus below.
+        if (aoc::map::isWater(grid.terrain(idx))) {
+            ++coastCount;
         }
+    }
+
+    // Coastal access, on the same rule the settler scorer uses: a harbour
+    // wants a shoreline, not an island. This used to add 6 for EVERY water
+    // tile in the two-ring scan, so a rock in the ocean scored up to 114 here
+    // and exactly 0 when the settler looked at it. The advisor filled
+    // bestCitySites with places the settler would refuse, and kept
+    // expansionExhausted false while it did.
+    if (coastCount > 0 && coastCount <= 3) {
+        score += 6.0f;
     }
 
     // Penalise positions too close to existing cities.
@@ -452,13 +462,23 @@ void evaluateStrategicPosture(aoc::game::Player& player) {
 
     const int32_t currentMilitaryUnits = player.militaryUnitCount();
 
-    // Priority order: Defense > Aggression > Expansion > Development > Economic
+    // Priority order: Defense > Aggression / MilitaryBuildup > Expansion >
+    // Development > Economic.
     if (bb.threatLevel > 0.7f) {
         bb.posture = StrategicPosture::Defense;
-    } else if (bb.threatLevel < 0.2f &&
-               bb.desiredMilitaryUnits <= currentMilitaryUnits * 2 &&
-               bb.diplomaticDanger > 0.3f) {
-        bb.posture = StrategicPosture::Aggression;
+    } else if (bb.threatLevel < 0.2f && bb.diplomaticDanger > 0.3f) {
+        // Trouble is brewing and nobody is at our gates yet. Attacking is for
+        // an army that is actually built; below that, build it.
+        //
+        // This used to read `desiredMilitaryUnits <= currentMilitaryUnits * 2`,
+        // which is parity with HALF the desired army, so a four-city empire
+        // wanting twelve units went aggressive with six and opened a front at
+        // half strength. MilitaryBuildup existed for exactly this case and was
+        // never once assigned: postureMultiplier had a complete branch for it
+        // that no game could reach.
+        bb.posture = (bb.desiredMilitaryUnits <= currentMilitaryUnits)
+                         ? StrategicPosture::Aggression
+                         : StrategicPosture::MilitaryBuildup;
     } else if (bb.expansionOpportunity > 0.5f) {
         bb.posture = StrategicPosture::Expansion;
     } else if (bb.techGap > 0.4f) {

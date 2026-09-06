@@ -343,23 +343,30 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                 // and a pacifist picked the same civics in the same order for
                 // the whole game. Slot type is the classification the policy
                 // table already carries.
-                for (const uint8_t policyId : def.unlockedPolicyIds) {
-                    float weight = 1.0f;
-                    switch (policyCardDef(policyId).slotType) {
-                        case PolicySlotType::Military:
-                            weight = beh.militaryAggression;
-                            break;
-                        case PolicySlotType::Economic:
-                            weight = beh.economicFocus;
-                            break;
-                        case PolicySlotType::Diplomatic:
-                            weight = beh.diplomaticOpenness;
-                            break;
-                        case PolicySlotType::Wildcard:
-                            weight = beh.cultureFocus;
-                            break;
+                if (!def.unlockedPolicyIds.empty()) {
+                    float weightSum = 0.0f;
+                    for (const uint8_t policyId : def.unlockedPolicyIds) {
+                        switch (policyCardDef(policyId).slotType) {
+                            case PolicySlotType::Military:
+                                weightSum += beh.militaryAggression;
+                                break;
+                            case PolicySlotType::Economic:
+                                weightSum += beh.economicFocus;
+                                break;
+                            case PolicySlotType::Diplomatic:
+                                weightSum += beh.diplomaticOpenness;
+                                break;
+                            case PolicySlotType::Wildcard:
+                                weightSum += beh.cultureFocus;
+                                break;
+                        }
                     }
-                    score += 3000.0f * weight;
+                    // The AVERAGE weight, so a leader with neutral genes scores
+                    // exactly the old flat 3000 and the government bonus keeps
+                    // the priority it was given. This change adds personality,
+                    // it does not re-balance the two bonuses against each other.
+                    score += 3000.0f * weightSum
+                             / static_cast<float>(def.unlockedPolicyIds.size());
                 }
                 // Foreign Trade (CivicId{2}) enables Traders -- high early priority
                 if (id == CivicId{2}) {

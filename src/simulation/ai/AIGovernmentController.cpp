@@ -102,11 +102,15 @@ void AIController::manageGovernment(aoc::game::GameState& gameState) {
                 slot.slotType != PolicySlotType::Wildcard) {
                 continue;
             }
-            float value = pdef.modifiers.productionMultiplier +
-                          pdef.modifiers.goldMultiplier +
-                          pdef.modifiers.scienceMultiplier +
-                          pdef.modifiers.cultureMultiplier +
-                          pdef.modifiers.combatStrengthBonus * 0.1f;
+            // Weighted by what this leader cares about. Unweighted, every
+            // leader with the same unlocked cards slotted exactly the same
+            // policies, so a warmonger and a pacifist ran identical
+            // governments for the whole game.
+            const float value = pdef.modifiers.productionMultiplier * bh.prodBuildings +
+                                pdef.modifiers.goldMultiplier       * bh.economicFocus +
+                                pdef.modifiers.scienceMultiplier    * bh.scienceFocus +
+                                pdef.modifiers.cultureMultiplier    * bh.cultureFocus +
+                                pdef.modifiers.combatStrengthBonus  * bh.militaryAggression * 0.1f;
             if (value > bestValue) {
                 bestValue = value;
                 bestPolicy = static_cast<int8_t>(p);

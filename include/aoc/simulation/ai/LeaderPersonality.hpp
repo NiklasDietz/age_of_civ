@@ -745,10 +745,11 @@ struct AIScaledTargets {
     int32_t maxCities;          ///< How many cities the AI wants
     int32_t desiredMilitaryPerCity; ///< Military units per city
     int32_t settlePopThreshold; ///< Min population before building settler
-    float   warThreshold;       ///< Military advantage needed to declare war
-    float   techMilBias;        ///< Tech selection bias toward military
-    float   techEconBias;       ///< Tech selection bias toward economy
-    float   techScienceBias;    ///< Tech selection bias toward science
+    // There were four more fields here: warThreshold, techMilBias,
+    // techEconBias and techScienceBias. Every one was computed from a gene and
+    // then never read by anybody, because the controllers that want those
+    // genes read them straight off LeaderBehavior. They are gone rather than
+    // wired up, so nothing looks tuned that is not.
 };
 
 /// Compute AI targets based on leader personality (game length does NOT
@@ -773,11 +774,6 @@ struct AIScaledTargets {
     targets.settlePopThreshold = static_cast<int32_t>(
         1.0f + (1.0f - behavior.expansionism) * 1.0f);
     targets.settlePopThreshold = (targets.settlePopThreshold < 1) ? 1 : targets.settlePopThreshold;
-
-    targets.warThreshold = behavior.warDeclarationThreshold;
-    targets.techMilBias = behavior.techMilitary;
-    targets.techEconBias = behavior.techEconomic;
-    targets.techScienceBias = behavior.techInformation;
 
     return targets;
 }
