@@ -188,3 +188,28 @@ TEST_CASE("walk-in captures when hp reaches zero") {
     CHECK(winner->cityAt({12, 9}) != nullptr);
     CHECK(winner->cityAt({12, 9})->owner() == PlayerId{0});
 }
+
+TEST_CASE("a wall-less city without an encampment still fires back at its neighbours") {
+    Siege s;
+    CHECK_FALSE(s.city->walls().hasWalls());
+    aoc::game::Unit& farOff      = aoc::test::addUnitAt(s.world, PlayerId{0}, WARRIOR, 10, 9);
+    const int32_t adjacentBefore = s.attacker->hitPoints();
+    const int32_t farBefore      = farOff.hitPoints();
+
+    aoc::sim::processCityBombardment(s.world.gameState, s.world.grid, PlayerId{1}, s.rng);
+
+    CHECK(s.attacker->hitPoints() < adjacentBefore); // chip damage on the besieger
+    CHECK(s.attacker->hitPoints() > 0);              // a deterrent, not a wall
+    CHECK(farOff.hitPoints() == farBefore);          // the base strike reaches one tile
+}
+
+TEST_CASE("a city under assault does not also sortie against its besiegers") {
+    Siege s;
+    // The city was attacked this very turn: the assault roll already answered.
+    s.city->combat().lastAttackedTurn = s.world.gameState.currentTurn();
+    const int32_t before              = s.attacker->hitPoints();
+
+    aoc::sim::processCityBombardment(s.world.gameState, s.world.grid, PlayerId{1}, s.rng);
+
+    CHECK(s.attacker->hitPoints() == before); // no third damage source
+}

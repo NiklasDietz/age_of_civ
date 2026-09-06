@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/city/CityBombardment.hpp"
+#include "aoc/simulation/city/CitySiege.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
@@ -56,6 +57,21 @@ static void syncWallState(aoc::game::City& city,
 // Bombardment processing
 // ============================================================================
 
+/// Share of cityDefenceStrength a wall-less, Encampment-less city fires with.
+constexpr float BASE_STRIKE_SHARE = 0.5f;
+/// The base strike only reaches the tiles a melee attacker must stand on.
+constexpr int32_t BASE_STRIKE_RANGE = 1;
+/// Ceiling on the base strike, so a bare city stays a deterrent, not a wall.
+constexpr int32_t BASE_STRIKE_MAX_DAMAGE = 12;
+/// Turns of quiet a bare city needs before its garrison sorties. A city under
+/// assault already answers through resolveAttackOnCity and pressIntoCity; a
+/// third damage source on the same besiegers stacks and stalls the siege
+/// outright (measured on seed-42/4p/500t: 11 captures -> 0 uncapped, 3 at a
+/// 2-point cap). Gating on quiet keeps the strike for loiterers only. Same
+/// threshold the city uses to start repairing itself: quiet enough to heal is
+/// quiet enough to sortie.
+constexpr int32_t BASE_STRIKE_QUIET_TURNS = CITY_HEAL_DELAY_TURNS;
+
 void processCityBombardment(aoc::game::GameState& gameState,
                              const aoc::map::HexGrid& grid,
                              PlayerId player, aoc::Random& rng) {
@@ -78,8 +94,11 @@ void processCityBombardment(aoc::game::GameState& gameState,
         float encampStrength = hasEncampment ? (hasBarracks ? 32.0f : 22.0f) : 0.0f;
         int32_t encampRange  = hasEncampment ? (hasBarracks ? 3 : 2) : 0;
 
+        // A city with neither standing walls nor an Encampment still fights
+        // back: after a quiet spell its garrison sorties against loiterers.
+        bool baseStrikeOnly = false;
         if (!walls.hasWalls() || !walls.isIntact()) {
-            // No walls or walls destroyed — normally can't shoot.
+            // No walls or walls destroyed: no bombardment proper.
             // Repair walls if no enemy within 3 tiles.
             if (walls.hasWalls() && walls.currentHP < walls.maxHP) {
                 bool enemyNearby = false;
@@ -99,7 +118,7 @@ void processCityBombardment(aoc::game::GameState& gameState,
                 }
             }
             // Encampment district still shoots even without walls.
-            if (!hasEncampment) { continue; }
+            baseStrikeOnly = !hasEncampment;
         }
 
         // Base ranged attack: walls (if intact AT START of turn) OR encampment.
@@ -107,15 +126,23 @@ void processCityBombardment(aoc::game::GameState& gameState,
         // turn cannot also fire — repair XOR attack.
         float bombardStrength = 0.0f;
         int32_t attackRange = 0;
-        if (wallsIntactAtStart) {
-            bombardStrength = static_cast<float>(walls.rangedStrength);
-            attackRange     = walls.range;
-        }
-        if (hasEncampment && encampStrength > bombardStrength) {
-            bombardStrength = encampStrength;
-            attackRange     = std::max(attackRange, encampRange);
-        } else if (hasEncampment) {
-            attackRange = std::max(attackRange, encampRange);
+        if (baseStrikeOnly) {
+            const int32_t defence = cityDefenceStrength(gameState, *city);
+            const int32_t quiet   = gameState.currentTurn() - city->combat().lastAttackedTurn;
+            if (defence <= 0 || quiet < BASE_STRIKE_QUIET_TURNS) { continue; }
+            bombardStrength = static_cast<float>(defence) * BASE_STRIKE_SHARE;
+            attackRange     = BASE_STRIKE_RANGE;
+        } else {
+            if (wallsIntactAtStart) {
+                bombardStrength = static_cast<float>(walls.rangedStrength);
+                attackRange     = walls.range;
+            }
+            if (hasEncampment && encampStrength > bombardStrength) {
+                bombardStrength = encampStrength;
+                attackRange     = std::max(attackRange, encampRange);
+            } else if (hasEncampment) {
+                attackRange = std::max(attackRange, encampRange);
+            }
         }
 
         // Find the weakest enemy unit within range
@@ -137,8 +164,11 @@ void processCityBombardment(aoc::game::GameState& gameState,
         }
 
         if (bestTarget == nullptr || targetOwner == nullptr) {
-            // No enemies in range — repair walls
-            walls.repair();
+            // No enemies in range: repair walls. The base strike has its own
+            // enemy-within-3 repair rule above, so it does not repair here.
+            if (!baseStrikeOnly) {
+                walls.repair();
+            }
             continue;
         }
 
@@ -146,10 +176,14 @@ void processCityBombardment(aoc::game::GameState& gameState,
         const float defStrength = static_cast<float>(bestTarget->typeDef().combatStrength);
         const float ratio = bombardStrength / std::max(defStrength, 1.0f);
         const float randomFactor = 0.8f + rng.nextFloat() * 0.4f;
+        const int32_t damageCeiling = baseStrikeOnly ? BASE_STRIKE_MAX_DAMAGE : 80;
         const int32_t damage = std::clamp(
-            static_cast<int32_t>(30.0f * ratio * randomFactor), 1, 80);
+            static_cast<int32_t>(30.0f * ratio * randomFactor), 1, damageCeiling);
 
-        bestTarget->setHitPoints(bestTarget->hitPoints() - damage);
+        // A bare city repels, it does not kill: the same rule resolveAttackOnCity
+        // applies to melee. Only walls and an Encampment can finish a unit off.
+        const int32_t survived = bestTarget->hitPoints() - damage;
+        bestTarget->setHitPoints(baseStrikeOnly ? std::max(1, survived) : survived);
 
         LOG_INFO("City %s (walls %d/%d HP) bombarded %.*s for %d damage (HP: %d/%d)",
                  city->name().c_str(),
