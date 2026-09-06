@@ -76,7 +76,8 @@ struct PointSources {
             const bool feeds = (type == GreatPersonType::Scientist && d.type == DistrictType::Campus) ||
                                (type == GreatPersonType::Engineer && d.type == DistrictType::Industrial) ||
                                (type == GreatPersonType::General && d.type == DistrictType::Encampment) ||
-                               (type == GreatPersonType::Merchant && d.type == DistrictType::Commercial);
+                               (type == GreatPersonType::Merchant && d.type == DistrictType::Commercial) ||
+                               (type == GreatPersonType::Admiral && d.type == DistrictType::Harbor);
             if (feeds) {
                 ++out.districts;
                 out.buildings += static_cast<int32_t>(d.buildings.size());

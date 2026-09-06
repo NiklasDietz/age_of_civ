@@ -285,6 +285,12 @@ struct MergeUnitsCommand {
     aoc::hex::AxialCoord sourceAt;
 };
 
+/// Dismiss `player`'s unactivated great person at `at` for gold and era score.
+struct RetireGreatPersonCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+};
+
 /// What `player` does with a city it took from someone else.
 struct CityDispositionCommand {
     aoc::PlayerId player;
@@ -310,6 +316,7 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         AssignSpyMissionCommand, ActivateGreatPersonCommand,
                                         CongressVoteCommand, CongressProposalCommand,
                                         MergeUnitsCommand, CityDispositionCommand,
+                                        RetireGreatPersonCommand,
                                         AssignGovernorCommand,
                                         PromoteGovernorCommand, SlotPolicyCommand,
                                         ChangeGovernmentCommand, CityPurchaseCommand,

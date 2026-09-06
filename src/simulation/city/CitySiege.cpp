@@ -16,6 +16,7 @@
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
+#include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/tech/EraProgression.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -115,9 +116,11 @@ CityAttackResult resolveAttackOnCity(aoc::game::GameState& gameState, aoc::Rando
     CityAttackResult result{};
     const UnitTypeDef& def  = attacker.typeDef();
     const bool ranged       = def.rangedStrength > 0 && def.range > 0;
-    const float attackPower = static_cast<float>(ranged ? def.rangedStrength : def.combatStrength) *
-                              (static_cast<float>(attacker.hitPoints()) /
-                               static_cast<float>(std::max(1, attacker.typeDef().maxHitPoints)));
+    const float baseAttack = static_cast<float>(ranged ? def.rangedStrength : def.combatStrength)
+                             + greatPersonAuraBonus(gameState, grid, attacker);
+    const float attackPower = baseAttack * (static_cast<float>(attacker.hitPoints()) /
+                                            static_cast<float>(
+                                                std::max(1, attacker.typeDef().maxHitPoints)));
     const float defencePower = static_cast<float>(cityDefenceStrength(gameState, city));
 
     const int32_t rolled           = computeCombatDamage(attackPower, defencePower, rng);

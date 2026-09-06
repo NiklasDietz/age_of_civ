@@ -658,6 +658,21 @@ void AIController::manageGreatPeople(aoc::game::GameState& gameState,
                 utility = bh.militaryAggression * static_cast<float>(hurtNearby) * 0.5f;
                 break;
             }
+            case GreatPersonType::Admiral: {
+                // Same shape as the General, but only damaged ships count.
+                if (!atWar) { break; }
+                int32_t hurtShips = 0;
+                for (const std::unique_ptr<aoc::game::Unit>& u : player->units()) {
+                    if (u.get() == gp || u->isDead()) { continue; }
+                    if (u->typeDef().unitClass != aoc::sim::UnitClass::Naval) { continue; }
+                    if (u->hitPoints() >= u->typeDef().maxHitPoints) { continue; }
+                    if (grid.distance(u->position(), gp->position()) <= aoc::sim::GP_AURA_RADIUS) {
+                        ++hurtShips;
+                    }
+                }
+                utility = bh.militaryAggression * static_cast<float>(hurtShips) * 0.5f;
+                break;
+            }
             case GreatPersonType::Artist: {
                 std::vector<aoc::hex::AxialCoord> tiles;
                 tiles.reserve(19);

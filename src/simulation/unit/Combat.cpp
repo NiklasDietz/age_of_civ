@@ -4,6 +4,8 @@
  */
 
 #include "aoc/simulation/unit/Combat.hpp"
+
+#include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -744,6 +746,11 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
                 }
             }
         }
+
+        // A Great General or Admiral standing within two hexes lends its
+        // presence to the fight, for whoever it belongs to.
+        atkStrength += greatPersonAuraBonus(gameState, grid, attacker);
+        defStrength += greatPersonAuraBonus(gameState, grid, defender);
 
         // Embarked units fight at 50% strength
         if (attacker.state() == aoc::sim::UnitState::Embarked) {

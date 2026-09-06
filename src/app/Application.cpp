@@ -1356,6 +1356,37 @@ ErrorCode Application::initialize(const Config& config) {
             return std::string("{\"queued\":true}");
         });
 
+    // POST /game/greatperson/retire?player=&q=&r=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/greatperson/retire",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t posQ   = 0;
+            int32_t posR   = 0;
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "q", posQ, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "r", posR, err)) {
+                return err;
+            }
+            aoc::debug::RetireGreatPersonCommand cmd{};
+            cmd.player = static_cast<aoc::PlayerId>(player);
+            cmd.at     = aoc::hex::AxialCoord{posQ, posR};
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
     // POST /game/city/disposition?player=&q=&r=&disposition=
     this->m_debugServer->routeJson(
         DSM::Post, "/game/city/disposition",
@@ -1745,6 +1776,8 @@ ErrorCode Application::initialize(const Config& config) {
                 "merge?player=&q=&r=&sourceQ=&sourceR=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/city/"
                 "disposition?player=&q=&r=&disposition=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/greatperson/"
+                "retire?player=&q=&r=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/governor/assign?player=&q=&r=&type=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/governor/"
                 "promote?player=&q=&r=&promotion=\"},"
@@ -2785,6 +2818,21 @@ void Application::executeGameControlCommand(const aoc::debug::MergeUnitsCommand&
     if (selectionWasSource) {
         aoc::game::Player* owner = this->m_gameState.player(cmd.player);
         this->m_selectedUnit     = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::RetireGreatPersonCommand& cmd) {
+    // The retired person leaves the map; a selection on it must let go first.
+    if (this->m_selectedUnit != nullptr && this->m_selectedUnit->owner() == cmd.player
+        && this->m_selectedUnit->position() == cmd.at) {
+        this->m_selectedUnit = nullptr;
+    }
+    const ErrorCode result =
+        aoc::sim::requestRetireGreatPerson(this->m_gameState, cmd.player, cmd.at);
+    if (result != ErrorCode::Ok) {
+        LOG_WARN("Retire by player %u at (%d,%d) rejected: %.*s",
+                 static_cast<unsigned>(cmd.player), cmd.at.q, cmd.at.r,
+                 static_cast<int>(describeError(result).size()), describeError(result).data());
     }
 }
 

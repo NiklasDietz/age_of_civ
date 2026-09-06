@@ -299,6 +299,17 @@ def aoc_merge_units(player: int, q: int, r: int, source_q: int, source_r: int) -
 
 
 @mcp.tool()
+def aoc_retire_great_person(player: int, q: int, r: int) -> dict:
+    """Dismiss `player`'s great person standing at (q, r) without using its ability,
+    taking 150 gold and 3 era score instead. Only an unactivated great person can be
+    retired. Useful when a General or Admiral has no good target and its aura (+5 combat
+    to friendly land or naval units within 2 tiles while it stands on the map) is worth
+    less than the payout. Queues the request; a rejection is logged in the game log.
+    """
+    return _post("/game/greatperson/retire", player=player, q=q, r=r)
+
+
+@mcp.tool()
 def aoc_city_disposition(player: int, q: int, r: int, disposition: int) -> dict:
     """Decide what `player` does with the city it took from another civ at (q, r).
     Dispositions: 0 keep (a no-op, since capture already keeps), 1 raze (the city is

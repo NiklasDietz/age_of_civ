@@ -60,6 +60,11 @@ static const std::array<GreatPersonDef, GREAT_PERSON_COUNT> s_greatPersonDefs = 
     {15, "Adam Smith",          GreatPersonType::Merchant, "Wealth of Nations: +200 gold to treasury."},
     {16, "John D. Rockefeller", GreatPersonType::Merchant, "Standard Oil: +200 gold to treasury."},
     {17, "Mansa Musa",          GreatPersonType::Merchant, "Pilgrimage: +200 gold to treasury."},
+
+    // Admirals (18-20)
+    {18, "Themistocles",  GreatPersonType::Admiral, "Salamis: heal all ships within 2 hexes to full."},
+    {19, "Horatio Nelson",GreatPersonType::Admiral, "Trafalgar: heal all ships within 2 hexes to full."},
+    {20, "Yi Sun-sin",    GreatPersonType::Admiral, "Turtle Ship: heal all ships within 2 hexes to full."},
 }};
 
 const std::array<GreatPersonDef, GREAT_PERSON_COUNT>& allGreatPersonDefs() {
@@ -120,6 +125,16 @@ void accumulateGreatPeoplePoints(aoc::game::GameState& gameState, PlayerId playe
                     }
                     if (district.buildings.empty()) {
                         gpComp.points[static_cast<std::size_t>(GreatPersonType::General)] += 1.0f;
+                    }
+                    break;
+
+                case DistrictType::Harbor:
+                    // Harbor: +2 Admiral points per building
+                    for ([[maybe_unused]] BuildingId bid : district.buildings) {
+                        gpComp.points[static_cast<std::size_t>(GreatPersonType::Admiral)] += 2.0f;
+                    }
+                    if (district.buildings.empty()) {
+                        gpComp.points[static_cast<std::size_t>(GreatPersonType::Admiral)] += 1.0f;
                     }
                     break;
 
@@ -373,6 +388,21 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
             break;
         }
 
+        case GreatPersonType::Admiral: {
+            // Heal every friendly ship within 2 hexes to full.
+            for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerObj->units()) {
+                if (unitPtr == nullptr
+                    || unitPtr->typeDef().unitClass != UnitClass::Naval) {
+                    continue;
+                }
+                if (grid.distance(unitPtr->position(), gp.position) <= GP_AURA_RADIUS) {
+                    unitPtr->setHitPoints(unitPtr->typeDef().maxHitPoints);
+                }
+            }
+            LOG_INFO("Admiral healed every nearby ship");
+            break;
+        }
+
         case GreatPersonType::Artist: {
             // A work of Art in the nearest own city with a free Theatre slot; that is
             // what tourism counts since 2026-09-05. Without a slot, the culture bomb.
@@ -419,6 +449,57 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
 
     // Remove the unit from the player's roster after activation
     playerObj->removeUnit(&gpUnit);
+}
+
+float greatPersonAuraBonus(const aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                           const aoc::game::Unit& unit) {
+    const aoc::game::Player* owner = gameState.player(unit.owner());
+    if (owner == nullptr) {
+        return 0.0f;
+    }
+    // A ship looks for an Admiral, everything else for a General.
+    const bool naval = unit.typeDef().unitClass == UnitClass::Naval;
+    const GreatPersonType wanted = naval ? GreatPersonType::Admiral : GreatPersonType::General;
+    const std::array<GreatPersonDef, GREAT_PERSON_COUNT>& defs = allGreatPersonDefs();
+
+    for (const std::unique_ptr<aoc::game::Unit>& other : owner->units()) {
+        if (other == nullptr || other.get() == &unit) {
+            continue;
+        }
+        const GreatPersonComponent& gp = other->greatPerson();
+        if (gp.owner != unit.owner() || gp.isActivated || gp.defId >= GREAT_PERSON_COUNT) {
+            continue;
+        }
+        if (defs[gp.defId].type != wanted) {
+            continue;
+        }
+        if (grid.distance(other->position(), unit.position()) <= GP_AURA_RADIUS) {
+            return GP_AURA_STRENGTH; // presence, not a stacking count
+        }
+    }
+    return 0.0f;
+}
+
+ErrorCode requestRetireGreatPerson(aoc::game::GameState& gameState, PlayerId player,
+                                   hex::AxialCoord at) {
+    aoc::game::Player* owner = gameState.player(player);
+    if (owner == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+    aoc::game::Unit* unit = owner->unitAt(at);
+    if (unit == nullptr || unit->typeId() != UnitTypeId{102}) {
+        return ErrorCode::InvalidArgument;
+    }
+    const GreatPersonComponent& gp = unit->greatPerson();
+    if (gp.owner != player || gp.isActivated) {
+        return ErrorCode::InvalidUnitAction;
+    }
+    owner->monetary().treasury += GP_RETIRE_GOLD;
+    owner->victoryTracker().eraVictoryPoints += GP_RETIRE_ERA_SCORE;
+    LOG_INFO("Player %u retired a great person for %lld gold", static_cast<unsigned>(player),
+             static_cast<long long>(GP_RETIRE_GOLD));
+    owner->removeUnit(unit);
+    return ErrorCode::Ok;
 }
 
 } // namespace aoc::sim

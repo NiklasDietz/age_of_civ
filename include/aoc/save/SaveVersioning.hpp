@@ -98,6 +98,9 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 25;
+/* v26 (2026-09-06): GreatPersonType gained Admiral, so the per-type Great
+ * People arrays (points, recruited, exhausted) carry six entries instead of
+ * five. Every v25 save becomes unloadable. */
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 26;
 
 } // namespace aoc::save

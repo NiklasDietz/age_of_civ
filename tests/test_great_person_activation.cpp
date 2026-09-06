@@ -75,3 +75,71 @@ TEST_CASE("a General heals nearby units where it stands and is consumed") {
     CHECK(aoc::sim::requestGreatPersonActivation(w.gameState, w.grid, PlayerId{0}, {5, 5}) ==
           aoc::ErrorCode::InvalidUnitAction);
 }
+
+TEST_CASE("a Great General lends five strength to land units within two hexes") {
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Home");
+    aoc::game::Unit* general = recruitGeneral(w);
+    REQUIRE(general != nullptr);
+    REQUIRE(general->position() == aoc::hex::AxialCoord{5, 5});
+
+    aoc::game::Unit& near = aoc::test::addUnitAt(w, PlayerId{0}, WARRIOR, 7, 5); // 2 away
+    aoc::game::Unit& far  = aoc::test::addUnitAt(w, PlayerId{0}, WARRIOR, 8, 5); // 3 away
+    CHECK(aoc::sim::greatPersonAuraBonus(w.gameState, w.grid, near)
+          == doctest::Approx(aoc::sim::GP_AURA_STRENGTH));
+    CHECK(aoc::sim::greatPersonAuraBonus(w.gameState, w.grid, far) == doctest::Approx(0.0f));
+
+    // Someone else's units feel nothing.
+    aoc::game::Unit& enemy = aoc::test::addUnitAt(w, PlayerId{1}, WARRIOR, 6, 5);
+    CHECK(aoc::sim::greatPersonAuraBonus(w.gameState, w.grid, enemy) == doctest::Approx(0.0f));
+
+    // Two generals side by side are still worth one.
+    aoc::game::Unit* second = recruitGeneral(w);
+    if (second != nullptr) {
+        second->setPosition({6, 5});
+        CHECK(aoc::sim::greatPersonAuraBonus(w.gameState, w.grid, near)
+              == doctest::Approx(aoc::sim::GP_AURA_STRENGTH));
+    }
+}
+
+TEST_CASE("a General does nothing for ships, and an Admiral nothing for foot soldiers") {
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Home");
+    REQUIRE(recruitGeneral(w) != nullptr);
+    constexpr aoc::UnitTypeId GALLEY{6};
+    aoc::game::Unit& ship = aoc::test::addUnitAt(w, PlayerId{0}, GALLEY, 6, 5);
+    CHECK(aoc::sim::greatPersonAuraBonus(w.gameState, w.grid, ship) == doctest::Approx(0.0f));
+
+    aoc::game::Player& p = *w.gameState.players()[0];
+    p.greatPeople().points[static_cast<uint8_t>(GreatPersonType::Admiral)] =
+        p.greatPeople().threshold(GreatPersonType::Admiral) + 1.0f;
+    aoc::sim::checkGreatPeopleRecruitment(w.gameState, PlayerId{0});
+    CHECK(aoc::sim::greatPersonAuraBonus(w.gameState, w.grid, ship)
+          == doctest::Approx(aoc::sim::GP_AURA_STRENGTH));
+
+    aoc::game::Unit& foot = aoc::test::addUnitAt(w, PlayerId{0}, WARRIOR, 4, 5);
+    CHECK(aoc::sim::greatPersonAuraBonus(w.gameState, w.grid, foot)
+          == doctest::Approx(aoc::sim::GP_AURA_STRENGTH)); // the General is still there
+}
+
+TEST_CASE("retiring a great person pays gold and era score and takes it off the map") {
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Home");
+    REQUIRE(recruitGeneral(w) != nullptr);
+    aoc::game::Player& p = *w.gameState.players()[0];
+    const int64_t goldBefore = p.monetary().treasury;
+    const int32_t scoreBefore = p.victoryTracker().eraVictoryPoints;
+
+    CHECK(aoc::sim::requestRetireGreatPerson(w.gameState, PlayerId{0}, {5, 5})
+          == aoc::ErrorCode::Ok);
+    CHECK(p.monetary().treasury == goldBefore + aoc::sim::GP_RETIRE_GOLD);
+    CHECK(p.victoryTracker().eraVictoryPoints == scoreBefore + aoc::sim::GP_RETIRE_ERA_SCORE);
+    CHECK(p.unitCount() == 0);
+
+    // Nothing left to retire, and a plain Warrior is not a great person.
+    CHECK(aoc::sim::requestRetireGreatPerson(w.gameState, PlayerId{0}, {5, 5})
+          == aoc::ErrorCode::InvalidArgument);
+    aoc::test::addUnitAt(w, PlayerId{0}, WARRIOR, 7, 7);
+    CHECK(aoc::sim::requestRetireGreatPerson(w.gameState, PlayerId{0}, {7, 7})
+          == aoc::ErrorCode::InvalidArgument);
+}

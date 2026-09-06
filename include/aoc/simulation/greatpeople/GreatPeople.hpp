@@ -24,6 +24,8 @@ enum class GreatPersonType : uint8_t {
     General,
     Artist,
     Merchant,
+    Admiral,   ///< Naval counterpart to the General. Maps to the roster's
+               ///< Admiral category, which already held twelve named admirals.
     Count
 };
 
@@ -35,10 +37,35 @@ struct GreatPersonDef {
 };
 
 /// Total number of great person definitions.
-inline constexpr uint8_t GREAT_PERSON_COUNT = 18;
+inline constexpr uint8_t GREAT_PERSON_COUNT = 21;
 
 /// Get all great person definitions.
 [[nodiscard]] const std::array<GreatPersonDef, GREAT_PERSON_COUNT>& allGreatPersonDefs();
+
+/// Combat strength a friendly, still-unactivated Great General (land units) or
+/// Great Admiral (naval units) lends to `unit` from within GP_AURA_RADIUS.
+/// Zero when no such person is near. Stacking is deliberately not allowed:
+/// two generals side by side are worth one.
+[[nodiscard]] float greatPersonAuraBonus(const aoc::game::GameState& gameState,
+                                         const aoc::map::HexGrid& grid,
+                                         const aoc::game::Unit& unit);
+
+/// How far a Great General's or Admiral's presence is felt, in hexes.
+inline constexpr int32_t GP_AURA_RADIUS = 2;
+
+/// Strength the aura adds.
+inline constexpr float GP_AURA_STRENGTH = 5.0f;
+
+/// Dismiss `player`'s unactivated great person standing at `at`, taking a
+/// lump of gold and era score instead of its one-shot ability.
+[[nodiscard]] ErrorCode requestRetireGreatPerson(aoc::game::GameState& gameState, PlayerId player,
+                                                 hex::AxialCoord at);
+
+/// Gold a retirement pays.
+inline constexpr int64_t GP_RETIRE_GOLD = 150;
+
+/// Era score a retirement pays.
+inline constexpr int32_t GP_RETIRE_ERA_SCORE = 3;
 
 /// ECS component for a recruited Great Person (one-use, activated by player).
 struct GreatPersonComponent {

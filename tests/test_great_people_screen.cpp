@@ -103,7 +103,8 @@ TEST_CASE("progress rows show points against the threshold and where they come f
     CHECK(f.labelsContaining("Engineer  1 / 60 points") == 1);
     CHECK(f.labelsContaining("Artist  1 / 60 points") == 1);
     CHECK(f.labelsContaining("Sources: 1 Libraries") == 1);
-    CHECK(f.labelsContaining("Sources: 0 districts, 0 buildings  (none yet)") == 2);  // General, Merchant
+    CHECK(f.labelsContaining("Admiral  0 / 60 points") == 1);
+    CHECK(f.labelsContaining("Sources: 0 districts, 0 buildings  (none yet)") == 3);  // General, Merchant, Admiral
     CHECK(f.labelsContaining("None yet.") == 1);
 }
 
