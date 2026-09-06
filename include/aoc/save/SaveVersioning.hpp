@@ -76,6 +76,10 @@
  * v22 (2026-09-06): a DealProposals section, the deal proposals waiting for
  * the human's answer (DealProposals.hpp). Active deals themselves still live
  * outside GameState and are not saved.
+ *
+ * v23 (2026-09-06): ProductionQueues carries the tile a queued district will
+ * stand on (targetTile + hasTargetTile), so the human's placement choice
+ * survives a save (DistrictPlacement.hpp).
  */
 
 #include <cstdint>
@@ -83,6 +87,6 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 22;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 23;
 
 } // namespace aoc::save

@@ -13,6 +13,9 @@
 #include "aoc/map/Terrain.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/DistrictAdjacency.hpp"
+#include <string>
+#include "aoc/simulation/tech/TechGating.hpp"
+#include "aoc/simulation/city/ProductionQueue.hpp"
 
 #include <memory>
 #include <vector>
@@ -155,6 +158,40 @@ hex::AxialCoord bestDistrictTile(const aoc::game::GameState& gameState, const ao
         }
     }
     return best;
+}
+
+ErrorCode requestPlaceDistrict(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                               PlayerId player, hex::AxialCoord cityAt, DistrictType type,
+                               hex::AxialCoord tile) {
+    aoc::game::Player* owner = gameState.player(player);
+    if (owner == nullptr) {
+        return ErrorCode::EntityNotFound;
+    }
+    aoc::game::City* city = owner->cityAt(cityAt);
+    if (city == nullptr || city->owner() != player) {
+        return ErrorCode::EntityNotFound;
+    }
+    const DistrictTileReason reason = districtTileReason(gameState, grid, *city, type, tile);
+    if (reason != DistrictTileReason::Ok) {
+        LOG_INFO("Player %u cannot put a %.*s at (%d,%d): %.*s", static_cast<unsigned>(player),
+                 static_cast<int>(districtTypeName(type).size()), districtTypeName(type).data(), tile.q,
+                 tile.r, static_cast<int>(districtTileReasonName(reason).size()),
+                 districtTileReasonName(reason).data());
+        return ErrorCode::InvalidUnitAction;
+    }
+    // A queued district is its own authorization: the tech and population gates
+    // were checked when the city took the order.
+    for (ProductionQueueItem& item : city->production().queue) {
+        if (item.type == ProductionItemType::District
+            && static_cast<DistrictType>(item.itemId) == type) {
+            item.targetTile    = tile;
+            item.hasTargetTile = true;
+            return ErrorCode::Ok;
+        }
+    }
+    // The city is not building this district: the queue owns the cost, so the
+    // caller queues it first and then picks the tile.
+    return ErrorCode::InvalidState;
 }
 
 CityDistrictsComponent::PlacedDistrict& placeDistrictOnTile(aoc::map::HexGrid& grid, aoc::game::City& city,

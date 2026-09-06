@@ -24,6 +24,7 @@
  */
 
 #include "aoc/core/Types.hpp"
+#include "aoc/map/HexCoord.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -46,6 +47,12 @@ struct ProductionQueueItem {
     std::string        name;
     float              totalCost;   ///< Total production needed
     float              progress;    ///< Production accumulated so far
+
+    /// Where a queued district will stand (DistrictPlacement.hpp). The human
+    /// picks it; without a choice the scorer takes the best tile at
+    /// completion. Serialized from v23, so a choice survives a save.
+    hex::AxialCoord    targetTile{0, 0};
+    bool               hasTargetTile = false;
 
     /// Consecutive turns this item finished its production cost but could not
     /// be completed for lack of a consumable good. Drives the give-up escape

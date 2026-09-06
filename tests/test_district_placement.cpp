@@ -13,6 +13,7 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/simulation/city/DistrictPlacement.hpp"
 #include "aoc/simulation/city/ProductionSystem.hpp"
+#include "aoc/simulation/tech/TechTree.hpp"
 
 #include <vector>
 
@@ -170,4 +171,63 @@ TEST_CASE("a completed district lands on a real tile, not on the city centre") {
     CHECK(placed[1].type == DistrictType::Campus);
     CHECK(placed[1].location != f.city->location());
     CHECK(f.world.grid.distance(placed[1].location, f.city->location()) <= aoc::sim::CITY_WORK_RADIUS);
+}
+
+TEST_CASE("the human's chosen tile is stored on the queued district and used when it completes") {
+    Fixture f;
+    const AxialCoord centre = f.city->location();
+    const AxialCoord chosen = {centre.q, centre.r + 2};
+    aoc::game::GameState& gs = f.world.gameState;
+
+    // Nothing queued yet: the request has no item to write the choice onto.
+    CHECK(aoc::sim::requestPlaceDistrict(gs, f.world.grid, PlayerId{0}, centre, DistrictType::Campus,
+                                         chosen) == aoc::ErrorCode::InvalidState);
+
+    aoc::sim::ProductionQueueItem item{};
+    item.type      = aoc::sim::ProductionItemType::District;
+    item.itemId    = static_cast<uint16_t>(DistrictType::Campus);
+    item.name      = "Campus";
+    item.totalCost = 1.0f;
+    item.progress  = 0.0f;
+    f.city->production().queue.push_back(item);
+
+    CHECK(aoc::sim::requestPlaceDistrict(gs, f.world.grid, PlayerId{9}, centre, DistrictType::Campus,
+                                         chosen) == aoc::ErrorCode::EntityNotFound);
+    CHECK(aoc::sim::requestPlaceDistrict(gs, f.world.grid, PlayerId{0}, {40, 40}, DistrictType::Campus,
+                                         chosen) == aoc::ErrorCode::EntityNotFound);
+    CHECK(aoc::sim::requestPlaceDistrict(gs, f.world.grid, PlayerId{0}, centre, DistrictType::Campus,
+                                         centre) == aoc::ErrorCode::InvalidUnitAction); // the centre
+    CHECK(aoc::sim::requestPlaceDistrict(gs, f.world.grid, PlayerId{0}, centre, DistrictType::Campus,
+                                         chosen) == aoc::ErrorCode::Ok);
+    REQUIRE(f.city->production().queue.front().hasTargetTile);
+    CHECK(f.city->production().queue.front().targetTile == chosen);
+
+    f.city->production().queue.front().progress = 1000.0f;
+    aoc::sim::processProductionQueues(gs, f.world.grid, PlayerId{0});
+    REQUIRE(f.city->districts().districts.size() == 2);
+    CHECK(f.city->districts().districts[1].location == chosen);
+}
+
+TEST_CASE("a chosen tile that turned illegal falls back to the scorer") {
+    Fixture f;
+    const AxialCoord centre = f.city->location();
+    const AxialCoord chosen = {centre.q, centre.r + 2};
+    aoc::game::GameState& gs = f.world.gameState;
+
+    aoc::sim::ProductionQueueItem item{};
+    item.type          = aoc::sim::ProductionItemType::District;
+    item.itemId        = static_cast<uint16_t>(DistrictType::Campus);
+    item.name          = "Campus";
+    item.totalCost     = 1.0f;
+    item.progress      = 1000.0f;
+    item.targetTile    = chosen;
+    item.hasTargetTile = true;
+    f.city->production().queue.push_back(item);
+    // A rival takes the tile before the district is finished.
+    f.world.grid.setOwner(f.world.grid.toIndex(chosen), PlayerId{1});
+
+    aoc::sim::processProductionQueues(gs, f.world.grid, PlayerId{0});
+    REQUIRE(f.city->districts().districts.size() == 2);
+    CHECK(f.city->districts().districts[1].location != chosen);
+    CHECK(f.city->districts().districts[1].location != centre);
 }

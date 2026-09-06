@@ -473,8 +473,15 @@ void processProductionQueues(aoc::game::GameState& gameState,
                 }
                 case ProductionItemType::District: {
                     const DistrictType districtType = static_cast<DistrictType>(item.itemId);
+                    // The human's choice, while it is still legal: a rival may
+                    // have taken the tile or the border may have moved since.
+                    const bool chosenStillLegal =
+                        item.hasTargetTile
+                        && districtTileReason(gameState, grid, *city, districtType, item.targetTile)
+                               == DistrictTileReason::Ok;
                     const hex::AxialCoord site =
-                        bestDistrictTile(gameState, grid, *city, districtType);
+                        chosenStillLegal ? item.targetTile
+                                         : bestDistrictTile(gameState, grid, *city, districtType);
                     placeDistrictOnTile(grid, *city, districtType, site);
                     LOG_INFO("Completed district %.*s in %s at (%d,%d)",
                              static_cast<int>(item.name.size()),

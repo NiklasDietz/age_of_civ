@@ -614,6 +614,26 @@ def aoc_respond_proposal(player: int, index: int, accept: bool) -> dict:
 
 
 @mcp.tool()
+def aoc_district_sites(player: int, q: int, r: int, district: int) -> dict:
+    """List every tile the city at (q, r) could put district `district` on, each with its placement
+    score, plus the tile the scorer would choose. District ids: 0 CityCenter, 1 Campus, 2 Commercial,
+    3 Industrial, 4 Harbor, 5 HolySite, 6 Encampment, 7 Theatre.
+    """
+    return _get("/game/city/district/sites", player=player, q=q, r=r, district=district)
+
+
+@mcp.tool()
+def aoc_place_district(player: int, q: int, r: int, district: int, tile_q: int, tile_r: int) -> dict:
+    """Choose the tile (tile_q, tile_r) for a district the city at (q, r) is already building. The
+    district must be in the city's production queue; the tile must be owned, inside the work radius,
+    free of districts and of the right kind (a Harbor needs coastal water beside the city). The choice
+    is used when the district completes, as long as it is still legal. Queues the request.
+    """
+    return _post("/game/city/district/place", player=player, q=q, r=r, district=district, tileQ=tile_q,
+                 tileR=tile_r)
+
+
+@mcp.tool()
 def aoc_set_production(player: int, q: int, r: int, item_type: str, item_id: int) -> dict:
     """Queue a production item onto the city owned by `player` at hex (q, r).
 

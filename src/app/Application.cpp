@@ -1470,6 +1470,7 @@ ErrorCode Application::initialize(const Config& config) {
     this->registerCityStateRoutes();
     this->registerDiplomacyRoutes();
     this->registerDealRoutes();
+    this->registerDistrictRoutes();
 
     // POST /game/governor/promote?player=&q=&r=&promotion=
     this->m_debugServer->routeJson(

@@ -270,6 +270,14 @@ struct RespondProposalCommand {
     bool accept;
 };
 
+/// Pick the tile a queued district will stand on (DistrictPlacement.hpp).
+struct PlaceDistrictCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord cityLocation;
+    uint8_t district;
+    aoc::hex::AxialCoord tile;
+};
+
 /// Merge the unit at `sourceAt` into the same-type unit at `at` (Corps / Army, Fleet / Armada).
 struct MergeUnitsCommand {
     aoc::PlayerId player;
@@ -307,6 +315,6 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         BullyCityStateCommand, DeclareWarCommand, MakePeaceCommand,
                                         DenounceCommand, DeclareFriendshipCommand, SendDelegationCommand,
                                         EstablishEmbassyCommand, OpenBordersCommand, ProposeDealCommand,
-                                        RespondProposalCommand, EndTurnCommand>;
+                                        RespondProposalCommand, PlaceDistrictCommand, EndTurnCommand>;
 
 } // namespace aoc::debug

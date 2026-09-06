@@ -138,6 +138,18 @@ void buildWorld(World& w) {
     alpha.buildingLevels().levels[1] = 3;
 
     aoc::game::City& beta = p1.addCity({12, 9}, "Beta");
+    {
+        // v23: a queued district remembers the tile the human picked for it.
+        aoc::sim::ProductionQueueItem district{};
+        district.type          = aoc::sim::ProductionItemType::District;
+        district.itemId        = static_cast<uint16_t>(aoc::sim::DistrictType::Campus);
+        district.name          = "Campus";
+        district.totalCost     = 60.0f;
+        district.progress      = 12.0f;
+        district.targetTile    = {13, 10};
+        district.hasTargetTile = true;
+        beta.production().queue.push_back(std::move(district));
+    }
     beta.stockpile().goods[199] = 5;
     beta.stockpile().goods[42]  = 1;
 
@@ -470,6 +482,15 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(loaded.diplomacy.haveMet(aoc::PlayerId{0}, aoc::PlayerId{1}));
     CHECK(loaded.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).metOnTurn == 21);
     CHECK(loaded.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).turnsSincePeace == 4);
+    {
+        const aoc::game::City& lBeta = *lp1.cities()[0];
+        REQUIRE_FALSE(lBeta.production().queue.empty());
+        const aoc::sim::ProductionQueueItem& lDistrict = lBeta.production().queue.front();
+        CHECK(lDistrict.type == aoc::sim::ProductionItemType::District);
+        CHECK(lDistrict.hasTargetTile);
+        CHECK(lDistrict.targetTile == aoc::hex::AxialCoord{13, 10});
+        CHECK(lDistrict.progress == doctest::Approx(12.0f));
+    }
     CHECK(loaded.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).warDeclaredOnTurn == 9);
     CHECK(loaded.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).friendshipUntilTurn == 55);
     CHECK(loaded.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).openBordersUntilTurn == 40);

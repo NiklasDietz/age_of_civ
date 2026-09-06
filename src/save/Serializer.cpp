@@ -733,6 +733,9 @@ void writeProductionQueuesSection(WriteBuffer& out, const aoc::game::GameState& 
                     section.writeString(item.name);
                     section.writeF32(item.totalCost);
                     section.writeF32(item.progress);
+                    section.writeI32(item.targetTile.q);                            // v23
+                    section.writeI32(item.targetTile.r);                            // v23
+                    section.writeU8(item.hasTargetTile ? uint8_t{1} : uint8_t{0});  // v23
                 }
             }
             ++cityIndex;
@@ -2587,6 +2590,8 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                     item.name      = buf.readString();
                     item.totalCost = buf.readF32();
                     item.progress  = buf.readF32();
+                    item.targetTile    = {buf.readI32(), buf.readI32()}; // v23
+                    item.hasTargetTile = buf.readU8() != 0;             // v23
                     queue.queue.push_back(std::move(item));
                 }
 

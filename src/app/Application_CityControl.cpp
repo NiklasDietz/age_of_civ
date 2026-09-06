@@ -15,6 +15,7 @@
 #include "aoc/simulation/unit/BuilderActions.hpp"
 #include "aoc/simulation/unit/UnitOrders.hpp"
 #include "aoc/simulation/unit/Promotion.hpp"
+#include "aoc/simulation/city/DistrictPlacement.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/diplomacy/DealProposals.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
@@ -1055,6 +1056,92 @@ void Application::executeGameControlCommand(const aoc::debug::RespondProposalCom
                                                             this->m_gameState.currentTurn());
     if (rc != ErrorCode::Ok) {
         LOG_WARN("Proposal answer by player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
+                 static_cast<int>(describeError(rc).size()), describeError(rc).data());
+    }
+}
+
+void Application::registerDistrictRoutes() {
+    using DSM = aoc::debug::DebugServer::Method;
+    using Query = std::unordered_map<std::string, std::string>;
+
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/city/district/place",
+        [this](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t cityQ = 0;
+            int32_t cityR = 0;
+            int32_t district = 0;
+            int32_t tileQ = 0;
+            int32_t tileR = 0;
+            std::string err;
+            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", cityQ, err)
+                || !readIntParam(q, "r", cityR, err) || !readIntParam(q, "district", district, err)
+                || !readIntParam(q, "tileQ", tileQ, err) || !readIntParam(q, "tileR", tileR, err)) {
+                return err;
+            }
+            if (district < 0 || district >= static_cast<int32_t>(aoc::sim::DistrictType::Count)) {
+                return std::string("{\"error\":\"district out of range\"}");
+            }
+            std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+            this->m_pendingCommands.push_back(aoc::debug::PlaceDistrictCommand{
+                static_cast<aoc::PlayerId>(player), {cityQ, cityR}, static_cast<uint8_t>(district),
+                {tileQ, tileR}});
+            return std::string("{\"queued\":true}");
+        });
+
+    this->m_debugServer->routeJson(
+        DSM::Get, "/game/city/district/sites",
+        [this](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t cityQ = 0;
+            int32_t cityR = 0;
+            int32_t district = 0;
+            std::string err;
+            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", cityQ, err)
+                || !readIntParam(q, "r", cityR, err) || !readIntParam(q, "district", district, err)) {
+                return err;
+            }
+            if (district < 0 || district >= static_cast<int32_t>(aoc::sim::DistrictType::Count)) {
+                return std::string("{\"error\":\"district out of range\"}");
+            }
+            const aoc::game::Player* owner = this->m_gameState.player(static_cast<aoc::PlayerId>(player));
+            const aoc::game::City* city = owner != nullptr ? owner->cityAt({cityQ, cityR}) : nullptr;
+            if (city == nullptr) {
+                return std::string("{\"error\":\"no such city\"}");
+            }
+            const aoc::sim::DistrictType type = static_cast<aoc::sim::DistrictType>(district);
+            const aoc::hex::AxialCoord best =
+                aoc::sim::bestDistrictTile(this->m_gameState, this->m_hexGrid, *city, type);
+            std::string json = "{\"best\":{\"q\":" + std::to_string(best.q) + ",\"r\":"
+                               + std::to_string(best.r) + "},\"sites\":[";
+            bool first = true;
+            for (const aoc::hex::AxialCoord& tile :
+                 aoc::sim::districtCandidateTiles(this->m_gameState, this->m_hexGrid, *city, type)) {
+                if (!first) { json += ","; }
+                first = false;
+                json += "{\"q\":" + std::to_string(tile.q) + ",\"r\":" + std::to_string(tile.r)
+                        + ",\"score\":"
+                        + std::to_string(static_cast<int32_t>(aoc::sim::districtTileScore(
+                              this->m_gameState, this->m_hexGrid, type, tile)))
+                        + "}";
+            }
+            json += "]}";
+            return json;
+        });
+}
+
+void Application::executeGameControlCommand(const aoc::debug::PlaceDistrictCommand& cmd) {
+    const ErrorCode rc = aoc::sim::requestPlaceDistrict(
+        this->m_gameState, this->m_hexGrid, cmd.player, cmd.cityLocation,
+        static_cast<aoc::sim::DistrictType>(cmd.district), cmd.tile);
+    if (rc != ErrorCode::Ok) {
+        LOG_WARN("District placement for player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
                  static_cast<int>(describeError(rc).size()), describeError(rc).data());
     }
 }

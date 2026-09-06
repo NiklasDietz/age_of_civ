@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include "aoc/core/ErrorCodes.hpp"
 #include "aoc/core/Types.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/simulation/city/District.hpp"
@@ -76,6 +77,16 @@ enum class DistrictTileReason : uint8_t {
 [[nodiscard]] hex::AxialCoord bestDistrictTile(const aoc::game::GameState& gameState,
                                                const aoc::map::HexGrid& grid,
                                                const aoc::game::City& city, DistrictType type);
+
+/// The human's choice of tile for a district his city is already building. The
+/// tile is stored on the queued item and used at completion while it is still
+/// legal; otherwise the scorer takes over. EntityNotFound for a missing player
+/// or city, InvalidUnitAction with the tile reason when the tile is not
+/// allowed, InvalidState when the city is not building that district (queue it
+/// first: the queue owns the cost and the tech gate).
+ErrorCode requestPlaceDistrict(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                               PlayerId player, hex::AxialCoord cityAt, DistrictType type,
+                               hex::AxialCoord tile);
 
 /// Put the district on `at`: the improvement there is removed (and its pillage
 /// flag cleared) and the tile stops being worked. Returns the placed district.
