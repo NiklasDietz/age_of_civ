@@ -157,3 +157,34 @@ TEST_CASE("requestAttack accepts a city tile, and needs a war to do it") {
     CHECK(s.city->combat().hp < aoc::sim::CITY_BASE_HP);
     CHECK(s.attacker->movementRemaining() == 0);
 }
+
+TEST_CASE("walk-in is blocked while the city has hit points") {
+    // pressIntoCity must NOT capture a wall-less city at full HP.
+    Siege s;
+    // No walls -- would have been an instant capture before Phase 3.2.
+    CHECK(s.city->combat().hp == aoc::sim::CITY_BASE_HP);
+    const aoc::sim::CityAttackResult r =
+        aoc::sim::pressIntoCity(s.world.gameState, s.world.grid, *s.attacker, *s.city, 1);
+    CHECK_FALSE(r.captured);
+    CHECK(r.repelled);
+    CHECK(r.cityDamage > 0);
+    CHECK(s.city->combat().hp < aoc::sim::CITY_BASE_HP); // damage was applied
+    CHECK(s.city->owner() == PlayerId{1});               // city still belongs to the defender
+    CHECK(s.attacker->hitPoints() < 100);                // attacker pays counter-damage
+    CHECK(s.attacker->hitPoints() >= 1);                 // a city never kills outright
+}
+
+TEST_CASE("walk-in captures when hp reaches zero") {
+    // pressIntoCity captures immediately if a single blow zeroes the city.
+    Siege s;
+    s.city->combat().hp = 1; // one touch away from falling
+    const aoc::sim::CityAttackResult r =
+        aoc::sim::pressIntoCity(s.world.gameState, s.world.grid, *s.attacker, *s.city, 2);
+    CHECK(r.captured);
+    CHECK_FALSE(r.repelled);
+    CHECK(s.attacker->position() == AxialCoord{12, 9}); // captor moves onto the tile
+    aoc::game::Player* winner = s.world.gameState.player(PlayerId{0});
+    REQUIRE(winner != nullptr);
+    CHECK(winner->cityAt({12, 9}) != nullptr);
+    CHECK(winner->cityAt({12, 9})->owner() == PlayerId{0});
+}

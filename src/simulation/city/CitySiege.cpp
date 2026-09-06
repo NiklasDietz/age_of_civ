@@ -156,20 +156,25 @@ CityAttackResult pressIntoCity(aoc::game::GameState& gameState, aoc::map::HexGri
         return result;
     }
 
-    // The walls are down, so the walk-in takes the city, exactly as it did
-    // before cities had hit points.
-    //
-    // KNOWN GAP: this path ignores city hit points. Grinding them down here
-    // was the obvious next step and was measured: it removes conquest from the
-    // game outright -- seed 42, 4 players, 500 turns went from 43 captures to
-    // 0, the run ending on a loyalty collapse instead -- because the AI has no
-    // behaviour that parks next to a city and keeps shelling it. City hit
-    // points therefore govern deliberate attacks (the human's right-click, the
-    // debug route, the MCP tool and the AI shelling a city it already stands
-    // beside), and the walk-in keeps the old rule until that AI behaviour
-    // lands with the rest of Phase 3.2.
-    captureCity(gameState, grid, attacker, city);
-    result.captured = true;
+    // Walls are down. The walk-in grinds the city's hit points and captures
+    // only when they reach zero. No RNG: Movement is deterministic; a city
+    // fights back even without a wall bombardment range. We use the
+    // expected-value of computeCombatDamage (random factor = 1.0) without
+    // HP-ratio scaling on the attacker so a desperate last-ditch charge still
+    // bites at full strength.
+    const int32_t defStr  = cityDefenceStrength(gameState, city);
+    const int32_t atkStr  = static_cast<int32_t>(attacker.typeDef().combatStrength);
+    result.cityDamage     = std::clamp(30 * atkStr / std::max(1, defStr), 0, city.combat().hp);
+    result.attackerDamage = std::clamp(30 * defStr / std::max(1, atkStr), 0, 100);
+    city.combat().hp -= result.cityDamage;
+    attacker.setHitPoints(std::max(1, attacker.hitPoints() - result.attackerDamage));
+
+    if (!city.combat().isAlive()) {
+        captureCity(gameState, grid, attacker, city);
+        result.captured = true;
+        return result;
+    }
+    result.repelled = true;
     return result;
 }
 
