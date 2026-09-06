@@ -666,6 +666,24 @@ void AIController::manageGreatPeople(aoc::game::GameState& gameState,
                 utility = bh.cultureFocus * static_cast<float>(claimable) * 0.2f;
                 break;
             }
+            case GreatPersonType::Prophet: {
+                // Worth most to a civ that has no religion of its own yet.
+                const bool godless =
+                    player->faith().foundedReligion == aoc::sim::NO_RELIGION;
+                utility = bh.religiousZeal * (godless ? 1.5f : 0.4f);
+                break;
+            }
+            case GreatPersonType::Writer:
+            case GreatPersonType::Musician: {
+                // Worth most when there is somewhere to put the work.
+                int32_t freeSlots = 0;
+                for (const std::unique_ptr<aoc::game::City>& c : player->cities()) {
+                    if (c == nullptr) { continue; }
+                    freeSlots += aoc::sim::freeGreatWorkSlots(*c);
+                }
+                utility = bh.cultureFocus * (freeSlots > 0 ? 1.2f : 0.3f);
+                break;
+            }
             case GreatPersonType::Merchant: {
                 // Stronger utility when treasury is tight.
                 const float treasury  = static_cast<float>(player->treasury());

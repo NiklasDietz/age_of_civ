@@ -65,6 +65,21 @@ static const std::array<GreatPersonDef, GREAT_PERSON_COUNT> s_greatPersonDefs = 
     {18, "Themistocles",  GreatPersonType::Admiral, "Salamis: heal all ships within 2 hexes to full."},
     {19, "Horatio Nelson",GreatPersonType::Admiral, "Trafalgar: heal all ships within 2 hexes to full."},
     {20, "Yi Sun-sin",    GreatPersonType::Admiral, "Turtle Ship: heal all ships within 2 hexes to full."},
+
+    // Prophets (21-23)
+    {21, "Siddhartha Gautama", GreatPersonType::Prophet, "Enlightenment: +300 faith, founds a religion."},
+    {22, "Confucius",          GreatPersonType::Prophet, "Analects: +300 faith, founds a religion."},
+    {23, "Zoroaster",          GreatPersonType::Prophet, "Avesta: +300 faith, founds a religion."},
+
+    // Writers (24-26)
+    {24, "Homer",              GreatPersonType::Writer, "Iliad: a Great Work of Writing."},
+    {25, "Murasaki Shikibu",   GreatPersonType::Writer, "Genji: a Great Work of Writing."},
+    {26, "Leo Tolstoy",        GreatPersonType::Writer, "War and Peace: a Great Work of Writing."},
+
+    // Musicians (27-29)
+    {27, "Ludwig van Beethoven", GreatPersonType::Musician, "Ninth Symphony: a Great Work of Music."},
+    {28, "Johann S. Bach",       GreatPersonType::Musician, "Mass in B minor: a Great Work of Music."},
+    {29, "Frederic Chopin",      GreatPersonType::Musician, "Nocturnes: a Great Work of Music."},
 }};
 
 const std::array<GreatPersonDef, GREAT_PERSON_COUNT>& allGreatPersonDefs() {
@@ -125,6 +140,28 @@ void accumulateGreatPeoplePoints(aoc::game::GameState& gameState, PlayerId playe
                     }
                     if (district.buildings.empty()) {
                         gpComp.points[static_cast<std::size_t>(GreatPersonType::General)] += 1.0f;
+                    }
+                    break;
+
+                case DistrictType::HolySite:
+                    // Holy Site: +2 Prophet points per building
+                    for ([[maybe_unused]] BuildingId bid : district.buildings) {
+                        gpComp.points[static_cast<std::size_t>(GreatPersonType::Prophet)] += 2.0f;
+                    }
+                    if (district.buildings.empty()) {
+                        gpComp.points[static_cast<std::size_t>(GreatPersonType::Prophet)] += 1.0f;
+                    }
+                    break;
+
+                case DistrictType::Theatre:
+                    // Theatre: writers and musicians both come out of it.
+                    for ([[maybe_unused]] BuildingId bid : district.buildings) {
+                        gpComp.points[static_cast<std::size_t>(GreatPersonType::Writer)] += 1.0f;
+                        gpComp.points[static_cast<std::size_t>(GreatPersonType::Musician)] += 1.0f;
+                    }
+                    if (district.buildings.empty()) {
+                        gpComp.points[static_cast<std::size_t>(GreatPersonType::Writer)] += 0.5f;
+                        gpComp.points[static_cast<std::size_t>(GreatPersonType::Musician)] += 0.5f;
                     }
                     break;
 
@@ -428,6 +465,49 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                 }
             }
             LOG_INFO("Artist culture-bombed %d tiles", claimed);
+            break;
+        }
+
+        case GreatPersonType::Prophet: {
+            // Faith in the bank, and a religion if the civ has none yet.
+            PlayerFaithComponent& faith = playerObj->faith();
+            faith.faith += 300.0f;
+            if (faith.foundedReligion == NO_RELIGION) {
+                faith.hasPantheon = true;
+                LOG_INFO("Prophet: +300 faith, and the civ is ready to found a religion");
+            } else {
+                LOG_INFO("Prophet: +300 faith");
+            }
+            break;
+        }
+
+        case GreatPersonType::Writer: {
+            if (aoc::game::City* home =
+                    cityWithFreeGreatWorkSlot(*playerObj, grid, gp.position)) {
+                const GreatWork work{GreatWorkType::Writing, gp.owner, gp.namedId,
+                                     gameState.currentTurn()};
+                static_cast<void>(placeGreatWork(*home, work));
+                LOG_INFO("Writer placed a work of Writing in %s", home->name().c_str());
+                break;
+            }
+            // Nowhere to shelve it: the words still move people, so they push
+            // the civic the player is working through instead.
+            playerObj->civics().researchProgress += 100.0f;
+            LOG_INFO("Writer: no free slot, +100 civic progress instead");
+            break;
+        }
+
+        case GreatPersonType::Musician: {
+            if (aoc::game::City* home =
+                    cityWithFreeGreatWorkSlot(*playerObj, grid, gp.position)) {
+                const GreatWork work{GreatWorkType::Music, gp.owner, gp.namedId,
+                                     gameState.currentTurn()};
+                static_cast<void>(placeGreatWork(*home, work));
+                LOG_INFO("Musician placed a work of Music in %s", home->name().c_str());
+                break;
+            }
+            playerObj->civics().researchProgress += 100.0f;
+            LOG_INFO("Musician: no free slot, +100 civic progress instead");
             break;
         }
 

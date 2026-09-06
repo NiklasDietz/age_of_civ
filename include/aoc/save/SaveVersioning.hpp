@@ -101,6 +101,8 @@ namespace aoc::save {
 /* v26 (2026-09-06): GreatPersonType gained Admiral, so the per-type Great
  * People arrays (points, recruited, exhausted) carry six entries instead of
  * five. Every v25 save becomes unloadable. */
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 26;
+/* v27 (2026-09-06): the same arrays grew again to nine entries with Prophet,
+ * Writer and Musician. Every v26 save becomes unloadable. */
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 27;
 
 } // namespace aoc::save

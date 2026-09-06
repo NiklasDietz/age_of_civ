@@ -104,7 +104,11 @@ TEST_CASE("progress rows show points against the threshold and where they come f
     CHECK(f.labelsContaining("Artist  1 / 60 points") == 1);
     CHECK(f.labelsContaining("Sources: 1 Libraries") == 1);
     CHECK(f.labelsContaining("Admiral  0 / 60 points") == 1);
-    CHECK(f.labelsContaining("Sources: 0 districts, 0 buildings  (none yet)") == 3);  // General, Merchant, Admiral
+    CHECK(f.labelsContaining("Prophet  0 / 60 points") == 1);
+    CHECK(f.labelsContaining("Writer  0 / 60 points") == 1);
+    CHECK(f.labelsContaining("Musician  0 / 60 points") == 1);
+    // General, Merchant, Admiral, Prophet, Writer, Musician all start dry.
+    CHECK(f.labelsContaining("Sources: 0 districts, 0 buildings  (none yet)") == 6);
     CHECK(f.labelsContaining("None yet.") == 1);
 }
 

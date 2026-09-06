@@ -143,3 +143,65 @@ TEST_CASE("retiring a great person pays gold and era score and takes it off the 
     CHECK(aoc::sim::requestRetireGreatPerson(w.gameState, PlayerId{0}, {7, 7})
           == aoc::ErrorCode::InvalidArgument);
 }
+
+namespace {
+
+/// Recruit one person of `type` for player 0 and return its unit.
+aoc::game::Unit* recruitOf(aoc::test::World& w, GreatPersonType type) {
+    aoc::game::Player& p = *w.gameState.players()[0];
+    p.greatPeople().points[static_cast<uint8_t>(type)] = p.greatPeople().threshold(type) + 1.0f;
+    aoc::sim::checkGreatPeopleRecruitment(w.gameState, PlayerId{0});
+    for (const std::unique_ptr<aoc::game::Unit>& u : p.units()) {
+        if (u->typeId() == GREAT_PERSON && !u->greatPerson().isActivated) { return u.get(); }
+    }
+    return nullptr;
+}
+
+} // namespace
+
+TEST_CASE("a Prophet brings faith and readies a religion for a civ that has none") {
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Home");
+    aoc::game::Player& p = *w.gameState.players()[0];
+    const float faithBefore = p.faith().faith;
+    REQUIRE(p.faith().foundedReligion == aoc::sim::NO_RELIGION);
+
+    REQUIRE(recruitOf(w, GreatPersonType::Prophet) != nullptr);
+    CHECK(aoc::sim::requestGreatPersonActivation(w.gameState, w.grid, PlayerId{0}, {5, 5})
+          == aoc::ErrorCode::Ok);
+    CHECK(p.faith().faith > faithBefore);
+    CHECK(p.faith().hasPantheon);
+    CHECK(p.unitCount() == 0); // spent
+}
+
+TEST_CASE("a Writer and a Musician push the civics along when no slot is free") {
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Home"); // no Theatre, so no slot
+    aoc::game::Player& p = *w.gameState.players()[0];
+    p.civics().initialize();
+
+    const float before = p.civics().researchProgress;
+    REQUIRE(recruitOf(w, GreatPersonType::Writer) != nullptr);
+    CHECK(aoc::sim::requestGreatPersonActivation(w.gameState, w.grid, PlayerId{0}, {5, 5})
+          == aoc::ErrorCode::Ok);
+    const float afterWriter = p.civics().researchProgress;
+    CHECK(afterWriter > before);
+
+    REQUIRE(recruitOf(w, GreatPersonType::Musician) != nullptr);
+    CHECK(aoc::sim::requestGreatPersonActivation(w.gameState, w.grid, PlayerId{0}, {5, 5})
+          == aoc::ErrorCode::Ok);
+    CHECK(p.civics().researchProgress > afterWriter);
+}
+
+TEST_CASE("the roster now covers nine types and every one of them can be recruited") {
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Home");
+    CHECK(static_cast<int>(GreatPersonType::Count) == 9);
+    for (uint8_t t = 0; t < static_cast<uint8_t>(GreatPersonType::Count); ++t) {
+        aoc::game::Unit* person = recruitOf(w, static_cast<GreatPersonType>(t));
+        CHECK(person != nullptr); // every type has a def behind it
+        if (person != nullptr) {
+            person->greatPerson().isActivated = true; // park it, recruit the next
+        }
+    }
+}

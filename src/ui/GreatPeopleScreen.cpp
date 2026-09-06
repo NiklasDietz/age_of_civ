@@ -77,7 +77,10 @@ struct PointSources {
                                (type == GreatPersonType::Engineer && d.type == DistrictType::Industrial) ||
                                (type == GreatPersonType::General && d.type == DistrictType::Encampment) ||
                                (type == GreatPersonType::Merchant && d.type == DistrictType::Commercial) ||
-                               (type == GreatPersonType::Admiral && d.type == DistrictType::Harbor);
+                               (type == GreatPersonType::Admiral && d.type == DistrictType::Harbor) ||
+                               (type == GreatPersonType::Prophet && d.type == DistrictType::HolySite) ||
+                               (type == GreatPersonType::Writer && d.type == DistrictType::Theatre) ||
+                               (type == GreatPersonType::Musician && d.type == DistrictType::Theatre);
             if (feeds) {
                 ++out.districts;
                 out.buildings += static_cast<int32_t>(d.buildings.size());

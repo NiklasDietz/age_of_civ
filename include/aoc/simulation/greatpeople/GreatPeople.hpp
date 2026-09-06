@@ -26,6 +26,9 @@ enum class GreatPersonType : uint8_t {
     Merchant,
     Admiral,   ///< Naval counterpart to the General. Maps to the roster's
                ///< Admiral category, which already held twelve named admirals.
+    Prophet,   ///< Faith and the founding of a religion.
+    Writer,    ///< A Great Work of Writing.
+    Musician,  ///< A Great Work of Music.
     Count
 };
 
@@ -37,7 +40,7 @@ struct GreatPersonDef {
 };
 
 /// Total number of great person definitions.
-inline constexpr uint8_t GREAT_PERSON_COUNT = 21;
+inline constexpr uint8_t GREAT_PERSON_COUNT = 30;
 
 /// Get all great person definitions.
 [[nodiscard]] const std::array<GreatPersonDef, GREAT_PERSON_COUNT>& allGreatPersonDefs();
