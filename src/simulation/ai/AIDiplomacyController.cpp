@@ -707,6 +707,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                 if (selfP != nullptr) {
                     const uint16_t totalGoods = market.goodsCount();
                     uint16_t targetGood = 0xFFFF;
+                    float    bestRatio  = 0.0f;
                     for (uint16_t g = 0; g < totalGoods; ++g) {
                         if (diplomacy.hasResourceEmbargo(this->m_player, other, g)) { continue; }
                         // We-hold check: at least one of our cities has
@@ -724,9 +725,13 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                         if (basePrice <= 0) { continue; }
                         const float ratio =
                             static_cast<float>(currentPrice) / static_cast<float>(basePrice);
-                        if (ratio > 1.2f) {
+                        // Keep looking: the point is the good they are MOST
+                        // dependent on. Taking the first one over the line
+                        // embargoed whichever good happened to have the lowest
+                        // id, which is leverage thrown away.
+                        if (ratio > 1.2f && ratio > bestRatio) {
+                            bestRatio  = ratio;
                             targetGood = g;
-                            break;
                         }
                     }
                     if (targetGood != 0xFFFF) {

@@ -20,6 +20,7 @@
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
+#include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
@@ -323,25 +324,48 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
     // Civic research selection
     PlayerCivicComponent& civic = myPlayer->civics();
     if (!civic.currentResearch.isValid()) {
+        // The tech branch above has its own copy scoped to its block.
+        const LeaderBehavior& beh = leaderPersonality(myPlayer->civId()).behavior;
         const uint16_t count = civicCount();
         CivicId best{};
-        int32_t bestScore = std::numeric_limits<int32_t>::min();
+        float bestScore = -std::numeric_limits<float>::max();
         for (uint16_t i = 0; i < count; ++i) {
             CivicId id{i};
             if (civic.canResearch(id)) {
                 const CivicDef& def = civicDef(id);
-                int32_t score = 0;
+                float score = 0.0f;
                 if (!def.unlockedGovernmentIds.empty()) {
-                    score += 5000;
+                    score += 5000.0f;
                 }
-                if (!def.unlockedPolicyIds.empty()) {
-                    score += 3000;
+                // A civic is worth what its policies are worth to THIS leader.
+                // Until 2026-09-06 every unlock was a flat +3000 and no
+                // personality gene entered civic scoring at all, so a warmonger
+                // and a pacifist picked the same civics in the same order for
+                // the whole game. Slot type is the classification the policy
+                // table already carries.
+                for (const uint8_t policyId : def.unlockedPolicyIds) {
+                    float weight = 1.0f;
+                    switch (policyCardDef(policyId).slotType) {
+                        case PolicySlotType::Military:
+                            weight = beh.militaryAggression;
+                            break;
+                        case PolicySlotType::Economic:
+                            weight = beh.economicFocus;
+                            break;
+                        case PolicySlotType::Diplomatic:
+                            weight = beh.diplomaticOpenness;
+                            break;
+                        case PolicySlotType::Wildcard:
+                            weight = beh.cultureFocus;
+                            break;
+                    }
+                    score += 3000.0f * weight;
                 }
                 // Foreign Trade (CivicId{2}) enables Traders -- high early priority
                 if (id == CivicId{2}) {
-                    score += 6000;
+                    score += 6000.0f * beh.economicFocus;
                 }
-                score -= def.cultureCost;
+                score -= static_cast<float>(def.cultureCost);
 
                 if (score > bestScore) {
                     bestScore = score;

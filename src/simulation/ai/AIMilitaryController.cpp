@@ -390,9 +390,17 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                 }
             }
             bool merged = false;
+            // enemyNear does not change inside the loop, so it decides whether
+            // to scan at all. An off-map neighbour used to share this break and
+            // abandon the whole scan: a unit on the western or northern edge
+            // meets an invalid tile first and never looked at the five real
+            // neighbours behind it, so edge units could not form a Corps.
             for (const aoc::hex::AxialCoord& nbr : neighborTiles) {
-                if (enemyNear || !grid.isValid(nbr)) {
+                if (enemyNear) {
                     break;
+                }
+                if (!grid.isValid(nbr)) {
+                    continue;
                 }
                 const aoc::game::Unit* twin = gsPlayer->unitAt(nbr);
                 if (twin == nullptr || twin->typeId() != unit->typeId() ||

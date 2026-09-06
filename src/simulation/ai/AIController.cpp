@@ -804,6 +804,7 @@ static float scoreSettler(const LeaderBehavior& behavior,
                            int32_t ownedCities,
                            int32_t targetCities,
                            int32_t cityPop,
+                           int32_t settlePopThreshold,
                            int32_t settlerCount,
                            int32_t militaryUnits,
                            float   treasury,
@@ -818,8 +819,13 @@ static float scoreSettler(const LeaderBehavior& behavior,
         0.0f, static_cast<float>(targetCities),
         aoc::sim::ai::UtilityCurve::inverse()
     };
-    // pop_ready: prefer pop >= 2 but allow pop 1 at reduced score
-    const float popScore = (cityPop >= 2) ? 1.0f : 0.4f;
+    // pop_ready: a city at the leader's threshold is ready, below it the
+    // settler is still worth something but scores lower. The threshold comes
+    // from expansionism through computeScaledTargets: an expansionist settles
+    // at pop 1, a cautious leader waits for pop 2. It was computed and then
+    // dropped on the floor here until 2026-09-06, so every leader waited for
+    // pop 2 no matter how expansionist it was written to be.
+    const float popScore = (cityPop >= settlePopThreshold) ? 1.0f : 0.4f;
 
     // no_settler_exists: strongly avoid a second queued settler
     const float noSettlerScore = (settlerCount == 0) ? 1.0f : 0.1f;
@@ -1139,6 +1145,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 ownedCityCount,
                 targets.maxCities,
                 city.population(),
+                targets.settlePopThreshold,
                 unitCounts.settlers,
                 unitCounts.military,
                 treasuryFloat,
