@@ -267,3 +267,85 @@ TEST_CASE("a wall tier needs the tier below it and its own tech") {
     CHECK_FALSE(aoc::sim::canBuildBuilding(s.world.gameState, PlayerId{1}, city,
                                            aoc::BuildingId{49}));
 }
+
+/// Player 0 has taken Beta, which player 1 founded.
+struct Conquered {
+    aoc::test::World world = aoc::test::makeWorld(2);
+    aoc::game::City* taken = nullptr;
+
+    Conquered() {
+        aoc::test::addCityAt(this->world, PlayerId{0}, 4, 4, "Alpha")
+            .setOriginalOwner(PlayerId{0});
+        aoc::game::City& beta = aoc::test::addCityAt(this->world, PlayerId{1}, 12, 9, "Beta");
+        beta.setOriginalOwner(PlayerId{1});
+        beta.setOriginalCapital(false); // Beta is a second city, not a capital
+        aoc::test::addCityAt(this->world, PlayerId{1}, 18, 9, "Gamma")
+            .setOriginalOwner(PlayerId{1});
+        this->taken = this->world.gameState.transferCity({12, 9}, PlayerId{0});
+        REQUIRE(this->taken != nullptr);
+    }
+};
+
+TEST_CASE("razing a conquered city removes it and gives its land back to nobody") {
+    Conquered c;
+    const int32_t index = c.world.grid.toIndex(AxialCoord{12, 9});
+    c.world.grid.setOwner(index, PlayerId{0});
+
+    CHECK(aoc::sim::requestCityDisposition(c.world.gameState, c.world.grid, PlayerId{0}, {12, 9},
+                                           aoc::sim::CityDisposition::Raze) == ErrorCode::Ok);
+
+    CHECK(c.world.gameState.cityHolder({12, 9}) == nullptr);
+    CHECK(c.world.grid.owner(index) == aoc::INVALID_PLAYER);
+    CHECK(c.world.grid.antiquitySite(index) == 1); // ruins outlive the city
+    aoc::game::Player* burner = c.world.gameState.player(PlayerId{1});
+    REQUIRE(burner != nullptr);
+    CHECK_FALSE(burner->victoryTracker().isEliminated); // Gamma still stands
+}
+
+TEST_CASE("liberating a conquered city hands it back to the civ that founded it") {
+    Conquered c;
+    CHECK(aoc::sim::requestCityDisposition(c.world.gameState, c.world.grid, PlayerId{0}, {12, 9},
+                                           aoc::sim::CityDisposition::Liberate) == ErrorCode::Ok);
+
+    aoc::game::Player* founder = c.world.gameState.player(PlayerId{1});
+    aoc::game::Player* captor  = c.world.gameState.player(PlayerId{0});
+    REQUIRE(founder != nullptr);
+    REQUIRE(captor != nullptr);
+    const aoc::game::City* freed = founder->cityAt({12, 9});
+    REQUIRE(freed != nullptr);
+    CHECK(freed->owner() == PlayerId{1});
+    CHECK(captor->cityAt({12, 9}) == nullptr);
+    CHECK(freed->loyalty().loyalty == doctest::Approx(100.0f)); // glad to be home
+}
+
+TEST_CASE("a city you founded is not yours to raze, and a capital is never burned") {
+    Conquered c;
+    // Alpha is player 0's own founding city.
+    CHECK(aoc::sim::requestCityDisposition(c.world.gameState, c.world.grid, PlayerId{0}, {4, 4},
+                                           aoc::sim::CityDisposition::Raze)
+          == ErrorCode::InvalidState);
+    CHECK(c.world.gameState.cityHolder({4, 4}) != nullptr);
+
+    // Someone else's city that you do not hold is not yours either.
+    CHECK(aoc::sim::requestCityDisposition(c.world.gameState, c.world.grid, PlayerId{0}, {18, 9},
+                                           aoc::sim::CityDisposition::Raze)
+          == ErrorCode::InvalidArgument);
+
+    c.taken->setOriginalCapital(true);
+    CHECK(aoc::sim::requestCityDisposition(c.world.gameState, c.world.grid, PlayerId{0}, {12, 9},
+                                           aoc::sim::CityDisposition::Raze)
+          == ErrorCode::InvalidState);
+    CHECK(c.world.gameState.cityHolder({12, 9}) != nullptr);
+}
+
+TEST_CASE("razing the last city of a civ eliminates it") {
+    Conquered c;
+    aoc::game::Player* victim = c.world.gameState.player(PlayerId{1});
+    REQUIRE(victim != nullptr);
+    // Take Gamma too, so Beta's fate is the civ's fate.
+    REQUIRE(c.world.gameState.transferCity({18, 9}, PlayerId{0}) != nullptr);
+
+    CHECK(aoc::sim::requestCityDisposition(c.world.gameState, c.world.grid, PlayerId{0}, {12, 9},
+                                           aoc::sim::CityDisposition::Raze) == ErrorCode::Ok);
+    CHECK(victim->victoryTracker().isEliminated);
+}

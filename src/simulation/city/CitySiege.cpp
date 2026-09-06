@@ -15,12 +15,15 @@
 #include "aoc/simulation/city/CityBombardment.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/diplomacy/Grievance.hpp"
 #include "aoc/simulation/tech/EraProgression.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 
 #include <algorithm>
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace aoc::sim {
 
@@ -51,6 +54,29 @@ constexpr float MELEE_WALL_SHARE = 0.15f;
         best = std::max(best, static_cast<int32_t>(unit->typeDef().combatStrength));
     }
     return best;
+}
+
+/// A civ with no city left is out, which the Domination ratio needs. `victor`
+/// scores for the kill when it is a real player.
+void eliminateIfLastCityGone(aoc::game::GameState& gameState, PlayerId loser, PlayerId victor) {
+    aoc::game::Player* previous = gameState.player(loser);
+    if (previous == nullptr || previous->victoryTracker().isEliminated) {
+        return;
+    }
+    for (const std::unique_ptr<aoc::game::Player>& holder : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::City>& c : holder->cities()) {
+            if (c != nullptr && c->owner() == loser) {
+                return; // still standing
+            }
+        }
+    }
+    previous->victoryTracker().isEliminated = true;
+    LOG_INFO("Player %u eliminated (last city lost to Player %u)", static_cast<unsigned>(loser),
+             static_cast<unsigned>(victor));
+    aoc::game::Player* winner = gameState.player(victor);
+    if (winner != nullptr) {
+        winner->victoryTracker().eraVictoryPoints += 100;
+    }
 }
 
 } // namespace
@@ -201,30 +227,7 @@ void captureCity(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, aoc::
     taken->combat().lastAttackedTurn = -1000;
 
     // WP-D3: a civ with no city left is out, which the Domination ratio needs.
-    aoc::game::Player* previous = gameState.player(previousOwner);
-    if (previous != nullptr && !previous->victoryTracker().isEliminated) {
-        bool stillHasOwnedCity = false;
-        for (const std::unique_ptr<aoc::game::Player>& holder : gameState.players()) {
-            for (const std::unique_ptr<aoc::game::City>& c : holder->cities()) {
-                if (c != nullptr && c->owner() == previousOwner) {
-                    stillHasOwnedCity = true;
-                    break;
-                }
-            }
-            if (stillHasOwnedCity) {
-                break;
-            }
-        }
-        if (!stillHasOwnedCity) {
-            previous->victoryTracker().isEliminated = true;
-            LOG_INFO("Player %u eliminated (last city captured by Player %u)",
-                     static_cast<unsigned>(previousOwner), static_cast<unsigned>(captor.owner()));
-            aoc::game::Player* winner = gameState.player(captor.owner());
-            if (winner != nullptr) {
-                winner->victoryTracker().eraVictoryPoints += 100;
-            }
-        }
-    }
+    eliminateIfLastCityGone(gameState, previousOwner, captor.owner());
 
     // Score VP per capture, plus the raiding civs' loot.
     aoc::game::Player* captorPlayer = gameState.player(captor.owner());
@@ -272,6 +275,87 @@ void healCities(aoc::game::GameState& gameState, PlayerId player, int32_t curren
         }
         combat.hp = std::min(combat.hp + CITY_HEAL_PER_TURN, combat.maxHP);
     }
+}
+
+ErrorCode requestCityDisposition(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
+                                 PlayerId player, hex::AxialCoord at,
+                                 CityDisposition disposition) {
+    aoc::game::Player* holder = gameState.cityHolder(at);
+    if (holder == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+    aoc::game::City* city = holder->cityAt(at);
+    if (city == nullptr || city->owner() != player) {
+        return ErrorCode::InvalidArgument;
+    }
+    // Only a city taken from someone else can be burned or handed back. Your
+    // own founding cities are not yours to dispose of.
+    const PlayerId founder = city->originalOwner();
+    if (founder == player || founder == INVALID_PLAYER) {
+        return ErrorCode::InvalidState;
+    }
+
+    switch (disposition) {
+        case CityDisposition::Keep:
+            return ErrorCode::Ok; // capture already kept it
+
+        case CityDisposition::Liberate: {
+            aoc::game::Player* home = gameState.player(founder);
+            if (home == nullptr || home->victoryTracker().isEliminated) {
+                return ErrorCode::InvalidState;
+            }
+            aoc::game::City* freed = gameState.transferCity(at, founder);
+            if (freed == nullptr) {
+                return ErrorCode::InvalidState;
+            }
+            // A city given back is glad to be home, and holds together.
+            freed->loyalty().loyalty     = 100.0f;
+            freed->loyalty().unrestTurns = 0;
+            LOG_INFO("City %s liberated to player %u by player %u", freed->name().c_str(),
+                     static_cast<unsigned>(founder), static_cast<unsigned>(player));
+            // The liberator un-eliminates a civ it just handed a city to.
+            home->victoryTracker().isEliminated = false;
+            return ErrorCode::Ok;
+        }
+
+        case CityDisposition::Raze: {
+            if (city->isOriginalCapital()) {
+                return ErrorCode::InvalidState; // a capital is never burned
+            }
+            const std::string name        = city->name();
+            const std::vector<hex::AxialCoord> worked(city->workedTiles().begin(),
+                                                      city->workedTiles().end());
+            std::unique_ptr<aoc::game::City> doomed = holder->releaseCity(city);
+            if (doomed == nullptr) {
+                return ErrorCode::InvalidState;
+            }
+            city = nullptr;   // released: the object dies with `doomed`
+            doomed.reset();
+
+            for (const hex::AxialCoord& tile : worked) {
+                if (grid.isValid(tile)) {
+                    const int32_t index = grid.toIndex(tile);
+                    if (grid.owner(index) == player) {
+                        grid.setOwner(index, INVALID_PLAYER);
+                    }
+                }
+            }
+            if (grid.isValid(at)) {
+                const int32_t index = grid.toIndex(at);
+                grid.setOwner(index, INVALID_PLAYER);
+                grid.setAntiquitySite(index, 1); // ruins outlive the city
+            }
+            LOG_INFO("City %s razed by player %u", name.c_str(), static_cast<unsigned>(player));
+            // Burning a city is remembered by everyone still watching.
+            for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+                if (other == nullptr || other->id() == player) { continue; }
+                other->grievances().addGrievance(GrievanceType::ConqueredCity, player);
+            }
+            eliminateIfLastCityGone(gameState, founder, player);
+            return ErrorCode::Ok;
+        }
+    }
+    return ErrorCode::InvalidArgument;
 }
 
 } // namespace aoc::sim

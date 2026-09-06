@@ -285,6 +285,13 @@ struct MergeUnitsCommand {
     aoc::hex::AxialCoord sourceAt;
 };
 
+/// What `player` does with a city it took from someone else.
+struct CityDispositionCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+    uint8_t disposition; ///< 0 Keep, 1 Raze, 2 Liberate
+};
+
 /// Replace `player`'s vote on the open World Congress proposal.
 struct CongressVoteCommand {
     aoc::PlayerId player;
@@ -302,7 +309,8 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         SetProductionCommand, SetResearchCommand,
                                         AssignSpyMissionCommand, ActivateGreatPersonCommand,
                                         CongressVoteCommand, CongressProposalCommand,
-                                        MergeUnitsCommand, AssignGovernorCommand,
+                                        MergeUnitsCommand, CityDispositionCommand,
+                                        AssignGovernorCommand,
                                         PromoteGovernorCommand, SlotPolicyCommand,
                                         ChangeGovernmentCommand, CityPurchaseCommand,
                                         SetCityFocusCommand, ToggleTileLockCommand,

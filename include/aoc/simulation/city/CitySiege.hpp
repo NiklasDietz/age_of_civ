@@ -103,4 +103,18 @@ void captureCity(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, aoc::
 /// within CITY_HEAL_DELAY_TURNS.
 void healCities(aoc::game::GameState& gameState, PlayerId player, int32_t currentTurn);
 
+/// What a conqueror does with a city it holds.
+enum class CityDisposition : uint8_t {
+    Keep     = 0, ///< Govern it. The default, and what capture itself does.
+    Raze     = 1, ///< Burn it down. The tile keeps its antiquity site.
+    Liberate = 2, ///< Hand it back to the civ that founded it.
+};
+
+/// Raze or liberate a city `player` took from someone else. Keep is a no-op
+/// because capture already keeps. Rejects a city the player founded, a city
+/// they do not hold, and a liberation with nobody to liberate it to.
+[[nodiscard]] ErrorCode requestCityDisposition(aoc::game::GameState& gameState,
+                                               aoc::map::HexGrid& grid, PlayerId player,
+                                               hex::AxialCoord at, CityDisposition disposition);
+
 } // namespace aoc::sim

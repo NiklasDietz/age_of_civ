@@ -299,6 +299,19 @@ def aoc_merge_units(player: int, q: int, r: int, source_q: int, source_r: int) -
 
 
 @mcp.tool()
+def aoc_city_disposition(player: int, q: int, r: int, disposition: int) -> dict:
+    """Decide what `player` does with the city it took from another civ at (q, r).
+    Dispositions: 0 keep (a no-op, since capture already keeps), 1 raze (the city is
+    destroyed, its tiles go back to nobody, the site keeps its ruins, and every other
+    civ remembers it), 2 liberate (the city returns to the civ that founded it, at full
+    loyalty). A city the player founded cannot be disposed of, an original capital
+    cannot be razed, and a liberation needs the founder still to exist. Queues the
+    request; a rejection is logged in the game log.
+    """
+    return _post("/game/city/disposition", player=player, q=q, r=r, disposition=disposition)
+
+
+@mcp.tool()
 def aoc_assign_governor(player: int, q: int, r: int, governor_type: int) -> dict:
     """Seat a named governor in the city owned by `player` at (q, r). Types: 1 Financier
     (+20% gold), 2 Industrialist (+15% production), 3 Diplomat (+8 loyalty), 4 General,
