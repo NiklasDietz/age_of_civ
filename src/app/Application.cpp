@@ -1916,6 +1916,30 @@ ErrorCode Application::initialize(const Config& config) {
                                              4.0f, 0.9f, 0.85f, 0.6f);
         });
 
+    // Raze or liberate a conquered city from its own detail screen. The screen
+    // holds the grid read-only and a razed city stops existing, so the change
+    // and the selection cleanup happen here.
+    this->m_cityDetailScreen.setCityDispositionCallback(
+        [this](aoc::hex::AxialCoord at, uint8_t disposition) {
+            const auto choice = static_cast<aoc::sim::CityDisposition>(disposition);
+            if (this->m_selectedCity != nullptr && this->m_selectedCity->location() == at) {
+                this->m_selectedCity = nullptr;
+            }
+            const ErrorCode rc = aoc::sim::requestCityDisposition(
+                this->m_gameState, this->m_hexGrid, this->m_gameState.humanPlayerId(), at, choice);
+            if (rc != ErrorCode::Ok) {
+                this->m_notificationManager.push(
+                    std::string("Cannot do that with this city: ") + std::string(describeError(rc)),
+                    3.0f, 1.0f, 0.5f, 0.4f);
+                return;
+            }
+            this->closeAllScreens();
+            this->m_notificationManager.push(choice == aoc::sim::CityDisposition::Raze
+                                                 ? "The city has been razed"
+                                                 : "The city has been returned to its founder",
+                                             4.0f, 0.9f, 0.85f, 0.6f);
+        });
+
     // Seed the icon atlas with built-in placeholders so any widget
     // that references `resources.*` / `civs.*` / etc. renders a
     // distinct colour. Optional overrides from `data/icons.txt`.

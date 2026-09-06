@@ -13,6 +13,7 @@
 
 #include "aoc/ui/GameScreens.hpp"
 #include "aoc/ui/StyleTokens.hpp"
+#include "aoc/simulation/city/CitySiege.hpp"
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ui/IconAtlas.hpp"
 #include "aoc/game/GameState.hpp"
@@ -498,6 +499,48 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
                 (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 18.0f}, std::move(seatBtn));
             }
         }
+    }
+
+    // -- Fate of a conquered city: keep, raze or hand it back --
+    // Only for a city someone else founded. Razing and liberating shipped with
+    // a route and an MCP tool but no way to reach them while playing.
+    if (city->originalOwner() != this->m_player && city->originalOwner() != INVALID_PLAYER
+        && this->m_onCityDisposition) {
+        (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
+            PanelData{tokens::BRONZE_DARK, 0.0f});
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{"  Conquered city", kHeaderTextColor, 11.0f});
+
+        const hex::AxialCoord fateLoc = city->location();
+        CityDispositionCallback fate  = this->m_onCityDisposition;
+
+        // A capital is never burned, so the button that cannot work is absent
+        // rather than present and refusing.
+        if (!city->isOriginalCapital()) {
+            ButtonData razeBtn;
+            razeBtn.label        = "Raze this city";
+            razeBtn.fontSize     = 10.0f;
+            razeBtn.cornerRadius = 3.0f;
+            razeBtn.normalColor  = tokens::STATE_DANGER;
+            razeBtn.hoverColor   = tokens::STATE_DANGER;
+            razeBtn.pressedColor = tokens::BRONZE_DARK;
+            razeBtn.onClick      = [fate, fateLoc]() {
+                fate(fateLoc, static_cast<uint8_t>(aoc::sim::CityDisposition::Raze));
+            };
+            (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 18.0f}, std::move(razeBtn));
+        }
+
+        ButtonData freeBtn;
+        freeBtn.label        = "Liberate to its founder";
+        freeBtn.fontSize     = 10.0f;
+        freeBtn.cornerRadius = 3.0f;
+        freeBtn.normalColor  = tokens::BRONZE_BASE;
+        freeBtn.hoverColor   = tokens::BRONZE_LIGHT;
+        freeBtn.pressedColor = tokens::BRONZE_DARK;
+        freeBtn.onClick      = [fate, fateLoc]() {
+            fate(fateLoc, static_cast<uint8_t>(aoc::sim::CityDisposition::Liberate));
+        };
+        (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 18.0f}, std::move(freeBtn));
     }
 
     // -- Purchase hint --

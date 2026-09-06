@@ -203,6 +203,15 @@ public:
         this->m_onPlaceDistrict = std::move(callback);
     }
 
+    /// Called when the player decides the fate of a city they conquered.
+    /// The screen holds the grid read-only, and razing rewrites tile owners,
+    /// so Application performs the change and reports the outcome.
+    /// The second argument is a `aoc::sim::CityDisposition`.
+    using CityDispositionCallback = std::function<void(aoc::hex::AxialCoord, uint8_t)>;
+    void setCityDispositionCallback(CityDispositionCallback callback) {
+        this->m_onCityDisposition = std::move(callback);
+    }
+
     /// The city entity currently displayed by this screen.
     [[nodiscard]] aoc::hex::AxialCoord cityLocation() const { return this->m_cityLocation; }
 
@@ -216,6 +225,7 @@ public:
 
 private:
     PlaceDistrictCallback m_onPlaceDistrict;
+    CityDispositionCallback m_onCityDisposition;
     void buildOverviewTab(UIManager& ui, WidgetId contentPanel);
     void buildProductionTab(UIManager& ui, WidgetId contentPanel);
     void buildBuildingsTab(UIManager& ui, WidgetId contentPanel);

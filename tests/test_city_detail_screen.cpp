@@ -14,6 +14,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
+#include "aoc/simulation/city/CitySiege.hpp"
 #include "aoc/ui/GameScreens.hpp"
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ui/Widget.hpp"
@@ -106,4 +107,48 @@ TEST_CASE("the citizens tab sets the focus") {
     f.screen.switchTab(f.ui, CityDetailScreen::TAB_CITIZENS);
     CHECK(f.labelsContaining("Focus: Production") == 1);
     f.screen.close(f.ui);
+}
+
+TEST_CASE("the fate of a conquered city is offered only for a city someone else founded") {
+    Fixture f;
+    AxialCoord chosen{};
+    uint8_t picked = 255;
+    f.screen.setCityDispositionCallback([&chosen, &picked](AxialCoord at, uint8_t disposition) {
+        chosen = at;
+        picked = disposition;
+    });
+
+    SUBCASE("a city you founded offers nothing") {
+        f.city().setOriginalOwner(PlayerId{0});
+        f.screen.open(f.ui);
+        CHECK(f.labelsContaining("Conquered city") == 0);
+        CHECK_FALSE(f.clickButton("Raze this city"));
+        CHECK_FALSE(f.clickButton("Liberate"));
+        f.screen.close(f.ui);
+    }
+
+    SUBCASE("a conquered city offers both fates") {
+        f.city().setOriginalOwner(PlayerId{1});
+        f.city().setOriginalCapital(false);
+        f.screen.open(f.ui);
+        CHECK(f.labelsContaining("Conquered city") == 1);
+        REQUIRE(f.clickButton("Raze this city"));
+        CHECK(chosen == f.home);
+        CHECK(picked == static_cast<uint8_t>(aoc::sim::CityDisposition::Raze));
+
+        REQUIRE(f.clickButton("Liberate"));
+        CHECK(picked == static_cast<uint8_t>(aoc::sim::CityDisposition::Liberate));
+        f.screen.close(f.ui);
+    }
+
+    SUBCASE("a captured capital can be liberated but never burned") {
+        f.city().setOriginalOwner(PlayerId{1});
+        f.city().setOriginalCapital(true);
+        f.screen.open(f.ui);
+        CHECK(f.labelsContaining("Conquered city") == 1);
+        CHECK_FALSE(f.clickButton("Raze this city")); // the button is absent, not refusing
+        REQUIRE(f.clickButton("Liberate"));
+        CHECK(picked == static_cast<uint8_t>(aoc::sim::CityDisposition::Liberate));
+        f.screen.close(f.ui);
+    }
 }
