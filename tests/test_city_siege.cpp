@@ -18,6 +18,10 @@
 #include "aoc/simulation/city/CityBombardment.hpp"
 #include "aoc/simulation/city/CitySiege.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/tech/TechGating.hpp"
+
+#include <algorithm>
+#include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/unit/AttackRequest.hpp"
 
 using aoc::ErrorCode;
@@ -212,4 +216,54 @@ TEST_CASE("a city under assault does not also sortie against its besiegers") {
     aoc::sim::processCityBombardment(s.world.gameState, s.world.grid, PlayerId{1}, s.rng);
 
     CHECK(s.attacker->hitPoints() == before); // no third damage source
+}
+
+TEST_CASE("wall tiers are built, not granted by the era") {
+    Siege s;
+    aoc::game::City& city = *s.city;
+    REQUIRE_FALSE(city.districts().districts.empty());
+    std::vector<aoc::BuildingId>& built = city.districts().districts[0].buildings;
+    aoc::game::Player* owner            = s.world.gameState.player(PlayerId{1});
+    REQUIRE(owner != nullptr);
+
+    // Every tech researched: under the old rule the era alone gave Steel walls.
+    owner->tech().initialize();
+    std::fill(owner->tech().completedTechs.begin(), owner->tech().completedTechs.end(), true);
+    std::fill(owner->tech().knownTechs.begin(), owner->tech().knownTechs.end(), true);
+    aoc::sim::processCityBombardment(s.world.gameState, s.world.grid, PlayerId{1}, s.rng);
+    CHECK(city.walls().tier == aoc::sim::WallTier::None); // no wall building, no walls
+
+    built.push_back(aoc::BuildingId{17});
+    aoc::sim::processCityBombardment(s.world.gameState, s.world.grid, PlayerId{1}, s.rng);
+    CHECK(city.walls().tier == aoc::sim::WallTier::Ancient); // era does not upgrade it
+
+    built.push_back(aoc::BuildingId{48});
+    aoc::sim::processCityBombardment(s.world.gameState, s.world.grid, PlayerId{1}, s.rng);
+    CHECK(city.walls().tier == aoc::sim::WallTier::Medieval);
+
+    built.push_back(aoc::BuildingId{50});
+    aoc::sim::processCityBombardment(s.world.gameState, s.world.grid, PlayerId{1}, s.rng);
+    CHECK(city.walls().tier == aoc::sim::WallTier::Steel); // highest tier built wins
+}
+
+TEST_CASE("a wall tier needs the tier below it and its own tech") {
+    Siege s;
+    aoc::game::City& city = *s.city;
+    aoc::game::Player* owner = s.world.gameState.player(PlayerId{1});
+    REQUIRE(owner != nullptr);
+    owner->tech().initialize();
+    std::fill(owner->tech().completedTechs.begin(), owner->tech().completedTechs.end(), true);
+    std::fill(owner->tech().knownTechs.begin(), owner->tech().knownTechs.end(), true);
+    city.districts().districts.push_back({aoc::sim::DistrictType::Encampment, {12, 10}, {}});
+    city.setPopulation(12);
+    city.setStage(aoc::game::CitySize::Town); // past the Village allowlist
+
+    // Medieval Walls are locked until Ancient Walls stand.
+    CHECK_FALSE(aoc::sim::canBuildBuilding(s.world.gameState, PlayerId{1}, city,
+                                           aoc::BuildingId{48}));
+    city.districts().districts.back().buildings.push_back(aoc::BuildingId{17});
+    CHECK(aoc::sim::canBuildBuilding(s.world.gameState, PlayerId{1}, city, aoc::BuildingId{48}));
+    // Renaissance still needs Medieval first.
+    CHECK_FALSE(aoc::sim::canBuildBuilding(s.world.gameState, PlayerId{1}, city,
+                                           aoc::BuildingId{49}));
 }

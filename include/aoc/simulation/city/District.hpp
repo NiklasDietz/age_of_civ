@@ -197,7 +197,7 @@ struct BuildingDef {
 
 // Format: {id, name, district, prodCost, maint, prodBonus, sciBonus, goldBonus, sciMult, resourceCosts, fuelGoodId, fuelPerTurn}
 // Resource costs and fuel added for mid/late-game buildings per plan Phase 1C/1D.
-inline constexpr std::array<BuildingDef, 48> BUILDING_DEFS = {{
+inline constexpr std::array<BuildingDef, 51> BUILDING_DEFS = {{
     //                                                                                                                     resourceCosts         fuel
     {BuildingId{0},  "Forge",              DistrictType::Industrial,  60, 1, 2, 0, 0, 1.0f},                            // no cost, no fuel
     {BuildingId{1},  "Workshop",           DistrictType::Industrial,  40, 1, 1, 0, 0, 1.0f},
@@ -275,7 +275,15 @@ inline constexpr std::array<BuildingDef, 48> BUILDING_DEFS = {{
     // Government (2026-09-05): one Plaza per empire matters; +1 wildcard policy slot
     // via buildingWildcardSlots(), capped by MAX_POLICY_SLOTS.
     {BuildingId{47}, "Government Plaza",      DistrictType::CityCenter, 200, 2, 0, 0, 1, 1.0f, {{44, 2}},
-     0xFFFF, 0, 0, 0, 0, CivicId{14}},  // 2 Stone; State Workforce
+     0xFFFF, 0, 0, 0, 0, CivicId{14}},  // 2 Stone; State Workforce,
+    // Wall tiers. Each is built, not granted: before this the era alone
+    // upgraded a city's masonry, so an Industrial civ got Steel walls free.
+    // Each tier needs the one below it (BUILDING_TIER_PREREQS) and its own
+    // tech (TechTree unlockedBuildings). Ancient walls stay BuildingId 17 so
+    // saved cities keep the walls they built.
+    {BuildingId{48}, "Medieval Walls",         DistrictType::Encampment, 120, 1, 0, 0, 0, 1.0f, {{44, 3}}},  // 3 Stone
+    {BuildingId{49}, "Renaissance Walls",      DistrictType::Encampment, 200, 1, 0, 0, 0, 1.0f, {{44, 4}}},  // 4 Stone
+    {BuildingId{50}, "Steel Fortress",         DistrictType::Encampment, 300, 2, 0, 0, 0, 1.0f, {{64, 2}}},  // 2 Steel
 }};
 
 [[nodiscard]] inline constexpr const BuildingDef& buildingDef(BuildingId id) {

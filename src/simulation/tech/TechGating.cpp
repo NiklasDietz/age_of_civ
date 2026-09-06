@@ -59,7 +59,7 @@ struct BuildingTierPrereq {
     BuildingId building;
     BuildingId needs;
 };
-constexpr std::array<BuildingTierPrereq, 12> BUILDING_TIER_PREREQS = {{
+constexpr std::array<BuildingTierPrereq, 15> BUILDING_TIER_PREREQS = {{
     {BuildingId{19}, BuildingId{7}},   // University <- Library
     {BuildingId{12}, BuildingId{19}},  // Research Lab <- University
     {BuildingId{37}, BuildingId{36}},  // Temple <- Shrine
@@ -72,6 +72,9 @@ constexpr std::array<BuildingTierPrereq, 12> BUILDING_TIER_PREREQS = {{
     {BuildingId{3},  BuildingId{1}},   // Factory <- Workshop
     {BuildingId{4},  BuildingId{3}},   // Electronics Plant <- Factory
     {BuildingId{5},  BuildingId{3}},   // Industrial Complex <- Factory
+    {BuildingId{48}, BuildingId{17}},  // Medieval Walls <- Walls
+    {BuildingId{49}, BuildingId{48}},  // Renaissance Walls <- Medieval Walls
+    {BuildingId{50}, BuildingId{49}},  // Steel Fortress <- Renaissance Walls
 }};
 
 const DistrictPrereq* districtPrereq(DistrictType type) {

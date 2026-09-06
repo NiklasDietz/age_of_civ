@@ -27,20 +27,18 @@ namespace aoc::sim {
 // Wall auto-detection from buildings
 // ============================================================================
 
-/// Detect wall tier from the city's built buildings plus owner era.
-/// BuildingId 17 ("Walls") is the only wall building in BUILDING_DEFS;
-/// its effective tier upgrades with the owning civ's era. Era values come
-/// from UnitEra: Ancient=0, Classical=1, Medieval=2, Renaissance=3,
-/// Industrial=4, Modern=5, Atomic=6, Information=7. Industrial+ gets the
-/// Steel Fortress tier so late-game cities aren't stuck on Renaissance.
+/// Detect wall tier from the wall buildings the city actually finished.
+/// Each tier is its own building (17 Ancient, 48 Medieval, 49 Renaissance,
+/// 50 Steel Fortress), gated by tech and by the tier below it. Reaching an
+/// era no longer upgrades masonry on its own: a civ that never builds walls
+/// stays open however advanced it gets.
 static WallTier detectWallTier(const aoc::game::City& city,
-                               const aoc::game::Player& owner) {
-    if (!city.hasBuilding(BuildingId{17})) { return WallTier::None; }
-    const EraId era = effectiveEraFromTech(owner);
-    if (era.value >= 4) { return WallTier::Steel; }
-    if (era.value >= 3) { return WallTier::Renaissance; }
-    if (era.value >= 2) { return WallTier::Medieval; }
-    return WallTier::Ancient;
+                               const aoc::game::Player& /*owner*/) {
+    if (city.hasBuilding(BuildingId{50})) { return WallTier::Steel; }
+    if (city.hasBuilding(BuildingId{49})) { return WallTier::Renaissance; }
+    if (city.hasBuilding(BuildingId{48})) { return WallTier::Medieval; }
+    if (city.hasBuilding(BuildingId{17})) { return WallTier::Ancient; }
+    return WallTier::None;
 }
 
 /// Ensure wall state matches built buildings (called each turn).

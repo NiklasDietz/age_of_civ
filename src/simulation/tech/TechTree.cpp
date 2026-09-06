@@ -210,7 +210,7 @@ std::vector<TechDef> buildTechDefs() {
         {{TechId{30}}}, {}, {}, {}});  // Navigation
     // Era 5: Modern -- steel
     techs.push_back({TechId{47}, "Steel", EraId{5}, 1700,
-        {{TechId{8}}}, {}, {}, {}});  // Metallurgy
+        {{TechId{8}}}, {}, {BuildingId{50}}, {}});  // Metallurgy
     // Era 5: Modern -- replaceable parts (interchangeable assembly line)
     techs.push_back({TechId{48}, "Replaceable Parts", EraId{5}, 1700,
         {{TechId{19}}}, {}, {}, {}});  // Interchangeable Parts
@@ -235,14 +235,14 @@ std::vector<TechDef> buildTechDefs() {
     techs.push_back({TechId{53}, "Military Tactics", EraId{2}, 200,
         {{TechId{38}}}, {}, {}, {UnitTypeId{26}, UnitTypeId{24}}});  // Pikeman, Trebuchet
     techs.push_back({TechId{54}, "Castles", EraId{2}, 230,
-        {{TechId{39}, TechId{53}}}, {}, {}, {UnitTypeId{33}}});  // Man-at-Arms
+        {{TechId{39}, TechId{53}}}, {}, {BuildingId{48}}, {UnitTypeId{33}}});  // Man-at-Arms
     // Era 3: Renaissance
     techs.push_back({TechId{55}, "Printing", EraId{3}, 320,
         {{TechId{44}}}, {}, {}, {}});  // Education
     techs.push_back({TechId{56}, "Cartography", EraId{3}, 320,
         {{TechId{30}}}, {}, {}, {}});  // Navigation
     techs.push_back({TechId{57}, "Siege Tactics", EraId{3}, 380,
-        {{TechId{53}, TechId{54}}}, {}, {}, {}});  // MilTac + Castles
+        {{TechId{53}, TechId{54}}}, {}, {BuildingId{49}}, {}});  // MilTac + Castles
     techs.push_back({TechId{58}, "Metal Casting", EraId{3}, 360,
         {{TechId{37}, TechId{10}}}, {}, {}, {UnitTypeId{25}, UnitTypeId{40}}});  // Bombard, Cuirassier
     // Era 4: Industrial
