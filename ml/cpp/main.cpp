@@ -27,6 +27,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <filesystem>
 #include <fstream>
 #include <numeric>
 #include <random>
@@ -62,6 +63,7 @@ struct CLIArgs {
     int32_t hallOfFameSize = 8;
     /// -1 = all 12 leaders rotate; [0,11] = tune that one leader's archetype.
     int32_t seedLeader = -1;
+    std::string dumpPopulationDir;
     /// Balance-winrate: reward rare winning victory types across a generation.
     bool    balanceWinrate = false;
     float   balanceBonus   = 0.8f;
@@ -194,6 +196,13 @@ struct CLIArgs {
                 "                          mixed    = per-slot random mix of the above\n"
                 "  --hof-size N          Hall of Fame size for champion/mixed modes\n"
                 "                        (default: 8)\n"
+                "  --dump-population DIR Write every individual of every generation to\n"
+                "                        DIR/gen<NN>_ind<KK>/, each a ready-made\n"
+                "                        --tuned-dir directory. Use it to replay a\n"
+                "                        single genome standalone: the checkpoint only\n"
+                "                        keeps the generation's winner, which is no help\n"
+                "                        when the genome you need to reproduce is the\n"
+                "                        one that misbehaved.\n"
                 "  --seed-leader N       Tune one specific leader (0..11) by seeding\n"
                 "                        the entire population from that archetype.\n"
                 "                        Output is that leader's GA-evolved values.\n"
@@ -274,6 +283,8 @@ struct CLIArgs {
                 }
             } else if (std::strcmp(argv[i], "--hof-size") == 0) {
                 if (!parseIntArg(argv[++i], args.hallOfFameSize, "--hof-size")) { return false; }
+            } else if (std::strcmp(argv[i], "--dump-population") == 0 && i + 1 < argc) {
+                args.dumpPopulationDir = argv[++i];
             } else if (std::strcmp(argv[i], "--seed-leader") == 0) {
                 char* endPtr = nullptr;
                 long parsed = std::strtol(argv[++i], &endPtr, 10);
@@ -321,6 +332,43 @@ struct CLIArgs {
 }
 
 /// Save a human-readable summary of the evolved tiers to a text file.
+/// Write one genome as a `--tuned-dir` directory: the same genes under all
+/// twelve leader filenames, so `aoc_simulate --tuned-dir <dir>` replays that
+/// individual whichever seat it lands in.
+///
+/// This exists because a genome that makes the simulation misbehave is
+/// otherwise unrecoverable: the checkpoint keeps only the generation's winner,
+/// and the offender is by definition not the winner. Without a way to replay a
+/// single individual there is no standalone reproduction to debug.
+void dumpIndividual(const aoc::ga::Individual& ind, const std::string& dir) {
+    static const char* NAMES[12] = {
+        "Trajan", "Cleopatra", "QinShiHuang", "Frederick",
+        "Pericles", "Victoria", "Hojo", "Cyrus",
+        "Montezuma", "Gandhi", "Peter", "PedroII"
+    };
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) {
+        std::fprintf(stderr, "[Warning] Could not create '%s': %s\n",
+                     dir.c_str(), ec.message().c_str());
+        return;
+    }
+    for (int32_t leader = 0; leader < 12; ++leader) {
+        char path[1024];
+        std::snprintf(path, sizeof(path), "%s/%02d_%s.txt",
+                      dir.c_str(), leader, NAMES[leader]);
+        std::ofstream file(path);
+        if (!file.is_open()) { continue; }
+        file << "Hard AI (fitness=" << ind.fitness << "):\n";
+        for (int32_t i = 0; i < aoc::ga::NUM_PARAMS; ++i) {
+            const std::size_t idx = static_cast<std::size_t>(i);
+            file << "  " << aoc::ga::PARAM_NAMES[idx] << " = "
+                 << ind.genes[idx] << "\n";
+        }
+        file << "Medium AI (unused)\n";
+    }
+}
+
 void saveSummary(const aoc::ga::DifficultyTiers& tiers, const char* path) {
     std::ofstream file(path);
     if (!file.is_open()) {
@@ -623,6 +671,17 @@ int main(int argc, char* argv[]) {
             (args.opponentMode == aoc::ga::OpponentMode::Champion
              || args.opponentMode == aoc::ga::OpponentMode::Mixed)
             ? &hallOfFame : nullptr;
+        // Dump BEFORE evaluating: if a genome takes the process down with it,
+        // the dump is the only record of what was in the population.
+        if (!args.dumpPopulationDir.empty()) {
+            for (std::size_t k = 0; k < population.size(); ++k) {
+                char sub[1024];
+                std::snprintf(sub, sizeof(sub), "%s/gen%02d_ind%02zu",
+                              args.dumpPopulationDir.c_str(), gen + 1, k);
+                dumpIndividual(population[k], sub);
+            }
+        }
+
         aoc::ga::evaluatePopulation(population, config, genSeed, &pool, hofPtr);
 
         // Sort by fitness (descending)
