@@ -5,6 +5,8 @@
 
 #include "GeneticAlgorithm.hpp"
 
+#include "aoc/simulation/ai/LeaderPersonality.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -65,76 +67,29 @@ const char* mapTypeName(aoc::map::MapType type) {
 }
 
 // ============================================================================
-// Existing leader profiles (12 leaders, mirrors Python EXISTING_LEADERS)
+// Existing leader profiles: the twelve archetypes, read from the game
 // ============================================================================
 
-// Trailing 4 floats in each row are the military-formula genes (indices 32-35):
-// milBaseWeight, milThreatSensitivity, milEmergencySlope, milOverstockPenalty.
-// Defaults 1.5/1.0/1.5/1.0 reproduce the pre-formula hardcoded behavior; a
-// few archetypes get archetype-appropriate deviations (warmongers more
-// threat-sensitive; pacifists dampened).
-static constexpr std::array<std::array<float, NUM_PARAMS>, 12> EXISTING_LEADERS = {{
-    // Rome - Trajan
-    {{1.3f, 1.8f, 1.0f, 1.0f, 1.2f, 1.0f, 0.5f, 0.3f, 0.8f, 0.6f,
-      1.2f, 1.0f, 1.5f, 0.8f, 0.8f, 1.8f, 1.2f, 1.5f, 1.3f, 1.0f, 0.7f, 0.3f, 1.5f, 0.6f, 1.0f,
-      1.2f, 0.7f, 1.8f, 1.2f, 1.0f, 1.2f, 1.0f,
-      1.6f, 1.0f, 1.5f, 1.0f}},
-    // Egypt - Cleopatra
-    {{0.7f, 1.0f, 1.0f, 1.5f, 1.8f, 1.3f, 0.8f, 0.0f, 0.9f, 0.4f,
-      0.7f, 1.8f, 1.0f, 1.3f, 1.0f, 1.0f, 0.6f, 0.8f, 1.5f, 1.8f, 1.2f, 0.5f, 2.0f, 0.3f, 1.3f,
-      1.0f, 1.0f, 1.2f, 1.3f, 1.2f, 0.8f, 1.5f,
-      1.2f, 0.9f, 1.3f, 1.2f}},
-    // China - Qin Shi Huang
-    {{0.8f, 1.2f, 1.5f, 1.3f, 1.2f, 0.7f, 0.5f, 0.2f, 1.0f, 0.8f,
-      0.8f, 1.0f, 1.5f, 0.6f, 1.3f, 1.2f, 0.8f, 1.0f, 1.5f, 2.0f, 0.5f, 0.3f, 2.5f, 0.4f, 0.7f,
-      0.5f, 0.8f, 0.7f, 1.8f, 1.4f, 1.5f, 0.5f,
-      1.4f, 1.3f, 1.6f, 0.9f}},
-    // Germany - Frederick
-    {{1.5f, 1.3f, 1.3f, 0.8f, 1.5f, 0.8f, 0.3f, 0.5f, 0.9f, 0.7f,
-      1.8f, 1.2f, 1.8f, 0.8f, 0.8f, 1.2f, 1.8f, 1.0f, 1.5f, 0.5f, 0.8f, 0.2f, 1.2f, 0.8f, 0.7f,
-      1.5f, 0.4f, 1.3f, 1.0f, 1.5f, 1.8f, 1.0f,
-      1.9f, 1.3f, 1.7f, 0.8f}},
-    // Greece - Pericles
-    {{0.6f, 0.8f, 1.6f, 1.8f, 0.9f, 1.5f, 0.7f, 0.0f, 1.0f, 0.3f,
-      0.5f, 0.8f, 0.8f, 0.7f, 1.8f, 0.8f, 0.5f, 0.7f, 1.8f, 1.5f, 0.5f, 0.5f, 3.0f, 0.3f, 1.5f,
-      0.7f, 1.4f, 0.9f, 2.2f, 0.9f, 1.0f, 0.7f,
-      1.1f, 0.8f, 1.3f, 1.2f}},
-    // England - Victoria
-    {{1.2f, 1.5f, 1.2f, 1.2f, 1.7f, 1.2f, 0.5f, 0.3f, 0.7f, 0.5f,
-      1.0f, 1.5f, 1.0f, 2.0f, 1.2f, 1.5f, 1.0f, 1.0f, 1.3f, 1.0f, 1.8f, 0.3f, 1.5f, 0.5f, 1.2f,
-      1.0f, 0.9f, 2.2f, 1.4f, 1.3f, 1.2f, 1.8f,
-      1.5f, 1.0f, 1.4f, 1.0f}},
-    // Japan - Hojo
-    {{1.6f, 0.9f, 1.3f, 1.5f, 1.0f, 0.7f, 1.3f, 0.4f, 1.0f, 0.9f,
-      1.5f, 0.8f, 1.2f, 1.0f, 1.0f, 0.9f, 1.6f, 0.8f, 1.3f, 1.3f, 1.0f, 1.5f, 1.3f, 0.7f, 0.7f,
-      1.3f, 1.0f, 0.8f, 1.6f, 1.1f, 1.3f, 0.8f,
-      1.7f, 1.2f, 1.6f, 0.9f}},
-    // Persia - Cyrus
-    {{1.4f, 1.3f, 1.0f, 1.0f, 1.3f, 1.4f, 0.8f, 0.2f, 0.5f, 0.6f,
-      1.3f, 1.5f, 1.0f, 0.8f, 0.8f, 1.3f, 1.4f, 1.0f, 1.2f, 0.8f, 0.8f, 0.5f, 1.0f, 0.4f, 1.5f,
-      1.8f, 0.8f, 1.5f, 1.0f, 2.0f, 1.0f, 1.2f,
-      1.6f, 1.1f, 1.5f, 1.0f}},
-    // Aztec - Montezuma
-    {{1.7f, 1.2f, 0.7f, 0.8f, 1.0f, 0.6f, 1.5f, 0.3f, 0.7f, 0.9f,
-      1.8f, 0.7f, 0.8f, 0.5f, 0.5f, 1.2f, 2.0f, 1.0f, 0.8f, 0.5f, 0.5f, 1.8f, 1.0f, 0.8f, 0.5f,
-      2.2f, 0.5f, 1.0f, 0.8f, 1.2f, 1.6f, 0.6f,
-      2.0f, 1.4f, 1.8f, 0.7f}},
-    // India - Gandhi
-    {{0.2f, 0.7f, 1.3f, 1.3f, 1.0f, 1.8f, 1.6f, 0.0f, 1.0f, 0.2f,
-      0.3f, 1.0f, 0.8f, 0.5f, 1.5f, 0.7f, 0.2f, 0.8f, 1.5f, 1.0f, 0.3f, 2.0f, 5.0f, 0.2f, 1.8f,
-      0.4f, 2.2f, 0.6f, 2.0f, 0.5f, 1.4f, 0.3f,
-      0.8f, 0.5f, 1.1f, 1.8f}},
-    // Russia - Peter
-    {{1.3f, 1.5f, 1.7f, 0.8f, 1.2f, 1.0f, 0.7f, 0.4f, 0.8f, 0.6f,
-      1.2f, 1.0f, 1.5f, 0.8f, 1.8f, 1.5f, 1.2f, 1.0f, 1.5f, 0.8f, 0.8f, 0.5f, 1.5f, 0.5f, 1.0f,
-      1.1f, 0.9f, 2.0f, 1.5f, 1.6f, 1.2f, 1.0f,
-      1.5f, 1.1f, 1.5f, 1.0f}},
-    // Brazil - Pedro
-    {{0.5f, 1.0f, 1.0f, 1.8f, 1.2f, 1.5f, 0.8f, 0.0f, 1.0f, 0.1f,
-      0.4f, 1.0f, 0.8f, 0.7f, 1.3f, 1.0f, 0.4f, 0.8f, 1.5f, 1.8f, 0.5f, 0.8f, 3.0f, 0.2f, 1.5f,
-      0.6f, 1.8f, 1.0f, 1.8f, 0.7f, 0.9f, 1.1f,
-      1.0f, 0.7f, 1.2f, 1.4f}},
-}};
+/// The GA used to keep its own copy of the twelve archetypes here. It drifted:
+/// by 2026-09-06 the shipped LEADER_PERSONALITIES and this table disagreed on
+/// 148 of their 384 shared gene slots, every one of the twelve differing in ten
+/// to fifteen genes. That meant `--seed-leader N` tuned a leader the game does
+/// not have, and Champion mode measured candidates against opponents that do
+/// not exist. Reading the shipped table makes the drift impossible rather than
+/// merely fixed.
+[[nodiscard]] static std::array<std::array<float, NUM_PARAMS>, 12> loadExistingLeaders() {
+    std::array<std::array<float, NUM_PARAMS>, 12> out{};
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        aoc::sim::LEADER_PERSONALITIES[i].behavior.toArray(out[i].data());
+    }
+    return out;
+}
+
+static const std::array<std::array<float, NUM_PARAMS>, 12> EXISTING_LEADERS =
+    loadExistingLeaders();
+
+static_assert(aoc::sim::LEADER_PERSONALITY_COUNT >= 12,
+              "the GA seeds from the first twelve shipped leaders");
 
 // PARAM_NAMES now lives in GeneticAlgorithm.hpp (single shared definition).
 

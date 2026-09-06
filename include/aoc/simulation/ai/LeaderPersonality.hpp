@@ -110,7 +110,10 @@ struct LeaderBehavior {
     // parametric-policy tuning knobs for scoreMilitary(): the formula shape
     // is designer-authored, these weights are GA-tuned per leader. Defaults
     // match the previously-hardcoded constants so legacy 32-gene dumps keep
-    // their prior behavior via zero-pad loader.
+    // their prior behavior via zero-pad loader. Every entry in
+    // LEADER_PERSONALITIES sets all four explicitly; until 2026-09-06 the
+    // table stopped at 32 genes, so every leader silently shared these
+    // defaults and the four genes could not differ between leaders at all.
     float milBaseWeight         = 1.5f;  ///< Overall strength of military production urge
     float milThreatSensitivity  = 1.0f;  ///< How strongly threatLevel boosts score (was fixed 1.0)
     float milEmergencySlope     = 1.5f;  ///< Steepness of undermanned emergency multiplier
@@ -248,7 +251,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.2f, 1.2f, 1.5f, 0.8f, 1.0f,
       2.00f, 1.20f, 1.5f, 1.60f, 1.0f, 0.7f, 0.3f,
       2.5f, 0.5f, 1.2f,
-      1.2f, 0.7f, 1.8f, 1.2f, 1.0f, 1.2f, 1.0f}},
+      1.2f, 0.7f, 1.8f, 1.2f, 1.0f, 1.2f, 1.0f,
+      1.6f, 1.0f, 1.5f, 1.0f}},
 
     // 1: Egypt - Cleopatra -- ECONOMIC TRADER
     // GA optimized: max economy + strong trade + good science.
@@ -259,7 +263,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.7f, 2.0f, 1.0f, 1.5f, 1.2f,
       1.50f, 0.6f, 1.0f, 1.80f, 1.8f, 1.5f, 0.5f,
       3.0f, 0.3f, 1.5f,
-      1.0f, 1.0f, 1.2f, 1.3f, 1.2f, 0.8f, 1.5f}},
+      1.0f, 1.0f, 1.2f, 1.3f, 1.2f, 0.8f, 1.5f,
+      1.2f, 0.9f, 1.3f, 1.2f}},
 
     // 2: China - Qin Shi Huang -- WONDER BUILDER / DEFENSIVE
     // GA optimized: high science + strong buildings + good expansion.
@@ -270,7 +275,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.8f, 1.2f, 1.5f, 0.6f, 1.5f,
       1.60f, 0.8f, 1.2f, 1.80f, 2.0f, 0.5f, 0.3f,
       3.5f, 0.4f, 0.8f,
-      0.5f, 0.8f, 0.7f, 1.8f, 1.4f, 1.5f, 0.5f}},
+      0.5f, 0.8f, 0.7f, 1.8f, 1.4f, 1.5f, 0.5f,
+      1.4f, 1.3f, 1.6f, 0.9f}},
 
     // 3: Germany - Frederick -- INDUSTRIAL MILITARIST
     // GA optimized: strong industry + science + moderate expansion. Military still high.
@@ -281,7 +287,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.8f, 1.5f, 2.0f, 0.8f, 1.0f,
       1.60f, 1.60f, 1.2f, 1.80f, 0.5f, 0.8f, 0.2f,
       1.8f, 0.7f, 0.8f,
-      1.5f, 0.4f, 1.3f, 1.0f, 1.5f, 1.8f, 1.0f}},
+      1.5f, 0.4f, 1.3f, 1.0f, 1.5f, 1.8f, 1.0f,
+      1.9f, 1.3f, 1.7f, 0.8f}},
 
     // 4: Greece - Pericles -- CULTURE / SCIENCE
     // GA optimized: max science + strong economy. Expansion slightly buffed.
@@ -292,7 +299,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.5f, 1.0f, 1.0f, 0.7f, 2.0f,
       1.40f, 0.5f, 0.8f, 2.00f, 1.5f, 0.5f, 0.5f,
       3.5f, 0.3f, 1.5f,
-      0.7f, 1.4f, 0.9f, 2.2f, 0.9f, 1.0f, 0.7f}},
+      0.7f, 1.4f, 0.9f, 2.2f, 0.9f, 1.0f, 0.7f,
+      1.1f, 0.8f, 1.3f, 1.2f}},
 
     // 5: England - Victoria -- NAVAL TRADE EMPIRE
     // Fix: reduced naval dependency so England doesn't stall on landlocked maps.
@@ -304,7 +312,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.0f, 1.8f, 1.2f, 1.5f, 1.4f,
       2.10f, 1.0f, 1.0f, 1.60f, 1.0f, 1.2f, 0.3f,
       2.5f, 0.5f, 1.3f,
-      1.0f, 0.9f, 2.2f, 1.4f, 1.3f, 1.2f, 1.8f}},
+      1.0f, 0.9f, 2.2f, 1.4f, 1.3f, 1.2f, 1.8f,
+      1.5f, 1.0f, 1.4f, 1.0f}},
 
     // 6: Japan - Hojo Tokimune -- MILITARY CULTURE WARRIOR
     // Fix: significant economy/science buff. Military culture still high but
@@ -317,7 +326,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.5f, 1.2f, 1.4f, 1.0f, 1.2f,
       1.60f, 1.30f, 1.0f, 1.80f, 1.3f, 1.0f, 1.5f,
       2.2f, 0.6f, 0.9f,
-      1.3f, 1.0f, 0.8f, 1.6f, 1.1f, 1.3f, 0.8f}},
+      1.3f, 1.0f, 0.8f, 1.6f, 1.1f, 1.3f, 0.8f,
+      1.7f, 1.2f, 1.6f, 0.9f}},
 
     // 7: Persia - Cyrus -- DIPLOMATIC SURPRISE ATTACKER
     // GA optimized: economy + expansion strong, but keeps low trustworthiness.
@@ -328,7 +338,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.3f, 1.8f, 1.2f, 0.8f, 1.0f,
       1.60f, 1.30f, 1.0f, 1.60f, 0.8f, 0.8f, 0.5f,
       1.5f, 0.4f, 1.5f,
-      1.8f, 0.8f, 1.5f, 1.0f, 2.0f, 1.0f, 1.2f}},
+      1.8f, 0.8f, 1.5f, 1.0f, 2.0f, 1.0f, 1.2f,
+      1.6f, 1.1f, 1.5f, 1.0f}},
 
     // 8: Aztec - Montezuma -- AGGRESSIVE RELIGIOUS WARRIOR
     // GA adjusted: military stays high, but economy/expansion significantly buffed.
@@ -340,7 +351,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.8f, 1.0f, 1.0f, 0.5f, 0.5f,
       1.60f, 1.80f, 1.0f, 1.20f, 0.5f, 0.5f, 1.8f,
       1.5f, 0.7f, 0.6f,
-      2.2f, 0.5f, 1.0f, 0.8f, 1.2f, 1.6f, 0.6f}},
+      2.2f, 0.5f, 1.0f, 0.8f, 1.2f, 1.6f, 0.6f,
+      2.0f, 1.4f, 1.8f, 0.7f}},
 
     // 9: India - Gandhi -- PEACEFUL RELIGIOUS SCIENTIST
     // GA optimized: max science + strong economy compensates for no military.
@@ -352,7 +364,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.3f, 1.5f, 1.0f, 0.5f, 2.0f,
       1.40f, 0.3f, 1.0f, 2.00f, 1.2f, 0.3f, 2.0f,
       5.0f, 0.2f, 2.0f,
-      0.4f, 2.2f, 0.6f, 2.0f, 0.5f, 1.4f, 0.3f}},
+      0.4f, 2.2f, 0.6f, 2.0f, 0.5f, 1.4f, 0.3f,
+      0.8f, 0.5f, 1.1f, 1.8f}},
 
     // 10: Russia - Peter -- SCIENCE EXPANSIONIST
     // GA optimized: near-optimal profile — high expansion + science + economy.
@@ -363,7 +376,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.2f, 1.2f, 1.5f, 0.8f, 2.0f,
       1.90f, 1.10f, 1.0f, 1.80f, 0.8f, 0.8f, 0.5f,
       2.5f, 0.5f, 1.2f,
-      1.1f, 0.9f, 2.0f, 1.5f, 1.6f, 1.2f, 1.0f}},
+      1.1f, 0.9f, 2.0f, 1.5f, 1.6f, 1.2f, 1.0f,
+      1.5f, 1.1f, 1.5f, 1.0f}},
 
     // 11: Brazil - Pedro II -- CULTURAL PEACEMAKER
     // GA optimized: culture stays high, science + economy buffed significantly.
@@ -374,7 +388,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.4f, 1.2f, 1.0f, 0.7f, 1.5f,
       1.40f, 0.5f, 0.8f, 1.80f, 1.8f, 0.5f, 0.8f,
       3.5f, 0.2f, 1.5f,
-      0.6f, 1.8f, 1.0f, 1.8f, 0.7f, 0.9f, 1.1f}},
+      0.6f, 1.8f, 1.0f, 1.8f, 0.7f, 0.9f, 1.1f,
+      1.0f, 0.7f, 1.2f, 1.4f}},
 
     // 12: Mongol Horde (imported from leaders.json; strategic weights 25-31 default)
     {CivId{12}, "Mongol Horde",
@@ -384,7 +399,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       2.00f, 0.60f, 0.90f, 0.40f, 0.50f,
       0.80f, 2.20f, 0.70f, 0.70f, 0.30f, 0.40f, 0.20f,
       0.80f, 0.90f, 0.30f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 13: Last Prophet (imported from leaders.json; strategic weights 25-31 default)
     {CivId{13}, "Last Prophet",
@@ -394,7 +410,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.00f, 1.30f, 1.00f, 0.90f, 1.00f,
       1.00f, 1.00f, 1.00f, 1.20f, 1.40f, 0.70f, 2.00f,
       1.50f, 0.50f, 0.90f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 14: Impi Strike (imported from leaders.json; strategic weights 25-31 default)
     {CivId{14}, "Impi Strike",
@@ -404,7 +421,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.80f, 0.80f, 1.00f, 0.50f, 0.60f,
       0.90f, 2.00f, 0.80f, 1.00f, 0.50f, 0.50f, 0.40f,
       1.00f, 0.80f, 0.40f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 15: People of the Steppe (imported from leaders.json; strategic weights 25-31 default)
     {CivId{15}, "People of the Steppe",
@@ -414,7 +432,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.60f, 1.00f, 0.90f, 0.50f, 0.70f,
       1.00f, 1.70f, 0.90f, 1.00f, 0.60f, 0.40f, 0.50f,
       1.20f, 0.60f, 0.60f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 16: To World's End (imported from leaders.json; strategic weights 25-31 default)
     {CivId{16}, "To World's End",
@@ -424,7 +443,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.70f, 0.90f, 1.10f, 1.00f, 0.80f,
       1.30f, 1.80f, 1.00f, 1.00f, 1.00f, 0.80f, 0.40f,
       1.00f, 0.70f, 0.50f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 17: Songs of the Jeli (imported from leaders.json; strategic weights 25-31 default)
     {CivId{17}, "Songs of the Jeli",
@@ -434,7 +454,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.50f, 2.00f, 0.90f, 1.20f, 1.10f,
       1.10f, 0.50f, 1.00f, 1.40f, 1.30f, 1.00f, 0.70f,
       2.80f, 0.30f, 1.50f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 18: Epic Quest (imported from leaders.json; strategic weights 25-31 default)
     {CivId{18}, "Epic Quest",
@@ -444,7 +465,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.20f, 0.90f, 1.00f, 0.60f, 0.80f,
       1.20f, 1.40f, 0.90f, 1.00f, 1.00f, 0.50f, 0.50f,
       1.40f, 0.60f, 0.70f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 19: Enuma Anu Enlil (imported from leaders.json; strategic weights 25-31 default)
     {CivId{19}, "Enuma Anu Enlil",
@@ -454,7 +476,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.60f, 1.20f, 1.50f, 0.70f, 1.80f,
       0.90f, 0.40f, 0.90f, 1.60f, 1.40f, 0.50f, 0.40f,
       2.50f, 0.30f, 1.20f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 20: Grand Barays (imported from leaders.json; strategic weights 25-31 default)
     {CivId{20}, "Grand Barays",
@@ -464,7 +487,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.80f, 1.00f, 1.00f, 0.70f, 1.00f,
       1.10f, 0.70f, 1.10f, 1.30f, 1.60f, 0.60f, 1.40f,
       2.00f, 0.40f, 1.20f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 21: Nihithaw (imported from leaders.json; strategic weights 25-31 default)
     {CivId{21}, "Nihithaw",
@@ -474,7 +498,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.70f, 1.60f, 1.00f, 0.80f, 1.10f,
       1.20f, 0.60f, 1.00f, 1.20f, 1.00f, 0.70f, 0.50f,
       2.40f, 0.30f, 1.30f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 22: Toqui (imported from leaders.json; strategic weights 25-31 default)
     {CivId{22}, "Toqui",
@@ -484,7 +509,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.60f, 0.80f, 1.00f, 0.60f, 0.70f,
       0.90f, 1.80f, 0.80f, 0.90f, 0.40f, 0.50f, 0.40f,
       1.10f, 0.70f, 0.50f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 23: Great Turkish Bombard (imported from leaders.json; strategic weights 25-31 default)
     {CivId{23}, "Great Turkish Bombard",
@@ -494,7 +520,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.50f, 1.00f, 1.20f, 1.00f, 0.90f,
       1.10f, 1.50f, 0.90f, 1.10f, 1.00f, 0.80f, 0.90f,
       1.30f, 0.60f, 0.70f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 24: Mediterranean Colonies (imported from leaders.json; strategic weights 25-31 default)
     {CivId{24}, "Mediterranean Colonies",
@@ -504,7 +531,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.80f, 1.40f, 0.90f, 2.00f, 1.00f,
       1.40f, 0.90f, 1.00f, 1.10f, 1.00f, 2.00f, 0.50f,
       1.80f, 0.40f, 1.00f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 25: Knarr (imported from leaders.json; strategic weights 25-31 default)
     {CivId{25}, "Knarr",
@@ -514,7 +542,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.30f, 0.90f, 0.90f, 1.80f, 0.80f,
       1.00f, 1.40f, 0.90f, 1.00f, 0.70f, 1.60f, 0.40f,
       1.40f, 0.60f, 0.70f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 26: El Escorial (imported from leaders.json; strategic weights 25-31 default)
     {CivId{26}, "El Escorial",
@@ -524,7 +553,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.10f, 1.10f, 1.00f, 1.40f, 0.90f,
       1.30f, 1.10f, 1.00f, 1.20f, 1.20f, 1.10f, 1.50f,
       1.50f, 0.50f, 0.90f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 27: Three Kingdoms (imported from leaders.json; strategic weights 25-31 default)
     {CivId{27}, "Three Kingdoms",
@@ -534,7 +564,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.80f, 1.10f, 1.40f, 0.80f, 1.70f,
       1.00f, 0.70f, 1.00f, 1.40f, 1.20f, 0.70f, 0.50f,
       2.20f, 0.30f, 1.10f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 28: Great Nusantara (imported from leaders.json; strategic weights 25-31 default)
     {CivId{28}, "Great Nusantara",
@@ -544,7 +575,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.80f, 1.30f, 1.00f, 1.60f, 1.00f,
       1.20f, 0.70f, 1.00f, 1.20f, 1.10f, 1.60f, 0.70f,
       2.00f, 0.30f, 1.20f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 29: Nine Dragon River (imported from leaders.json; strategic weights 25-31 default)
     {CivId{29}, "Nine Dragon River",
@@ -554,7 +586,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.00f, 1.00f, 1.00f, 0.80f, 1.00f,
       1.00f, 1.00f, 1.10f, 1.20f, 1.20f, 0.60f, 0.70f,
       1.80f, 0.40f, 1.00f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 30: Mana (imported from leaders.json; strategic weights 25-31 default)
     {CivId{30}, "Mana",
@@ -564,7 +597,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.90f, 1.00f, 0.90f, 1.50f, 0.90f,
       0.90f, 0.90f, 1.00f, 1.20f, 1.20f, 1.40f, 1.00f,
       2.00f, 0.30f, 1.10f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 31: Founding Fathers (imported from leaders.json; strategic weights 25-31 default)
     {CivId{31}, "Founding Fathers",
@@ -574,7 +608,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.20f, 1.30f, 1.40f, 1.00f, 1.30f,
       1.20f, 1.10f, 1.10f, 1.30f, 1.00f, 1.00f, 0.40f,
       1.60f, 0.50f, 1.00f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 32: Black Queen (imported from leaders.json; strategic weights 25-31 default)
     {CivId{32}, "Black Queen",
@@ -584,7 +619,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       1.00f, 1.10f, 1.00f, 0.90f, 1.30f,
       1.00f, 0.80f, 1.00f, 1.30f, 1.70f, 0.80f, 0.50f,
       1.80f, 0.40f, 0.90f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 33: Radio Oranje (imported from leaders.json; strategic weights 25-31 default)
     {CivId{33}, "Radio Oranje",
@@ -594,7 +630,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.80f, 1.70f, 1.00f, 1.40f, 1.10f,
       1.00f, 0.60f, 1.00f, 1.40f, 1.20f, 1.20f, 0.40f,
       2.40f, 0.30f, 1.40f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 34: Land Down Under (imported from leaders.json; strategic weights 25-31 default)
     {CivId{34}, "Land Down Under",
@@ -604,7 +641,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.90f, 1.20f, 1.10f, 1.00f, 1.20f,
       1.30f, 0.80f, 1.10f, 1.20f, 1.00f, 0.90f, 0.40f,
       2.00f, 0.40f, 1.20f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 
     // 35: Four Faces of Peace (imported from leaders.json; strategic weights 25-31 default)
     {CivId{35}, "Four Faces of Peace",
@@ -614,7 +652,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.60f, 1.20f, 1.10f, 0.90f, 1.30f,
       1.10f, 0.40f, 1.10f, 1.30f, 1.20f, 0.70f, 0.70f,
       3.50f, 0.20f, 1.60f,
-      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f}},
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f,
+      1.5f, 1.0f, 1.5f, 1.0f}},  // military genes: designer defaults
 };
 
 /// One entry per civ. Civs 12-35 were ported from the old

@@ -195,3 +195,55 @@ TEST_CASE("parseOpponentMode / parseMapType accept and reject") {
     // Empty string is rejected.
     CHECK_FALSE(aoc::ga::parseMapType("", mt));
 }
+
+TEST_CASE("the GA seeds from the shipped leaders, not a copy of them") {
+    // The GA used to keep its own table of the twelve archetypes. It drifted:
+    // 148 of the 384 shared gene slots disagreed with LEADER_PERSONALITIES, so
+    // --seed-leader tuned a leader the game did not have. Seeding now reads the
+    // shipped table, and this pins that.
+    const ParamBounds b = defaultBounds();
+    for (int32_t leader = 0; leader < 12; ++leader) {
+        std::mt19937 rng(static_cast<uint32_t>(100 + leader));
+        const std::vector<Individual> pop =
+            aoc::ga::createInitialPopulation(4, rng, b, leader);
+        REQUIRE_FALSE(pop.empty());
+
+        // Slot 0 is the archetype itself, clamped into bounds.
+        std::array<float, aoc::ga::NUM_PARAMS> shipped{};
+        aoc::sim::LEADER_PERSONALITIES[static_cast<std::size_t>(leader)]
+            .behavior.toArray(shipped.data());
+        aoc::ga::clampGenes(shipped, b);
+
+        for (int32_t g = 0; g < aoc::ga::NUM_PARAMS; ++g) {
+            const auto idx = static_cast<std::size_t>(g);
+            CHECK(pop[0].genes[idx] == doctest::Approx(shipped[idx]));
+        }
+    }
+}
+
+TEST_CASE("every shipped leader carries all 36 genes, including the military four") {
+    // Until 2026-09-06 the table stopped at 32 initialisers, so milBaseWeight
+    // and its three companions were the same defaults for every leader and the
+    // GA's tuning of them could never reach the game. The twelve archetypes
+    // must now actually differ from each other in those four.
+    bool anyDifference = false;
+    const aoc::sim::LeaderBehavior& first = aoc::sim::LEADER_PERSONALITIES[0].behavior;
+    for (int32_t i = 1; i < 12; ++i) {
+        const aoc::sim::LeaderBehavior& b = aoc::sim::LEADER_PERSONALITIES[i].behavior;
+        if (b.milBaseWeight != first.milBaseWeight
+            || b.milThreatSensitivity != first.milThreatSensitivity
+            || b.milEmergencySlope != first.milEmergencySlope
+            || b.milOverstockPenalty != first.milOverstockPenalty) {
+            anyDifference = true;
+            break;
+        }
+    }
+    CHECK(anyDifference);
+
+    // Montezuma is the warmonger archetype and Gandhi the pacifist: their
+    // military weights must sit on opposite sides of the others.
+    CHECK(aoc::sim::LEADER_PERSONALITIES[8].behavior.milBaseWeight
+          > aoc::sim::LEADER_PERSONALITIES[9].behavior.milBaseWeight);
+    CHECK(aoc::sim::LEADER_PERSONALITIES[8].behavior.milThreatSensitivity
+          > aoc::sim::LEADER_PERSONALITIES[9].behavior.milThreatSensitivity);
+}
