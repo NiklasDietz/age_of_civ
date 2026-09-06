@@ -321,6 +321,11 @@ private:
     aoc::ui::GovernmentScreen m_governmentScreen;
     aoc::ui::EconomyScreen m_economyScreen;
     aoc::ui::CityDetailScreen m_cityDetailScreen;
+    /// District placement mode: the city that asked, the district it is
+    /// building, and whether the next right-click on the map places it.
+    aoc::hex::AxialCoord m_pendingDistrictCity{0, 0};
+    aoc::sim::DistrictType m_pendingDistrictType = aoc::sim::DistrictType::Campus;
+    bool m_pendingDistrictActive = false;
     aoc::ui::TradeScreen m_tradeScreen;
     aoc::ui::TradeRouteSetupScreen m_tradeRouteSetupScreen;
     aoc::ui::DiplomacyScreen m_diplomacyScreen;

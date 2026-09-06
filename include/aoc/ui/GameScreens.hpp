@@ -11,9 +11,11 @@
 #include "aoc/ui/Widget.hpp"
 #include "aoc/ui/IScreen.hpp"
 #include "aoc/core/Types.hpp"
+#include "aoc/simulation/city/District.hpp"
 #include "aoc/map/HexCoord.hpp"
 
 #include <array>
+#include <functional>
 #include <string>
 
 namespace aoc::ui { class UIManager; }
@@ -194,6 +196,12 @@ public:
     /// Toggle worker assignment for a tile. Called from Application when
     /// the player left-clicks a tile while the city detail screen is open.
     void toggleWorkerOnTile(aoc::hex::AxialCoord tile);
+    /// Called when the player asks to place a queued district on the map:
+    /// Application turns it into its placement mode (DistrictPlacement.hpp).
+    using PlaceDistrictCallback = std::function<void(aoc::hex::AxialCoord, aoc::sim::DistrictType)>;
+    void setPlaceDistrictCallback(PlaceDistrictCallback callback) {
+        this->m_onPlaceDistrict = std::move(callback);
+    }
 
     /// The city entity currently displayed by this screen.
     [[nodiscard]] aoc::hex::AxialCoord cityLocation() const { return this->m_cityLocation; }
@@ -207,6 +215,7 @@ public:
     static constexpr int32_t TAB_COUNT      = 5;
 
 private:
+    PlaceDistrictCallback m_onPlaceDistrict;
     void buildOverviewTab(UIManager& ui, WidgetId contentPanel);
     void buildProductionTab(UIManager& ui, WidgetId contentPanel);
     void buildBuildingsTab(UIManager& ui, WidgetId contentPanel);

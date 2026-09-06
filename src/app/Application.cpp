@@ -73,6 +73,7 @@
 #include "aoc/simulation/unit/UnitUpgrade.hpp"
 #include "aoc/simulation/city/CityBombardment.hpp"
 #include "aoc/simulation/city/CityConnection.hpp"
+#include "aoc/simulation/city/DistrictPlacement.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyActions.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
@@ -1266,8 +1267,8 @@ ErrorCode Application::initialize(const Config& config) {
             if (!requireIntParam(q, "weight", weight, err)) {
                 return err;
             }
-            if (weight < -aoc::sim::WORLD_CONGRESS_MAX_VOTE_WEIGHT
-                || weight > aoc::sim::WORLD_CONGRESS_MAX_VOTE_WEIGHT) {
+            if (weight < -aoc::sim::WORLD_CONGRESS_MAX_VOTE_WEIGHT ||
+                weight > aoc::sim::WORLD_CONGRESS_MAX_VOTE_WEIGHT) {
                 return std::string("{\"error\":\"weight out of range\"}");
             }
             aoc::debug::CongressVoteCommand cmd{};
@@ -1497,8 +1498,8 @@ ErrorCode Application::initialize(const Config& config) {
             if (!requireIntParam(q, "promotion", promotion, err)) {
                 return err;
             }
-            if (promotion <= 0
-                || promotion >= static_cast<int32_t>(aoc::sim::GovernorPromotion::Count)) {
+            if (promotion <= 0 ||
+                promotion >= static_cast<int32_t>(aoc::sim::GovernorPromotion::Count)) {
                 return std::string("{\"error\":\"promotion out of range\"}");
             }
             aoc::debug::PromoteGovernorCommand cmd{};
@@ -1702,13 +1703,17 @@ ErrorCode Application::initialize(const Config& config) {
                 "{\"method\":\"POST\",\"path\":\"/game/spy/mission?player=&q=&r=&mission=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/greatperson/activate?player=&q=&r=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/congress/vote?player=&weight=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/congress/propose?player=&resolution=&target=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/unit/merge?player=&q=&r=&sourceQ=&sourceR=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/congress/"
+                "propose?player=&resolution=&target=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/unit/"
+                "merge?player=&q=&r=&sourceQ=&sourceR=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/governor/assign?player=&q=&r=&type=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/governor/promote?player=&q=&r=&promotion=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/governor/"
+                "promote?player=&q=&r=&promotion=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/policy/slot?player=&slot=&policy=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/government/change?player=&government=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/city/purchase?player=&q=&r=&type=&item=&faith=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/city/"
+                "purchase?player=&q=&r=&type=&item=&faith=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/city/focus?player=&q=&r=&focus=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/city/lock-tile?player=&q=&r=&tq=&tr=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/city/queue/remove?player=&q=&r=&index=\"},"
@@ -1722,7 +1727,8 @@ ErrorCode Application::initialize(const Config& config) {
                 "{\"method\":\"POST\",\"path\":\"/game/unit/alert?player=&q=&r=&on=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/unit/promote?player=&q=&r=&promotion=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/religion/pantheon?player=&belief=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/religion/found?player=&founder=&worship=&enhancer=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/religion/"
+                "found?player=&founder=&worship=&enhancer=\"},"
                 "{\"method\":\"GET\",\"path\":\"/ui/tree\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click?widgetId=N\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click-at?x=&y=\"},"
@@ -1788,6 +1794,18 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_screenRegistry.add(&this->m_settingsMenu);
     this->m_screenRegistry.add(&this->m_loadGameMenu);
     this->m_screenRegistry.add(&this->m_loadingScreen);
+
+    // "Choose a site" on a queued district arms map siting: the screen closes,
+    // the candidate tiles light up and the next right-click places it.
+    this->m_cityDetailScreen.setPlaceDistrictCallback(
+        [this](aoc::hex::AxialCoord cityAt, aoc::sim::DistrictType type) {
+            this->m_pendingDistrictCity   = cityAt;
+            this->m_pendingDistrictType   = type;
+            this->m_pendingDistrictActive = true;
+            this->closeAllScreens();
+            this->m_notificationManager.push("Right-click a highlighted tile to site the district",
+                                             4.0f, 0.9f, 0.85f, 0.6f);
+        });
 
     // Seed the icon atlas with built-in placeholders so any widget
     // that references `resources.*` / `civs.*` / etc. renders a
@@ -2243,10 +2261,10 @@ void Application::spectatorAdvanceTurn() {
     turnCtx.dealTracker     = &this->m_dealTracker;
     turnCtx.allianceTracker = &this->m_allianceTracker;
     this->m_diplomacy.setAllianceTracker(&this->m_allianceTracker);
-    turnCtx.rng             = &this->m_gameRng;
-    turnCtx.gameState       = &this->m_gameState;
-    turnCtx.humanPlayer     = aoc::INVALID_PLAYER;
-    turnCtx.currentTurn     = static_cast<aoc::TurnNumber>(this->m_turnManager.currentTurn() + 1);
+    turnCtx.rng         = &this->m_gameRng;
+    turnCtx.gameState   = &this->m_gameState;
+    turnCtx.humanPlayer = aoc::INVALID_PLAYER;
+    turnCtx.currentTurn = static_cast<aoc::TurnNumber>(this->m_turnManager.currentTurn() + 1);
 
     for (aoc::sim::ai::AIController& ai : this->m_aiControllers) {
         turnCtx.aiControllers.push_back(&ai);
@@ -2547,17 +2565,17 @@ void Application::executeGameControlCommand(const aoc::debug::AttackUnitCommand&
     // sorties and the melee / ranged / bombing choice all live in the sim.
     // Combat can remove either unit, so the selection is re-looked-up afterwards
     // instead of dereferencing a pointer the fight may have freed.
-    const bool selectionWasAttacker =
-        this->m_selectedUnit != nullptr && this->m_selectedUnit->owner() == cmd.player &&
-        this->m_selectedUnit->position() == cmd.from;
+    const bool selectionWasAttacker = this->m_selectedUnit != nullptr &&
+                                      this->m_selectedUnit->owner() == cmd.player &&
+                                      this->m_selectedUnit->position() == cmd.from;
     const bool selectionWasDefender =
         this->m_selectedUnit != nullptr && this->m_selectedUnit->position() == cmd.to;
     const PlayerId defenderOwner =
         selectionWasDefender ? this->m_selectedUnit->owner() : aoc::INVALID_PLAYER;
 
-    const ErrorCode result = aoc::sim::requestAttack(this->m_gameState, this->m_gameRng,
-                                                     this->m_hexGrid, cmd.player, cmd.from, cmd.to,
-                                                     &this->m_diplomacy);
+    const ErrorCode result =
+        aoc::sim::requestAttack(this->m_gameState, this->m_gameRng, this->m_hexGrid, cmd.player,
+                                cmd.from, cmd.to, &this->m_diplomacy);
     if (result != ErrorCode::Ok) {
         LOG_WARN("Attack by player %u from (%d,%d) on (%d,%d) rejected: %.*s",
                  static_cast<unsigned>(cmd.player), cmd.from.q, cmd.from.r, cmd.to.q, cmd.to.r,
@@ -2565,10 +2583,10 @@ void Application::executeGameControlCommand(const aoc::debug::AttackUnitCommand&
         return;
     }
     if (selectionWasAttacker || selectionWasDefender) {
-        const PlayerId owner = selectionWasAttacker ? cmd.player : defenderOwner;
-        const hex::AxialCoord at = selectionWasAttacker ? cmd.from : cmd.to;
+        const PlayerId owner           = selectionWasAttacker ? cmd.player : defenderOwner;
+        const hex::AxialCoord at       = selectionWasAttacker ? cmd.from : cmd.to;
         aoc::game::Player* ownerPlayer = this->m_gameState.player(owner);
-        this->m_selectedUnit = ownerPlayer != nullptr ? ownerPlayer->unitAt(at) : nullptr;
+        this->m_selectedUnit           = ownerPlayer != nullptr ? ownerPlayer->unitAt(at) : nullptr;
     }
     this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, 0);
 }
@@ -2637,9 +2655,9 @@ void Application::executeGameControlCommand(const aoc::debug::SetProductionComma
     }
     case aoc::sim::ProductionItemType::Project: {
         // Projects go through their own validated request (district check).
-        const ErrorCode rc = aoc::sim::requestQueueProject(
-            this->m_gameState, cmd.player, cmd.cityLocation,
-            static_cast<aoc::sim::CityProjectType>(cmd.itemId));
+        const ErrorCode rc =
+            aoc::sim::requestQueueProject(this->m_gameState, cmd.player, cmd.cityLocation,
+                                          static_cast<aoc::sim::CityProjectType>(cmd.itemId));
         if (rc != ErrorCode::Ok) {
             LOG_WARN("Project %u for player %u rejected: %.*s", static_cast<unsigned>(cmd.itemId),
                      static_cast<unsigned>(cmd.player), static_cast<int>(describeError(rc).size()),
@@ -2686,7 +2704,7 @@ void Application::executeGameControlCommand(const aoc::debug::ActivateGreatPerso
                  static_cast<unsigned>(cmd.player), cmd.at.q, cmd.at.r,
                  static_cast<int>(describeError(result).size()), describeError(result).data());
     } else if (this->m_selectedUnit != nullptr && this->m_selectedUnit->position() == cmd.at) {
-        this->m_selectedUnit = nullptr;  // the unit was removed by the activation
+        this->m_selectedUnit = nullptr; // the unit was removed by the activation
     }
 }
 
@@ -2695,19 +2713,19 @@ void Application::executeGameControlCommand(const aoc::debug::CongressVoteComman
         aoc::sim::requestCongressVote(this->m_gameState, cmd.player, cmd.weight);
     if (result != ErrorCode::Ok) {
         LOG_WARN("Congress vote %+d for player %u rejected: %.*s", cmd.weight,
-                 static_cast<unsigned>(cmd.player),
-                 static_cast<int>(describeError(result).size()), describeError(result).data());
+                 static_cast<unsigned>(cmd.player), static_cast<int>(describeError(result).size()),
+                 describeError(result).data());
     }
 }
 
 void Application::executeGameControlCommand(const aoc::debug::CongressProposalCommand& cmd) {
-    const ErrorCode result = aoc::sim::requestCongressProposal(
-        this->m_gameState, cmd.player, cmd.resolution, cmd.target);
+    const ErrorCode result = aoc::sim::requestCongressProposal(this->m_gameState, cmd.player,
+                                                               cmd.resolution, cmd.target);
     if (result != ErrorCode::Ok) {
         LOG_WARN("Congress proposal %d for player %u (target %d) rejected: %.*s",
                  static_cast<int>(cmd.resolution), static_cast<unsigned>(cmd.player),
-                 static_cast<int>(cmd.target),
-                 static_cast<int>(describeError(result).size()), describeError(result).data());
+                 static_cast<int>(cmd.target), static_cast<int>(describeError(result).size()),
+                 describeError(result).data());
     }
 }
 
@@ -2717,8 +2735,8 @@ void Application::executeGameControlCommand(const aoc::debug::MergeUnitsCommand&
     const bool selectionWasSource = this->m_selectedUnit != nullptr &&
                                     this->m_selectedUnit->owner() == cmd.player &&
                                     this->m_selectedUnit->position() == cmd.sourceAt;
-    const ErrorCode result = aoc::sim::requestMergeUnits(this->m_gameState, cmd.player, cmd.at,
-                                                         cmd.sourceAt);
+    const ErrorCode result =
+        aoc::sim::requestMergeUnits(this->m_gameState, cmd.player, cmd.at, cmd.sourceAt);
     if (result != ErrorCode::Ok) {
         LOG_WARN("Merge by player %u of (%d,%d) into (%d,%d) rejected: %.*s",
                  static_cast<unsigned>(cmd.player), cmd.sourceAt.q, cmd.sourceAt.r, cmd.at.q,
@@ -2746,9 +2764,10 @@ void Application::executeGameControlCommand(const aoc::debug::SlotPolicyCommand&
     const ErrorCode result =
         aoc::sim::requestSlotPolicy(this->m_gameState, cmd.player, cmd.slot, cmd.policy);
     if (result != ErrorCode::Ok) {
-        LOG_WARN("Policy %d into slot %u for player %u rejected: %.*s", static_cast<int>(cmd.policy),
-                 static_cast<unsigned>(cmd.slot), static_cast<unsigned>(cmd.player),
-                 static_cast<int>(describeError(result).size()), describeError(result).data());
+        LOG_WARN("Policy %d into slot %u for player %u rejected: %.*s",
+                 static_cast<int>(cmd.policy), static_cast<unsigned>(cmd.slot),
+                 static_cast<unsigned>(cmd.player), static_cast<int>(describeError(result).size()),
+                 describeError(result).data());
     }
 }
 
@@ -4977,19 +4996,24 @@ void Application::run() {
             }
         }
 
-        // -- Escape: close the pause menu or any open screen, else open the pause menu.
-        // ESC must never quit the game outright (user feedback).
-        if (this->m_inputManager.isActionPressed(InputAction::Cancel)) {
-            LOG_INFO("ESC pressed in-game (pauseBuilt=%d, anyScreen=%d)",
-                     this->m_pauseMenu.isBuilt() ? 1 : 0, this->anyScreenOpen() ? 1 : 0);
-            if (this->m_pauseMenu.isBuilt()) {
-                this->m_pauseMenu.destroy(this->m_uiManager);
-            } else if (this->anyScreenOpen()) {
-                this->closeAllScreens();
-            } else {
-                this->showPauseMenu();
+        // Escape leaves district placement before it reaches the pause menu.
+        if (this->m_pendingDistrictActive &&
+            this->m_inputManager.isActionPressed(InputAction::Cancel)) {
+            this->m_pendingDistrictActive = false;
+            this->m_notificationManager.push("District siting cancelled", 2.0f, 0.8f, 0.8f, 0.8f);
+        } else // -- Escape: close the pause menu or any open screen, else open the pause menu.
+            // ESC must never quit the game outright (user feedback).
+            if (this->m_inputManager.isActionPressed(InputAction::Cancel)) {
+                LOG_INFO("ESC pressed in-game (pauseBuilt=%d, anyScreen=%d)",
+                         this->m_pauseMenu.isBuilt() ? 1 : 0, this->anyScreenOpen() ? 1 : 0);
+                if (this->m_pauseMenu.isBuilt()) {
+                    this->m_pauseMenu.destroy(this->m_uiManager);
+                } else if (this->anyScreenOpen()) {
+                    this->closeAllScreens();
+                } else {
+                    this->showPauseMenu();
+                }
             }
-        }
 
         // -- Toggle tile yield display (Y key) --
         if (!this->m_spectatorMode && this->m_inputManager.isKeyPressed(GLFW_KEY_Y) &&
@@ -5484,10 +5508,11 @@ void Application::run() {
                         if (target != nullptr && target->isMilitary()) {
                             const aoc::sim::CombatPreview preview = aoc::sim::previewCombat(
                                 this->m_gameState, this->m_hexGrid, *this->m_selectedUnit, *target);
-                            previewText = std::string(this->m_selectedUnit->typeDef().name) + " vs "
-                                        + std::string(target->typeDef().name) + "\nExpected: deal "
-                                        + std::to_string(preview.expectedDefenderDamage) + ", take "
-                                        + std::to_string(preview.expectedAttackerDamage);
+                            previewText =
+                                std::string(this->m_selectedUnit->typeDef().name) + " vs " +
+                                std::string(target->typeDef().name) + "\nExpected: deal " +
+                                std::to_string(preview.expectedDefenderDamage) + ", take " +
+                                std::to_string(preview.expectedAttackerDamage);
                         }
                     }
                 }
@@ -5576,6 +5601,18 @@ void Application::run() {
                                  this->m_selectedCity->owner() == 0 &&
                                  !this->m_cityDetailScreen.isOpen() && !this->m_spectatorMode;
         this->m_gameRenderer.workerOverlayCity = showOverlay ? this->m_selectedCity : nullptr;
+
+        // District siting: while the mode is armed the map rings every legal
+        // tile and shades it by its adjacency score.
+        if (this->m_pendingDistrictActive) {
+            const aoc::game::Player* sitingPlayer = this->m_gameState.player(0);
+            this->m_gameRenderer.districtPreviewCity =
+                sitingPlayer != nullptr ? sitingPlayer->cityAt(this->m_pendingDistrictCity)
+                                        : nullptr;
+            this->m_gameRenderer.districtPreviewType = this->m_pendingDistrictType;
+        } else {
+            this->m_gameRenderer.districtPreviewCity = nullptr;
+        }
 
         this->m_gameRenderer.m_minimapSuppressed = this->anyScreenOpen();
         // Creator panel is ~200 px tall (HorizontalWrap multi-row).
@@ -6347,8 +6384,8 @@ void Application::handleSelect() {
 
     // A click on an own city's banner opens its detail screen (Civ VI banners).
     for (const aoc::render::CityBannerRect& banner : this->m_gameRenderer.cityBannerRects()) {
-        if (banner.owner != 0 || worldX < banner.x || worldX > banner.x + banner.w
-            || worldY < banner.y || worldY > banner.y + banner.h) {
+        if (banner.owner != 0 || worldX < banner.x || worldX > banner.x + banner.w ||
+            worldY < banner.y || worldY > banner.y + banner.h) {
             continue;
         }
         aoc::game::Player* bannerOwner = this->m_gameState.humanPlayer();
@@ -6359,7 +6396,8 @@ void Application::handleSelect() {
         }
         this->m_selectedCity = bannerCity;
         this->m_selectedUnit = nullptr;
-        this->m_cityDetailScreen.setContext(&this->m_gameState, &this->m_hexGrid, banner.location, 0);
+        this->m_cityDetailScreen.setContext(&this->m_gameState, &this->m_hexGrid, banner.location,
+                                            0);
         if (!this->m_cityDetailScreen.isOpen()) {
             this->m_cityDetailScreen.open(this->m_uiManager);
         }
@@ -6456,12 +6494,14 @@ void Application::handleContextAction() {
         return;
     }
 
-    if (this->m_selectedUnit == nullptr && this->m_selectedCity == nullptr) {
+    if (this->m_selectedUnit == nullptr && this->m_selectedCity == nullptr &&
+        !this->m_pendingDistrictActive) {
         return;
     }
 
     // Only allow actions on own entities
-    if (this->m_selectedUnit != nullptr && this->m_selectedUnit->owner() != 0) {
+    if (this->m_selectedUnit != nullptr && this->m_selectedUnit->owner() != 0 &&
+        !this->m_pendingDistrictActive) {
         return; // Can't control other players' units
     }
     if (this->m_selectedCity != nullptr && this->m_selectedCity->owner() != 0) {
@@ -6480,6 +6520,25 @@ void Application::handleContextAction() {
     const hex::AxialCoord targetTile = hex::pixelToAxial(worldX, worldY, hexSize);
 
     if (!this->m_hexGrid.isValid(targetTile)) {
+        return;
+    }
+
+    if (this->m_pendingDistrictActive) {
+        // Placement mode owns the right-click: site the district, or say why not.
+        const ErrorCode rc = aoc::sim::requestPlaceDistrict(
+            this->m_gameState, this->m_hexGrid, this->m_gameState.humanPlayerId(),
+            this->m_pendingDistrictCity, this->m_pendingDistrictType, targetTile);
+        if (rc == ErrorCode::Ok) {
+            this->m_pendingDistrictActive = false;
+            this->m_notificationManager.push("District site chosen", 3.0f, 0.5f, 0.9f, 0.5f);
+            if (this->m_cityDetailScreen.isOpen()) {
+                this->m_cityDetailScreen.close(this->m_uiManager);
+                this->m_cityDetailScreen.open(this->m_uiManager);
+            }
+        } else {
+            this->m_notificationManager.push(
+                "Cannot site it there: " + std::string(describeError(rc)), 3.0f, 1.0f, 0.5f, 0.3f);
+        }
         return;
     }
 
@@ -6565,7 +6624,7 @@ void Application::handleContextAction() {
         const ErrorCode result = aoc::sim::requestGreatPersonActivation(
             this->m_gameState, this->m_hexGrid, unit.owner(), targetTile);
         if (result == ErrorCode::Ok) {
-            this->m_selectedUnit = nullptr;  // the unit was removed
+            this->m_selectedUnit = nullptr; // the unit was removed
         }
         return;
     }
@@ -6641,12 +6700,12 @@ void Application::handleContextAction() {
             const ErrorCode result = aoc::sim::requestMergeUnits(this->m_gameState, ownerId,
                                                                  targetTile, unit.position());
             if (result != ErrorCode::Ok) {
-                this->m_notificationManager.push(
-                    "Cannot form a formation: " + std::string(describeError(result)), 2.0f, 1.0f,
-                    0.3f, 0.3f);
+                this->m_notificationManager.push("Cannot form a formation: " +
+                                                     std::string(describeError(result)),
+                                                 2.0f, 1.0f, 0.3f, 0.3f);
                 return;
             }
-            this->m_selectedUnit = owner->unitAt(targetTile);   // the selected unit was consumed
+            this->m_selectedUnit = owner->unitAt(targetTile); // the selected unit was consumed
             this->rebuildUnitActionPanel();
             return;
         }
@@ -6660,9 +6719,9 @@ void Application::handleContextAction() {
         aoc::sim::enemyUnitAt(this->m_gameState, unit.owner(), targetTile) != nullptr) {
         const PlayerId attacker    = unit.owner();
         const hex::AxialCoord from = unit.position();
-        ErrorCode result           = aoc::sim::requestAttack(
-            this->m_gameState, this->m_gameRng, this->m_hexGrid, attacker, from, targetTile,
-            &this->m_diplomacy);
+        ErrorCode result =
+            aoc::sim::requestAttack(this->m_gameState, this->m_gameRng, this->m_hexGrid, attacker,
+                                    from, targetTile, &this->m_diplomacy);
         if (result == ErrorCode::InvalidState) {
             // At peace with the target's civ: the first right-click arms a war
             // declaration, the second one on the same civ declares it and attacks.
@@ -6670,20 +6729,22 @@ void Application::handleContextAction() {
                 aoc::sim::enemyUnitAt(this->m_gameState, attacker, targetTile);
             const PlayerId targetOwner = target != nullptr ? target->owner() : aoc::INVALID_PLAYER;
             const int32_t turn         = this->m_gameState.currentTurn();
-            if (targetOwner != aoc::INVALID_PLAYER && this->m_pendingWarTarget == targetOwner
-                && this->m_pendingWarTurn == turn) {
+            if (targetOwner != aoc::INVALID_PLAYER && this->m_pendingWarTarget == targetOwner &&
+                this->m_pendingWarTurn == turn) {
                 const ErrorCode warRc = aoc::sim::requestDeclareWar(
                     this->m_gameState, this->m_diplomacy, attacker, targetOwner,
                     aoc::sim::CasusBelliType::SurpriseWar, turn, &this->m_allianceTracker);
                 this->m_pendingWarTarget = aoc::INVALID_PLAYER;
                 if (warRc != ErrorCode::Ok) { // peace lock or friendship
-                    this->m_notificationManager.push(
-                        "Cannot declare war: " + std::string(describeError(warRc)), 4.0f, 1.0f, 0.5f, 0.3f);
+                    this->m_notificationManager.push("Cannot declare war: " +
+                                                         std::string(describeError(warRc)),
+                                                     4.0f, 1.0f, 0.5f, 0.3f);
                     return;
                 }
                 this->m_notificationManager.push("War declared!", 3.0f, 1.0f, 0.4f, 0.3f);
-                result = aoc::sim::requestAttack(this->m_gameState, this->m_gameRng, this->m_hexGrid,
-                                                 attacker, from, targetTile, &this->m_diplomacy);
+                result =
+                    aoc::sim::requestAttack(this->m_gameState, this->m_gameRng, this->m_hexGrid,
+                                            attacker, from, targetTile, &this->m_diplomacy);
             } else {
                 this->m_pendingWarTarget = targetOwner;
                 this->m_pendingWarTurn   = turn;
@@ -6694,13 +6755,13 @@ void Application::handleContextAction() {
             }
         }
         if (result != ErrorCode::Ok) {
-            this->m_notificationManager.push(
-                "Cannot attack: " + std::string(describeError(result)), 2.0f, 1.0f, 0.3f, 0.3f);
+            this->m_notificationManager.push("Cannot attack: " + std::string(describeError(result)),
+                                             2.0f, 1.0f, 0.3f, 0.3f);
             return;
         }
         aoc::game::Player* attackerPlayer = this->m_gameState.player(attacker);
         if (attackerPlayer == nullptr || attackerPlayer->unitAt(from) == nullptr) {
-            this->m_selectedUnit = nullptr;   // died to the retaliation
+            this->m_selectedUnit = nullptr; // died to the retaliation
         }
         this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, 0);
         this->rebuildUnitActionPanel();
@@ -6940,10 +7001,10 @@ void Application::handleEndTurn() {
         turnCtx.dealTracker     = &this->m_dealTracker;
         turnCtx.allianceTracker = &this->m_allianceTracker;
         this->m_diplomacy.setAllianceTracker(&this->m_allianceTracker);
-        turnCtx.rng             = &this->m_gameRng;
-        turnCtx.gameState       = &this->m_gameState;
-        turnCtx.humanPlayer     = 0;
-        turnCtx.currentTurn     = this->m_turnManager.currentTurn();
+        turnCtx.rng         = &this->m_gameRng;
+        turnCtx.gameState   = &this->m_gameState;
+        turnCtx.humanPlayer = 0;
+        turnCtx.currentTurn = this->m_turnManager.currentTurn();
         turnCtx.allPlayers.push_back(0);
         for (aoc::sim::ai::AIController& ai : this->m_aiControllers) {
             turnCtx.aiControllers.push_back(&ai);
@@ -7012,9 +7073,10 @@ void Application::handleEndTurn() {
 
         // Units waiting for the human to pick a promotion (they no longer auto-promote).
         if (const int32_t pending = aoc::sim::unitsAwaitingPromotion(*humanPost); pending > 0) {
-            this->m_notificationManager.push(std::to_string(pending)
-                                                 + (pending == 1 ? " unit can be promoted" : " units can be promoted"),
-                                             4.0f, 0.9f, 0.75f, 0.3f);
+            this->m_notificationManager.push(
+                std::to_string(pending) +
+                    (pending == 1 ? " unit can be promoted" : " units can be promoted"),
+                4.0f, 0.9f, 0.75f, 0.3f);
         }
 
         // Civic completion notification

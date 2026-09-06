@@ -579,6 +579,26 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
                     }
                 };
                 (void)ui.createButton(scrollArea, {0.0f, 0.0f, 140.0f, 14.0f}, std::move(removeBtn));
+                if (item.type == aoc::sim::ProductionItemType::District
+                    && this->m_onPlaceDistrict) {
+                    // Pick the tile on the map; the choice rides on this queue
+                    // item until the district is finished.
+                    const aoc::sim::DistrictType districtType =
+                        static_cast<aoc::sim::DistrictType>(item.itemId);
+                    ButtonData placeBtn;
+                    placeBtn.label = item.hasTargetTile
+                                         ? "Move site (" + std::to_string(item.targetTile.q) + ","
+                                               + std::to_string(item.targetTile.r) + ")"
+                                         : "Choose a site";
+                    placeBtn.fontSize     = 9.0f;
+                    placeBtn.cornerRadius = 3.0f;
+                    placeBtn.normalColor  = tokens::BRONZE_BASE;
+                    placeBtn.hoverColor   = tokens::BRONZE_LIGHT;
+                    placeBtn.pressedColor = tokens::BRONZE_DARK;
+                    const PlaceDistrictCallback callback = this->m_onPlaceDistrict;
+                    placeBtn.onClick = [callback, loc, districtType]() { callback(loc, districtType); };
+                    (void)ui.createButton(scrollArea, {0.0f, 0.0f, 160.0f, 14.0f}, std::move(placeBtn));
+                }
             }
 
             // Progress bar per queue item

@@ -16,6 +16,7 @@
 #include "aoc/ui/Notifications.hpp"
 #include "aoc/ui/Tutorial.hpp"
 #include "aoc/core/Types.hpp"
+#include "aoc/simulation/city/District.hpp"
 
 #include <cstdint>
 #include <string>
@@ -192,6 +193,12 @@ public:
     /// with a filled marker on currently-worked tiles. Click handling
     /// lives in Application; the renderer only draws.
     const aoc::game::City* workerOverlayCity = nullptr;
+    /// District placement mode. While `districtPreviewCity` is set, every tile
+    /// that city could put a `districtPreviewType` on is ringed and tinted by
+    /// its placement score, best first (DistrictPlacement.hpp). Application
+    /// sets it; the click that places the district lives there too.
+    const aoc::game::City* districtPreviewCity = nullptr;
+    aoc::sim::DistrictType districtPreviewType = aoc::sim::DistrictType::Campus;
 
     /// Selection highlight: axial coord of the currently-selected unit or
     /// city.  Set by Application each frame.  Draws a glowing hex outline at

@@ -11,6 +11,7 @@
 #include "aoc/render/GameRenderer.hpp"
 
 #include "aoc/render/PlayerColors.hpp"
+#include "aoc/simulation/city/DistrictPlacement.hpp"
 #include "aoc/simulation/city/CityActions.hpp"
 #include "aoc/simulation/city/ProductionSystem.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
@@ -31,11 +32,44 @@
 #include <renderer/Renderer2D.hpp>
 #include <renderer/RenderPipeline.hpp>
 
-namespace {
-
-} // anonymous namespace
+namespace {} // anonymous namespace
 
 namespace aoc::render {
+
+namespace {
+
+/// One colour per district type for the map pip; muted so districts read as
+/// terrain features, not as units.
+[[nodiscard]] const float* districtPipColour(aoc::sim::DistrictType type) {
+    static constexpr float CAMPUS[3]     = {0.35f, 0.60f, 0.90f};
+    static constexpr float COMMERCIAL[3] = {0.90f, 0.75f, 0.30f};
+    static constexpr float INDUSTRIAL[3] = {0.80f, 0.50f, 0.25f};
+    static constexpr float HARBOR[3]     = {0.30f, 0.75f, 0.80f};
+    static constexpr float HOLY[3]       = {0.90f, 0.90f, 0.95f};
+    static constexpr float ENCAMPMENT[3] = {0.80f, 0.30f, 0.30f};
+    static constexpr float THEATRE[3]    = {0.70f, 0.40f, 0.85f};
+    static constexpr float OTHER[3]      = {0.60f, 0.60f, 0.60f};
+    switch (type) {
+    case aoc::sim::DistrictType::Campus:
+        return CAMPUS;
+    case aoc::sim::DistrictType::Commercial:
+        return COMMERCIAL;
+    case aoc::sim::DistrictType::Industrial:
+        return INDUSTRIAL;
+    case aoc::sim::DistrictType::Harbor:
+        return HARBOR;
+    case aoc::sim::DistrictType::HolySite:
+        return HOLY;
+    case aoc::sim::DistrictType::Encampment:
+        return ENCAMPMENT;
+    case aoc::sim::DistrictType::Theatre:
+        return THEATRE;
+    default:
+        return OTHER;
+    }
+}
+
+} // namespace
 
 void GameRenderer::initialize(vulkan_app::RenderPipeline& /*pipeline*/,
                               vulkan_app::renderer::Renderer2D& /*renderer2d*/) {}
@@ -323,26 +357,30 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                             tileOwner != INVALID_PLAYER ? gameState.player(tileOwner) : nullptr;
                         if (ownerP != nullptr) {
                             const aoc::hex::AxialCoord here = grid.toAxial(index);
-                            const aoc::game::City* nearest = nullptr;
-                            int32_t bestDist = 4;
+                            const aoc::game::City* nearest  = nullptr;
+                            int32_t bestDist                = 4;
                             for (const std::unique_ptr<aoc::game::City>& c : ownerP->cities()) {
                                 const int32_t d = grid.distance(c->location(), here);
-                                if (d < bestDist) { bestDist = d; nearest = c.get(); }
+                                if (d < bestDist) {
+                                    bestDist = d;
+                                    nearest  = c.get();
+                                }
                             }
                             const aoc::sim::ReligionId rel =
                                 nearest != nullptr ? nearest->religion().dominantReligion()
                                                    : aoc::sim::NO_RELIGION;
                             if (rel != aoc::sim::NO_RELIGION) {
                                 static constexpr float RELIGION_PALETTE[8][3] = {
-                                    {0.95f, 0.85f, 0.25f}, {0.30f, 0.55f, 0.95f}, {0.85f, 0.30f, 0.30f},
-                                    {0.35f, 0.80f, 0.40f}, {0.75f, 0.40f, 0.85f}, {0.95f, 0.60f, 0.20f},
+                                    {0.95f, 0.85f, 0.25f}, {0.30f, 0.55f, 0.95f},
+                                    {0.85f, 0.30f, 0.30f}, {0.35f, 0.80f, 0.40f},
+                                    {0.75f, 0.40f, 0.85f}, {0.95f, 0.60f, 0.20f},
                                     {0.30f, 0.80f, 0.80f}, {0.90f, 0.90f, 0.90f}};
                                 const float* c = RELIGION_PALETTE[rel % 8];
-                                fillR   = c[0];
-                                fillG   = c[1];
-                                fillB   = c[2];
-                                fillA   = 0.45f;
-                                useFill = true;
+                                fillR          = c[0];
+                                fillG          = c[1];
+                                fillB          = c[2];
+                                fillA          = 0.45f;
+                                useFill        = true;
                             } else {
                                 fillR   = 0.25f;
                                 fillG   = 0.25f;
@@ -1878,6 +1916,85 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
         // tile the selected city can work (owned + walkable, within 3 hexes
         // of the city centre) and marks worked tiles with a filled disc.
         // Click handling lives in Application; this layer only draws.
+        // Districts already standing: a small coloured pip on their tile, so the
+        // map shows where a city spent its land. The city centre is drawn by
+        // the city itself.
+        for (const std::unique_ptr<aoc::game::Player>& dp : gameState.players()) {
+            if (dp == nullptr) {
+                continue;
+            }
+            for (const std::unique_ptr<aoc::game::City>& dc : dp->cities()) {
+                if (dc == nullptr || dc->owner() != dp->id()) {
+                    continue;
+                }
+                for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& d :
+                     dc->districts().districts) {
+                    if (d.type == aoc::sim::DistrictType::CityCenter ||
+                        d.location == dc->location()) {
+                        continue;
+                    }
+                    if (!grid.isValid(d.location)) {
+                        continue;
+                    }
+                    const int32_t didx = grid.toIndex(d.location);
+                    if (fog.visibility(viewingPlayer, didx) == aoc::map::TileVisibility::Unseen) {
+                        continue;
+                    }
+                    float dcx = 0.0f;
+                    float dcy = 0.0f;
+                    aoc::hex::axialToPixel(d.location, hexSize, dcx, dcy);
+                    const float* colour = districtPipColour(d.type);
+                    renderer2d.drawFilledCircle(dcx, dcy + hexSize * 0.10f, hexSize * 0.22f,
+                                                colour[0], colour[1], colour[2], 0.95f);
+                    renderer2d.drawFilledCircle(dcx, dcy + hexSize * 0.10f, hexSize * 0.11f, 0.10f,
+                                                0.10f, 0.12f, 0.85f);
+                }
+            }
+        }
+
+        // District placement mode: ring every legal site, brightest on the best.
+        if (this->districtPreviewCity != nullptr) {
+            const aoc::game::City* pc = this->districtPreviewCity;
+            const std::vector<aoc::hex::AxialCoord> sites =
+                aoc::sim::districtCandidateTiles(gameState, grid, *pc, this->districtPreviewType);
+            // Scored once per frame, not once per draw: the score walks every
+            // district in the world, so asking twice per tile is not free.
+            std::vector<float> scores;
+            scores.reserve(sites.size());
+            float bestScore  = 0.0f;
+            float worstScore = 0.0f;
+            for (const aoc::hex::AxialCoord& site : sites) {
+                const float score =
+                    aoc::sim::districtTileScore(gameState, grid, this->districtPreviewType, site);
+                if (scores.empty()) {
+                    bestScore  = score;
+                    worstScore = score;
+                } else {
+                    bestScore  = std::max(bestScore, score);
+                    worstScore = std::min(worstScore, score);
+                }
+                scores.push_back(score);
+            }
+            const float span = std::max(1.0f, bestScore - worstScore);
+            for (std::size_t si = 0; si < sites.size(); ++si) {
+                const aoc::hex::AxialCoord& site = sites[si];
+                const float rank = (scores[si] - worstScore) / span; // 0 worst, 1 best
+                float scx        = 0.0f;
+                float scy        = 0.0f;
+                aoc::hex::axialToPixel(site, hexSize, scx, scy);
+                renderer2d.drawFilledHexagon(scx, scy, hexSize * 0.866f, hexSize,
+                                             0.20f + 0.55f * rank, 0.75f, 0.30f,
+                                             0.25f + 0.35f * rank);
+                float sverts[12];
+                aoc::hex::hexVertices(scx, scy, hexSize, sverts);
+                for (int e = 0; e < 6; ++e) {
+                    renderer2d.drawCapsule(sverts[e * 2], sverts[e * 2 + 1],
+                                           sverts[((e + 1) % 6) * 2], sverts[((e + 1) % 6) * 2 + 1],
+                                           1.5f, 0.45f + 0.5f * rank, 0.95f, 0.45f, 0.85f, 0.0f);
+                }
+            }
+        }
+
         if (this->workerOverlayCity != nullptr) {
             const aoc::game::City* wc      = this->workerOverlayCity;
             const aoc::hex::AxialCoord ctr = wc->location();
@@ -1968,11 +2085,11 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
         // Until 2026-09-05 the banner was the name alone.
         this->m_cityBannerRects.clear();
         {
-            const float invZoomLabel        = 1.0f / camera.zoom();
-            constexpr float LABEL_FONT_SIZE = 10.0f;
+            const float invZoomLabel         = 1.0f / camera.zoom();
+            constexpr float LABEL_FONT_SIZE  = 10.0f;
             constexpr float DETAIL_FONT_SIZE = 7.0f;
-            const float labelOffsetY        = hexSize * 0.60f;
-            const int32_t currentTurn       = gameState.currentTurn();
+            const float labelOffsetY         = hexSize * 0.60f;
+            const int32_t currentTurn        = gameState.currentTurn();
 
             for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
                 for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
@@ -2019,10 +2136,11 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                                                   LABEL_FONT_SIZE, labelColor, invZoomLabel);
 
                     // Summary line, cached per turn (production per turn walks the tiles).
-                    const int32_t cityTileIdx = grid.toIndex(city.location());
+                    const int32_t cityTileIdx               = grid.toIndex(city.location());
                     std::pair<int32_t, std::string>& cached = this->m_cityBannerCache[cityTileIdx];
                     if (cached.first != currentTurn + 1 || cached.second.empty()) {
-                        const float perTurn = aoc::sim::cityProductionPerTurn(*playerPtr, city, grid, gameState);
+                        const float perTurn =
+                            aoc::sim::cityProductionPerTurn(*playerPtr, city, grid, gameState);
                         cached = {currentTurn + 1, aoc::sim::cityBannerSummary(city, perTurn)};
                     }
                     std::string detail = cached.second;
@@ -2045,13 +2163,15 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                     // Growth bar for own cities: food stored toward the next citizen.
                     float barH = 0.0f;
                     if (city.owner() == viewingPlayer) {
-                        const float barW    = std::max(textWorldW, detailW);
-                        barH                = 2.0f * invZoomLabel;
-                        const float barX    = cityCx - barW * 0.5f;
-                        const float barY    = detailY + detailH + 1.0f * invZoomLabel;
-                        const float fill    = aoc::sim::cityGrowthFraction(city);
-                        renderer2d.drawFilledRect(barX, barY, barW, barH, 0.15f, 0.12f, 0.10f, 0.8f);
-                        renderer2d.drawFilledRect(barX, barY, barW * fill, barH, 0.45f, 0.80f, 0.35f, 0.95f);
+                        const float barW = std::max(textWorldW, detailW);
+                        barH             = 2.0f * invZoomLabel;
+                        const float barX = cityCx - barW * 0.5f;
+                        const float barY = detailY + detailH + 1.0f * invZoomLabel;
+                        const float fill = aoc::sim::cityGrowthFraction(city);
+                        renderer2d.drawFilledRect(barX, barY, barW, barH, 0.15f, 0.12f, 0.10f,
+                                                  0.8f);
+                        renderer2d.drawFilledRect(barX, barY, barW * fill, barH, 0.45f, 0.80f,
+                                                  0.35f, 0.95f);
                     }
 
                     const float bannerW = std::max(textWorldW, detailW);
