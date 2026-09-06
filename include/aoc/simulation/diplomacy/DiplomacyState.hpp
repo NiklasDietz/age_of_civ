@@ -23,46 +23,53 @@ namespace aoc::map {
 class HexGrid;
 }
 
-namespace aoc::game { class GameState; }
+namespace aoc::game {
+class GameState;
+}
 
 namespace aoc::sim {
 
 struct AllianceObligationTracker;
 class TurnEventLog;
 
-
 /// A time-decaying relation modifier (e.g., "settled near our borders" -5, decays over 20 turns).
 struct RelationModifier {
     std::string reason;
-    int32_t     amount;          ///< Positive = friendly, negative = hostile
-    int32_t     turnsRemaining;  ///< 0 = permanent
+    int32_t amount;         ///< Positive = friendly, negative = hostile
+    int32_t turnsRemaining; ///< 0 = permanent
 };
 
 /// Diplomatic stance derived from the relation score.
 enum class DiplomaticStance : uint8_t {
-    Hostile,       ///< [-100, -40]
-    Unfriendly,    ///< (-40, -10]
-    Neutral,       ///< (-10, 10)
-    Friendly,      ///< [10, 40)
-    Allied,        ///< [40, 100]
+    Hostile,    ///< [-100, -40]
+    Unfriendly, ///< (-40, -10]
+    Neutral,    ///< (-10, 10)
+    Friendly,   ///< [10, 40)
+    Allied,     ///< [40, 100]
 };
 
 [[nodiscard]] constexpr std::string_view stanceName(DiplomaticStance stance) {
     switch (stance) {
-        case DiplomaticStance::Hostile:    return "Hostile";
-        case DiplomaticStance::Unfriendly: return "Unfriendly";
-        case DiplomaticStance::Neutral:    return "Neutral";
-        case DiplomaticStance::Friendly:   return "Friendly";
-        case DiplomaticStance::Allied:     return "Allied";
-        default:                           return "Unknown";
+    case DiplomaticStance::Hostile:
+        return "Hostile";
+    case DiplomaticStance::Unfriendly:
+        return "Unfriendly";
+    case DiplomaticStance::Neutral:
+        return "Neutral";
+    case DiplomaticStance::Friendly:
+        return "Friendly";
+    case DiplomaticStance::Allied:
+        return "Allied";
+    default:
+        return "Unknown";
     }
 }
 
 [[nodiscard]] constexpr DiplomaticStance stanceFromScore(int32_t score) {
     if (score <= -40) return DiplomaticStance::Hostile;
     if (score <= -10) return DiplomaticStance::Unfriendly;
-    if (score < 10)   return DiplomaticStance::Neutral;
-    if (score < 40)   return DiplomaticStance::Friendly;
+    if (score < 10) return DiplomaticStance::Neutral;
+    if (score < 40) return DiplomaticStance::Friendly;
     return DiplomaticStance::Allied;
 }
 
@@ -71,32 +78,32 @@ enum class DiplomaticStance : uint8_t {
 /// to decide toll rates, alliance offers, and war declarations. Human players
 /// see the score but aren't bound by it.
 struct ReputationModifier {
-    int32_t amount;          ///< Positive = trustworthy, negative = untrustworthy
-    int32_t turnsRemaining;  ///< 0 = permanent
+    int32_t amount;         ///< Positive = trustworthy, negative = untrustworthy
+    int32_t turnsRemaining; ///< 0 = permanent
 };
 
 /// Pairwise relation data between two players.
 struct PairwiseRelation {
-    int32_t baseScore = 0;   ///< Base relation score (from modifiers + events)
-    bool    hasMet    = false; ///< Whether these players have discovered each other
-    int32_t metOnTurn = -1;   ///< Turn when first contact occurred (-1 = never met)
-    bool    isAtWar   = false;
-    int32_t turnsSincePeace = 100; ///< Turns since last peace treaty (starts high = no cooldown)
-    bool    hasOpenBorders     = false;
-    bool    hasDefensiveAlliance = false;
-    bool    hasMilitaryAlliance  = false;   ///< Share visibility, join wars
-    bool    hasResearchAgreement = false;   ///< +10% science for both
-    bool    hasEconomicAlliance  = false;   ///< Shared market prices, reduced tariffs
-    bool    hasCulturalAlliance  = false;   ///< +25% tourism between allies (L1)
-    bool    hasReligiousAlliance = false;   ///< +25% faith on shared holy sites (L1)
-    bool    hasEmbargo         = false;
+    int32_t baseScore         = 0;     ///< Base relation score (from modifiers + events)
+    bool hasMet               = false; ///< Whether these players have discovered each other
+    int32_t metOnTurn         = -1;    ///< Turn when first contact occurred (-1 = never met)
+    bool isAtWar              = false;
+    int32_t turnsSincePeace   = 100; ///< Turns since last peace treaty (starts high = no cooldown)
+    bool hasOpenBorders       = false;
+    bool hasDefensiveAlliance = false;
+    bool hasMilitaryAlliance  = false; ///< Share visibility, join wars
+    bool hasResearchAgreement = false; ///< +10% science for both
+    bool hasEconomicAlliance  = false; ///< Shared market prices, reduced tariffs
+    bool hasCulturalAlliance  = false; ///< +25% tourism between allies (L1)
+    bool hasReligiousAlliance = false; ///< +25% faith on shared holy sites (L1)
+    bool hasEmbargo           = false;
     // -- Timed agreements and stances (Civ VI plan 2.10a); -1 = none --
-    int32_t warDeclaredOnTurn    = -1; ///< Turn the current war began (peace waits WAR_MIN_TURNS)
-    int32_t denouncedOnTurn      = -1; ///< This side denounced the other on that turn (per direction)
-    int32_t friendshipUntilTurn  = -1; ///< Declaration of Friendship active while turn < this
-    int32_t openBordersUntilTurn = -1; ///< Open borders granted by request expire at this turn
-    bool    hasDelegation        = false; ///< This side keeps a delegation at the other's court
-    bool    hasEmbassy           = false; ///< This side keeps an embassy there
+    int32_t warDeclaredOnTurn = -1; ///< Turn the current war began (peace waits WAR_MIN_TURNS)
+    int32_t denouncedOnTurn   = -1; ///< This side denounced the other on that turn (per direction)
+    int32_t friendshipUntilTurn  = -1;    ///< Declaration of Friendship active while turn < this
+    int32_t openBordersUntilTurn = -1;    ///< Open borders granted by request expire at this turn
+    bool hasDelegation           = false; ///< This side keeps a delegation at the other's court
+    bool hasEmbassy              = false; ///< This side keeps an embassy there
 
     /// Highest intelligence tier achieved against this player (0=None,
     /// 1=Basic, 2=Military, 3=Economic, 4=Comprehensive, 5=Complete).
@@ -126,16 +133,16 @@ struct PairwiseRelation {
     // -- Soft border violation tracking --
     // Units CAN enter foreign territory without Open Borders. The consequences
     // are diplomatic (reputation penalty, casus belli), not mechanical barriers.
-    int32_t unitsInTerritory    = 0;   ///< Military units currently in territory (updated per turn)
-    int32_t turnsWithViolation  = 0;   ///< Consecutive turns with units present
-    bool    casusBelliLand      = false; ///< CB from land border violation
-    bool    warningIssued       = false; ///< First warning notification sent
+    int32_t unitsInTerritory   = 0; ///< Military units currently in territory (updated per turn)
+    int32_t turnsWithViolation = 0; ///< Consecutive turns with units present
+    bool casusBelliLand        = false; ///< CB from land border violation
+    bool warningIssued         = false; ///< First warning notification sent
 
     // -- Naval passage violation tracking (mirrors land border violations) --
-    int32_t navalUnitsInWaters    = 0;   ///< Naval military units in owned waters (updated per turn)
-    int32_t turnsWithNavalViolation = 0; ///< Consecutive turns with naval units present
-    bool    casusBelliNaval       = false; ///< CB from naval passage violation
-    bool    navalWarningIssued    = false; ///< First naval warning notification sent
+    int32_t navalUnitsInWaters = 0; ///< Naval military units in owned waters (updated per turn)
+    int32_t turnsWithNavalViolation = 0;     ///< Consecutive turns with naval units present
+    bool casusBelliNaval            = false; ///< CB from naval passage violation
+    bool navalWarningIssued         = false; ///< First naval warning notification sent
 
     /// True if any CB source grants war-without-penalty.
     [[nodiscard]] bool casusBelliGranted() const {
@@ -143,7 +150,8 @@ struct PairwiseRelation {
     }
 
     // -- Treaty tracking --
-    PlayerId lastWarAggressor = INVALID_PLAYER; ///< Who started the last war (for NonAggression enforcement)
+    PlayerId lastWarAggressor =
+        INVALID_PLAYER; ///< Who started the last war (for NonAggression enforcement)
 
     /// Casus belli claimed for the most recent `declareWar` on this pair (H1.5).
     /// Grievance penalty applied to the war modifier scales with
@@ -171,31 +179,30 @@ struct PairwiseRelation {
             total += mod.amount;
         }
         if (total < -100) return -100;
-        if (total > 100)  return 100;
+        if (total > 100) return 100;
         return total;
     }
 
-    [[nodiscard]] DiplomaticStance stance() const {
-        return stanceFromScore(this->totalScore());
-    }
+    [[nodiscard]] DiplomaticStance stance() const { return stanceFromScore(this->totalScore()); }
 
     /// True if any alliance type (Defensive, Military, Research, Economic,
     /// Cultural, Religious) is currently active between the pair. Used by
     /// form*Alliance to reject overlapping alliances (H1.3).
     [[nodiscard]] bool hasAnyAlliance() const {
-        return this->hasDefensiveAlliance
-            || this->hasMilitaryAlliance
-            || this->hasResearchAgreement
-            || this->hasEconomicAlliance
-            || this->hasCulturalAlliance
-            || this->hasReligiousAlliance;
+        return this->hasDefensiveAlliance || this->hasMilitaryAlliance ||
+               this->hasResearchAgreement || this->hasEconomicAlliance ||
+               this->hasCulturalAlliance || this->hasReligiousAlliance;
     }
 
     /// Check if a specific good is embargoed (blanket embargo or per-resource).
     [[nodiscard]] bool isGoodEmbargoed(uint16_t goodId) const {
-        if (this->hasEmbargo) { return true; }
+        if (this->hasEmbargo) {
+            return true;
+        }
         for (uint16_t id : this->embargoedGoods) {
-            if (id == goodId) { return true; }
+            if (id == goodId) {
+                return true;
+            }
         }
         return false;
     }
@@ -209,7 +216,7 @@ struct PairwiseRelation {
             total += mod.amount;
         }
         if (total < -100) return -100;
-        if (total > 100)  return 100;
+        if (total > 100) return 100;
         return total;
     }
 };
@@ -221,9 +228,20 @@ public:
      */
     void initialize(uint8_t playerCount);
 
-    /// Get the relation between two players. Order doesn't matter (symmetric).
+    /// Get the relation between two players. The matrix is directional --
+    /// relation(a, b) and relation(b, a) are different objects -- and most
+    /// fields are kept symmetric by writing both. The border and naval
+    /// violation fields are the exception: they live on (violator, owner).
     [[nodiscard]] PairwiseRelation& relation(PlayerId a, PlayerId b);
     [[nodiscard]] const PairwiseRelation& relation(PlayerId a, PlayerId b) const;
+
+    /// Whether `holder` has earned a casus belli against `against` by that
+    /// player's border or naval trespass. The flag is written on
+    /// relation(trespasser, owner), so reading it the other way round hands
+    /// the justification to the trespasser -- ask through this instead.
+    [[nodiscard]] bool holdsCasusBelli(PlayerId holder, PlayerId against) const {
+        return this->relation(against, holder).casusBelliGranted();
+    }
 
     /// Record first contact between two players.
     void meetPlayers(PlayerId a, PlayerId b, int32_t currentTurn);
@@ -249,10 +267,9 @@ public:
     /// obligations are fanned out to every non-attacker member of that bloc,
     /// and the bloc is dissolved (war breaks the Staatenbund).
     void declareWar(PlayerId aggressor, PlayerId target,
-                    CasusBelliType cb = CasusBelliType::SurpriseWar,
+                    CasusBelliType cb                                 = CasusBelliType::SurpriseWar,
                     struct AllianceObligationTracker* allianceTracker = nullptr,
-                    aoc::game::GameState* gameState = nullptr,
-                    int32_t currentTurn = 0);
+                    aoc::game::GameState* gameState = nullptr, int32_t currentTurn = 0);
 
     /// Make peace between two players.
     void makePeace(PlayerId a, PlayerId b);
@@ -323,7 +340,7 @@ public:
 private:
     /// Flat NxN matrix: index = a * playerCount + b.
     std::vector<PairwiseRelation> m_relations;
-    uint8_t m_playerCount = 0;
+    uint8_t m_playerCount                        = 0;
     AllianceObligationTracker* m_allianceTracker = nullptr;
 };
 

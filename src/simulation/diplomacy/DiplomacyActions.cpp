@@ -68,7 +68,7 @@ ErrorCode casusBelliUsable(const aoc::game::GameState& gameState, const Diplomac
         case CasusBelliType::SurpriseWar:
             return ErrorCode::Ok;
         case CasusBelliType::FormalWar:
-            return (denouncementActive(rel, currentTurn) || rel.casusBelliGranted())
+            return (denouncementActive(rel, currentTurn) || diplomacy.holdsCasusBelli(actor, target))
                        ? ErrorCode::Ok
                        : ErrorCode::InvalidArgument;
         case CasusBelliType::HolyWar: {

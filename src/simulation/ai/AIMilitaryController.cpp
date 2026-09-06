@@ -847,13 +847,12 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                      && this->m_player < aoc::sim::CITY_STATE_PLAYER_BASE
                      && weakestNeighbour < aoc::sim::CITY_STATE_PLAYER_BASE
                      && !diplomacy->isAtWar(this->m_player, weakestNeighbour)) {
-                        // Casus belli upgrade: prefer FormalWar if a border-
-                        // violation justification exists (less rep hit).
-                        const PairwiseRelation& cbRel =
-                            diplomacy->relation(this->m_player, weakestNeighbour);
-                        const CasusBelliType cb = cbRel.casusBelliGranted()
-                            ? CasusBelliType::FormalWar
-                            : CasusBelliType::SurpriseWar;
+                        // Casus belli upgrade: prefer FormalWar if the target's
+                        // own trespass justifies it (less rep hit).
+                        const CasusBelliType cb =
+                            diplomacy->holdsCasusBelli(this->m_player, weakestNeighbour)
+                                ? CasusBelliType::FormalWar
+                                : CasusBelliType::SurpriseWar;
                         diplomacy->declareWar(this->m_player, weakestNeighbour,
                                               cb, nullptr, &gameState, 0);
                         LOG_INFO("AI Player %u declared war on Player %u (Domination campaign)",

@@ -215,7 +215,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                 if (warChance < warChanceThreshold
                     && rel.friendshipUntilTurn <= gameState.currentTurn()) {
                     diplomacy.declareWar(this->m_player, other,
-                                         rel.casusBelliGranted()
+                                         diplomacy.holdsCasusBelli(this->m_player, other)
                                              ? aoc::sim::CasusBelliType::FormalWar
                                              : aoc::sim::CasusBelliType::SurpriseWar,
                                          nullptr, &gameState,
