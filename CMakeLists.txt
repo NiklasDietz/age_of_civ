@@ -416,6 +416,7 @@ set(AOC_LIB_SOURCES
     src/simulation/city/Secession.cpp
     src/balance/BalanceParams.cpp
     src/simulation/city/DistrictAdjacency.cpp
+    src/simulation/city/DistrictPlacement.cpp
     src/simulation/unit/CombatExtensions.cpp
     src/simulation/unit/AttackRequest.cpp
     src/simulation/religion/TheologicalCombat.cpp
@@ -971,6 +972,7 @@ if(AOC_BUILD_TESTS)
         test_diplomacy_actions
         test_deal_proposals
         test_natural_disasters
+        test_district_placement
         test_promotions
         test_formations
         test_governors

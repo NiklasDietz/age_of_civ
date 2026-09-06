@@ -320,7 +320,7 @@ UnitTypeId cityStateDefenderFor(uint8_t worldEra) {
 }
 
 void processCityStateAI(aoc::game::GameState& gameState,
-                         const aoc::map::HexGrid& grid) {
+                         aoc::map::HexGrid& grid) {
     // The most advanced era any major has reached decides the defender tier.
     uint8_t worldEra = 0;
     for (const std::unique_ptr<aoc::game::Player>& major : gameState.players()) {

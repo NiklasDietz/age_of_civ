@@ -212,7 +212,7 @@ void processCityStateDiplomacy(aoc::game::GameState& gameState,
 [[nodiscard]] UnitTypeId cityStateDefenderFor(uint8_t worldEra);
 
 void processCityStateAI(aoc::game::GameState& gameState,
-                          const aoc::map::HexGrid& grid);
+                          aoc::map::HexGrid& grid);
 
 /// Generate a fresh quest for city-state `cityStateIndex`, aimed at
 /// `targetPlayer`. Called by checkCityStateQuests when a slot is empty.

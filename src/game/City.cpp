@@ -46,7 +46,21 @@ bool City::isTileWorked(aoc::hex::AxialCoord tile) const {
     return false;
 }
 
+bool City::hasDistrictOn(aoc::hex::AxialCoord tile) const {
+    for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& district : this->m_districts.districts) {
+        if (district.location == tile) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void City::assignWorker(aoc::hex::AxialCoord tile) {
+    // The centre is worked for free even though the City Center stands on it;
+    // every other district covers its tile.
+    if (tile != this->m_location && this->hasDistrictOn(tile)) {
+        return;
+    }
     if (!this->isTileWorked(tile)) {
         this->m_workedTiles.push_back(tile);
     }

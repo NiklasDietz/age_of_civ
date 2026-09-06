@@ -25,7 +25,7 @@ namespace aoc::sim {
  * @brief Process production queues for all cities of a player.
  */
 void processProductionQueues(aoc::game::GameState& gameState,
-                              const aoc::map::HexGrid& grid,
+                              aoc::map::HexGrid& grid,
                               PlayerId player);
 
 /**

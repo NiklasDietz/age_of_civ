@@ -131,7 +131,11 @@ public:
     [[nodiscard]] std::vector<aoc::hex::AxialCoord>& workedTiles() { return this->m_workedTiles; }
 
     [[nodiscard]] bool isTileWorked(aoc::hex::AxialCoord tile) const;
+    /// Assign a citizen. A tile one of this city's districts stands on is
+    /// covered by that district and cannot be worked (DistrictPlacement.hpp).
     void assignWorker(aoc::hex::AxialCoord tile);
+    /// One of this city's districts stands on `tile` (the centre included).
+    [[nodiscard]] bool hasDistrictOn(aoc::hex::AxialCoord tile) const;
     void removeWorker(aoc::hex::AxialCoord tile);
     void toggleWorker(aoc::hex::AxialCoord tile);
 

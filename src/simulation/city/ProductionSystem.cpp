@@ -11,6 +11,7 @@
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/city/CityLoyalty.hpp"
 #include "aoc/simulation/city/DistrictAdjacency.hpp"
+#include "aoc/simulation/city/DistrictPlacement.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
@@ -266,7 +267,7 @@ static float computeCityProductionGS(const aoc::game::Player& player,
 }
 
 void processProductionQueues(aoc::game::GameState& gameState,
-                              const aoc::map::HexGrid& grid,
+                              aoc::map::HexGrid& grid,
                               PlayerId player) {
     aoc::game::Player* gsPlayer = gameState.player(player);
     if (gsPlayer == nullptr) { return; }
@@ -450,11 +451,13 @@ void processProductionQueues(aoc::game::GameState& gameState,
                         }
                     }
                     if (!placed) {
-                        CityDistrictsComponent::PlacedDistrict newDistrict;
-                        newDistrict.type = bdef.requiredDistrict;
-                        newDistrict.location = city->location();
-                        newDistrict.buildings.push_back(buildingId);
-                        districts.districts.push_back(std::move(newDistrict));
+                        // The building needs a district the city never built:
+                        // raise one on its best tile rather than on the centre.
+                        const hex::AxialCoord site =
+                            bestDistrictTile(gameState, grid, *city, bdef.requiredDistrict);
+                        CityDistrictsComponent::PlacedDistrict& raised =
+                            placeDistrictOnTile(grid, *city, bdef.requiredDistrict, site);
+                        raised.buildings.push_back(buildingId);
                     }
                     LOG_INFO("Built %.*s in %s",
                              static_cast<int>(item.name.size()),
@@ -469,15 +472,14 @@ void processProductionQueues(aoc::game::GameState& gameState,
                     break;
                 }
                 case ProductionItemType::District: {
-                    CityDistrictsComponent& districts = city->districts();
-                    CityDistrictsComponent::PlacedDistrict newDistrict;
-                    newDistrict.type = static_cast<DistrictType>(item.itemId);
-                    newDistrict.location = city->location();
-                    districts.districts.push_back(std::move(newDistrict));
-                    LOG_INFO("Completed district %.*s in %s",
+                    const DistrictType districtType = static_cast<DistrictType>(item.itemId);
+                    const hex::AxialCoord site =
+                        bestDistrictTile(gameState, grid, *city, districtType);
+                    placeDistrictOnTile(grid, *city, districtType, site);
+                    LOG_INFO("Completed district %.*s in %s at (%d,%d)",
                              static_cast<int>(item.name.size()),
                              item.name.c_str(),
-                             city->name().c_str());
+                             city->name().c_str(), site.q, site.r);
                     break;
                 }
                 case ProductionItemType::Wonder: {
