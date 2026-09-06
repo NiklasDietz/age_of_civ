@@ -66,6 +66,12 @@
 
 namespace aoc::sim::ai {
 
+/// How fast a district type's appeal falls off as an empire fills up with it.
+/// One of a kind scores full; the tenth scores a quarter. Tuned to break the
+/// Industrial/Encampment monopoly on specialty slots without inverting it.
+constexpr float DISTRICT_SATURATION = 0.3f;
+
+
 // ============================================================================
 // Helper: Find the best military unit type ID the player can produce.
 // ============================================================================
@@ -1417,6 +1423,24 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                        * personality.behavior.greatPersonFocus },
             }};
 
+            // Specialty district slots are scarce: maxSpecialtyDistricts is
+            // 1 + (pop - 1) / 3, so a young city has one or two. Scored on
+            // personality alone, every city in an empire made the same choice
+            // and the top two types took every slot. Measured over seeds 42-45:
+            // 230 Industrial and 110 Encampment districts, and not one Holy Site
+            // or Harbor in any game, which left Prophets and Admirals
+            // unrecruitable and the whole faith building chain unbuildable.
+            // Scaling by how well represented a type already is across the
+            // empire lets the first of a kind compete with the fortieth.
+            std::array<int32_t, DISTRICT_TYPE_COUNT> empireDistricts{};
+            for (const std::unique_ptr<aoc::game::City>& owned : gsPlayer->cities()) {
+                if (owned == nullptr) { continue; }
+                for (const CityDistrictsComponent::PlacedDistrict& d : owned->districts().districts) {
+                    const auto idx = static_cast<std::size_t>(d.type);
+                    if (idx < empireDistricts.size()) { ++empireDistricts[idx]; }
+                }
+            }
+
             for (const DistrictOption& opt : districtOptions) {
                 if (opt.utilityScore <= 0.0f) { continue; }
                 if (districts.hasDistrict(opt.type)) { continue; }
@@ -1433,7 +1457,9 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 candidate.nameView       = districtTypeName(opt.type);
                 candidate.item.totalCost = opt.baseCost;
                 candidate.item.progress  = 0.0f;
-                candidate.score          = opt.utilityScore;
+                const int32_t owned = empireDistricts[static_cast<std::size_t>(opt.type)];
+                candidate.score =
+                    opt.utilityScore / (1.0f + DISTRICT_SATURATION * static_cast<float>(owned));
                 candidates.push_back(std::move(candidate));
             }
         }
