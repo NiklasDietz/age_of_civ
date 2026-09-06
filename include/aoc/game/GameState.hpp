@@ -43,7 +43,9 @@
 #include <unordered_map>
 #include <vector>
 
-namespace aoc::map { class HexGrid; }
+namespace aoc::map {
+class HexGrid;
+}
 
 namespace aoc::game {
 
@@ -63,7 +65,7 @@ public:
     GameState();
     ~GameState();
 
-    GameState(const GameState&) = delete;
+    GameState(const GameState&)            = delete;
     GameState& operator=(const GameState&) = delete;
     GameState(GameState&&) noexcept;
     GameState& operator=(GameState&&) noexcept;
@@ -104,14 +106,43 @@ public:
 
     /// All active *major* players. City-state players are NOT included here;
     /// use cityStatePlayers() to iterate those.
-    [[nodiscard]] const std::vector<std::unique_ptr<Player>>& players() const { return this->m_players; }
+    [[nodiscard]] const std::vector<std::unique_ptr<Player>>& players() const {
+        return this->m_players;
+    }
 
     /// City-state Player slots. Index = CityStateComponent index.
-    [[nodiscard]] const std::vector<std::unique_ptr<Player>>& cityStatePlayers() const { return this->m_cityStatePlayers; }
-    [[nodiscard]] std::vector<std::unique_ptr<Player>>& cityStatePlayers() { return this->m_cityStatePlayers; }
+    [[nodiscard]] const std::vector<std::unique_ptr<Player>>& cityStatePlayers() const {
+        return this->m_cityStatePlayers;
+    }
+    [[nodiscard]] std::vector<std::unique_ptr<Player>>& cityStatePlayers() {
+        return this->m_cityStatePlayers;
+    }
 
     /// Number of active players.
-    [[nodiscard]] int32_t playerCount() const { return static_cast<int32_t>(this->m_players.size()); }
+    [[nodiscard]] int32_t playerCount() const {
+        return static_cast<int32_t>(this->m_players.size());
+    }
+
+    /**
+     * @brief Hand the city at `at` to `newOwner`, moving the object between
+     *        the two players' vectors so `cities()` means what it says.
+     *
+     * Every loop over `Player::cities()` used to see cities the player had
+     * lost, because a conquest or a revolt only rewrote `City::owner()`.
+     * Conquest, secession, a loyalty revolt and a ceded city all come through
+     * here now.
+     *
+     * A free city (`newOwner == INVALID_PLAYER`) has no seat to live in, so
+     * the object stays with whoever is holding it and only its owner changes;
+     * the save records the holder separately so the pair survives a reload.
+     *
+     * @return the city in its new home, or nullptr when no city stands there.
+     */
+    City* transferCity(aoc::hex::AxialCoord at, PlayerId newOwner);
+
+    /// The player whose vector currently holds the city at `at`, which is the
+    /// owner for every city except a free one. nullptr when no city is there.
+    [[nodiscard]] Player* cityHolder(aoc::hex::AxialCoord at);
 
     /// Current turn number.
     [[nodiscard]] int32_t currentTurn() const { return this->m_currentTurn; }
@@ -131,28 +162,28 @@ public:
         TerrainConverted,
     };
     struct TileEvent {
-        int32_t       turn;
-        int32_t       tileIndex;
+        int32_t turn;
+        int32_t tileIndex;
         TileEventType type;
-        PlayerId      actor;
-        int32_t       payload;  ///< type-specific (improvement id, good id, terrain id...)
+        PlayerId actor;
+        int32_t payload; ///< type-specific (improvement id, good id, terrain id...)
     };
-    void recordTileEvent(int32_t tileIndex, TileEventType type,
-                         PlayerId actor, int32_t payload = 0) {
-        this->m_tileEvents.push_back(TileEvent{
-            this->m_currentTurn, tileIndex, type, actor, payload});
+    void recordTileEvent(int32_t tileIndex, TileEventType type, PlayerId actor,
+                         int32_t payload = 0) {
+        this->m_tileEvents.push_back(
+            TileEvent{this->m_currentTurn, tileIndex, type, actor, payload});
     }
     [[nodiscard]] const std::vector<TileEvent>& tileEvents() const { return this->m_tileEvents; }
 
     /// One resolved spy mission. Not serialized: a UI convenience rebuilt from play,
     /// capped at MAX_SPY_MISSION_RECORDS (oldest dropped first).
     struct SpyMissionRecord {
-        int32_t                    turn        = 0;
-        PlayerId                   spyOwner    = INVALID_PLAYER;
-        PlayerId                   targetOwner = INVALID_PLAYER; ///< owner of the city under the spy, if any
-        aoc::hex::AxialCoord       location;
-        aoc::sim::SpyMission       mission = aoc::sim::SpyMission::GatherIntelligence;
-        bool                       success = false;
+        int32_t turn         = 0;
+        PlayerId spyOwner    = INVALID_PLAYER;
+        PlayerId targetOwner = INVALID_PLAYER; ///< owner of the city under the spy, if any
+        aoc::hex::AxialCoord location;
+        aoc::sim::SpyMission mission        = aoc::sim::SpyMission::GatherIntelligence;
+        bool success                        = false;
         aoc::sim::SpyFailureOutcome outcome = aoc::sim::SpyFailureOutcome::EscapedUndetected;
     };
     static constexpr std::size_t MAX_SPY_MISSION_RECORDS = 32;
@@ -173,64 +204,117 @@ public:
     // ========================================================================
 
     [[nodiscard]] aoc::sim::GlobalClimateComponent& climate() { return this->m_climate; }
-    [[nodiscard]] const aoc::sim::GlobalClimateComponent& climate() const { return this->m_climate; }
+    [[nodiscard]] const aoc::sim::GlobalClimateComponent& climate() const {
+        return this->m_climate;
+    }
 
     [[nodiscard]] aoc::sim::GlobalOilReserves& oilReserves() { return this->m_oilReserves; }
-    [[nodiscard]] const aoc::sim::GlobalOilReserves& oilReserves() const { return this->m_oilReserves; }
+    [[nodiscard]] const aoc::sim::GlobalOilReserves& oilReserves() const {
+        return this->m_oilReserves;
+    }
 
     [[nodiscard]] aoc::sim::GlobalMonopolyComponent& monopoly() { return this->m_monopoly; }
-    [[nodiscard]] const aoc::sim::GlobalMonopolyComponent& monopoly() const { return this->m_monopoly; }
+    [[nodiscard]] const aoc::sim::GlobalMonopolyComponent& monopoly() const {
+        return this->m_monopoly;
+    }
 
     [[nodiscard]] aoc::sim::GlobalSanctionTracker& sanctions() { return this->m_sanctions; }
-    [[nodiscard]] const aoc::sim::GlobalSanctionTracker& sanctions() const { return this->m_sanctions; }
+    [[nodiscard]] const aoc::sim::GlobalSanctionTracker& sanctions() const {
+        return this->m_sanctions;
+    }
 
     [[nodiscard]] aoc::sim::GlobalWonderTracker& wonderTracker() { return this->m_wonderTracker; }
-    [[nodiscard]] const aoc::sim::GlobalWonderTracker& wonderTracker() const { return this->m_wonderTracker; }
+    [[nodiscard]] const aoc::sim::GlobalWonderTracker& wonderTracker() const {
+        return this->m_wonderTracker;
+    }
 
-    [[nodiscard]] aoc::sim::WorldCongressComponent& worldCongress() { return this->m_worldCongress; }
-    [[nodiscard]] const aoc::sim::WorldCongressComponent& worldCongress() const { return this->m_worldCongress; }
+    [[nodiscard]] aoc::sim::WorldCongressComponent& worldCongress() {
+        return this->m_worldCongress;
+    }
+    [[nodiscard]] const aoc::sim::WorldCongressComponent& worldCongress() const {
+        return this->m_worldCongress;
+    }
 
-    [[nodiscard]] aoc::sim::GlobalReligionTracker& religionTracker() { return this->m_religionTracker; }
-    [[nodiscard]] const aoc::sim::GlobalReligionTracker& religionTracker() const { return this->m_religionTracker; }
+    [[nodiscard]] aoc::sim::GlobalReligionTracker& religionTracker() {
+        return this->m_religionTracker;
+    }
+    [[nodiscard]] const aoc::sim::GlobalReligionTracker& religionTracker() const {
+        return this->m_religionTracker;
+    }
 
     [[nodiscard]] aoc::sim::VisibilityEventBus& visibilityBus() { return this->m_visibilityBus; }
-    [[nodiscard]] const aoc::sim::VisibilityEventBus& visibilityBus() const { return this->m_visibilityBus; }
+    [[nodiscard]] const aoc::sim::VisibilityEventBus& visibilityBus() const {
+        return this->m_visibilityBus;
+    }
 
     // ========================================================================
     // Global collections
     // ========================================================================
 
-    [[nodiscard]] std::vector<aoc::sim::TradeRouteComponent>& tradeRoutes() { return this->m_tradeRoutes; }
-    [[nodiscard]] const std::vector<aoc::sim::TradeRouteComponent>& tradeRoutes() const { return this->m_tradeRoutes; }
+    [[nodiscard]] std::vector<aoc::sim::TradeRouteComponent>& tradeRoutes() {
+        return this->m_tradeRoutes;
+    }
+    [[nodiscard]] const std::vector<aoc::sim::TradeRouteComponent>& tradeRoutes() const {
+        return this->m_tradeRoutes;
+    }
 
-    [[nodiscard]] std::vector<aoc::sim::CommodityHoardComponent>& commodityHoards() { return this->m_commodityHoards; }
-    [[nodiscard]] const std::vector<aoc::sim::CommodityHoardComponent>& commodityHoards() const { return this->m_commodityHoards; }
+    [[nodiscard]] std::vector<aoc::sim::CommodityHoardComponent>& commodityHoards() {
+        return this->m_commodityHoards;
+    }
+    [[nodiscard]] const std::vector<aoc::sim::CommodityHoardComponent>& commodityHoards() const {
+        return this->m_commodityHoards;
+    }
 
-    [[nodiscard]] std::vector<aoc::sim::BarbarianClanComponent>& barbarianClans() { return this->m_barbarianClans; }
-    [[nodiscard]] const std::vector<aoc::sim::BarbarianClanComponent>& barbarianClans() const { return this->m_barbarianClans; }
+    [[nodiscard]] std::vector<aoc::sim::BarbarianClanComponent>& barbarianClans() {
+        return this->m_barbarianClans;
+    }
+    [[nodiscard]] const std::vector<aoc::sim::BarbarianClanComponent>& barbarianClans() const {
+        return this->m_barbarianClans;
+    }
 
-    [[nodiscard]] std::vector<aoc::sim::CityStateComponent>& cityStates() { return this->m_cityStates; }
-    [[nodiscard]] const std::vector<aoc::sim::CityStateComponent>& cityStates() const { return this->m_cityStates; }
+    [[nodiscard]] std::vector<aoc::sim::CityStateComponent>& cityStates() {
+        return this->m_cityStates;
+    }
+    [[nodiscard]] const std::vector<aoc::sim::CityStateComponent>& cityStates() const {
+        return this->m_cityStates;
+    }
     /// Deal proposals waiting for the human's answer (DealProposals.hpp).
-    [[nodiscard]] std::vector<aoc::sim::PendingProposal>& pendingProposals() { return this->m_pendingProposals; }
-    [[nodiscard]] const std::vector<aoc::sim::PendingProposal>& pendingProposals() const { return this->m_pendingProposals; }
+    [[nodiscard]] std::vector<aoc::sim::PendingProposal>& pendingProposals() {
+        return this->m_pendingProposals;
+    }
+    [[nodiscard]] const std::vector<aoc::sim::PendingProposal>& pendingProposals() const {
+        return this->m_pendingProposals;
+    }
     /// Disasters that struck, newest last (NaturalDisasters.hpp). Transient, not saved.
-    [[nodiscard]] std::vector<aoc::sim::DisasterRecord>& disasterHistory() { return this->m_disasterHistory; }
-    [[nodiscard]] const std::vector<aoc::sim::DisasterRecord>& disasterHistory() const { return this->m_disasterHistory; }
+    [[nodiscard]] std::vector<aoc::sim::DisasterRecord>& disasterHistory() {
+        return this->m_disasterHistory;
+    }
+    [[nodiscard]] const std::vector<aoc::sim::DisasterRecord>& disasterHistory() const {
+        return this->m_disasterHistory;
+    }
 
-    [[nodiscard]] std::vector<aoc::sim::ElectricityAgreementComponent>& electricityAgreements() { return this->m_electricityAgreements; }
-    [[nodiscard]] const std::vector<aoc::sim::ElectricityAgreementComponent>& electricityAgreements() const { return this->m_electricityAgreements; }
+    [[nodiscard]] std::vector<aoc::sim::ElectricityAgreementComponent>& electricityAgreements() {
+        return this->m_electricityAgreements;
+    }
+    [[nodiscard]] const std::vector<aoc::sim::ElectricityAgreementComponent>&
+    electricityAgreements() const {
+        return this->m_electricityAgreements;
+    }
 
     /// WP-S: per-encampment supply buffer keyed by tile index. food + fuel
     /// (one bundle per encampment tile). Drained by nearby military units;
     /// refilled by Logistics convoys (later WP) or by initial seed.
     struct EncampmentBuffer {
         PlayerId owner = INVALID_PLAYER;
-        int32_t  food  = 0;
-        int32_t  fuel  = 0;
+        int32_t food   = 0;
+        int32_t fuel   = 0;
     };
-    [[nodiscard]] std::unordered_map<int32_t, EncampmentBuffer>& encampments() { return this->m_encampments; }
-    [[nodiscard]] const std::unordered_map<int32_t, EncampmentBuffer>& encampments() const { return this->m_encampments; }
+    [[nodiscard]] std::unordered_map<int32_t, EncampmentBuffer>& encampments() {
+        return this->m_encampments;
+    }
+    [[nodiscard]] const std::unordered_map<int32_t, EncampmentBuffer>& encampments() const {
+        return this->m_encampments;
+    }
 
 private:
     std::vector<std::unique_ptr<Player>> m_players;

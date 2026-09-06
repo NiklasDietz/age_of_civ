@@ -80,6 +80,12 @@
  * v23 (2026-09-06): ProductionQueues carries the tile a queued district will
  * stand on (targetTile + hasTargetTile), so the human's placement choice
  * survives a save (DistrictPlacement.hpp).
+ *
+ * v24 (2026-09-06): the Entities city record carries the holder -- the player
+ * whose vector the object lives in -- after the owner. Cities now really move
+ * between players on conquest, secession and cession, and a free city (owner
+ * INVALID_PLAYER) keeps its holder instead of sizing the roster to 256 seats
+ * and failing the load outright.
  */
 
 #include <cstdint>
@@ -87,6 +93,6 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 23;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 24;
 
 } // namespace aoc::save

@@ -4,6 +4,7 @@
  */
 
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
 
@@ -12,9 +13,9 @@
 
 namespace aoc::game {
 
-GameState::GameState() = default;
-GameState::~GameState() = default;
-GameState::GameState(GameState&&) noexcept = default;
+GameState::GameState()                                = default;
+GameState::~GameState()                               = default;
+GameState::GameState(GameState&&) noexcept            = default;
 GameState& GameState::operator=(GameState&&) noexcept = default;
 
 void GameState::initialize(int32_t playerCount) {
@@ -25,8 +26,7 @@ void GameState::initialize(int32_t playerCount) {
     this->m_currentTurn = 0;
 
     for (int32_t i = 0; i < playerCount; ++i) {
-        this->m_players.push_back(
-            std::make_unique<Player>(static_cast<PlayerId>(i)));
+        this->m_players.push_back(std::make_unique<Player>(static_cast<PlayerId>(i)));
     }
 
     // Player 0 is always the human player
@@ -48,15 +48,58 @@ void GameState::initialize(int32_t playerCount) {
 }
 
 void GameState::initializeCityStateSlots(int32_t count) {
-    const int32_t clamped =
-        std::min(count, static_cast<int32_t>(aoc::sim::CITY_STATE_COUNT));
+    const int32_t clamped = std::min(count, static_cast<int32_t>(aoc::sim::CITY_STATE_COUNT));
     this->m_cityStatePlayers.clear();
     this->m_cityStatePlayers.reserve(static_cast<std::size_t>(clamped));
     for (int32_t i = 0; i < clamped; ++i) {
-        const PlayerId id =
-            static_cast<PlayerId>(aoc::sim::CITY_STATE_PLAYER_BASE + i);
+        const PlayerId id = static_cast<PlayerId>(aoc::sim::CITY_STATE_PLAYER_BASE + i);
         this->m_cityStatePlayers.push_back(std::make_unique<Player>(id));
     }
+}
+
+Player* GameState::cityHolder(aoc::hex::AxialCoord at) {
+    for (const std::unique_ptr<Player>& p : this->m_players) {
+        if (p != nullptr && p->cityAt(at) != nullptr) {
+            return p.get();
+        }
+    }
+    for (const std::unique_ptr<Player>& p : this->m_cityStatePlayers) {
+        if (p != nullptr && p->cityAt(at) != nullptr) {
+            return p.get();
+        }
+    }
+    if (this->m_barbarianPlayer != nullptr && this->m_barbarianPlayer->cityAt(at) != nullptr) {
+        return this->m_barbarianPlayer.get();
+    }
+    return nullptr;
+}
+
+City* GameState::transferCity(aoc::hex::AxialCoord at, PlayerId newOwner) {
+    Player* holder = this->cityHolder(at);
+    if (holder == nullptr) {
+        return nullptr;
+    }
+    City* city = holder->cityAt(at);
+    if (city == nullptr) {
+        return nullptr;
+    }
+    if (newOwner == holder->id()) {
+        city->setOwner(newOwner);
+        return city;
+    }
+    Player* destination = this->player(newOwner);
+    if (destination == nullptr) {
+        // A free city has no seat: leave the object where it is and record
+        // only the change of owner. The save writes the holder separately.
+        city->setOwner(newOwner);
+        return city;
+    }
+    std::unique_ptr<City> moved = holder->releaseCity(city);
+    if (moved == nullptr) {
+        return nullptr;
+    }
+    moved->setOwner(newOwner);
+    return &destination->adoptCity(std::move(moved));
 }
 
 Player* GameState::player(PlayerId id) {
@@ -64,9 +107,10 @@ Player* GameState::player(PlayerId id) {
         return this->m_barbarianPlayer.get();
     }
     if (id >= aoc::sim::CITY_STATE_PLAYER_BASE) {
-        const std::size_t idx =
-            static_cast<std::size_t>(id - aoc::sim::CITY_STATE_PLAYER_BASE);
-        if (idx >= this->m_cityStatePlayers.size()) { return nullptr; }
+        const std::size_t idx = static_cast<std::size_t>(id - aoc::sim::CITY_STATE_PLAYER_BASE);
+        if (idx >= this->m_cityStatePlayers.size()) {
+            return nullptr;
+        }
         return this->m_cityStatePlayers[idx].get();
     }
     if (id >= static_cast<PlayerId>(this->m_players.size())) {
@@ -80,9 +124,10 @@ const Player* GameState::player(PlayerId id) const {
         return this->m_barbarianPlayer.get();
     }
     if (id >= aoc::sim::CITY_STATE_PLAYER_BASE) {
-        const std::size_t idx =
-            static_cast<std::size_t>(id - aoc::sim::CITY_STATE_PLAYER_BASE);
-        if (idx >= this->m_cityStatePlayers.size()) { return nullptr; }
+        const std::size_t idx = static_cast<std::size_t>(id - aoc::sim::CITY_STATE_PLAYER_BASE);
+        if (idx >= this->m_cityStatePlayers.size()) {
+            return nullptr;
+        }
         return this->m_cityStatePlayers[idx].get();
     }
     if (id >= static_cast<PlayerId>(this->m_players.size())) {
@@ -100,11 +145,17 @@ const Player* GameState::humanPlayer() const {
 }
 
 void GameState::setHumanPlayerId(PlayerId id) {
-    if (id == this->m_humanPlayerId) { return; }
+    if (id == this->m_humanPlayerId) {
+        return;
+    }
     Player* prev = this->player(this->m_humanPlayerId);
-    if (prev != nullptr) { prev->setHuman(false); }
+    if (prev != nullptr) {
+        prev->setHuman(false);
+    }
     Player* next = this->player(id);
-    if (next != nullptr) { next->setHuman(true); }
+    if (next != nullptr) {
+        next->setHuman(true);
+    }
     this->m_humanPlayerId = id;
 }
 

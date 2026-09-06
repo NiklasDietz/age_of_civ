@@ -71,7 +71,9 @@ struct World {
     aoc::Random rng{12345u};
 };
 
-[[nodiscard]] aoc::game::Player& p2ref(World& w) { return *w.gameState.players()[2]; }
+[[nodiscard]] aoc::game::Player& p2ref(World& w) {
+    return *w.gameState.players()[2];
+}
 
 /// Populate a small but non-trivial state. Every unordered_map the
 /// serializer touches gets entries, inserted in scrambled key order.
@@ -95,7 +97,8 @@ void buildWorld(World& w) {
     std::vector<float> fertility(static_cast<std::size_t>(w.grid.tileCount()), 0.4f);
     fertility[17] = 0.95f;
     w.grid.setSoilFertility(std::move(fertility));
-    w.grid.setCropSuitability(2, std::vector<uint8_t>(static_cast<std::size_t>(w.grid.tileCount()), 9));
+    w.grid.setCropSuitability(
+        2, std::vector<uint8_t>(static_cast<std::size_t>(w.grid.tileCount()), 9));
 
     w.gameState.initialize(3);
     w.gameState.setHumanPlayerId(aoc::PlayerId{2}); // v11: a takeover moved the seat
@@ -125,17 +128,17 @@ void buildWorld(World& w) {
     alpha.governor().isActive         = true;
     alpha.governor().assignedGovernor = aoc::sim::GovernorType::Scholar;
     static_cast<void>(alpha.governor().addPromotion(aoc::sim::GovernorPromotion::ResearchGrant));
-    alpha.governor().turnsActive      = 9;
-    alpha.stockpile().goods[42]  = 10;   // scrambled insertion order on
-    alpha.stockpile().goods[7]   = 3;    // purpose -- pins the sorted-write
-    alpha.stockpile().goods[199] = 25;   // guarantee.
-    alpha.stockpile().goods[13]  = 1;
-    alpha.stockpile().exportBuffer[9] = 4;
-    alpha.stockpile().exportBuffer[2] = 6;
+    alpha.governor().turnsActive                      = 9;
+    alpha.stockpile().goods[42]                       = 10; // scrambled insertion order on
+    alpha.stockpile().goods[7]                        = 3;  // purpose -- pins the sorted-write
+    alpha.stockpile().goods[199]                      = 25; // guarantee.
+    alpha.stockpile().goods[13]                       = 1;
+    alpha.stockpile().exportBuffer[9]                 = 4;
+    alpha.stockpile().exportBuffer[2]                 = 6;
     alpha.productionExperience().recipeExperience[11] = 40;
     alpha.productionExperience().recipeExperience[3]  = 7;
-    alpha.buildingLevels().levels[6] = 2;
-    alpha.buildingLevels().levels[1] = 3;
+    alpha.buildingLevels().levels[6]                  = 2;
+    alpha.buildingLevels().levels[1]                  = 3;
 
     aoc::game::City& beta = p1.addCity({12, 9}, "Beta");
     {
@@ -157,13 +160,13 @@ void buildWorld(World& w) {
     p0.warWeariness().turnsAtWar[2] = 12;
     p1.warWeariness().turnsAtWar[0] = 5;
 
-    aoc::game::Unit& veteran         = p0.addUnit(aoc::UnitTypeId{0}, {6, 5});
-    veteran.experience().experience = 40;   // experience records ride in MiscEntities
+    aoc::game::Unit& veteran        = p0.addUnit(aoc::UnitTypeId{0}, {6, 5});
+    veteran.experience().experience = 40; // experience records ride in MiscEntities
     veteran.experience().level      = 1;
     veteran.experience().promotions = {aoc::PromotionId{0}};
-    veteran.setFormationLevel(aoc::sim::FormationLevel::Corps);   // v15
+    veteran.setFormationLevel(aoc::sim::FormationLevel::Corps); // v15
     // v13: air state rides on the unit record.
-    aoc::game::Unit& fighter          = p0.addUnit(aoc::UnitTypeId{18}, {7, 5});
+    aoc::game::Unit& fighter           = p0.addUnit(aoc::UnitTypeId{18}, {7, 5});
     fighter.airUnit().sortiesRemaining = 0;
     fighter.airUnit().maxSorties       = 2;
     fighter.airUnit().operationalRange = 11;
@@ -186,18 +189,18 @@ void buildWorld(World& w) {
     spy.spy().experience        = 7;
     spy.spy().promotion1        = aoc::sim::SpyPromotion::Financier;
     spy.spy().promotion2        = aoc::sim::SpyPromotion::Seduction;
-    aoc::game::Unit& sage        = p0.addUnit(aoc::UnitTypeId{102}, {5, 6});
-    sage.greatPerson().owner     = aoc::PlayerId{0};
-    sage.greatPerson().defId     = 2;
-    sage.greatPerson().namedId   = 31;
-    sage.greatPerson().position  = {5, 6};
+    aoc::game::Unit& sage       = p0.addUnit(aoc::UnitTypeId{102}, {5, 6});
+    sage.greatPerson().owner    = aoc::PlayerId{0};
+    sage.greatPerson().defId    = 2;
+    sage.greatPerson().namedId  = 31;
+    sage.greatPerson().position = {5, 6};
     alpha.walls().setTier(aoc::sim::WallTier::Medieval);
     static_cast<void>(alpha.walls().takeDamage(30));
-    alpha.loyalty().loyalty     = 63.5f;
-    alpha.loyalty().unrestTurns = 2;
+    alpha.loyalty().loyalty             = 63.5f;
+    alpha.loyalty().unrestTurns         = 2;
     alpha.loyalty().revoltOriginalOwner = aoc::PlayerId{1};
-    alpha.happiness().amenities = 4.5f;
-    alpha.happiness().happiness = 1.25f;
+    alpha.happiness().amenities         = 4.5f;
+    alpha.happiness().happiness         = 1.25f;
     alpha.setStage(aoc::game::CitySize::Town);
     alpha.setAqueductConnected(true);
     alpha.toggleTileLock({6, 5});
@@ -207,26 +210,26 @@ void buildWorld(World& w) {
     // an embargo with goods and intel, and two city-states with a city and a unit.
     aoc::sim::GlobalReligionTracker& religions = w.gameState.religionTracker();
     static_cast<void>(religions.foundReligion("Testism", aoc::PlayerId{1}));
-    religions.religions[0].founderBelief  = 0;
-    religions.religions[0].enhancerBelief = 13;
-    p1.faith().faith           = 88.5f;
-    p1.faith().foundedReligion = 0;
-    p1.faith().hasPantheon     = true;
-    p1.faith().pantheonBelief  = 4;
+    religions.religions[0].founderBelief       = 0;
+    religions.religions[0].enhancerBelief      = 13;
+    p1.faith().faith                           = 88.5f;
+    p1.faith().foundedReligion                 = 0;
+    p1.faith().hasPantheon                     = true;
+    p1.faith().pantheonBelief                  = 4;
     aoc::sim::WorldCongressComponent& congress = w.gameState.worldCongress();
-    congress.isActive              = true;
-    congress.turnsUntilNextSession = 12;
-    congress.currentProposal       = aoc::sim::Resolution::GlobalSanctions;
-    congress.proposer              = aoc::PlayerId{1};
-    congress.proposalTarget        = aoc::PlayerId{0};
-    congress.votes[0]              = -2;
-    congress.votes[2]              = 3;
-    congress.voteChosen[2]         = true;
+    congress.isActive                          = true;
+    congress.turnsUntilNextSession             = 12;
+    congress.currentProposal                   = aoc::sim::Resolution::GlobalSanctions;
+    congress.proposer                          = aoc::PlayerId{1};
+    congress.proposalTarget                    = aoc::PlayerId{0};
+    congress.votes[0]                          = -2;
+    congress.votes[2]                          = 3;
+    congress.voteChosen[2]                     = true;
     congress.passedResolutions.push_back(aoc::sim::Resolution::BanNuclearWeapons);
     congress.activeEffects.push_back({aoc::sim::Resolution::WorldsFair, aoc::PlayerId{2}, 6});
-    congress.preferredProposal     = aoc::sim::Resolution::ArmsReduction;
-    congress.preferredBy           = aoc::PlayerId{2};
-    p2ref(w).diplomaticFavor().favor = 41;
+    congress.preferredProposal              = aoc::sim::Resolution::ArmsReduction;
+    congress.preferredBy                    = aoc::PlayerId{2};
+    p2ref(w).diplomaticFavor().favor        = 41;
     p2ref(w).diplomaticFavor().favorPerTurn = 3;
     aoc::sim::addEraScore(p0, 12, 3, "Completed the Pyramids");
     aoc::sim::addEraScore(p0, 15, 2, "Researched Mining");
@@ -236,20 +239,20 @@ void buildWorld(World& w) {
     p0.researchQueue().researchQueue = {aoc::TechId{3}, aoc::TechId{9}};
     p0.tech().knownTechs[5]          = true;
     p1.government().autoPolicies     = true;
-    p1.government().unlockPolicy(35);            // v18: bit 35 used to alias bit 3
-    w.grid.setPillaged(w.grid.toIndex(aoc::hex::AxialCoord{7, 7}), true);   // v19 layer
-    p1.government().policySwapFree          = true;
+    p1.government().unlockPolicy(35); // v18: bit 35 used to alias bit 3
+    w.grid.setPillaged(w.grid.toIndex(aoc::hex::AxialCoord{7, 7}), true); // v19 layer
+    p1.government().policySwapFree           = true;
     p1.government().lastGovernmentChangeTurn = 12;
     p1.envoys().available                    = 3;
     p1.envoys().lifetime                     = 7;
     w.diplomacy.meetPlayers(aoc::PlayerId{0}, aoc::PlayerId{1}, 21);
-    w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).turnsSincePeace = 4;
-    w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).passiveBonus    = 6;
-    w.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).passiveBonus    = 6;
-    w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).intelLevel      = 3;
-    w.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).intelLevel      = 1;
-    w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).hasEmbargo      = true;
-    w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).embargoedGoods  = {44, 7};
+    w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).turnsSincePeace      = 4;
+    w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).passiveBonus         = 6;
+    w.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).passiveBonus         = 6;
+    w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).intelLevel           = 3;
+    w.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).intelLevel           = 1;
+    w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).hasEmbargo           = true;
+    w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).embargoedGoods       = {44, 7};
     w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).warDeclaredOnTurn    = 9;
     w.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).warDeclaredOnTurn    = 9;
     w.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).friendshipUntilTurn  = 55;
@@ -282,9 +285,9 @@ void buildWorld(World& w) {
     }
     w.gameState.initializeCityStateSlots(2);
     aoc::sim::CityStateComponent cs0{};
-    cs0.defId    = 3;
-    cs0.type     = aoc::sim::CityStateType::Scientific;
-    cs0.location = {18, 3};
+    cs0.defId     = 3;
+    cs0.type      = aoc::sim::CityStateType::Scientific;
+    cs0.location  = {18, 3};
     cs0.envoys[0] = 4;
     cs0.envoys[2] = 1;
     cs0.suzerain  = aoc::PlayerId{0};
@@ -299,9 +302,9 @@ void buildWorld(World& w) {
     cs0.levyTurnsLeft              = 9;
     cs0.turnsSinceBully            = 3;
     aoc::sim::CityStateComponent cs1{};
-    cs1.defId    = 5;
-    cs1.type     = aoc::sim::CityStateType::Militaristic;
-    cs1.location = {2, 13};
+    cs1.defId                = 5;
+    cs1.type                 = aoc::sim::CityStateType::Militaristic;
+    cs1.location             = {2, 13};
     w.gameState.cityStates() = {cs0, cs1};
     aoc::game::Player& seat0 = *w.gameState.cityStatePlayers()[0];
     seat0.setCivId(static_cast<aoc::sim::CivId>(30));
@@ -315,8 +318,7 @@ void buildWorld(World& w) {
 [[nodiscard]] std::vector<char> readAll(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
     REQUIRE(in.good());
-    return std::vector<char>(std::istreambuf_iterator<char>(in),
-                             std::istreambuf_iterator<char>());
+    return std::vector<char>(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
 }
 
 } // namespace
@@ -327,15 +329,13 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
 
     World original;
     buildWorld(original);
-    REQUIRE(aoc::save::saveGame(fileA, original.gameState, original.grid,
-                                original.turnManager, original.economy,
-                                original.diplomacy, original.fogOfWar,
+    REQUIRE(aoc::save::saveGame(fileA, original.gameState, original.grid, original.turnManager,
+                                original.economy, original.diplomacy, original.fogOfWar,
                                 original.rng) == aoc::ErrorCode::Ok);
 
     World loaded;
-    REQUIRE(aoc::save::loadGame(fileA, loaded.gameState, loaded.grid,
-                                loaded.turnManager, loaded.economy,
-                                loaded.diplomacy, loaded.fogOfWar,
+    REQUIRE(aoc::save::loadGame(fileA, loaded.gameState, loaded.grid, loaded.turnManager,
+                                loaded.economy, loaded.diplomacy, loaded.fogOfWar,
                                 loaded.rng) == aoc::ErrorCode::Ok);
 
     // Spot-check the loaded state against the original.
@@ -365,14 +365,16 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     // Experience and promotions survive the load (they were dropped until 2026-09-05).
     const aoc::game::Unit* lVeteran = nullptr;
     for (const std::unique_ptr<aoc::game::Unit>& u : lp0.units()) {
-        if (u->position() == aoc::hex::AxialCoord{6, 5}) { lVeteran = u.get(); }
+        if (u->position() == aoc::hex::AxialCoord{6, 5}) {
+            lVeteran = u.get();
+        }
     }
     REQUIRE(lVeteran != nullptr);
     CHECK(lVeteran->experience().experience == 40);
     CHECK(lVeteran->experience().level == 1);
     REQUIRE(lVeteran->experience().promotions.size() == 1);
     CHECK(lVeteran->experience().promotions[0] == aoc::PromotionId{0});
-    CHECK(lVeteran->formationLevel() == aoc::sim::FormationLevel::Corps);   // v15
+    CHECK(lVeteran->formationLevel() == aoc::sim::FormationLevel::Corps); // v15
     CHECK(lAlpha.stockpile().goods.at(42) == 10);
     CHECK(lAlpha.stockpile().goods.at(199) == 25);
     CHECK(lAlpha.stockpile().exportBuffer.at(2) == 6);
@@ -393,7 +395,9 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     // v13: the fighter's air state.
     const aoc::game::Unit* lFighter = nullptr;
     for (const std::unique_ptr<aoc::game::Unit>& u : lp0.units()) {
-        if (u->typeId() == aoc::UnitTypeId{18}) { lFighter = u.get(); }
+        if (u->typeId() == aoc::UnitTypeId{18}) {
+            lFighter = u.get();
+        }
     }
     REQUIRE(lFighter != nullptr);
     CHECK(lFighter->airUnit().sortiesRemaining == 0);
@@ -404,8 +408,12 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     const aoc::game::Unit* lSpy  = nullptr;
     const aoc::game::Unit* lSage = nullptr;
     for (const std::unique_ptr<aoc::game::Unit>& u : lp0.units()) {
-        if (u->typeId() == aoc::UnitTypeId{101}) { lSpy = u.get(); }
-        if (u->typeId() == aoc::UnitTypeId{102}) { lSage = u.get(); }
+        if (u->typeId() == aoc::UnitTypeId{101}) {
+            lSpy = u.get();
+        }
+        if (u->typeId() == aoc::UnitTypeId{102}) {
+            lSage = u.get();
+        }
     }
     REQUIRE(lSpy != nullptr);
     CHECK(lSpy->spy().level == aoc::sim::SpyLevel::MasterSpy);
@@ -504,7 +512,8 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(loaded.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).intelLevel == 1);
     CHECK(loaded.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).hasEmbargo);
     CHECK_FALSE(loaded.diplomacy.relation(aoc::PlayerId{1}, aoc::PlayerId{0}).hasEmbargo);
-    REQUIRE(loaded.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).embargoedGoods.size() == 2);
+    REQUIRE(loaded.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).embargoedGoods.size() ==
+            2);
     CHECK(loaded.diplomacy.relation(aoc::PlayerId{0}, aoc::PlayerId{1}).embargoedGoods[0] == 44);
     // v17: city-states and their seats.
     REQUIRE(loaded.gameState.pendingProposals().size() == 1);
@@ -550,7 +559,7 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     aoc::test::LayerCompare layerCompare{layers};
     GameLayersOnly gameLayers{layerCompare};
     loaded.grid.visitLayers(gameLayers);
-    CHECK(layerCompare.seen == 18);   // v14 added antiquitySite
+    CHECK(layerCompare.seen == 18); // v14 added antiquitySite
     CHECK_MESSAGE(layerCompare.mismatched == 0,
                   "first game layer lost by save/load: " << layerCompare.firstMismatch);
     // v12: worldgen-only layers are not in the save; the loaded grid holds them
@@ -559,9 +568,8 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(loaded.grid.rowLatitudes().empty());
 
     // Resave the loaded state: byte-identical to the first save.
-    REQUIRE(aoc::save::saveGame(fileB, loaded.gameState, loaded.grid,
-                                loaded.turnManager, loaded.economy,
-                                loaded.diplomacy, loaded.fogOfWar,
+    REQUIRE(aoc::save::saveGame(fileB, loaded.gameState, loaded.grid, loaded.turnManager,
+                                loaded.economy, loaded.diplomacy, loaded.fogOfWar,
                                 loaded.rng) == aoc::ErrorCode::Ok);
 
     std::vector<char> bytesA = readAll(fileA);
@@ -573,12 +581,62 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     const char* corpusPath = std::getenv("AOC_WRITE_CORPUS");
     if (corpusPath != nullptr) {
         std::error_code ec;
-        std::filesystem::copy_file(
-            fileA, corpusPath,
-            std::filesystem::copy_options::overwrite_existing, ec);
+        std::filesystem::copy_file(fileA, corpusPath,
+                                   std::filesystem::copy_options::overwrite_existing, ec);
         CHECK(!ec);
         std::printf("corpus save written to %s\n", corpusPath);
     }
+}
+
+TEST_CASE("a conquered city and a free city both come back where they belong") {
+    const std::string file = "roundtrip_owner.sav";
+
+    aoc::hex::AxialCoord takenAt{0, 0};
+    aoc::hex::AxialCoord freeAt{0, 0};
+    {
+        World w;
+        buildWorld(w);
+        aoc::game::Player* alpha = w.gameState.player(aoc::PlayerId{0});
+        aoc::game::Player* beta  = w.gameState.player(aoc::PlayerId{1});
+        REQUIRE(alpha != nullptr);
+        REQUIRE(beta != nullptr);
+        REQUIRE(!alpha->cities().empty());
+        REQUIRE(!beta->cities().empty());
+
+        // Alpha takes Beta's first city; the object must move between vectors.
+        takenAt = beta->cities().front()->location();
+        REQUIRE(w.gameState.transferCity(takenAt, aoc::PlayerId{0}) != nullptr);
+        CHECK(alpha->cityAt(takenAt) != nullptr);
+        CHECK(beta->cityAt(takenAt) == nullptr);
+
+        // Alpha's own first city revolts into a free city: no seat to move to,
+        // so it stays with Alpha but stops being owned.
+        freeAt = alpha->cities().front()->location();
+        REQUIRE(w.gameState.transferCity(freeAt, aoc::INVALID_PLAYER) != nullptr);
+        CHECK(alpha->cityAt(freeAt) != nullptr);
+        CHECK(alpha->cityAt(freeAt)->owner() == aoc::INVALID_PLAYER);
+
+        REQUIRE(aoc::save::saveGame(file, w.gameState, w.grid, w.turnManager, w.economy,
+                                    w.diplomacy, w.fogOfWar, w.rng) == aoc::ErrorCode::Ok);
+    }
+
+    World loaded;
+    REQUIRE(aoc::save::loadGame(file, loaded.gameState, loaded.grid, loaded.turnManager,
+                                loaded.economy, loaded.diplomacy, loaded.fogOfWar,
+                                loaded.rng) == aoc::ErrorCode::Ok);
+
+    aoc::game::Player* alpha = loaded.gameState.player(aoc::PlayerId{0});
+    aoc::game::Player* beta  = loaded.gameState.player(aoc::PlayerId{1});
+    REQUIRE(alpha != nullptr);
+    REQUIRE(beta != nullptr);
+    const aoc::game::City* taken = alpha->cityAt(takenAt);
+    REQUIRE(taken != nullptr);
+    CHECK(taken->owner() == aoc::PlayerId{0});
+    CHECK(beta->cityAt(takenAt) == nullptr);
+
+    const aoc::game::City* freeCity = alpha->cityAt(freeAt);
+    REQUIRE(freeCity != nullptr);
+    CHECK(freeCity->owner() == aoc::INVALID_PLAYER);
 }
 
 #ifdef AOC_TEST_CORPUS_DIR
@@ -588,16 +646,17 @@ TEST_CASE("known-good save corpus still loads") {
     // SAVE_VERSION. Regenerate via AOC_WRITE_CORPUS when the format
     // version is deliberately bumped.
     int corpusFiles = 0;
-    for (const std::filesystem::directory_entry& entry
-         : std::filesystem::directory_iterator(AOC_TEST_CORPUS_DIR)) {
-        if (entry.path().extension() != ".sav") { continue; }
+    for (const std::filesystem::directory_entry& entry :
+         std::filesystem::directory_iterator(AOC_TEST_CORPUS_DIR)) {
+        if (entry.path().extension() != ".sav") {
+            continue;
+        }
         ++corpusFiles;
         World w;
-        CHECK_MESSAGE(
-            aoc::save::loadGame(entry.path().string(), w.gameState, w.grid,
-                                w.turnManager, w.economy, w.diplomacy,
-                                w.fogOfWar, w.rng) == aoc::ErrorCode::Ok,
-            "corpus file rejected: ", entry.path().string());
+        CHECK_MESSAGE(aoc::save::loadGame(entry.path().string(), w.gameState, w.grid, w.turnManager,
+                                          w.economy, w.diplomacy, w.fogOfWar,
+                                          w.rng) == aoc::ErrorCode::Ok,
+                      "corpus file rejected: ", entry.path().string());
     }
     // An empty corpus would make this test pass vacuously.
     CHECK(corpusFiles >= 1);

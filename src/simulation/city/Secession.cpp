@@ -111,7 +111,7 @@ bool checkAndPerformSecession(aoc::game::GameState& gameState,
                  city.name().c_str(),
                  static_cast<unsigned>(player),
                  static_cast<unsigned>(bestNeighbor));
-        city.setOwner(bestNeighbor);
+        gameState.transferCity(city.location(), bestNeighbor);
         loyalty.loyalty = 50.0f;
 
         if (grid.isValid(city.location())) {
@@ -128,7 +128,9 @@ bool checkAndPerformSecession(aoc::game::GameState& gameState,
         LOG_INFO("REVOLT: %s (player %u) loyalty 0 -- becomes Free City!",
                  city.name().c_str(),
                  static_cast<unsigned>(player));
-        city.setOwner(INVALID_PLAYER);
+        // A free city has no seat, so the object stays where it is and
+        // only its owner changes; the save records the holder separately.
+        gameState.transferCity(city.location(), INVALID_PLAYER);
         loyalty.loyalty = 50.0f;
     }
 

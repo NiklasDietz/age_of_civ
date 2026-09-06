@@ -531,6 +531,10 @@ void writeEntitySection(WriteBuffer& out, const aoc::game::GameState& gameState)
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
         for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
             section.writeU8(city->owner());
+            // v24: which player's vector holds the object. Equal to the owner
+            // for every city except a free one, whose owner is INVALID_PLAYER
+            // and which therefore has no seat of its own to be loaded into.
+            section.writeU8(player->id());
             section.writeI32(city->location().q);
             section.writeI32(city->location().r);
             section.writeString(city->name());
@@ -2243,6 +2247,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
 
             struct CityData {
                 PlayerId owner;
+                PlayerId holder;
                 aoc::hex::AxialCoord loc;
                 std::string name;
                 int32_t population;
@@ -2268,6 +2273,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
             for (uint32_t i = 0; i < cityCount; ++i) {
                 CityData cd{};
                 cd.owner              = buf.readU8();
+                cd.holder             = buf.readU8();
                 cd.loc                = {buf.readI32(), buf.readI32()};
                 cd.name               = buf.readString();
                 cd.population         = buf.readI32();
@@ -2371,8 +2377,10 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                     for (float& pressure : cd.religion.pressure) { pressure = buf.readF32(); }
                 }
 
-                if (cd.owner > maxOwner) {
-                    maxOwner = cd.owner;
+                // The holder, not the owner: a free city's owner is
+                // INVALID_PLAYER and would size the roster to 256 seats.
+                if (cd.holder > maxOwner) {
+                    maxOwner = cd.holder;
                 }
                 cityDataList.push_back(std::move(cd));
             }
@@ -2385,13 +2393,14 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
 
             // Populate Player objects with cities
             for (const CityData& cd : cityDataList) {
-                aoc::game::Player* player = gameState.player(cd.owner);
+                aoc::game::Player* player = gameState.player(cd.holder);
                 if (player == nullptr) {
-                    LOG_ERROR("Serializer.cpp: loadGame: invalid owner %u in Entities section",
-                              static_cast<unsigned>(cd.owner));
+                    LOG_ERROR("Serializer.cpp: loadGame: invalid holder %u in Entities section",
+                              static_cast<unsigned>(cd.holder));
                     return ErrorCode::SaveCorrupted;
                 }
                 aoc::game::City& city = player->addCity(cd.loc, cd.name);
+                city.setOwner(cd.owner);
                 city.setPopulation(cd.population);
                 city.setFoodSurplus(cd.foodSurplus);
                 city.setProductionProgress(cd.productionProgress);

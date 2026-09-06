@@ -61,7 +61,9 @@
 #include <unordered_map>
 #include <vector>
 
-namespace aoc::map { class HexGrid; }
+namespace aoc::map {
+class HexGrid;
+}
 
 namespace aoc::game {
 
@@ -80,7 +82,7 @@ public:
     explicit Player(PlayerId id);
     ~Player();
 
-    Player(const Player&) = delete;
+    Player(const Player&)            = delete;
     Player& operator=(const Player&) = delete;
     Player(Player&&) noexcept;
     Player& operator=(Player&&) noexcept;
@@ -121,20 +123,24 @@ public:
     [[nodiscard]] CurrencyAmount treasury() const { return this->m_treasury; }
     void setTreasury(CurrencyAmount amount) { this->m_treasury = amount; }
     void addGold(CurrencyAmount amount) { this->m_treasury += amount; }
-    bool spendGold(CurrencyAmount amount);  ///< Returns false if insufficient
+    bool spendGold(CurrencyAmount amount); ///< Returns false if insufficient
 
     [[nodiscard]] CurrencyAmount incomePerTurn() const { return this->m_incomePerTurn; }
     void setIncomePerTurn(CurrencyAmount income) { this->m_incomePerTurn = income; }
 
     [[nodiscard]] aoc::sim::MonetaryStateComponent& monetary() { return this->m_monetary; }
-    [[nodiscard]] const aoc::sim::MonetaryStateComponent& monetary() const { return this->m_monetary; }
+    [[nodiscard]] const aoc::sim::MonetaryStateComponent& monetary() const {
+        return this->m_monetary;
+    }
 
     // ========================================================================
     // Government
     // ========================================================================
 
     [[nodiscard]] aoc::sim::PlayerGovernmentComponent& government() { return this->m_government; }
-    [[nodiscard]] const aoc::sim::PlayerGovernmentComponent& government() const { return this->m_government; }
+    [[nodiscard]] const aoc::sim::PlayerGovernmentComponent& government() const {
+        return this->m_government;
+    }
 
     // ========================================================================
     // Religion
@@ -151,26 +157,42 @@ public:
     [[nodiscard]] const aoc::sim::PlayerEraComponent& era() const { return this->m_era; }
 
     [[nodiscard]] aoc::sim::PlayerEraScoreComponent& eraScore() { return this->m_eraScore; }
-    [[nodiscard]] const aoc::sim::PlayerEraScoreComponent& eraScore() const { return this->m_eraScore; }
+    [[nodiscard]] const aoc::sim::PlayerEraScoreComponent& eraScore() const {
+        return this->m_eraScore;
+    }
 
-    [[nodiscard]] aoc::sim::PlayerWarWearinessComponent& warWeariness() { return this->m_warWeariness; }
-    [[nodiscard]] const aoc::sim::PlayerWarWearinessComponent& warWeariness() const { return this->m_warWeariness; }
+    [[nodiscard]] aoc::sim::PlayerWarWearinessComponent& warWeariness() {
+        return this->m_warWeariness;
+    }
+    [[nodiscard]] const aoc::sim::PlayerWarWearinessComponent& warWeariness() const {
+        return this->m_warWeariness;
+    }
 
     [[nodiscard]] aoc::sim::PlayerEurekaComponent& eureka() { return this->m_eureka; }
     [[nodiscard]] const aoc::sim::PlayerEurekaComponent& eureka() const { return this->m_eureka; }
 
-    [[nodiscard]] aoc::sim::PlayerGreatPeopleComponent& greatPeople() { return this->m_greatPeople; }
-    [[nodiscard]] const aoc::sim::PlayerGreatPeopleComponent& greatPeople() const { return this->m_greatPeople; }
+    [[nodiscard]] aoc::sim::PlayerGreatPeopleComponent& greatPeople() {
+        return this->m_greatPeople;
+    }
+    [[nodiscard]] const aoc::sim::PlayerGreatPeopleComponent& greatPeople() const {
+        return this->m_greatPeople;
+    }
 
     // ========================================================================
     // Economy (extended)
     // ========================================================================
 
     [[nodiscard]] aoc::sim::PlayerEconomyComponent& economy() { return this->m_economy; }
-    [[nodiscard]] const aoc::sim::PlayerEconomyComponent& economy() const { return this->m_economy; }
+    [[nodiscard]] const aoc::sim::PlayerEconomyComponent& economy() const {
+        return this->m_economy;
+    }
 
-    [[nodiscard]] aoc::sim::PlayerTradeAgreementsComponent& tradeAgreements() { return this->m_tradeAgreements; }
-    [[nodiscard]] const aoc::sim::PlayerTradeAgreementsComponent& tradeAgreements() const { return this->m_tradeAgreements; }
+    [[nodiscard]] aoc::sim::PlayerTradeAgreementsComponent& tradeAgreements() {
+        return this->m_tradeAgreements;
+    }
+    [[nodiscard]] const aoc::sim::PlayerTradeAgreementsComponent& tradeAgreements() const {
+        return this->m_tradeAgreements;
+    }
 
     [[nodiscard]] aoc::sim::PlayerTariffComponent& tariffs() { return this->m_tariffs; }
     [[nodiscard]] const aoc::sim::PlayerTariffComponent& tariffs() const { return this->m_tariffs; }
@@ -179,17 +201,27 @@ public:
     // Victory
     // ========================================================================
 
-    [[nodiscard]] aoc::sim::VictoryTrackerComponent& victoryTracker() { return this->m_victoryTracker; }
-    [[nodiscard]] const aoc::sim::VictoryTrackerComponent& victoryTracker() const { return this->m_victoryTracker; }
+    [[nodiscard]] aoc::sim::VictoryTrackerComponent& victoryTracker() {
+        return this->m_victoryTracker;
+    }
+    [[nodiscard]] const aoc::sim::VictoryTrackerComponent& victoryTracker() const {
+        return this->m_victoryTracker;
+    }
 
     [[nodiscard]] aoc::sim::PlayerPrestigeComponent& prestige() { return this->m_prestige; }
-    [[nodiscard]] const aoc::sim::PlayerPrestigeComponent& prestige() const { return this->m_prestige; }
+    [[nodiscard]] const aoc::sim::PlayerPrestigeComponent& prestige() const {
+        return this->m_prestige;
+    }
 
     [[nodiscard]] aoc::sim::PlayerSpaceRaceComponent& spaceRace() { return this->m_spaceRace; }
-    [[nodiscard]] const aoc::sim::PlayerSpaceRaceComponent& spaceRace() const { return this->m_spaceRace; }
+    [[nodiscard]] const aoc::sim::PlayerSpaceRaceComponent& spaceRace() const {
+        return this->m_spaceRace;
+    }
 
     [[nodiscard]] aoc::sim::PlayerTourismComponent& tourism() { return this->m_tourism; }
-    [[nodiscard]] const aoc::sim::PlayerTourismComponent& tourism() const { return this->m_tourism; }
+    [[nodiscard]] const aoc::sim::PlayerTourismComponent& tourism() const {
+        return this->m_tourism;
+    }
 
     // ========================================================================
     // Monetary instruments
@@ -198,17 +230,25 @@ public:
     [[nodiscard]] aoc::sim::PlayerBondComponent& bonds() { return this->m_bonds; }
     [[nodiscard]] const aoc::sim::PlayerBondComponent& bonds() const { return this->m_bonds; }
 
-    [[nodiscard]] aoc::sim::PlayerStockPortfolioComponent& stockPortfolio() { return this->m_stockPortfolio; }
-    [[nodiscard]] const aoc::sim::PlayerStockPortfolioComponent& stockPortfolio() const { return this->m_stockPortfolio; }
+    [[nodiscard]] aoc::sim::PlayerStockPortfolioComponent& stockPortfolio() {
+        return this->m_stockPortfolio;
+    }
+    [[nodiscard]] const aoc::sim::PlayerStockPortfolioComponent& stockPortfolio() const {
+        return this->m_stockPortfolio;
+    }
 
     [[nodiscard]] aoc::sim::PlayerFuturesComponent& futures() { return this->m_futures; }
-    [[nodiscard]] const aoc::sim::PlayerFuturesComponent& futures() const { return this->m_futures; }
+    [[nodiscard]] const aoc::sim::PlayerFuturesComponent& futures() const {
+        return this->m_futures;
+    }
 
     [[nodiscard]] aoc::sim::PlayerIOUComponent& ious() { return this->m_ious; }
     [[nodiscard]] const aoc::sim::PlayerIOUComponent& ious() const { return this->m_ious; }
 
     [[nodiscard]] aoc::sim::PlayerInsuranceComponent& insurance() { return this->m_insurance; }
-    [[nodiscard]] const aoc::sim::PlayerInsuranceComponent& insurance() const { return this->m_insurance; }
+    [[nodiscard]] const aoc::sim::PlayerInsuranceComponent& insurance() const {
+        return this->m_insurance;
+    }
 
     [[nodiscard]] aoc::sim::PlayerBubbleComponent& bubble() { return this->m_bubble; }
     [[nodiscard]] const aoc::sim::PlayerBubbleComponent& bubble() const { return this->m_bubble; }
@@ -218,42 +258,70 @@ public:
     // ========================================================================
 
     [[nodiscard]] aoc::sim::PlayerMigrationComponent& migration() { return this->m_migration; }
-    [[nodiscard]] const aoc::sim::PlayerMigrationComponent& migration() const { return this->m_migration; }
+    [[nodiscard]] const aoc::sim::PlayerMigrationComponent& migration() const {
+        return this->m_migration;
+    }
 
-    [[nodiscard]] aoc::sim::PlayerBlackMarketComponent& blackMarket() { return this->m_blackMarket; }
-    [[nodiscard]] const aoc::sim::PlayerBlackMarketComponent& blackMarket() const { return this->m_blackMarket; }
+    [[nodiscard]] aoc::sim::PlayerBlackMarketComponent& blackMarket() {
+        return this->m_blackMarket;
+    }
+    [[nodiscard]] const aoc::sim::PlayerBlackMarketComponent& blackMarket() const {
+        return this->m_blackMarket;
+    }
 
     [[nodiscard]] aoc::sim::PlayerEnergyComponent& energy() { return this->m_energy; }
     [[nodiscard]] const aoc::sim::PlayerEnergyComponent& energy() const { return this->m_energy; }
 
-    [[nodiscard]] aoc::sim::PlayerHumanCapitalComponent& humanCapital() { return this->m_humanCapital; }
-    [[nodiscard]] const aoc::sim::PlayerHumanCapitalComponent& humanCapital() const { return this->m_humanCapital; }
+    [[nodiscard]] aoc::sim::PlayerHumanCapitalComponent& humanCapital() {
+        return this->m_humanCapital;
+    }
+    [[nodiscard]] const aoc::sim::PlayerHumanCapitalComponent& humanCapital() const {
+        return this->m_humanCapital;
+    }
 
-    [[nodiscard]] aoc::sim::PlayerSupplyChainComponent& supplyChain() { return this->m_supplyChain; }
-    [[nodiscard]] const aoc::sim::PlayerSupplyChainComponent& supplyChain() const { return this->m_supplyChain; }
+    [[nodiscard]] aoc::sim::PlayerSupplyChainComponent& supplyChain() {
+        return this->m_supplyChain;
+    }
+    [[nodiscard]] const aoc::sim::PlayerSupplyChainComponent& supplyChain() const {
+        return this->m_supplyChain;
+    }
 
     /// C40: last-turn Dutch-disease modifiers. Updated by EconomySimulation at
     /// the start of each turn from computeResourceCurse(); consumed by
     /// executeProduction (manufacturingPenalty) and ForexMarket
     /// (currencyAppreciation). happinessPenalty is applied to cities on apply.
-    [[nodiscard]] aoc::sim::ResourceCurseModifiers& resourceCurse() { return this->m_resourceCurse; }
-    [[nodiscard]] const aoc::sim::ResourceCurseModifiers& resourceCurse() const { return this->m_resourceCurse; }
+    [[nodiscard]] aoc::sim::ResourceCurseModifiers& resourceCurse() {
+        return this->m_resourceCurse;
+    }
+    [[nodiscard]] const aoc::sim::ResourceCurseModifiers& resourceCurse() const {
+        return this->m_resourceCurse;
+    }
 
     [[nodiscard]] aoc::sim::PlayerIndustrialComponent& industrial() { return this->m_industrial; }
-    [[nodiscard]] const aoc::sim::PlayerIndustrialComponent& industrial() const { return this->m_industrial; }
+    [[nodiscard]] const aoc::sim::PlayerIndustrialComponent& industrial() const {
+        return this->m_industrial;
+    }
 
     [[nodiscard]] aoc::sim::PlayerBankingComponent& banking() { return this->m_banking; }
-    [[nodiscard]] const aoc::sim::PlayerBankingComponent& banking() const { return this->m_banking; }
+    [[nodiscard]] const aoc::sim::PlayerBankingComponent& banking() const {
+        return this->m_banking;
+    }
 
     // ========================================================================
     // Diplomacy (extended)
     // ========================================================================
 
     [[nodiscard]] aoc::sim::PlayerGrievanceComponent& grievances() { return this->m_grievances; }
-    [[nodiscard]] const aoc::sim::PlayerGrievanceComponent& grievances() const { return this->m_grievances; }
+    [[nodiscard]] const aoc::sim::PlayerGrievanceComponent& grievances() const {
+        return this->m_grievances;
+    }
 
-    [[nodiscard]] aoc::sim::PlayerDiplomaticFavorComponent& diplomaticFavor() { return this->m_diplomaticFavor; }
-    [[nodiscard]] const aoc::sim::PlayerDiplomaticFavorComponent& diplomaticFavor() const { return this->m_diplomaticFavor; }
+    [[nodiscard]] aoc::sim::PlayerDiplomaticFavorComponent& diplomaticFavor() {
+        return this->m_diplomaticFavor;
+    }
+    [[nodiscard]] const aoc::sim::PlayerDiplomaticFavorComponent& diplomaticFavor() const {
+        return this->m_diplomaticFavor;
+    }
     [[nodiscard]] aoc::sim::PlayerEnvoyComponent& envoys() { return this->m_envoys; }
     [[nodiscard]] const aoc::sim::PlayerEnvoyComponent& envoys() const { return this->m_envoys; }
 
@@ -261,24 +329,44 @@ public:
     // Currency
     // ========================================================================
 
-    [[nodiscard]] aoc::sim::CurrencyTrustComponent& currencyTrust() { return this->m_currencyTrust; }
-    [[nodiscard]] const aoc::sim::CurrencyTrustComponent& currencyTrust() const { return this->m_currencyTrust; }
+    [[nodiscard]] aoc::sim::CurrencyTrustComponent& currencyTrust() {
+        return this->m_currencyTrust;
+    }
+    [[nodiscard]] const aoc::sim::CurrencyTrustComponent& currencyTrust() const {
+        return this->m_currencyTrust;
+    }
 
-    [[nodiscard]] aoc::sim::CurrencyExchangeComponent& currencyExchange() { return this->m_currencyExchange; }
-    [[nodiscard]] const aoc::sim::CurrencyExchangeComponent& currencyExchange() const { return this->m_currencyExchange; }
+    [[nodiscard]] aoc::sim::CurrencyExchangeComponent& currencyExchange() {
+        return this->m_currencyExchange;
+    }
+    [[nodiscard]] const aoc::sim::CurrencyExchangeComponent& currencyExchange() const {
+        return this->m_currencyExchange;
+    }
 
-    [[nodiscard]] aoc::sim::CurrencyDevaluationComponent& currencyDevaluation() { return this->m_currencyDevaluation; }
-    [[nodiscard]] const aoc::sim::CurrencyDevaluationComponent& currencyDevaluation() const { return this->m_currencyDevaluation; }
+    [[nodiscard]] aoc::sim::CurrencyDevaluationComponent& currencyDevaluation() {
+        return this->m_currencyDevaluation;
+    }
+    [[nodiscard]] const aoc::sim::CurrencyDevaluationComponent& currencyDevaluation() const {
+        return this->m_currencyDevaluation;
+    }
 
-    [[nodiscard]] aoc::sim::CurrencyCrisisComponent& currencyCrisis() { return this->m_currencyCrisis; }
-    [[nodiscard]] const aoc::sim::CurrencyCrisisComponent& currencyCrisis() const { return this->m_currencyCrisis; }
+    [[nodiscard]] aoc::sim::CurrencyCrisisComponent& currencyCrisis() {
+        return this->m_currencyCrisis;
+    }
+    [[nodiscard]] const aoc::sim::CurrencyCrisisComponent& currencyCrisis() const {
+        return this->m_currencyCrisis;
+    }
 
     // ========================================================================
     // Empire management
     // ========================================================================
 
-    [[nodiscard]] aoc::sim::PlayerCommunicationComponent& communication() { return this->m_communication; }
-    [[nodiscard]] const aoc::sim::PlayerCommunicationComponent& communication() const { return this->m_communication; }
+    [[nodiscard]] aoc::sim::PlayerCommunicationComponent& communication() {
+        return this->m_communication;
+    }
+    [[nodiscard]] const aoc::sim::PlayerCommunicationComponent& communication() const {
+        return this->m_communication;
+    }
 
     // ========================================================================
     // Events & Automation
@@ -287,18 +375,28 @@ public:
     [[nodiscard]] aoc::sim::PlayerEventComponent& events() { return this->m_events; }
     [[nodiscard]] const aoc::sim::PlayerEventComponent& events() const { return this->m_events; }
 
-    [[nodiscard]] aoc::sim::PlayerResearchQueueComponent& researchQueue() { return this->m_researchQueue; }
-    [[nodiscard]] const aoc::sim::PlayerResearchQueueComponent& researchQueue() const { return this->m_researchQueue; }
+    [[nodiscard]] aoc::sim::PlayerResearchQueueComponent& researchQueue() {
+        return this->m_researchQueue;
+    }
+    [[nodiscard]] const aoc::sim::PlayerResearchQueueComponent& researchQueue() const {
+        return this->m_researchQueue;
+    }
 
-    [[nodiscard]] aoc::sim::PlayerTradeAutoRenewComponent& tradeAutoRenew() { return this->m_tradeAutoRenew; }
-    [[nodiscard]] const aoc::sim::PlayerTradeAutoRenewComponent& tradeAutoRenew() const { return this->m_tradeAutoRenew; }
+    [[nodiscard]] aoc::sim::PlayerTradeAutoRenewComponent& tradeAutoRenew() {
+        return this->m_tradeAutoRenew;
+    }
+    [[nodiscard]] const aoc::sim::PlayerTradeAutoRenewComponent& tradeAutoRenew() const {
+        return this->m_tradeAutoRenew;
+    }
 
     // ========================================================================
     // Cities
     // ========================================================================
 
     [[nodiscard]] std::vector<std::unique_ptr<City>>& cities() { return this->m_cities; }
-    [[nodiscard]] const std::vector<std::unique_ptr<City>>& cities() const { return this->m_cities; }
+    [[nodiscard]] const std::vector<std::unique_ptr<City>>& cities() const {
+        return this->m_cities;
+    }
 
     /// Find a city by location. Returns nullptr if not found.
     [[nodiscard]] City* cityAt(aoc::hex::AxialCoord location);
@@ -306,6 +404,15 @@ public:
 
     /// Add a new city. Returns a reference to the new city.
     City& addCity(aoc::hex::AxialCoord location, const std::string& name);
+
+    /// Take `city` out of this player's vector and hand ownership of the
+    /// object to the caller. Returns nullptr when this player is not holding
+    /// it. Does not touch `city.owner()`; use GameState::transferCity, which
+    /// pairs this with adoptCity and sets the owner.
+    [[nodiscard]] std::unique_ptr<City> releaseCity(const City* city);
+
+    /// Put a city object into this player's vector. Does not set its owner.
+    City& adoptCity(std::unique_ptr<City> city);
 
     /// Raw size of the player's `m_cities` vector. Includes any cities that
     /// have seceded and now have a different `owner()` -- the City pointer
@@ -352,9 +459,7 @@ public:
     void setTileCity(int32_t tileIdx, aoc::hex::AxialCoord cityLoc) {
         this->m_tileCityAssignment[tileIdx] = cityLoc;
     }
-    void clearTileCity(int32_t tileIdx) {
-        this->m_tileCityAssignment.erase(tileIdx);
-    }
+    void clearTileCity(int32_t tileIdx) { this->m_tileCityAssignment.erase(tileIdx); }
 
     // ========================================================================
     // Units
@@ -398,7 +503,9 @@ public:
      * This keeps the data layout uniform and avoids nullable pointer overhead.
      */
     [[nodiscard]] aoc::sim::ai::AIBlackboard& blackboard() { return this->m_blackboard; }
-    [[nodiscard]] const aoc::sim::ai::AIBlackboard& blackboard() const { return this->m_blackboard; }
+    [[nodiscard]] const aoc::sim::ai::AIBlackboard& blackboard() const {
+        return this->m_blackboard;
+    }
 
     // ========================================================================
     // Derived queries
@@ -418,7 +525,7 @@ public:
 
 private:
     PlayerId m_id;
-    bool m_isHuman = false;
+    bool m_isHuman          = false;
     aoc::sim::CivId m_civId = 0;
 
     // Tech & Civics
@@ -426,7 +533,7 @@ private:
     aoc::sim::PlayerCivicComponent m_civics;
 
     // Economy
-    CurrencyAmount m_treasury = 0;  ///< Starts at 0: no money at game start (barter)
+    CurrencyAmount m_treasury      = 0; ///< Starts at 0: no money at game start (barter)
     CurrencyAmount m_incomePerTurn = 0;
     aoc::sim::MonetaryStateComponent m_monetary;
 
@@ -444,7 +551,7 @@ private:
     aoc::sim::PlayerGreatPeopleComponent m_greatPeople;
 
     // Economy (extended)
-    aoc::sim::PlayerEconomyComponent m_economy;  ///< Supply/demand/needs tracking
+    aoc::sim::PlayerEconomyComponent m_economy; ///< Supply/demand/needs tracking
     aoc::sim::PlayerTradeAgreementsComponent m_tradeAgreements;
     aoc::sim::PlayerTariffComponent m_tariffs;
 

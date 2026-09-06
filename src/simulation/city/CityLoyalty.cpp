@@ -24,14 +24,15 @@
 #include "aoc/map/HexCoord.hpp"
 
 #include <algorithm>
+#include <utility>
+#include <vector>
 
 namespace aoc::sim {
 
 // Loyalty pressure radius now lives in BalanceParams::loyaltyPressureRadius so
 // the balance GA can retune it without a recompile.
 
-void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
-                        PlayerId player) {
+void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, PlayerId player) {
     aoc::game::Player* gsPlayer = gameState.player(player);
     if (gsPlayer == nullptr) {
         return;
@@ -43,8 +44,7 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     // Religion provides a loyalty floor in the early eras (Ancient, Classical,
     // Medieval) and nothing afterwards.  Computed once per player because the
     // era coefficient is empire-wide.
-    const float devotionLoyaltyCoef =
-        religionLoyaltyCoefficient(effectiveEraFromTech(*gsPlayer));
+    const float devotionLoyaltyCoef = religionLoyaltyCoefficient(effectiveEraFromTech(*gsPlayer));
 
     // Cap secessions at one per civ per turn. Prevents cascade where a low-loyalty
     // empire loses half its periphery in a single turn -- stress tests showed
@@ -57,25 +57,29 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     // status still live in the original player's cities() vector. Tick down
     // before the normal loyalty pass so a city whose timer hit 0 resumes
     // normal owner processing the same turn.
+    // A city that reverts to an owner other than the one holding it moves
+    // between vectors, so collect the reversions and apply them after the
+    // walk rather than erasing the element the loop is standing on.
+    std::vector<std::pair<aoc::hex::AxialCoord, PlayerId>> reversions;
     for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
         CityLoyaltyComponent& loyalty = city->loyalty();
         if (loyalty.revoltFreeCityTurns > 0) {
             --loyalty.revoltFreeCityTurns;
-            if (loyalty.revoltFreeCityTurns == 0
-                && loyalty.revoltOriginalOwner != INVALID_PLAYER) {
-                city->setOwner(loyalty.revoltOriginalOwner);
+            if (loyalty.revoltFreeCityTurns == 0 && loyalty.revoltOriginalOwner != INVALID_PLAYER) {
+                reversions.emplace_back(city->location(), loyalty.revoltOriginalOwner);
                 if (grid.isValid(city->location())) {
-                    grid.setOwner(grid.toIndex(city->location()),
-                                  loyalty.revoltOriginalOwner);
+                    grid.setOwner(grid.toIndex(city->location()), loyalty.revoltOriginalOwner);
                 }
-                LOG_INFO("REVOLT-END: %s returns to player %u",
-                         city->name().c_str(),
+                LOG_INFO("REVOLT-END: %s returns to player %u", city->name().c_str(),
                          static_cast<unsigned>(loyalty.revoltOriginalOwner));
                 loyalty.revoltOriginalOwner = INVALID_PLAYER;
-                loyalty.loyalty = 50.0f;
-                loyalty.unrestTurns = 0;
+                loyalty.loyalty             = 50.0f;
+                loyalty.unrestTurns         = 0;
             }
         }
+    }
+    for (const std::pair<aoc::hex::AxialCoord, PlayerId>& reverted : reversions) {
+        gameState.transferCity(reverted.first, reverted.second);
     }
 
     // WP-A5 combined-stress trigger eligibility: war weariness, grievance
@@ -84,42 +88,47 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     // Audit 2026-04: thresholds never fired across 12-sim × 500t batch.
     // Loosen weariness gate (40 → 25) and grievance count (4 → 2) so the
     // signal actually appears in play without being spammy.
-    const float weariness = gsPlayer->warWeariness().weariness;
-    const bool  civStressed = (weariness > 25.0f)
-                           && (gsPlayer->grievances().grievances.size() >= 2);
+    const float weariness  = gsPlayer->warWeariness().weariness;
+    const bool civStressed = (weariness > 25.0f) && (gsPlayer->grievances().grievances.size() >= 2);
 
     // Iterate all cities owned by this player. Cities captured/seceded away
     // remain in the old owner's vector (capture mechanic never rewires lists),
     // so filter by current owner to avoid processing stale entries twice.
     for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
-        if (city->owner() != player) { continue; }
+        if (city->owner() != player) {
+            continue;
+        }
         CityLoyaltyComponent& loyalty = city->loyalty();
 
         // Reset breakdown for this turn. baseLoyalty is balance-tunable --
         // at 8.0 the floor dominates and no city ever hit Unrest; default is
         // now 4.0 but the balance GA can sweep.
-        loyalty.baseLoyalty = bal.baseLoyalty;
-        loyalty.ownCityPressure = 0.0f;
+        loyalty.baseLoyalty         = bal.baseLoyalty;
+        loyalty.ownCityPressure     = 0.0f;
         loyalty.foreignCityPressure = 0.0f;
-        loyalty.governorBonus = 0.0f;
-        loyalty.garrisonBonus = 0.0f;
-        loyalty.monumentBonus = 0.0f;
-        loyalty.happinessEffect = 0.0f;
-        loyalty.ageEffect = 0.0f;
-        loyalty.capturedPenalty = 0.0f;
-        loyalty.devotionBonus = 0.0f;
+        loyalty.governorBonus       = 0.0f;
+        loyalty.garrisonBonus       = 0.0f;
+        loyalty.monumentBonus       = 0.0f;
+        loyalty.happinessEffect     = 0.0f;
+        loyalty.ageEffect           = 0.0f;
+        loyalty.capturedPenalty     = 0.0f;
+        loyalty.devotionBonus       = 0.0f;
 
         // City pressure from ALL nearby cities (own and foreign).
         // Iterates all players' cities to compute cross-player pressure.
         for (const std::unique_ptr<aoc::game::Player>& otherPlayer : gameState.players()) {
             for (const std::unique_ptr<aoc::game::City>& nearCity : otherPlayer->cities()) {
-                if (nearCity->location() == city->location()) { continue; }  // Skip self
+                if (nearCity->location() == city->location()) {
+                    continue;
+                } // Skip self
 
                 int32_t dist = grid.distance(city->location(), nearCity->location());
-                if (dist > bal.loyaltyPressureRadius || dist <= 0) { continue; }
+                if (dist > bal.loyaltyPressureRadius || dist <= 0) {
+                    continue;
+                }
 
-                float pressure = static_cast<float>(nearCity->population()) * 0.5f
-                               / static_cast<float>(dist);
+                float pressure =
+                    static_cast<float>(nearCity->population()) * 0.5f / static_cast<float>(dist);
 
                 if (otherPlayer->id() == player) {
                     loyalty.ownCityPressure += pressure;
@@ -133,13 +142,13 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         // city count on one side can't crowd out the other. Without caps the
         // civ with more cities in the region always wins loyalty, making
         // asymmetric borders unrecoverable regardless of governance.
-        loyalty.ownCityPressure = std::clamp(loyalty.ownCityPressure, 0.0f, 50.0f);
+        loyalty.ownCityPressure     = std::clamp(loyalty.ownCityPressure, 0.0f, 50.0f);
         loyalty.foreignCityPressure = std::clamp(loyalty.foreignCityPressure, -50.0f, 0.0f);
 
         // Governor bonus: +4 for an active focus governor, or the named governor's
         // own bonus (Diplomat +8, others +4, Citadel +4 more), whichever is larger.
-        loyalty.governorBonus = std::max(city->governor().isActive ? 4.0f : 0.0f,
-                                         city->governor().loyaltyBonus());
+        loyalty.governorBonus =
+            std::max(city->governor().isActive ? 4.0f : 0.0f, city->governor().loyaltyBonus());
 
         // Garrison bonus (+3 per military unit on the city tile, max 9)
         for (const std::unique_ptr<aoc::game::Unit>& unit : gsPlayer->units()) {
@@ -153,7 +162,7 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         const CityDistrictsComponent& districts = city->districts();
         for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
             for (BuildingId bid : d.buildings) {
-                if (bid.value == 16) {  // Monument
+                if (bid.value == 16) { // Monument
                     loyalty.monumentBonus += 2.0f;
                 }
             }
@@ -183,7 +192,7 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         // point the state -- not the church -- has to do the stabilising.
         if (devotionLoyaltyCoef > 0.0f) {
             const float netDevotion = computeCityNetDevotion(*city);
-            loyalty.devotionBonus = netDevotion * devotionLoyaltyCoef;
+            loyalty.devotionBonus   = netDevotion * devotionLoyaltyCoef;
         }
 
         // Era decay on foreign pressure + communication-building floor.
@@ -197,24 +206,23 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             // WP-C1: loyalty decay table sourced from BalanceParams so the
             // GA tuner can sweep it instead of hitting a compile wall.
             const uint8_t rev = static_cast<uint8_t>(gsPlayer->industrial().currentRevolution);
-            float mult = bal.loyaltyEraDecay[std::min<uint8_t>(rev, 5u)];
+            float mult        = bal.loyaltyEraDecay[std::min<uint8_t>(rev, 5u)];
             // Age-state variation:
             //   GoldenAge → strengthen empire-glue (own pressure +20%, foreign
             //               -20%), encouraging expansion during boom times.
             //   DarkAge   → weaken glue (own pressure -25%, foreign +25%),
             //               creating real flip risk during crisis.
             const aoc::sim::AgeType age = gsPlayer->eraScore().currentAgeType;
-            float ownAdjust = 0.0f;
+            float ownAdjust             = 0.0f;
             if (age == aoc::sim::AgeType::Golden) {
-                mult *= 0.80f;       // foreign pressure damped further
-                ownAdjust = +0.20f;  // own pressure boosted
+                mult *= 0.80f;      // foreign pressure damped further
+                ownAdjust = +0.20f; // own pressure boosted
             } else if (age == aoc::sim::AgeType::Dark) {
-                mult *= 1.25f;       // foreign pressure stronger
+                mult *= 1.25f; // foreign pressure stronger
                 ownAdjust = -0.25f;
             }
             loyalty.foreignCityPressure *= mult;
-            loyalty.ownCityPressure *= std::max(0.10f,
-                (0.80f + 0.20f * mult) + ownAdjust);
+            loyalty.ownCityPressure *= std::max(0.10f, (0.80f + 0.20f * mult) + ownAdjust);
         }
         if (city->hasBuilding(BuildingId{13}) || city->hasBuilding(BuildingId{12})) {
             // Telecom Hub or Research Lab — +3 communication floor.
@@ -222,16 +230,10 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         }
 
         // Sum it all up
-        float change = loyalty.baseLoyalty
-                     + loyalty.ownCityPressure
-                     + loyalty.foreignCityPressure
-                     + loyalty.governorBonus
-                     + loyalty.garrisonBonus
-                     + loyalty.monumentBonus
-                     + loyalty.ageEffect
-                     + loyalty.happinessEffect
-                     + loyalty.capturedPenalty
-                     + loyalty.devotionBonus;
+        float change = loyalty.baseLoyalty + loyalty.ownCityPressure + loyalty.foreignCityPressure +
+                       loyalty.governorBonus + loyalty.garrisonBonus + loyalty.monumentBonus +
+                       loyalty.ageEffect + loyalty.happinessEffect + loyalty.capturedPenalty +
+                       loyalty.devotionBonus;
 
         loyalty.loyaltyPerTurn = change;
         loyalty.loyalty += change;
@@ -248,19 +250,18 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         // grievance count are both high, AND the city itself is actively
         // unhappy (happiness < -1), flip to Free-City for 10 turns. Softer
         // than true secession — city reverts automatically.
-        if (civStressed && loyalty.revoltFreeCityTurns == 0
-            && city->happiness().happiness < -1.0f) {
+        if (civStressed && loyalty.revoltFreeCityTurns == 0 &&
+            city->happiness().happiness < -1.0f) {
             loyalty.revoltFreeCityTurns = 10;
             loyalty.revoltOriginalOwner = player;
-            city->setOwner(INVALID_PLAYER);
+            gameState.transferCity(city->location(), INVALID_PLAYER);
             if (grid.isValid(city->location())) {
                 grid.setOwner(grid.toIndex(city->location()), INVALID_PLAYER);
             }
             LOG_INFO("COMBINED REVOLT: %s (P%u) → Free City for 10 turns "
                      "(weariness=%.1f, grievances=%zu, happiness=%.1f)",
                      city->name().c_str(), static_cast<unsigned>(player),
-                     static_cast<double>(weariness),
-                     gsPlayer->grievances().grievances.size(),
+                     static_cast<double>(weariness), gsPlayer->grievances().grievances.size(),
                      static_cast<double>(city->happiness().happiness));
             continue;
         }
@@ -268,8 +269,7 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         // Secession path: sustained unrest in a distant city flips even above 0.
         // Captures "periphery secession" missed by the loyalty <= 0 gate when
         // pressure keeps the city hovering in Unrest without hitting bottom.
-        if (checkAndPerformSecession(gameState, grid, *city, loyalty, player,
-                                     secededThisTurn)) {
+        if (checkAndPerformSecession(gameState, grid, *city, loyalty, player, secededThisTurn)) {
             // Single secession per call (matches the checkAndPerformSecession
             // guard). The seceded city changes owner but stays in this
             // vector, so continuing would recompute loyalty for the remaining

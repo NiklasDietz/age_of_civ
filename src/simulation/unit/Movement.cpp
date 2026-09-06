@@ -237,7 +237,13 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
                 }
 
                 const PlayerId previousOwner = city->owner();
-                city->setOwner(unit.owner());
+                // The object moves into the captor's vector, so every loop
+                // over cities() sees the conquest immediately, not only after
+                // a save and reload.
+                city = gameState.transferCity(nextTile, unit.owner());
+                if (city == nullptr) {
+                    break;
+                }
                 if (city->population() > 1) {
                     city->setPopulation(city->population() - 1);
                 }
