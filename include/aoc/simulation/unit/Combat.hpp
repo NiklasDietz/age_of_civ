@@ -19,7 +19,7 @@
 namespace aoc::game {
 class GameState;
 class Unit;
-}
+} // namespace aoc::game
 
 namespace aoc::map {
 class HexGrid;
@@ -28,10 +28,10 @@ class HexGrid;
 namespace aoc::sim {
 
 struct CombatResult {
-    int32_t attackerDamage;    ///< HP lost by attacker
-    int32_t defenderDamage;    ///< HP lost by defender
-    bool    attackerKilled;
-    bool    defenderKilled;
+    int32_t attackerDamage; ///< HP lost by attacker
+    int32_t defenderDamage; ///< HP lost by defender
+    bool attackerKilled;
+    bool defenderKilled;
     int32_t attackerXpGained;
     int32_t defenderXpGained;
 };
@@ -50,11 +50,9 @@ struct CombatResult {
  * @param defender  The defending unit.
  * @return Combat outcome.
  */
-CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
-                                 aoc::Random& rng,
-                                 const aoc::map::HexGrid& grid,
-                                 aoc::game::Unit& attacker,
-                                 aoc::game::Unit& defender);
+CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rng,
+                                const aoc::map::HexGrid& grid, aoc::game::Unit& attacker,
+                                aoc::game::Unit& defender);
 
 /**
  * @brief Resolve ranged attack.
@@ -62,11 +60,9 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
  * Ranged units deal damage without taking melee retaliation. The defender
  * must be within range. If the defender dies it is removed from its owning player.
  */
-CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
-                                  aoc::Random& rng,
-                                  const aoc::map::HexGrid& grid,
-                                  aoc::game::Unit& attacker,
-                                  aoc::game::Unit& defender);
+CombatResult resolveRangedCombat(aoc::game::GameState& gameState, aoc::Random& rng,
+                                 const aoc::map::HexGrid& grid, aoc::game::Unit& attacker,
+                                 aoc::game::Unit& defender);
 
 /**
  * @brief Count friendly units adjacent to a position (for flanking bonus).
@@ -75,15 +71,15 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
 /// `exclude` (the attacker itself). Until 2026-09-05 the attacker and civilians
 /// counted, so every melee attack got a free +10 percent flank.
 [[nodiscard]] int32_t countAdjacentFriendlies(const aoc::game::GameState& gameState,
-                                               aoc::hex::AxialCoord position,
-                                               PlayerId friendlyPlayer,
-                                               const aoc::game::Unit* exclude = nullptr);
+                                              aoc::hex::AxialCoord position,
+                                              PlayerId friendlyPlayer,
+                                              const aoc::game::Unit* exclude = nullptr);
 
 /**
  * @brief Terrain defense modifier for a tile. Hills/forest/jungle give bonus.
  */
 [[nodiscard]] float terrainDefenseModifier(const aoc::map::HexGrid& grid,
-                                            aoc::hex::AxialCoord position);
+                                           aoc::hex::AxialCoord position);
 
 /**
  * @brief Class-based combat bonus multiplier (rock-paper-scissors matchups).
@@ -122,6 +118,12 @@ struct CombatStrengths {
                                                      const aoc::game::Unit& attacker,
                                                      const aoc::game::Unit& defender, bool ranged);
 
+/// The damage curve every fight uses: 30 * (attack / defense) * a roll between
+/// 0.8 and 1.2, both operands floored at 0.01 and the result clamped to 0..100.
+/// A city siege reads it too, so the two never drift apart.
+[[nodiscard]] int32_t computeCombatDamage(float attackStrength, float defenseStrength,
+                                          aoc::Random& rng);
+
 /**
  * @brief Preview expected combat damage without modifying any state.
  *
@@ -129,24 +131,19 @@ struct CombatStrengths {
  * of 1.0 (average outcome). Useful for the combat preview tooltip.
  */
 [[nodiscard]] CombatPreview previewCombat(const aoc::game::GameState& gameState,
-                                           const aoc::map::HexGrid& grid,
-                                           const aoc::game::Unit& attacker,
-                                           const aoc::game::Unit& defender);
+                                          const aoc::map::HexGrid& grid,
+                                          const aoc::game::Unit& attacker,
+                                          const aoc::game::Unit& defender);
 
 // Legacy EntityId overloads for callers not yet migrated to Unit&
-CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
-                                 aoc::Random& rng,
-                                 const aoc::map::HexGrid& grid,
-                                 EntityId attackerEntity,
+CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rng,
+                                const aoc::map::HexGrid& grid, EntityId attackerEntity,
+                                EntityId defenderEntity);
+CombatResult resolveRangedCombat(aoc::game::GameState& gameState, aoc::Random& rng,
+                                 const aoc::map::HexGrid& grid, EntityId attackerEntity,
                                  EntityId defenderEntity);
-CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
-                                  aoc::Random& rng,
-                                  const aoc::map::HexGrid& grid,
-                                  EntityId attackerEntity,
-                                  EntityId defenderEntity);
 [[nodiscard]] CombatPreview previewCombat(const aoc::game::GameState& gameState,
-                                           const aoc::map::HexGrid& grid,
-                                           EntityId attackerEntity,
-                                           EntityId defenderEntity);
+                                          const aoc::map::HexGrid& grid, EntityId attackerEntity,
+                                          EntityId defenderEntity);
 
 } // namespace aoc::sim

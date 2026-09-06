@@ -128,14 +128,12 @@ float classMatchupModifier(UnitClass attackerClass, UnitClass defenderClass) {
     return 1.0f;
 }
 
-namespace {
-
 /// Core damage formula: modified Lanchester-style.
 /// damage = 30 * (attackStrength / defenseStrength) * randomFactor.
 /// Both operands are symmetrically floored to 0.01 to avoid insta-kill exploits
 /// when a unit's effective strength collapses (embark + damaged + zero-terrain).
 /// Upper bound prevents exotic stacking from overflowing the ratio.
-int32_t computeDamage(float attackStrength, float defenseStrength, aoc::Random& rng) {
+int32_t computeCombatDamage(float attackStrength, float defenseStrength, aoc::Random& rng) {
     const float atk = std::clamp(attackStrength, 0.01f, 1000.0f);
     const float def = std::clamp(defenseStrength, 0.01f, 1000.0f);
 
@@ -145,6 +143,8 @@ int32_t computeDamage(float attackStrength, float defenseStrength, aoc::Random& 
 
     return std::clamp(static_cast<int32_t>(baseDamage), 0, 100);
 }
+
+namespace {
 
 /**
  * @brief Find and return the Player that owns the given unit pointer.
@@ -195,8 +195,8 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
 
     // Calculate damage
     CombatResult result{};
-    result.defenderDamage = computeDamage(atkStrength, defStrength, rng);
-    result.attackerDamage = computeDamage(defStrength, atkStrength, rng);
+    result.defenderDamage = computeCombatDamage(atkStrength, defStrength, rng);
+    result.attackerDamage = computeCombatDamage(defStrength, atkStrength, rng);
 
     // Counter-damage discount applies symmetrically: both sides take 80% of
     // the rolled damage. Previously only the attacker received this, which
@@ -434,7 +434,7 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
 
     CombatResult result{};
     // Ranged: attacker deals damage but takes none (no retaliation)
-    result.defenderDamage = computeDamage(atkStrength, defStrength, rng);
+    result.defenderDamage = computeCombatDamage(atkStrength, defStrength, rng);
     result.attackerDamage = 0;
 
     defender.setHitPoints(defender.hitPoints() - result.defenderDamage);

@@ -6,6 +6,7 @@
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/simulation/city/CityBombardment.hpp"
+#include "aoc/simulation/city/CitySiege.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -201,143 +202,24 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
                 if (city->owner() == unit.owner()) {
                     continue;  // Already captured — stale entry in old owner's list.
                 }
-                if (!canCaptureCity(*city)) {
-                    // Siege: military unit pressing into a wall-protected
-                    // city deals dealSiegeDamage. The attacker's civ
-                    // combatBonusVsCities adds to wall damage so siege-
-                    // specialist civs (Ottoman, Aztec) crack walls faster.
-                    int32_t siegeDmg = dealSiegeDamage(*city, unit);
-                    if (siegeDmg > 0) {
-                        const aoc::sim::CivAbilityModifiers& m =
-                            aoc::sim::civDef(
-                                gameState.player(unit.owner())
-                                    ? gameState.player(unit.owner())->civId()
-                                    : 0).modifiers;
-                        if (m.combatBonusVsCities > 0) {
-                            const int32_t extra = std::min(
-                                static_cast<int32_t>(city->walls().currentHP),
-                                m.combatBonusVsCities);
-                            if (extra > 0) {
-                                city->walls().currentHP =
-                                    city->walls().currentHP - extra;
-                                siegeDmg += extra;
-                            }
-                        }
-                    }
-                    LOG_INFO("Siege: %.*s vs %s walls -%d HP (%d/%d remaining)",
+                // Pressing into an enemy city grinds its walls, then its hit
+                // points, and captures it when both are gone. Every side
+                // effect lives in CitySiege.cpp so the melee attack and this
+                // walk-in cannot drift apart.
+                const aoc::sim::CityAttackResult siege = aoc::sim::pressIntoCity(
+                    gameState, const_cast<aoc::map::HexGrid&>(grid), unit, *city,
+                    gameState.currentTurn());
+                if (!siege.captured) {
+                    LOG_INFO("Siege: %.*s vs %s -- walls -%d (%d/%d), city -%d (%d/%d)",
                              static_cast<int>(unit.typeDef().name.size()),
-                             unit.typeDef().name.data(),
-                             city->name().c_str(),
-                             siegeDmg,
-                             city->walls().currentHP, city->walls().maxHP);
+                             unit.typeDef().name.data(), city->name().c_str(), siege.wallDamage,
+                             city->walls().currentHP, city->walls().maxHP, siege.cityDamage,
+                             city->combat().hp, city->combat().maxHP);
                     unit.clearPath();
                     unit.setMovementRemaining(0);
                     wallsBlockedStep = true;
                     break;
                 }
-
-                const PlayerId previousOwner = city->owner();
-                // The object moves into the captor's vector, so every loop
-                // over cities() sees the conquest immediately, not only after
-                // a save and reload.
-                city = gameState.transferCity(nextTile, unit.owner());
-                if (city == nullptr) {
-                    break;
-                }
-                if (city->population() > 1) {
-                    city->setPopulation(city->population() - 1);
-                }
-
-                // Clear the captured city's production queue
-                city->production().queue.clear();
-
-                // WP-D1: occupier loyalty reset. Captured cities default to
-                // loyalty 60 (above unrest threshold) for the new owner so
-                // they don't immediately flip back via revolt. Reset unrest
-                // counter. Domination victory previously failed because cities
-                // flipped back within 5-10 turns of capture.
-                city->loyalty().loyalty = 60.0f;
-                city->loyalty().unrestTurns = 0;
-
-                // WP-D1 v2: garrison walls. Restore Medieval tier (200 HP)
-                // so siege actually takes multiple turns. Ancient (100 HP)
-                // fell in 1-2 bombardments, allowing rapid back-flipping.
-                city->walls().setTier(aoc::sim::WallTier::Medieval);
-                city->walls().currentHP = city->walls().maxHP;
-
-                // WP-D3: civ elimination check. If previous owner has no
-                // remaining owned cities, mark them eliminated for victory
-                // condition tracking. Without this, captured-out civs linger
-                // in the alive count and inflate the Domination ratio
-                // denominator.
-                {
-                    aoc::game::Player* prev = gameState.player(previousOwner);
-                    if (prev != nullptr && !prev->victoryTracker().isEliminated) {
-                        bool stillHasOwnedCity = false;
-                        for (const std::unique_ptr<aoc::game::Player>& holder : gameState.players()) {
-                            for (const std::unique_ptr<aoc::game::City>& c : holder->cities()) {
-                                if (c->owner() == previousOwner) {
-                                    stillHasOwnedCity = true;
-                                    break;
-                                }
-                            }
-                            if (stillHasOwnedCity) { break; }
-                        }
-                        if (!stillHasOwnedCity) {
-                            prev->victoryTracker().isEliminated = true;
-                            LOG_INFO("Player %u eliminated (last city captured by Player %u)",
-                                     static_cast<unsigned>(previousOwner),
-                                     static_cast<unsigned>(unit.owner()));
-                            // Score VP: eliminating a rival civ = +100 VP for
-                            // the conqueror. Lets warmonger civs compete with
-                            // wonder/district builders under Score victory.
-                            aoc::game::Player* ownerP = gameState.player(unit.owner());
-                            if (ownerP != nullptr) {
-                                ownerP->victoryTracker().eraVictoryPoints += 100;
-                            }
-                        }
-                    }
-                }
-                // Score VP per capture: capital +25, regular +5. Rewards
-                // conquest under Score so military civs are competitive.
-                {
-                    aoc::game::Player* ownerP = gameState.player(unit.owner());
-                    if (ownerP != nullptr) {
-                        const int32_t vp = (city->isOriginalCapital()
-                                            && city->originalOwner() != unit.owner())
-                                          ? 25 : 5;
-                        ownerP->victoryTracker().eraVictoryPoints += vp;
-                        // Conditional civ bonus: goldOnCityCapture (Mongolia,
-                        // Norway raid). Scales with city size.
-                        const int32_t loot =
-                            aoc::sim::civDef(ownerP->civId())
-                                .modifiers.goldOnCityCapture;
-                        if (loot > 0) {
-                            ownerP->monetary().treasury += static_cast<int64_t>(
-                                loot) * std::max(1, city->population());
-                        }
-                    }
-                }
-
-                // Transfer tile ownership for worked tiles
-                for (const aoc::hex::AxialCoord& workedTile : city->workedTiles()) {
-                    if (grid.isValid(workedTile)) {
-                        const int32_t wtIndex = grid.toIndex(workedTile);
-                        if (grid.owner(wtIndex) == previousOwner) {
-                            const_cast<aoc::map::HexGrid&>(grid).setOwner(wtIndex, unit.owner());
-                        }
-                    }
-                }
-
-                unit.setMovementRemaining(0);
-                LOG_INFO("City %s captured by player %u (was player %u)",
-                         city->name().c_str(),
-                         static_cast<unsigned>(unit.owner()),
-                         static_cast<unsigned>(previousOwner));
-                // A fallen city leaves an antiquity site (v14 layer) for later digs;
-                // same const_cast the tile-ownership transfer above already uses.
-                const_cast<aoc::map::HexGrid&>(grid).setAntiquitySite(
-                    grid.toIndex(city->location()), 1);
                 break;
             }
         }

@@ -24,6 +24,7 @@
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Governor.hpp"
 #include "aoc/simulation/city/CityBombardment.hpp"
+#include "aoc/simulation/city/CitySiege.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
@@ -203,6 +204,15 @@ public:
     // Walls (destructible fortifications)
     // ========================================================================
 
+    // ========================================================================
+    // City hit points (Phase 3.2)
+    // ========================================================================
+
+    /// The city behind its walls: what a bombard has to grind down before a
+    /// melee unit can walk in. See CitySiege.hpp.
+    [[nodiscard]] aoc::sim::CityCombatState& combat() { return this->m_combat; }
+    [[nodiscard]] const aoc::sim::CityCombatState& combat() const { return this->m_combat; }
+
     [[nodiscard]] aoc::sim::CityWallState& walls() { return this->m_walls; }
     [[nodiscard]] const aoc::sim::CityWallState& walls() const { return this->m_walls; }
 
@@ -349,6 +359,7 @@ private:
     aoc::sim::CityAutomationComponent m_automation;
     aoc::sim::CityUnemploymentComponent m_unemployment;
     aoc::sim::CityWallState m_walls;
+    aoc::sim::CityCombatState m_combat;
 
     // Specialist citizens
     int32_t m_entertainers = 0;

@@ -311,6 +311,7 @@ set(AOC_LIB_SOURCES
     src/simulation/city/ProductionSystem.cpp
     src/simulation/city/BorderExpansion.cpp
     src/simulation/city/CityBombardment.cpp
+    src/simulation/city/CitySiege.cpp
     src/simulation/culture/Tourism.cpp
     src/simulation/culture/GreatWorks.cpp
     src/simulation/map/Improvement.cpp
@@ -974,6 +975,7 @@ if(AOC_BUILD_TESTS)
         test_natural_disasters
         test_district_placement
         test_district_adjacency
+        test_city_siege
         test_promotions
         test_formations
         test_governors

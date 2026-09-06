@@ -13,6 +13,8 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/map/HexGrid.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/simulation/city/CitySiege.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
 #include "aoc/simulation/unit/CombatExtensions.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -76,11 +78,33 @@ ErrorCode requestAttack(aoc::game::GameState& gameState, aoc::Random& rng, aoc::
     }
 
     aoc::game::Unit* defender = enemyUnitAt(gameState, player, to);
-    if (defender == nullptr) {
+    // An undefended enemy city is a target in its own right: ranged fire grinds
+    // its walls and then its hit points, melee takes it once both are gone.
+    aoc::game::City* targetCity =
+        (defender == nullptr) ? enemyCityAt(gameState, player, to) : nullptr;
+    if (defender == nullptr && targetCity == nullptr) {
         return ErrorCode::InvalidArgument;
     }
     if (attacker->movementRemaining() <= 0) {
         return ErrorCode::InvalidUnitAction;
+    }
+    if (targetCity != nullptr) {
+        const PlayerId cityOwner = targetCity->owner();
+        if (diplomacy != nullptr && cityOwner < CITY_STATE_PLAYER_BASE
+            && !diplomacy->isAtWar(player, cityOwner)) {
+            return ErrorCode::InvalidState;
+        }
+        const bool cityRanged = def.rangedStrength > 0 && def.range > 0;
+        if (distance > (cityRanged ? def.range : 1)) {
+            return ErrorCode::InvalidUnitAction;
+        }
+        static_cast<void>(resolveAttackOnCity(gameState, rng, grid, *attacker, *targetCity,
+                                              gameState.currentTurn()));
+        aoc::game::Unit* afterCity = owner->unitAt(from);
+        if (afterCity != nullptr) {
+            afterCity->setMovementRemaining(0);
+        }
+        return ErrorCode::Ok;
     }
     // Civ VI: no attack on a major civ without a war. City-states and
     // barbarians need no declaration.

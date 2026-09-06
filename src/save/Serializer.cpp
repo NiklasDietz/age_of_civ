@@ -573,6 +573,11 @@ void writeEntitySection(WriteBuffer& out, const aoc::game::GameState& gameState)
             section.writeI32(walls.maxHP);
             section.writeI32(walls.rangedStrength);
             section.writeI32(walls.range);
+            // v25: the city's own hit points behind the walls (CitySiege.hpp).
+            const aoc::sim::CityCombatState& combat = city->combat();
+            section.writeI32(combat.hp);
+            section.writeI32(combat.maxHP);
+            section.writeI32(combat.lastAttackedTurn);
             const aoc::sim::CityLoyaltyComponent& loy = city->loyalty();
             for (const float v : {loy.loyalty, loy.loyaltyPerTurn, loy.baseLoyalty,
                                   loy.ownCityPressure, loy.foreignCityPressure, loy.governorBonus,
@@ -2259,6 +2264,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 bool isOriginalCapital;
                 PlayerId originalOwner;
                 aoc::sim::CityGovernorComponent governor;   // v16
+                aoc::sim::CityCombatState combat;           // v25
                 aoc::sim::CityWallState walls;               // v17
                 aoc::sim::CityLoyaltyComponent loyalty;      // v17
                 aoc::sim::CityHappinessComponent happiness;  // v17
@@ -2330,6 +2336,9 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                     cd.walls.maxHP          = buf.readI32();
                     cd.walls.rangedStrength = buf.readI32();
                     cd.walls.range          = buf.readI32();
+                    cd.combat.hp               = buf.readI32();
+                    cd.combat.maxHP            = buf.readI32();
+                    cd.combat.lastAttackedTurn = buf.readI32();
                     if (tier > static_cast<uint8_t>(aoc::sim::WallTier::Steel)) {
                         LOG_ERROR("Serializer: wall tier %u out of range", static_cast<unsigned>(tier));
                         return ErrorCode::SaveCorrupted;
@@ -2413,6 +2422,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 city.setOriginalOwner(cd.originalOwner);
                 city.governor() = cd.governor;   // v16
                 city.walls()     = cd.walls;       // v17
+                city.combat()    = cd.combat;      // v25
                 city.loyalty()   = cd.loyalty;
                 city.happiness() = cd.happiness;
                 city.setStage(cd.stage);

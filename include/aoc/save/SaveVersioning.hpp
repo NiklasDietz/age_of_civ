@@ -86,6 +86,11 @@
  * between players on conquest, secession and cession, and a free city (owner
  * INVALID_PLAYER) keeps its holder instead of sizing the roster to 256 seats
  * and failing the load outright.
+ *
+ * v25 (2026-09-06): the Entities city record carries CityCombatState (hit
+ * points, maximum, last turn attacked) after the walls. A city now has its own
+ * health behind its walls, which a siege has to grind down before anyone can
+ * walk in (CitySiege.hpp).
  */
 
 #include <cstdint>
@@ -93,6 +98,6 @@
 namespace aoc::save {
 
 /// Current save format version. Bump only per the procedure above.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 24;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 25;
 
 } // namespace aoc::save

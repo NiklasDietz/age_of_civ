@@ -15,6 +15,7 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
+#include "aoc/simulation/city/CitySiege.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -38,10 +39,7 @@ namespace aoc::sim::ai {
 // ============================================================================
 
 AIMilitaryController::AIMilitaryController(PlayerId player, aoc::ui::AIDifficulty difficulty)
-    : m_player(player)
-    , m_difficulty(difficulty)
-{
-}
+    : m_player(player), m_difficulty(difficulty) {}
 
 // ============================================================================
 // Threat assessment helpers
@@ -61,7 +59,7 @@ AIMilitaryController::AIMilitaryController(PlayerId player, aoc::ui::AIDifficult
  * @return Threat ratio (0.0 = safe, higher = more dangerous).
  */
 [[nodiscard]] static float computeThreatRatio(const aoc::game::GameState& gameState,
-                                               PlayerId player) {
+                                              PlayerId player) {
     const aoc::game::Player* gsPlayer = gameState.player(player);
     if (gsPlayer == nullptr) {
         return 0.0f;
@@ -96,7 +94,7 @@ AIMilitaryController::AIMilitaryController(PlayerId player, aoc::ui::AIDifficult
             for (const aoc::hex::AxialCoord& cityLoc : ownCityLocs) {
                 if (aoc::hex::distance(unitPtr->position(), cityLoc) <= 10) {
                     threatStrength += static_cast<float>(def.combatStrength);
-                    break;  // Count each enemy unit at most once.
+                    break; // Count each enemy unit at most once.
                 }
             }
         }
@@ -112,7 +110,7 @@ AIMilitaryController::AIMilitaryController(PlayerId player, aoc::ui::AIDifficult
     }
 
     if (ownStrength <= 0.0f) {
-        return 10.0f;  // No military at all -- treat as maximum threat.
+        return 10.0f; // No military at all -- treat as maximum threat.
     }
 
     return threatStrength / ownStrength;
@@ -162,9 +160,8 @@ AIMilitaryController::AIMilitaryController(PlayerId player, aoc::ui::AIDifficult
  * time; stale entries are simply skipped when the live lookup returns nullptr.
  */
 void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameState,
-                                                   aoc::map::HexGrid& grid,
-                                                   aoc::Random& rng,
-                                                   aoc::sim::DiplomacyManager* diplomacy) {
+                                                  aoc::map::HexGrid& grid, aoc::Random& rng,
+                                                  aoc::sim::DiplomacyManager* diplomacy) {
     aoc::game::Player* gsPlayer = gameState.player(this->m_player);
     if (gsPlayer == nullptr) {
         return;
@@ -188,11 +185,9 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
 
     if (threatRatio > 1.5f) {
         LOG_INFO("AI %u CRITICAL threat ratio=%.2f -- prioritising defense",
-                 static_cast<unsigned>(this->m_player),
-                 static_cast<double>(threatRatio));
+                 static_cast<unsigned>(this->m_player), static_cast<double>(threatRatio));
     } else if (threatRatio > 0.7f) {
-        LOG_INFO("AI %u Elevated threat ratio=%.2f",
-                 static_cast<unsigned>(this->m_player),
+        LOG_INFO("AI %u Elevated threat ratio=%.2f", static_cast<unsigned>(this->m_player),
                  static_cast<double>(threatRatio));
     }
 
@@ -201,7 +196,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
     // ----------------------------------------------------------------
     struct OwnedUnitSnapshot {
         aoc::hex::AxialCoord position;
-        UnitTypeId           typeId;
+        UnitTypeId typeId;
     };
 
     std::vector<OwnedUnitSnapshot> ownedSnapshots;
@@ -218,8 +213,8 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
     // ----------------------------------------------------------------
     struct EnemyUnitSnapshot {
         aoc::hex::AxialCoord position;
-        PlayerId             owner;
-        int32_t              combatStrength;
+        PlayerId owner;
+        int32_t combatStrength;
     };
 
     std::vector<EnemyUnitSnapshot> enemySnapshots;
@@ -262,7 +257,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
     // ----------------------------------------------------------------
     struct EnemyCitySnapshot {
         aoc::hex::AxialCoord position;
-        PlayerId             owner;
+        PlayerId owner;
     };
 
     std::vector<EnemyCitySnapshot> enemyCities;
@@ -309,17 +304,23 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
             aoc::hex::ring(unit->position(), 8, std::back_inserter(candidates));
 
             aoc::hex::AxialCoord bestTarget = unit->position();
-            int32_t              bestScore  = std::numeric_limits<int32_t>::max();
+            int32_t bestScore               = std::numeric_limits<int32_t>::max();
 
             // Reused per candidate via clear() so the spiral scan is one
             // allocation per scout instead of one per candidate (audit WP-10 #6).
             std::vector<aoc::hex::AxialCoord> nearby;
             nearby.reserve(37);
             for (const aoc::hex::AxialCoord& cand : candidates) {
-                if (!grid.isValid(cand)) { continue; }
+                if (!grid.isValid(cand)) {
+                    continue;
+                }
                 const int32_t cIdx = grid.toIndex(cand);
-                if (grid.movementCost(cIdx) <= 0) { continue; }
-                if (aoc::map::isWater(grid.terrain(cIdx))) { continue; }
+                if (grid.movementCost(cIdx) <= 0) {
+                    continue;
+                }
+                if (aoc::map::isWater(grid.terrain(cIdx))) {
+                    continue;
+                }
                 // Score: count own-territory tiles in a 3-hex spiral.
                 // Lower = more frontier = preferred.
                 int32_t ownedNearby = 0;
@@ -332,8 +333,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                 }
                 // Tiebreak: prefer further from origin so scout actually moves
                 // out instead of orbiting near the city.
-                const int32_t score =
-                    ownedNearby * 100 - grid.distance(unit->position(), cand);
+                const int32_t score = ownedNearby * 100 - grid.distance(unit->position(), cand);
                 if (score < bestScore) {
                     bestScore  = score;
                     bestTarget = cand;
@@ -380,8 +380,8 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
 
         // --- Priority 0: form a Corps / Army with an adjacent Single twin when no
         // enemy is within two tiles (the merged unit is the action of this turn) ---
-        if (gsPlayer->civics().hasCompleted(aoc::sim::FORMATION_CORPS_CIVIC)
-            && unit->formationLevel() != aoc::sim::FormationLevel::Army) {
+        if (gsPlayer->civics().hasCompleted(aoc::sim::FORMATION_CORPS_CIVIC) &&
+            unit->formationLevel() != aoc::sim::FormationLevel::Army) {
             bool enemyNear = false;
             for (const EnemyUnitSnapshot& enemy : enemySnapshots) {
                 if (grid.distance(unit->position(), enemy.position) <= 2) {
@@ -391,25 +391,29 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
             }
             bool merged = false;
             for (const aoc::hex::AxialCoord& nbr : neighborTiles) {
-                if (enemyNear || !grid.isValid(nbr)) { break; }
+                if (enemyNear || !grid.isValid(nbr)) {
+                    break;
+                }
                 const aoc::game::Unit* twin = gsPlayer->unitAt(nbr);
-                if (twin == nullptr || twin->typeId() != unit->typeId()
-                    || twin->formationLevel() != aoc::sim::FormationLevel::Single) {
+                if (twin == nullptr || twin->typeId() != unit->typeId() ||
+                    twin->formationLevel() != aoc::sim::FormationLevel::Single) {
                     continue;
                 }
-                if (aoc::sim::requestMergeUnits(gameState, this->m_player, unit->position(), nbr)
-                    == ErrorCode::Ok) {
+                if (aoc::sim::requestMergeUnits(gameState, this->m_player, unit->position(), nbr) ==
+                    ErrorCode::Ok) {
                     merged = true;
                     break;
                 }
             }
-            if (merged) { continue; }
+            if (merged) {
+                continue;
+            }
         }
 
         // --- Priority 1: Ranged attack within range ---
         if (def.rangedStrength > 0 && def.range > 0) {
-            const EnemyUnitSnapshot* bestTarget    = nullptr;
-            int32_t                  bestTargetDist = std::numeric_limits<int32_t>::max();
+            const EnemyUnitSnapshot* bestTarget = nullptr;
+            int32_t bestTargetDist              = std::numeric_limits<int32_t>::max();
 
             for (const EnemyUnitSnapshot& enemy : enemySnapshots) {
                 const int32_t dist = grid.distance(unit->position(), enemy.position);
@@ -428,11 +432,11 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                         if (aoc::sim::isAirUnit(def.unitClass)) {
                             // Aircraft strike through the air system (sorties, range,
                             // interception); the ranged formula stays for everyone else.
-                            struck = aoc::sim::executeBombingRun(
-                                gameState, grid, *unit, targetUnit->position()) == ErrorCode::Ok;
+                            struck = aoc::sim::executeBombingRun(gameState, grid, *unit,
+                                                                 targetUnit->position()) ==
+                                     ErrorCode::Ok;
                         } else {
-                            aoc::sim::resolveRangedCombat(gameState, rng, grid, *unit,
-                                                          *targetUnit);
+                            aoc::sim::resolveRangedCombat(gameState, rng, grid, *unit, *targetUnit);
                         }
                         // Verified (audit WP-10 #3): resolveRangedCombat takes a
                         // const grid, never moves the attacker, and inflicts zero
@@ -461,8 +465,8 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
         bool attacked = false;
         if (def.rangedStrength == 0 || def.range == 0) {
             // Find the weakest adjacent enemy to maximise chance of a kill.
-            const EnemyUnitSnapshot* weakestAdj  = nullptr;
-            int32_t                  weakestStr   = std::numeric_limits<int32_t>::max();
+            const EnemyUnitSnapshot* weakestAdj = nullptr;
+            int32_t weakestStr                  = std::numeric_limits<int32_t>::max();
 
             for (const aoc::hex::AxialCoord& nbr : neighborTiles) {
                 if (!grid.isValid(nbr)) {
@@ -473,8 +477,8 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                         continue;
                     }
                     if (enemy.combatStrength < weakestStr) {
-                        weakestStr  = enemy.combatStrength;
-                        weakestAdj  = &enemy;
+                        weakestStr = enemy.combatStrength;
+                        weakestAdj = &enemy;
                     }
                 }
             }
@@ -497,10 +501,47 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
             continue;
         }
 
+        // --- Priority 1c: siege. With no unit left to fight, a unit in reach
+        // of an enemy city shells it -- ranged from its range, melee at the
+        // wall. Walls first, then the city's hit points, and the melee unit
+        // that lands the last blow walks in (CitySiege.hpp). Without this the
+        // AI could never take a city again once cities gained hit points.
+        {
+            const int32_t reach = (def.rangedStrength > 0 && def.range > 0) ? def.range : 1;
+            const EnemyCitySnapshot* besieged = nullptr;
+            int32_t bestDist                  = std::numeric_limits<int32_t>::max();
+            for (const EnemyCitySnapshot& enemyCity : enemyCities) {
+                if (diplomacy != nullptr && enemyCity.owner < aoc::sim::CITY_STATE_PLAYER_BASE &&
+                    !diplomacy->isAtWar(this->m_player, enemyCity.owner)) {
+                    continue;
+                }
+                const int32_t dist = grid.distance(unit->position(), enemyCity.position);
+                if (dist <= reach && dist < bestDist) {
+                    bestDist = dist;
+                    besieged = &enemyCity;
+                }
+            }
+            if (besieged != nullptr) {
+                aoc::game::Player* holder = gameState.cityHolder(besieged->position);
+                aoc::game::City* target =
+                    (holder != nullptr) ? holder->cityAt(besieged->position) : nullptr;
+                if (target != nullptr && target->owner() != this->m_player) {
+                    static_cast<void>(aoc::sim::resolveAttackOnCity(
+                        gameState, rng, grid, *unit, *target, gameState.currentTurn()));
+                    // A melee unit that captured has moved onto the city tile.
+                    unit = gsPlayer->unitAt(snap.position);
+                    if (unit != nullptr) {
+                        unit->setMovementRemaining(0);
+                    }
+                    continue;
+                }
+            }
+        }
+
         // --- Priority 2: Close in on an enemy within 3 tiles ---
         {
             const EnemyUnitSnapshot* nearestEnemy = nullptr;
-            int32_t                  nearestDist   = std::numeric_limits<int32_t>::max();
+            int32_t nearestDist                   = std::numeric_limits<int32_t>::max();
 
             for (const EnemyUnitSnapshot& enemy : enemySnapshots) {
                 const int32_t dist = grid.distance(unit->position(), enemy.position);
@@ -512,8 +553,8 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
 
             if (nearestEnemy != nullptr && nearestDist > 1) {
                 // Step toward the enemy using the neighbour that minimises distance.
-                aoc::hex::AxialCoord bestMove    = unit->position();
-                int32_t              bestMoveDist = nearestDist;
+                aoc::hex::AxialCoord bestMove = unit->position();
+                int32_t bestMoveDist          = nearestDist;
 
                 for (const aoc::hex::AxialCoord& nbr : neighborTiles) {
                     if (!grid.isValid(nbr) || grid.movementCost(grid.toIndex(nbr)) <= 0) {
@@ -536,7 +577,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
 
         // --- Priority 3: Defend a threatened city ---
         {
-            bool                 cityThreatened    = false;
+            bool cityThreatened = false;
             aoc::hex::AxialCoord threatenedCityPos{};
 
             for (const aoc::hex::AxialCoord& cityLoc : ownCityLocs) {
@@ -564,7 +605,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
 
         // --- Priority 4: Seek the nearest enemy unit or city ---
         {
-            int32_t              closestDist   = std::numeric_limits<int32_t>::max();
+            int32_t closestDist                = std::numeric_limits<int32_t>::max();
             aoc::hex::AxialCoord closestTarget = unit->position();
 
             // Hard difficulty: prioritise enemy cities for offensive pressure.
@@ -597,8 +638,8 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
             }
 
             if (closestDist < std::numeric_limits<int32_t>::max() && closestDist > 1) {
-                aoc::hex::AxialCoord bestMove    = unit->position();
-                int32_t              bestMoveDist = closestDist;
+                aoc::hex::AxialCoord bestMove = unit->position();
+                int32_t bestMoveDist          = closestDist;
 
                 for (const aoc::hex::AxialCoord& nbr : neighborTiles) {
                     if (!grid.isValid(nbr) || grid.movementCost(grid.toIndex(nbr)) <= 0) {
@@ -621,8 +662,8 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
 
         // --- Priority 5: Patrol the nearest border tile ---
         {
-            aoc::hex::AxialCoord bestBorder    = unit->position();
-            int32_t              bestBorderScore = std::numeric_limits<int32_t>::min();
+            aoc::hex::AxialCoord bestBorder = unit->position();
+            int32_t bestBorderScore         = std::numeric_limits<int32_t>::min();
 
             std::vector<aoc::hex::AxialCoord> searchTiles;
             searchTiles.reserve(60);
@@ -641,7 +682,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                 }
 
                 const std::array<aoc::hex::AxialCoord, 6> tileNbrs = aoc::hex::neighbors(tile);
-                int32_t unownedNeighbors = 0;
+                int32_t unownedNeighbors                           = 0;
                 for (const aoc::hex::AxialCoord& tn : tileNbrs) {
                     if (!grid.isValid(tn) || grid.owner(grid.toIndex(tn)) != this->m_player) {
                         ++unownedNeighbors;
@@ -651,13 +692,19 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                     continue;
                 }
 
-                int32_t borderScore = unownedNeighbors * 10;
+                int32_t borderScore              = unownedNeighbors * 10;
                 const aoc::map::FeatureType feat = grid.feature(tileIdx);
-                if (feat == aoc::map::FeatureType::Hills)  { borderScore += 5; }
-                if (feat == aoc::map::FeatureType::Forest) { borderScore += 3; }
+                if (feat == aoc::map::FeatureType::Hills) {
+                    borderScore += 5;
+                }
+                if (feat == aoc::map::FeatureType::Forest) {
+                    borderScore += 3;
+                }
                 // Chokepoints are high-priority garrison positions: +20 score.
                 // Controls toll income and blocks enemy advance.
-                if (grid.isChokepoint(tileIdx)) { borderScore += 20; }
+                if (grid.isChokepoint(tileIdx)) {
+                    borderScore += 20;
+                }
                 borderScore -= grid.distance(unit->position(), tile);
 
                 if (borderScore > bestBorderScore) {
@@ -672,17 +719,16 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
             } else {
                 // Already at the best border tile -- fortify on defensive terrain
                 // or make a random patrol move to avoid idling in the open.
-                const int32_t              unitIdx  = grid.toIndex(unit->position());
+                const int32_t unitIdx                = grid.toIndex(unit->position());
                 const aoc::map::FeatureType unitFeat = grid.feature(unitIdx);
 
                 if ((unitFeat == aoc::map::FeatureType::Hills ||
                      unitFeat == aoc::map::FeatureType::Forest) &&
-                    unit->state() != aoc::sim::UnitState::Fortified)
-                {
+                    unit->state() != aoc::sim::UnitState::Fortified) {
                     unit->setState(aoc::sim::UnitState::Fortified);
                     LOG_INFO("AI %u Unit at (%d,%d) fortified on defensive terrain",
-                             static_cast<unsigned>(this->m_player),
-                             unit->position().q, unit->position().r);
+                             static_cast<unsigned>(this->m_player), unit->position().q,
+                             unit->position().r);
                 } else {
                     // Random patrol step to avoid clustering.
                     std::vector<aoc::hex::AxialCoord> validMoves;
@@ -692,9 +738,10 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                         }
                     }
                     if (!validMoves.empty()) {
-                        const int32_t idx = rng.nextInt(
-                            0, static_cast<int32_t>(validMoves.size()) - 1);
-                        aoc::sim::orderUnitMove(*unit, validMoves[static_cast<std::size_t>(idx)], grid);
+                        const int32_t idx =
+                            rng.nextInt(0, static_cast<int32_t>(validMoves.size()) - 1);
+                        aoc::sim::orderUnitMove(*unit, validMoves[static_cast<std::size_t>(idx)],
+                                                grid);
                         aoc::sim::moveUnitAlongPath(gameState, *unit, grid);
                     }
                 }
@@ -724,10 +771,9 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
         // WP-D3: range scales with periphery + aggression but kept tight
         // so units stay close enough to actually capture. 18 base × periphery,
         // capped 10-28. Wider range stretched units thin and cut captures.
-        const int32_t strikingRange = static_cast<int32_t>(
-            std::clamp(18.0f * myBehavior.peripheryTolerance
-                            * std::sqrt(myBehavior.militaryAggression),
-                       10.0f, 28.0f));
+        const int32_t strikingRange = static_cast<int32_t>(std::clamp(
+            18.0f * myBehavior.peripheryTolerance * std::sqrt(myBehavior.militaryAggression), 10.0f,
+            28.0f));
         // WP-D3: per-leader war affinity. High-aggression leaders launch
         // wars at higher threat ratios + accept stronger opponents. Low-
         // aggression leaders stay defensive. militaryAggression range
@@ -739,28 +785,34 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
         // eliminated, capital lost to us, or commitment expired.
         if (this->m_currentWarTarget != INVALID_PLAYER) {
             const aoc::game::Player* tp = gameState.player(this->m_currentWarTarget);
-            bool stillValid = (tp != nullptr) && !tp->victoryTracker().isEliminated;
+            bool stillValid             = (tp != nullptr) && !tp->victoryTracker().isEliminated;
             // Drop target if their original capital is now ours (mission accomplished).
             if (stillValid && tp != nullptr) {
                 bool capCaptured = false;
                 for (const std::unique_ptr<aoc::game::Player>& holder : gameState.players()) {
                     for (const std::unique_ptr<aoc::game::City>& c : holder->cities()) {
-                        if (c->isOriginalCapital()
-                         && c->originalOwner() == this->m_currentWarTarget
-                         && c->owner() == this->m_player) {
+                        if (c->isOriginalCapital() &&
+                            c->originalOwner() == this->m_currentWarTarget &&
+                            c->owner() == this->m_player) {
                             capCaptured = true;
                             break;
                         }
                     }
-                    if (capCaptured) { break; }
+                    if (capCaptured) {
+                        break;
+                    }
                 }
-                if (capCaptured) { stillValid = false; }
+                if (capCaptured) {
+                    stillValid = false;
+                }
             }
             // Sustained-pressure cap: 60 turns max per campaign before
             // re-evaluation (avoid endless quagmire on a strong neighbour).
-            if (this->m_warCommitmentTurns >= 30) { stillValid = false; }
+            if (this->m_warCommitmentTurns >= 30) {
+                stillValid = false;
+            }
             if (!stillValid) {
-                this->m_currentWarTarget = INVALID_PLAYER;
+                this->m_currentWarTarget   = INVALID_PLAYER;
                 this->m_warCommitmentTurns = 0;
             }
         }
@@ -768,10 +820,10 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
         if (ownMilitary >= 2 && threatRatio < threatGate) {
             // Aggressive leaders attack opponents up to 150% own strength;
             // defensive leaders only attack <80%.
-            const float oppRatio = std::clamp(0.8f + 0.4f * aggression, 0.5f, 1.6f);
-            PlayerId  weakestNeighbour = INVALID_PLAYER;
-            int32_t   weakestMilitary  = static_cast<int32_t>(
-                static_cast<float>(ownMilitary) * oppRatio);
+            const float oppRatio      = std::clamp(0.8f + 0.4f * aggression, 0.5f, 1.6f);
+            PlayerId weakestNeighbour = INVALID_PLAYER;
+            int32_t weakestMilitary =
+                static_cast<int32_t>(static_cast<float>(ownMilitary) * oppRatio);
 
             // Persistent target overrides re-evaluation if still in range.
             if (this->m_currentWarTarget != INVALID_PLAYER) {
@@ -781,10 +833,13 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                     for (const std::unique_ptr<aoc::game::City>& city : tp->cities()) {
                         for (const aoc::hex::AxialCoord& ownCity : ownCityLocs) {
                             if (grid.distance(city->location(), ownCity) <= strikingRange) {
-                                hasNearCity = true; break;
+                                hasNearCity = true;
+                                break;
                             }
                         }
-                        if (hasNearCity) { break; }
+                        if (hasNearCity) {
+                            break;
+                        }
                     }
                     if (hasNearCity) {
                         weakestNeighbour = this->m_currentWarTarget;
@@ -808,18 +863,21 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                                 break;
                             }
                         }
-                        if (hasNearCity) { break; }
+                        if (hasNearCity) {
+                            break;
+                        }
                     }
-                    if (!hasNearCity) { continue; }
+                    if (!hasNearCity) {
+                        continue;
+                    }
 
                     // WP-D3: prefer victims who still hold their original
                     // capital (a Domination-relevant target) over civs whose
                     // capital we / someone else already took.
                     bool stillHasOwnCapital = false;
                     for (const std::unique_ptr<aoc::game::City>& city : other->cities()) {
-                        if (city->isOriginalCapital()
-                         && city->originalOwner() == other->id()
-                         && city->owner() == other->id()) {
+                        if (city->isOriginalCapital() && city->originalOwner() == other->id() &&
+                            city->owner() == other->id()) {
                             stillHasOwnCapital = true;
                             break;
                         }
@@ -828,7 +886,9 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                     int32_t theirMilitary = other->militaryUnitCount();
                     // Bias: subtract 2 from effective strength if they still
                     // hold their original capital (juicy Domination target).
-                    if (stillHasOwnCapital) { theirMilitary -= 2; }
+                    if (stillHasOwnCapital) {
+                        theirMilitary -= 2;
+                    }
                     if (theirMilitary < weakestMilitary) {
                         weakestMilitary  = theirMilitary;
                         weakestNeighbour = other->id();
@@ -836,25 +896,24 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                 }
                 // Commit to the new target.
                 if (weakestNeighbour != INVALID_PLAYER) {
-                    this->m_currentWarTarget = weakestNeighbour;
+                    this->m_currentWarTarget   = weakestNeighbour;
                     this->m_warCommitmentTurns = 1;
                     // WP-D3: actually declare war (not just move troops). Without
                     // a formal war state the engine treats movement as ZoC stops
                     // and city-capture occurs without diplomatic consequence —
                     // muddles AI decisions on retaliation, alliance triggers,
                     // and peace-deal negotiation.
-                    if (diplomacy != nullptr
-                     && this->m_player < aoc::sim::CITY_STATE_PLAYER_BASE
-                     && weakestNeighbour < aoc::sim::CITY_STATE_PLAYER_BASE
-                     && !diplomacy->isAtWar(this->m_player, weakestNeighbour)) {
+                    if (diplomacy != nullptr && this->m_player < aoc::sim::CITY_STATE_PLAYER_BASE &&
+                        weakestNeighbour < aoc::sim::CITY_STATE_PLAYER_BASE &&
+                        !diplomacy->isAtWar(this->m_player, weakestNeighbour)) {
                         // Casus belli upgrade: prefer FormalWar if the target's
                         // own trespass justifies it (less rep hit).
                         const CasusBelliType cb =
                             diplomacy->holdsCasusBelli(this->m_player, weakestNeighbour)
                                 ? CasusBelliType::FormalWar
                                 : CasusBelliType::SurpriseWar;
-                        diplomacy->declareWar(this->m_player, weakestNeighbour,
-                                              cb, nullptr, &gameState, 0);
+                        diplomacy->declareWar(this->m_player, weakestNeighbour, cb, nullptr,
+                                              &gameState, 0);
                         LOG_INFO("AI Player %u declared war on Player %u (Domination campaign)",
                                  static_cast<unsigned>(this->m_player),
                                  static_cast<unsigned>(weakestNeighbour));
@@ -881,10 +940,12 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                     int32_t distToOwnCity = std::numeric_limits<int32_t>::max();
                     for (const aoc::hex::AxialCoord& ownLoc : ownCityLocs) {
                         const int32_t d = grid.distance(unit->position(), ownLoc);
-                        if (d < distToOwnCity) { distToOwnCity = d; }
+                        if (d < distToOwnCity) {
+                            distToOwnCity = d;
+                        }
                     }
                     if (distToOwnCity > strikingRange) {
-                        continue;  // Overextended — hold position this turn.
+                        continue; // Overextended — hold position this turn.
                     }
 
                     // WP-D2: only ONE unit per captured capital stays as
@@ -900,20 +961,23 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                                 break;
                             }
                         }
-                        if (hereCity != nullptr
-                         && hereCity->isOriginalCapital()
-                         && hereCity->originalOwner() != this->m_player
-                         && hereCity->loyalty().loyalty < 80.0f) {
+                        if (hereCity != nullptr && hereCity->isOriginalCapital() &&
+                            hereCity->originalOwner() != this->m_player &&
+                            hereCity->loyalty().loyalty < 80.0f) {
                             // Count own units already standing on this tile.
                             int32_t alreadyHere = 0;
                             for (const std::unique_ptr<aoc::game::Unit>& u : gsPlayer->units()) {
-                                if (u.get() == unit) { continue; }
-                                if (u->position() == unit->position()
-                                 && aoc::sim::isMilitary(u->typeDef().unitClass)) {
+                                if (u.get() == unit) {
+                                    continue;
+                                }
+                                if (u->position() == unit->position() &&
+                                    aoc::sim::isMilitary(u->typeDef().unitClass)) {
                                     ++alreadyHere;
                                 }
                             }
-                            if (alreadyHere == 0) { continue; }  // sole defender, hold
+                            if (alreadyHere == 0) {
+                                continue;
+                            } // sole defender, hold
                         }
                     }
 
@@ -927,19 +991,23 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                     // if capital already ours). Without this, units scatter to
                     // closest enemy cities + never amass enough force on the
                     // capital to break siege.
-                    aoc::hex::AxialCoord capitalLoc =
-                        targetPlayer->cities().front()->location();
+                    aoc::hex::AxialCoord capitalLoc = targetPlayer->cities().front()->location();
                     // If capital already ours, retarget to next non-captured
                     // enemy city of the same target so we keep pressure on.
                     {
                         aoc::game::City* capCity = nullptr;
-                        for (const std::unique_ptr<aoc::game::Player>& holder : gameState.players()) {
+                        for (const std::unique_ptr<aoc::game::Player>& holder :
+                             gameState.players()) {
                             aoc::game::City* c = holder->cityAt(capitalLoc);
-                            if (c != nullptr) { capCity = c; break; }
+                            if (c != nullptr) {
+                                capCity = c;
+                                break;
+                            }
                         }
                         if (capCity != nullptr && capCity->owner() == this->m_player) {
                             // Pick next enemy city of this target still owned by them.
-                            for (const std::unique_ptr<aoc::game::City>& c : targetPlayer->cities()) {
+                            for (const std::unique_ptr<aoc::game::City>& c :
+                                 targetPlayer->cities()) {
                                 if (c->owner() == targetPlayer->id()) {
                                     capitalLoc = c->location();
                                     break;
@@ -947,12 +1015,13 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                             }
                         }
                     }
-                    const int32_t capitalDist = grid.distance(unit->position(), capitalLoc);
+                    const int32_t capitalDist       = grid.distance(unit->position(), capitalLoc);
                     aoc::hex::AxialCoord targetCity = capitalLoc;
-                    int32_t              bestDist   = capitalDist;
+                    int32_t bestDist                = capitalDist;
                     if (capitalDist > strikingRange) {
                         // Capital out of reach — fall back to nearest city.
-                        for (const std::unique_ptr<aoc::game::City>& city : targetPlayer->cities()) {
+                        for (const std::unique_ptr<aoc::game::City>& city :
+                             targetPlayer->cities()) {
                             const int32_t d = grid.distance(unit->position(), city->location());
                             if (d < bestDist) {
                                 bestDist   = d;
@@ -965,8 +1034,8 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                         // Step toward the target city using the neighbour closest to it.
                         const std::array<aoc::hex::AxialCoord, 6> unitNbrs =
                             aoc::hex::neighbors(unit->position());
-                        aoc::hex::AxialCoord bestMove    = unit->position();
-                        int32_t              bestMoveDist = bestDist;
+                        aoc::hex::AxialCoord bestMove = unit->position();
+                        int32_t bestMoveDist          = bestDist;
                         for (const aoc::hex::AxialCoord& nbr : unitNbrs) {
                             if (!grid.isValid(nbr) || grid.movementCost(grid.toIndex(nbr)) <= 0) {
                                 continue;
@@ -981,8 +1050,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                             aoc::sim::orderUnitMove(*unit, bestMove, grid);
                             aoc::sim::moveUnitAlongPath(gameState, *unit, grid);
                         }
-                    } else if (bestDist == 1
-                            && aoc::sim::isMilitary(unit->typeDef().unitClass)) {
+                    } else if (bestDist == 1 && aoc::sim::isMilitary(unit->typeDef().unitClass)) {
                         // Adjacent to enemy city: assault. Stepping onto the
                         // tile triggers siege (walls) or capture (no walls)
                         // via Movement.cpp's capture handler.
@@ -993,10 +1061,8 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
 
                 LOG_INFO("AI %u Military advantage: %d units vs neighbour %u with %d -- "
                          "converging on their cities",
-                         static_cast<unsigned>(this->m_player),
-                         ownMilitary,
-                         static_cast<unsigned>(weakestNeighbour),
-                         weakestMilitary);
+                         static_cast<unsigned>(this->m_player), ownMilitary,
+                         static_cast<unsigned>(weakestNeighbour), weakestMilitary);
             }
         }
     }
@@ -1008,16 +1074,14 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
     // ----------------------------------------------------------------
     {
         const aoc::EraId currentEra = gsPlayer->era().currentEra;
-        const int32_t    cityCount  = gsPlayer->ownedCityCount();
-        const int32_t    desired    = desiredMilitaryUnits(currentEra, cityCount);
-        const int32_t    actual     = gsPlayer->militaryUnitCount();
+        const int32_t cityCount     = gsPlayer->ownedCityCount();
+        const int32_t desired       = desiredMilitaryUnits(currentEra, cityCount);
+        const int32_t actual        = gsPlayer->militaryUnitCount();
 
         if (actual < desired) {
             LOG_INFO("AI %u Military below target: %d/%d (era=%u, cities=%d) -- rebuild needed",
-                     static_cast<unsigned>(this->m_player),
-                     actual, desired,
-                     static_cast<unsigned>(currentEra.value),
-                     cityCount);
+                     static_cast<unsigned>(this->m_player), actual, desired,
+                     static_cast<unsigned>(currentEra.value), cityCount);
         }
     }
 }

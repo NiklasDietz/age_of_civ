@@ -26,6 +26,7 @@
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/BorderExpansion.hpp"
 #include "aoc/simulation/city/CityBombardment.hpp"
+#include "aoc/simulation/city/CitySiege.hpp"
 #include "aoc/simulation/city/CityConnection.hpp"
 
 // Economy
@@ -830,6 +831,8 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     // City bombardment
     aoc::Random bombardRng = turnContext.rng->fork();
     processCityBombardment(*turnContext.gameState, grid, player, bombardRng);
+    // A city that has not been shot at for a couple of turns patches itself up.
+    healCities(*turnContext.gameState, player, turnContext.gameState->currentTurn());
 
     // Border expansion
     processBorderExpansion(*gsPlayer, grid);
