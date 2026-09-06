@@ -299,6 +299,19 @@ def aoc_merge_units(player: int, q: int, r: int, source_q: int, source_r: int) -
 
 
 @mcp.tool()
+def aoc_nuclear_strike(player: int, q: int, r: int, nuke_type: int = 0) -> dict:
+    """Launch `player`'s warhead at (q, r). Types: 0 nuclear device (1-tile blast, half the
+    city's population), 1 thermonuclear device (2-tile blast, three quarters). Four gates all
+    have to be open: Nuclear Fission researched, the Manhattan Project built in one of the
+    player's cities, at least 1 Uranium in a city stockpile (which the strike spends), and a
+    unit able to carry a warhead (Bomber, Stealth Bomber, Missile Cruiser or Nuclear Sub).
+    The blast destroys every unit in range, scars the tiles with fallout and earns a grievance
+    from every civ. Queues the request; a rejection is logged in the game log.
+    """
+    return _post("/game/unit/nuke", player=player, q=q, r=r, type=nuke_type)
+
+
+@mcp.tool()
 def aoc_retire_great_person(player: int, q: int, r: int) -> dict:
     """Dismiss `player`'s great person standing at (q, r) without using its ability,
     taking 150 gold and 3 era score instead. Only an unactivated great person can be

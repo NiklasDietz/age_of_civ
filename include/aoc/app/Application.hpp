@@ -657,6 +657,7 @@ private:
     void executeGameControlCommand(const aoc::debug::MergeUnitsCommand& cmd);
     void executeGameControlCommand(const aoc::debug::CityDispositionCommand& cmd);
     void executeGameControlCommand(const aoc::debug::RetireGreatPersonCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::NuclearStrikeCommand& cmd);
     void executeGameControlCommand(const aoc::debug::AssignGovernorCommand& cmd);
     void executeGameControlCommand(const aoc::debug::PromoteGovernorCommand& cmd);
     void executeGameControlCommand(const aoc::debug::SlotPolicyCommand& cmd);

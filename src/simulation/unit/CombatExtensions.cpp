@@ -118,6 +118,104 @@ ErrorCode formArmy(aoc::game::GameState& gameState,
 // Nuclear Weapons
 // ============================================================================
 
+bool canDeliverNuke(UnitTypeId unitType) {
+    switch (unitType.value) {
+        case 51: // Bomber
+        case 52: // Stealth Bomber
+        case 58: // Missile Cruiser
+        case 60: // Nuclear Sub
+            return true;
+        default:
+            return false;
+    }
+}
+
+namespace {
+
+/// The player's first unit able to carry a warhead, or nullptr.
+[[nodiscard]] aoc::game::Unit* deliveryUnit(const aoc::game::Player& player) {
+    for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+        if (unit != nullptr && !unit->isDead() && canDeliverNuke(unit->typeId())) {
+            return unit.get();
+        }
+    }
+    return nullptr;
+}
+
+/// The player's first city holding at least `amount` Uranium, or nullptr.
+[[nodiscard]] aoc::game::City* uraniumSource(const aoc::game::Player& player, int32_t amount) {
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        if (city != nullptr && city->stockpile().getAmount(NUKE_GOOD) >= amount) {
+            return city.get();
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
+
+ErrorCode nuclearStrikeBlocker(const aoc::game::GameState& gameState,
+                               const aoc::map::HexGrid& grid, PlayerId player,
+                               hex::AxialCoord targetTile) {
+    const aoc::game::Player* owner = gameState.player(player);
+    if (owner == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (!grid.isValid(targetTile)) {
+        return ErrorCode::InvalidArgument;
+    }
+    // Reactor physics first.
+    if (!owner->tech().hasResearched(NUKE_TECH)) {
+        return ErrorCode::InvalidState;
+    }
+    // Then the weapons programme: the tech alone runs power stations.
+    bool hasProject = false;
+    for (const std::unique_ptr<aoc::game::City>& city : owner->cities()) {
+        if (city != nullptr && city->wonders().hasWonder(static_cast<WonderId>(NUKE_WONDER))) {
+            hasProject = true;
+            break;
+        }
+    }
+    if (!hasProject) {
+        return ErrorCode::InvalidState;
+    }
+    // Then something to fuel it with.
+    if (uraniumSource(*owner, NUKE_URANIUM_COST) == nullptr) {
+        return ErrorCode::InsufficientResources;
+    }
+    // Then something to carry it.
+    if (deliveryUnit(*owner) == nullptr) {
+        return ErrorCode::InvalidUnitAction;
+    }
+    return ErrorCode::Ok;
+}
+
+ErrorCode requestNuclearStrike(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
+                               PlayerId player, hex::AxialCoord targetTile, NukeType type) {
+    const ErrorCode blocked = nuclearStrikeBlocker(gameState, grid, player, targetTile);
+    if (blocked != ErrorCode::Ok) {
+        return blocked;
+    }
+    aoc::game::Player* owner = gameState.player(player);
+    if (owner == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+    aoc::game::City* fuel = uraniumSource(*owner, NUKE_URANIUM_COST);
+    aoc::game::Unit* carrier = deliveryUnit(*owner);
+    if (fuel == nullptr || carrier == nullptr) {
+        return ErrorCode::InvalidState;
+    }
+    if (!fuel->stockpile().consumeGoods(NUKE_GOOD, NUKE_URANIUM_COST)) {
+        return ErrorCode::InsufficientResources;
+    }
+    // Arm before the blast: the blast frees units, and the carrier can sit in
+    // its own fallout. Nothing below dereferences `carrier` afterwards.
+    carrier->nuclear().equipped = true;
+    carrier->nuclear().type     = type;
+    carrier                     = nullptr;
+    return launchNuclearStrike(gameState, grid, player, targetTile, type);
+}
+
 ErrorCode launchNuclearStrike(aoc::game::GameState& gameState,
                               aoc::map::HexGrid& grid,
                               PlayerId launcherOwner,

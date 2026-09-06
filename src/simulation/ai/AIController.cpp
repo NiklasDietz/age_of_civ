@@ -520,21 +520,13 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                             }
                         }
                     }
-                    aoc::game::Unit* launcher = nullptr;
-                    for (const std::unique_ptr<aoc::game::Unit>& u : nukePlayer->units()) {
-                        if (u->isMilitary() && !u->isDead()) {
-                            launcher = u.get();
-                            break;
-                        }
-                    }
-                    if (haveTarget && launcher != nullptr) {
-                        // Equip/log BEFORE the strike: launchNuclearStrike's blast
-                        // calls Player::removeUnit, which can free `launcher` (the
-                        // launcher may sit in the blast zone). Capture everything
-                        // we need from launcher now; never dereference it after the
-                        // call (latent use-after-free, audit WP-10 #2).
-                        launcher->nuclear().equipped = true;
-                        launcher->nuclear().type = NukeType::NuclearDevice;
+                    if (haveTarget) {
+                        // requestNuclearStrike owns every gate (tech, Manhattan
+                        // Project, Uranium, a unit built to carry a warhead) and
+                        // arms the carrier itself. It fails before any blast, so
+                        // there is no unit pointer to keep alive across the call
+                        // (the old code armed a unit here and had to be careful
+                        // not to touch it afterwards).
                         LOG_INFO("AI %u NUCLEAR STRIKE decision: target p%u at (%d,%d) "
                                  "score=%.2f roll=%.2f",
                                  static_cast<unsigned>(this->m_player),
@@ -542,25 +534,14 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                                  targetLoc.q, targetLoc.r,
                                  static_cast<double>(launchScore),
                                  static_cast<double>(roll));
-                        const ErrorCode nec = launchNuclearStrike(
+                        const ErrorCode nec = requestNuclearStrike(
                             gameState, grid, this->m_player, targetLoc,
                             NukeType::NuclearDevice);
                         if (nec != ErrorCode::Ok) {
-                            // Strike rejected: launchNuclearStrike fails fast
-                            // (before any blast/removeUnit), so `launcher` is
-                            // still valid here. Disarm it so the armed flag
-                            // does not re-fire every turn and bypass the
-                            // probability gate.
-                            launcher->nuclear().equipped = false;
-                            LOG_WARN("AI %u NUCLEAR STRIKE failed (err %d); "
-                                     "disarming launcher",
+                            LOG_WARN("AI %u NUCLEAR STRIKE failed (err %d)",
                                      static_cast<unsigned>(this->m_player),
                                      static_cast<int>(nec));
                         }
-                        // On the Ok path the blast may have freed `launcher`
-                        // (it can sit in its own blast zone); null it so no
-                        // later code reuses a dangling pointer.
-                        launcher = nullptr;
                     }
                 }
             }

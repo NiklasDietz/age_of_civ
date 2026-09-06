@@ -104,3 +104,93 @@ TEST_CASE("a nuclear strike leaves fallout on the blast tiles") {
         }
     }
 }
+
+namespace {
+
+constexpr aoc::UnitTypeId BOMBER{51};
+constexpr aoc::UnitTypeId WARRIOR_UNIT{0};
+
+/// Player 0 with every nuclear gate open: tech, Manhattan Project, Uranium and
+/// a bomber to carry the thing.
+struct NukeReady {
+    aoc::test::World world = aoc::test::makeWorld(2);
+    aoc::game::City* city  = nullptr;
+
+    NukeReady() {
+        this->city = &aoc::test::addCityAt(this->world, PlayerId{0}, 4, 4, "Alamogordo");
+        aoc::test::addCityAt(this->world, PlayerId{1}, 12, 9, "Target");
+        aoc::game::Player& p = *this->world.gameState.players()[0];
+        p.tech().initialize();
+        p.tech().completedTechs[aoc::sim::NUKE_TECH.value] = true;
+        this->city->wonders().wonders.push_back(
+            static_cast<aoc::sim::WonderId>(aoc::sim::NUKE_WONDER));
+        this->city->stockpile().addGoods(aoc::sim::NUKE_GOOD, 5);
+        aoc::test::addUnitAt(this->world, PlayerId{0}, BOMBER, 5, 5);
+    }
+};
+
+} // namespace
+
+TEST_CASE("a nuclear strike needs the tech, the project, the uranium and a carrier") {
+    const AxialCoord target{12, 9};
+
+    SUBCASE("every gate open") {
+        NukeReady n;
+        CHECK(aoc::sim::nuclearStrikeBlocker(n.world.gameState, n.world.grid, PlayerId{0}, target)
+              == ErrorCode::Ok);
+    }
+    SUBCASE("without Nuclear Fission") {
+        NukeReady n;
+        n.world.gameState.players()[0]->tech().completedTechs[aoc::sim::NUKE_TECH.value] = false;
+        CHECK(aoc::sim::nuclearStrikeBlocker(n.world.gameState, n.world.grid, PlayerId{0}, target)
+              == ErrorCode::InvalidState);
+    }
+    SUBCASE("without the Manhattan Project") {
+        NukeReady n;
+        n.city->wonders().wonders.clear();
+        CHECK(aoc::sim::nuclearStrikeBlocker(n.world.gameState, n.world.grid, PlayerId{0}, target)
+              == ErrorCode::InvalidState);
+    }
+    SUBCASE("without uranium") {
+        NukeReady n;
+        CHECK(n.city->stockpile().consumeGoods(aoc::sim::NUKE_GOOD, 5));
+        CHECK(aoc::sim::nuclearStrikeBlocker(n.world.gameState, n.world.grid, PlayerId{0}, target)
+              == ErrorCode::InsufficientResources);
+    }
+    SUBCASE("without a unit built to carry a warhead") {
+        NukeReady n;
+        aoc::game::Player& p = *n.world.gameState.players()[0];
+        p.removeUnit(p.unitAt({5, 5}));
+        aoc::test::addUnitAt(n.world, PlayerId{0}, WARRIOR_UNIT, 5, 5); // a warrior is not a bomber
+        CHECK(aoc::sim::nuclearStrikeBlocker(n.world.gameState, n.world.grid, PlayerId{0}, target)
+              == ErrorCode::InvalidUnitAction);
+    }
+}
+
+TEST_CASE("only a bomber, a missile cruiser or a missile sub carries a warhead") {
+    CHECK(aoc::sim::canDeliverNuke(aoc::UnitTypeId{51}));  // Bomber
+    CHECK(aoc::sim::canDeliverNuke(aoc::UnitTypeId{52}));  // Stealth Bomber
+    CHECK(aoc::sim::canDeliverNuke(aoc::UnitTypeId{58}));  // Missile Cruiser
+    CHECK(aoc::sim::canDeliverNuke(aoc::UnitTypeId{60}));  // Nuclear Sub
+    CHECK_FALSE(aoc::sim::canDeliverNuke(aoc::UnitTypeId{0}));   // Warrior
+    CHECK_FALSE(aoc::sim::canDeliverNuke(aoc::UnitTypeId{6}));   // Galley
+}
+
+TEST_CASE("a strike spends one uranium and a blocked strike spends nothing") {
+    NukeReady n;
+    const AxialCoord target{12, 9};
+    const int32_t before = n.city->stockpile().getAmount(aoc::sim::NUKE_GOOD);
+
+    CHECK(aoc::sim::requestNuclearStrike(n.world.gameState, n.world.grid, PlayerId{0}, target,
+                                         aoc::sim::NukeType::NuclearDevice) == ErrorCode::Ok);
+    CHECK(n.city->stockpile().getAmount(aoc::sim::NUKE_GOOD)
+          == before - aoc::sim::NUKE_URANIUM_COST);
+    CHECK(n.world.grid.hasFallout(n.world.grid.toIndex(target)));
+
+    // A rejected strike leaves the stockpile alone.
+    const int32_t afterFirst = n.city->stockpile().getAmount(aoc::sim::NUKE_GOOD);
+    n.city->wonders().wonders.clear();
+    CHECK(aoc::sim::requestNuclearStrike(n.world.gameState, n.world.grid, PlayerId{0}, target,
+                                         aoc::sim::NukeType::NuclearDevice) != ErrorCode::Ok);
+    CHECK(n.city->stockpile().getAmount(aoc::sim::NUKE_GOOD) == afterFirst);
+}

@@ -1356,6 +1356,42 @@ ErrorCode Application::initialize(const Config& config) {
             return std::string("{\"queued\":true}");
         });
 
+    // POST /game/unit/nuke?player=&q=&r=&type=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/unit/nuke",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player   = 0;
+            int32_t posQ     = 0;
+            int32_t posR     = 0;
+            int32_t nukeType = 0;
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "q", posQ, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "r", posR, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "type", nukeType, err)) {
+                return err;
+            }
+            aoc::debug::NuclearStrikeCommand cmd{};
+            cmd.player   = static_cast<aoc::PlayerId>(player);
+            cmd.at       = aoc::hex::AxialCoord{posQ, posR};
+            cmd.nukeType = static_cast<uint8_t>(nukeType);
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
     // POST /game/greatperson/retire?player=&q=&r=
     this->m_debugServer->routeJson(
         DSM::Post, "/game/greatperson/retire",
@@ -1778,6 +1814,8 @@ ErrorCode Application::initialize(const Config& config) {
                 "disposition?player=&q=&r=&disposition=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/greatperson/"
                 "retire?player=&q=&r=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/unit/"
+                "nuke?player=&q=&r=&type=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/governor/assign?player=&q=&r=&type=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/governor/"
                 "promote?player=&q=&r=&promotion=\"},"
@@ -2818,6 +2856,20 @@ void Application::executeGameControlCommand(const aoc::debug::MergeUnitsCommand&
     if (selectionWasSource) {
         aoc::game::Player* owner = this->m_gameState.player(cmd.player);
         this->m_selectedUnit     = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::NuclearStrikeCommand& cmd) {
+    // The blast frees units and can shrink a city; drop selections first.
+    this->m_selectedUnit = nullptr;
+    this->m_selectedCity = nullptr;
+    const ErrorCode result = aoc::sim::requestNuclearStrike(
+        this->m_gameState, this->m_hexGrid, cmd.player, cmd.at,
+        static_cast<aoc::sim::NukeType>(cmd.nukeType));
+    if (result != ErrorCode::Ok) {
+        LOG_WARN("Nuclear strike by player %u at (%d,%d) rejected: %.*s",
+                 static_cast<unsigned>(cmd.player), cmd.at.q, cmd.at.r,
+                 static_cast<int>(describeError(result).size()), describeError(result).data());
     }
 }
 

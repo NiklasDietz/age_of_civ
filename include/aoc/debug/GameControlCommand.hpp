@@ -285,6 +285,13 @@ struct MergeUnitsCommand {
     aoc::hex::AxialCoord sourceAt;
 };
 
+/// Launch `player`'s warhead at `at`.
+struct NuclearStrikeCommand {
+    aoc::PlayerId player;
+    aoc::hex::AxialCoord at;
+    uint8_t nukeType; ///< 0 NuclearDevice, 1 ThermonuclearDevice
+};
+
 /// Dismiss `player`'s unactivated great person at `at` for gold and era score.
 struct RetireGreatPersonCommand {
     aoc::PlayerId player;
@@ -316,7 +323,7 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         AssignSpyMissionCommand, ActivateGreatPersonCommand,
                                         CongressVoteCommand, CongressProposalCommand,
                                         MergeUnitsCommand, CityDispositionCommand,
-                                        RetireGreatPersonCommand,
+                                        RetireGreatPersonCommand, NuclearStrikeCommand,
                                         AssignGovernorCommand,
                                         PromoteGovernorCommand, SlotPolicyCommand,
                                         ChangeGovernmentCommand, CityPurchaseCommand,

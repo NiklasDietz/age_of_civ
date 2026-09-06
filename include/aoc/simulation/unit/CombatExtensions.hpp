@@ -164,6 +164,34 @@ struct NuclearWeaponComponent {
                                             hex::AxialCoord targetTile,
                                             NukeType type);
 
+/// Tech that has to be researched before a warhead can be built (Nuclear Fission).
+inline constexpr TechId NUKE_TECH{17};
+
+/// Wonder that turns reactor physics into a weapon (Manhattan Project).
+inline constexpr uint16_t NUKE_WONDER = 11;
+
+/// Good consumed by one warhead (Uranium).
+inline constexpr uint16_t NUKE_GOOD = 6;
+
+/// Uranium one strike burns.
+inline constexpr int32_t NUKE_URANIUM_COST = 1;
+
+/// Whether `unitType` is built to carry a warhead. A rifleman is not: only a
+/// bomber, a missile cruiser or a missile submarine delivers one.
+[[nodiscard]] bool canDeliverNuke(UnitTypeId unitType);
+
+/// Everything that has to be true before `player` can strike `targetTile`,
+/// checked without changing anything. Ok means `launchNuclearStrike` will fire.
+[[nodiscard]] ErrorCode nuclearStrikeBlocker(const aoc::game::GameState& gameState,
+                                             const aoc::map::HexGrid& grid, PlayerId player,
+                                             hex::AxialCoord targetTile);
+
+/// Arm a delivery unit and strike, spending the Uranium. This is the validated
+/// entry point behind the route, the MCP tool and the AI.
+[[nodiscard]] ErrorCode requestNuclearStrike(aoc::game::GameState& gameState,
+                                             aoc::map::HexGrid& grid, PlayerId player,
+                                             hex::AxialCoord targetTile, NukeType type);
+
 // ============================================================================
 // Air Combat
 // ============================================================================
