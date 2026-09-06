@@ -69,8 +69,24 @@ std::optional<PathResult> findPath(const HexGrid& grid,
     std::unordered_map<hex::AxialCoord, int32_t> costSoFar;
     std::unordered_map<hex::AxialCoord, hex::AxialCoord> cameFrom;
 
-    openSet.push({start, 0, 0});
-    costSoFar[start] = 0;
+    // Canonical form of a tile: the grid wraps columns on a Cylindrical map,
+    // so (145, 10) and (5, 10) are the SAME tile with different coordinates.
+    // The search keys costSoFar and cameFrom by coordinate and compares
+    // `current == goal` by coordinate, so without canonicalising, a search
+    // that runs off the eastern edge keeps generating fresh coordinates for
+    // tiles it has already visited. isValid only checks the row on a cylinder,
+    // so every one of them is "valid" and the frontier never closes: the open
+    // set grew past twelve million nodes and the process died of bad_alloc.
+    // Every map the game ships is cylindrical, so this was reachable in
+    // ordinary play whenever a goal was unreachable or lay around the wrap.
+    const auto canonical = [&grid](hex::AxialCoord c) {
+        return hex::offsetToAxial(grid.toOffset(grid.toIndex(c)));
+    };
+    const hex::AxialCoord canonStart = canonical(start);
+    const hex::AxialCoord canonGoal  = canonical(goal);
+
+    openSet.push({canonStart, 0, 0});
+    costSoFar[canonStart] = 0;
 
     while (!openSet.empty()) {
         const Node top = openSet.top();
@@ -82,30 +98,49 @@ std::optional<PathResult> findPath(const HexGrid& grid,
         // expanded. Re-expanding this outdated copy cannot improve any
         // neighbour (every relaxation gates on `newCost < best`), so the
         // returned path is unchanged -- we only avoid redundant work.
-        if (top.cost > costSoFar[current]) {
+        // `find`, not `operator[]`: the subscript would insert a 0 cost for a
+        // node that has none, which both grows the map and makes the comparison
+        // meaningless for that node.
+        const std::unordered_map<hex::AxialCoord, int32_t>::const_iterator best =
+            costSoFar.find(current);
+        if (best != costSoFar.end() && top.cost > best->second) {
             continue;
         }
 
-        if (current == goal) {
+        if (current == canonGoal) {
             // Reconstruct path
             PathResult result;
-            result.totalCost = costSoFar[goal];
-            hex::AxialCoord step = goal;
-            while (!(step == start)) {
+            result.totalCost = costSoFar[canonGoal];
+            hex::AxialCoord step = canonGoal;
+            // Walk the predecessor chain back to the start. This used to read
+            // `cameFrom[step]`, and `operator[]` INSERTS a default-constructed
+            // (0,0) for a missing key. A broken chain therefore walked to (0,0),
+            // whose freshly inserted predecessor is (0,0) itself, and the loop
+            // pushed that tile forever: an 8-byte vector doubling silently until
+            // the process died of bad_alloc. Measured at 24 GB on a 200-turn
+            // game. `find` cannot insert, and a self-referencing or missing
+            // predecessor now means "no path" rather than an endless one.
+            while (!(step == canonStart)) {
                 result.path.push_back(step);
-                step = cameFrom[step];
+                const std::unordered_map<hex::AxialCoord, hex::AxialCoord>::const_iterator prev =
+                    cameFrom.find(step);
+                if (prev == cameFrom.end() || prev->second == step) {
+                    return std::nullopt;
+                }
+                step = prev->second;
             }
-            result.path.push_back(start);
+            result.path.push_back(canonStart);
             std::reverse(result.path.begin(), result.path.end());
             return result;
         }
 
         int32_t currentCost = top.cost;
 
-        for (const hex::AxialCoord& neighbor : hex::neighbors(current)) {
-            if (!grid.isValid(neighbor)) {
+        for (const hex::AxialCoord& rawNeighbor : hex::neighbors(current)) {
+            if (!grid.isValid(rawNeighbor)) {
                 continue;
             }
+            const hex::AxialCoord neighbor = canonical(rawNeighbor);
 
             int32_t moveCost = 0;
             if (isNavalPath) {
