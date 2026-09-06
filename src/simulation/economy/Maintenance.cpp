@@ -30,38 +30,49 @@
 namespace aoc::sim {
 
 EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
-                                            const aoc::map::HexGrid& grid) {
+                                           const aoc::map::HexGrid& grid) {
     EconomicBreakdown bd{};
 
     // In barter mode with no coins, no monetary income exists.
-    if (player.monetary().system == MonetarySystemType::Barter
-        && player.monetary().totalCoinCount() == 0) {
+    if (player.monetary().system == MonetarySystemType::Barter &&
+        player.monetary().totalCoinCount() == 0) {
         // Still compute expenses and goods so the diagnostic is useful.
         for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
             const CityDistrictsComponent& districts = city->districts();
             for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
-                if (d.type != DistrictType::CityCenter) { bd.expenseBuildings += 1; }
+                if (d.type != DistrictType::CityCenter) {
+                    bd.expenseBuildings += 1;
+                }
                 for (BuildingId bid : d.buildings) {
-                    bd.expenseBuildings += static_cast<CurrencyAmount>(buildingDef(bid).maintenanceCost);
+                    bd.expenseBuildings +=
+                        static_cast<CurrencyAmount>(buildingDef(bid).maintenanceCost);
                 }
             }
-            if (!city->isOriginalCapital()) { bd.expenseBuildings += 2; }
+            if (!city->isOriginalCapital()) {
+                bd.expenseBuildings += 2;
+            }
             for (const std::pair<const uint16_t, int32_t>& entry : city->stockpile().goods) {
                 bd.goodsStockpiled += entry.second;
             }
         }
         for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
             const int32_t cost = unit->typeDef().maintenanceGold();
-            if (cost > 0) { bd.expenseUnits += static_cast<CurrencyAmount>(cost); }
+            if (cost > 0) {
+                bd.expenseUnits += static_cast<CurrencyAmount>(cost);
+            }
         }
         bd.totalExpense = bd.expenseUnits + bd.expenseBuildings;
         bd.netFlow      = -bd.totalExpense;
         return bd;
     }
 
+    DistrictIndex districtIndex;
+    districtIndex.build(player);
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         // Capital Palace
-        if (city->isOriginalCapital()) { bd.incomeCapital += 5; }
+        if (city->isOriginalCapital()) {
+            bd.incomeCapital += 5;
+        }
 
         // Population tax: 1 per citizen
         bd.incomeTax += static_cast<CurrencyAmount>(city->population());
@@ -69,45 +80,35 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
         // Industrial revolution per-citizen
         const float indGold = player.industrial().cumulativeGoldPerCitizen();
         if (indGold > 0.0f) {
-            bd.incomeIndustrial += static_cast<CurrencyAmount>(
-                static_cast<float>(city->population()) * indGold);
+            bd.incomeIndustrial +=
+                static_cast<CurrencyAmount>(static_cast<float>(city->population()) * indGold);
         }
 
         // Tile gold
         for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
             if (grid.isValid(tile)) {
-                bd.incomeTileGold += static_cast<CurrencyAmount>(
-                    grid.tileYield(grid.toIndex(tile)).gold);
+                bd.incomeTileGold +=
+                    static_cast<CurrencyAmount>(grid.tileYield(grid.toIndex(tile)).gold);
             }
         }
 
         // Commercial district tax + building bonuses (monetary era only).
-        // Adjacency yields the grid-only subset of computeAdjacencyBonus:
-        //   Commercial: +2 gold if adjacent to a river edge.
-        //   Harbor:     +2 gold per adjacent coastal resource tile.
-        // Cross-player district adjacency is skipped here to avoid plumbing
-        // GameState through the income-breakdown signature.
         const CityDistrictsComponent& districts = city->districts();
         for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
-            if (d.type == DistrictType::Commercial) { bd.incomeCommercial += 3; }
-            if (d.type == DistrictType::Harbor)     { bd.incomeCommercial += 2; }
+            if (d.type == DistrictType::Commercial) {
+                bd.incomeCommercial += 3;
+            }
+            if (d.type == DistrictType::Harbor) {
+                bd.incomeCommercial += 2;
+            }
             for (BuildingId bid : d.buildings) {
                 bd.incomeCommercial += static_cast<CurrencyAmount>(buildingDef(bid).goldBonus);
             }
-            if ((d.type == DistrictType::Commercial || d.type == DistrictType::Harbor)
-                && grid.isValid(d.location)) {
-                const int32_t tileIdx = grid.toIndex(d.location);
-                if (d.type == DistrictType::Commercial
-                    && grid.riverEdges(tileIdx) != 0) {
-                    bd.incomeCommercial += 2;
-                }
-                if (d.type == DistrictType::Harbor) {
-                    const NeighborTerrainCounts adj = countNeighborTerrain(grid, d.location);
-                    bd.incomeCommercial +=
-                        static_cast<CurrencyAmount>(adj.coastalResources * 2);
-                }
-            }
         }
+        // District adjacency gold, through the one shared path: river and
+        // harbor Commercial Hubs, coastal resources beside a Harbor.
+        bd.incomeCommercial +=
+            static_cast<CurrencyAmount>(cityAdjacencyYields(grid, districtIndex, *city).gold);
 
         // Goods economic activity (Phase B: increased caps/rates).
         // Must stay in sync with the identical block in processGoldIncome
@@ -117,21 +118,24 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
         // breakdown and the real income loop both taxed the wrong goods.
         {
             const CityStockpileComponent& stock = city->stockpile();
-            int32_t ecoGold = 0;
+            int32_t ecoGold                     = 0;
             ecoGold += stock.getAmount(goods::CONSUMER_GOODS) / 4;
             ecoGold += stock.getAmount(goods::PROCESSED_FOOD) / 4;
-            ecoGold += stock.getAmount(goods::CLOTHING)       / 2;
-            ecoGold += stock.getAmount(goods::ELECTRONICS)    / 1;
+            ecoGold += stock.getAmount(goods::CLOTHING) / 2;
+            ecoGold += stock.getAmount(goods::ELECTRONICS) / 1;
             bd.incomeGoodsEcon += static_cast<CurrencyAmount>(std::min(ecoGold, 15));
         }
 
         // Building maintenance (no flat district fee; only building definitions)
         for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
             for (BuildingId bid : d.buildings) {
-                bd.expenseBuildings += static_cast<CurrencyAmount>(buildingDef(bid).maintenanceCost);
+                bd.expenseBuildings +=
+                    static_cast<CurrencyAmount>(buildingDef(bid).maintenanceCost);
             }
         }
-        if (!city->isOriginalCapital()) { bd.expenseBuildings += 1; }  // sprawl
+        if (!city->isOriginalCapital()) {
+            bd.expenseBuildings += 1;
+        } // sprawl
 
         // Goods stockpile count
         for (const std::pair<const uint16_t, int32_t>& entry : city->stockpile().goods) {
@@ -142,7 +146,9 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
     // Unit maintenance
     for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
         const int32_t cost = unit->typeDef().maintenanceGold();
-        if (cost > 0) { bd.expenseUnits += static_cast<CurrencyAmount>(cost); }
+        if (cost > 0) {
+            bd.expenseUnits += static_cast<CurrencyAmount>(cost);
+        }
     }
 
     // Phase B: Money-supply taxation (mirrors processGoldIncome logic)
@@ -153,21 +159,31 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
             for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
                 const CityDistrictsComponent& districts = city->districts();
                 for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
-                    if (d.type == DistrictType::Commercial) { collectionEfficiency += 0.05f; }
+                    if (d.type == DistrictType::Commercial) {
+                        collectionEfficiency += 0.05f;
+                    }
                     for (BuildingId bid : d.buildings) {
                         const uint16_t bv = bid.value;
-                        if (bv == 6u)  { collectionEfficiency += 0.08f; }
-                        if (bv == 20u) { collectionEfficiency += 0.12f; }
-                        if (bv == 21u) { collectionEfficiency += 0.18f; }
-                        if (bv == 13u) { collectionEfficiency += 0.10f; }
+                        if (bv == 6u) {
+                            collectionEfficiency += 0.08f;
+                        }
+                        if (bv == 20u) {
+                            collectionEfficiency += 0.12f;
+                        }
+                        if (bv == 21u) {
+                            collectionEfficiency += 0.18f;
+                        }
+                        if (bv == 13u) {
+                            collectionEfficiency += 0.10f;
+                        }
                     }
                 }
             }
-            collectionEfficiency = std::min(collectionEfficiency, 1.0f);
+            collectionEfficiency           = std::min(collectionEfficiency, 1.0f);
             constexpr float MONEY_VELOCITY = 0.35f;
-            bd.incomeCommercial += static_cast<CurrencyAmount>(
-                static_cast<float>(moneySupply) * MONEY_VELOCITY
-                * player.monetary().taxRate * collectionEfficiency);
+            bd.incomeCommercial +=
+                static_cast<CurrencyAmount>(static_cast<float>(moneySupply) * MONEY_VELOCITY *
+                                            player.monetary().taxRate * collectionEfficiency);
         }
     }
 
@@ -180,22 +196,21 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
         }
     }
 
-    bd.totalIncome = bd.incomeCapital + bd.incomeTax + bd.incomeIndustrial
-                   + bd.incomeTileGold + bd.incomeCommercial + bd.incomeGoodsEcon;
-    bd.effectiveIncome = static_cast<CurrencyAmount>(
-        static_cast<float>(bd.totalIncome) * player.monetary().goldAllocation);
-    bd.totalExpense = bd.expenseUnits + bd.expenseBuildings;
-    bd.netFlow = bd.effectiveIncome - bd.totalExpense;
+    bd.totalIncome     = bd.incomeCapital + bd.incomeTax + bd.incomeIndustrial + bd.incomeTileGold +
+                         bd.incomeCommercial + bd.incomeGoodsEcon;
+    bd.effectiveIncome = static_cast<CurrencyAmount>(static_cast<float>(bd.totalIncome) *
+                                                     player.monetary().goldAllocation);
+    bd.totalExpense    = bd.expenseUnits + bd.expenseBuildings;
+    bd.netFlow         = bd.effectiveIncome - bd.totalExpense;
 
     return bd;
 }
 
-CurrencyAmount processGoldIncome(aoc::game::Player& player,
-                                  const aoc::map::HexGrid& grid) {
+CurrencyAmount processGoldIncome(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
     // In pure barter mode no money exists yet — income is zero.
     // Coins must first be minted before any treasury income can flow.
-    if (player.monetary().system == MonetarySystemType::Barter
-        && player.monetary().totalCoinCount() == 0) {
+    if (player.monetary().system == MonetarySystemType::Barter &&
+        player.monetary().totalCoinCount() == 0) {
         player.setIncomePerTurn(0);
         return 0;
     }
@@ -213,6 +228,9 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
 
     // Get government corruption rates
     const aoc::sim::GovernmentDef& govDef = governmentDef(player.government().government);
+
+    DistrictIndex districtIndex;
+    districtIndex.build(player);
 
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         CurrencyAmount cityGold = 0;
@@ -237,8 +255,8 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
         // earns 20 * 3.5 = 70 extra gold/turn -- competitive with a 10-city empire.
         const float indGoldPerCitizen = player.industrial().cumulativeGoldPerCitizen();
         if (indGoldPerCitizen > 0.0f) {
-            cityGold += static_cast<CurrencyAmount>(
-                static_cast<float>(city->population()) * indGoldPerCitizen);
+            cityGold += static_cast<CurrencyAmount>(static_cast<float>(city->population()) *
+                                                    indGoldPerCitizen);
         }
 
         // Gold from worked tiles (WP-G adjacency cluster bonuses included).
@@ -259,15 +277,20 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
         const CityDistrictsComponent& districts = city->districts();
         for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
             if (d.type == DistrictType::Commercial) {
-                cityGold += 3;  // Commercial district hub: tax on local trade
+                cityGold += 3; // Commercial district hub: tax on local trade
             }
             if (d.type == DistrictType::Harbor) {
-                cityGold += 2;  // Port fees
+                cityGold += 2; // Port fees
             }
             for (BuildingId bid : d.buildings) {
                 cityGold += static_cast<CurrencyAmount>(buildingDef(bid).goldBonus);
             }
         }
+        // District adjacency gold reaches the treasury, not only the
+        // diagnostic breakdown: a river or harbor-side Commercial Hub and
+        // coastal resources beside a Harbor are real income.
+        cityGold +=
+            static_cast<CurrencyAmount>(cityAdjacencyYields(grid, districtIndex, *city).gold);
 
         // Wonder gold bonus (H4.9): Big Ben, Colossus, Machu Picchu, etc.
         // WP-A7: era-decay so ancient gold wonders don't dominate late-game.
@@ -277,7 +300,7 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
         //   - Big Ben (9): doubles per-market-building gold in the host city.
         for (const WonderId wid : city->wonders().wonders) {
             const WonderDef& wdef = wonderDef(wid);
-            const float decay = wonderEraDecayFactor(wdef, player.era().currentEra);
+            const float decay     = wonderEraDecayFactor(wdef, player.era().currentEra);
 
             if (wid == 7) { // Machu Picchu
                 bool mountainAdj = false;
@@ -285,17 +308,17 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
                     const std::array<aoc::hex::AxialCoord, 6> nbrs =
                         aoc::hex::neighbors(city->location());
                     for (const aoc::hex::AxialCoord& n : nbrs) {
-                        if (!grid.isValid(n)) { continue; }
-                        if (grid.terrain(grid.toIndex(n))
-                            == aoc::map::TerrainType::Mountain) {
+                        if (!grid.isValid(n)) {
+                            continue;
+                        }
+                        if (grid.terrain(grid.toIndex(n)) == aoc::map::TerrainType::Mountain) {
                             mountainAdj = true;
                             break;
                         }
                     }
                 }
                 if (mountainAdj) {
-                    cityGold += static_cast<CurrencyAmount>(
-                        wdef.effect.goldBonus * decay);
+                    cityGold += static_cast<CurrencyAmount>(wdef.effect.goldBonus * decay);
                 }
                 continue;
             }
@@ -303,8 +326,8 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
             if (wid == 9) { // Big Ben — flat bonus + doubles market gold.
                 cityGold += static_cast<CurrencyAmount>(wdef.effect.goldBonus * decay);
                 int32_t marketGold = 0;
-                for (const CityDistrictsComponent::PlacedDistrict& d
-                        : city->districts().districts) {
+                for (const CityDistrictsComponent::PlacedDistrict& d :
+                     city->districts().districts) {
                     for (BuildingId bid : d.buildings) {
                         if (bid.value == 6 || bid.value == 20 || bid.value == 21) {
                             // Market (6), Bank (20), Stock Exchange (21).
@@ -312,8 +335,7 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
                         }
                     }
                 }
-                cityGold += static_cast<CurrencyAmount>(
-                    static_cast<float>(marketGold) * decay);
+                cityGold += static_cast<CurrencyAmount>(static_cast<float>(marketGold) * decay);
                 continue;
             }
 
@@ -327,29 +349,30 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
         // Max 15 gold/city so supply-side improvements are meaningful but not dominant.
         {
             const CityStockpileComponent& stock = city->stockpile();
-            int32_t economicActivityGold = 0;
-            economicActivityGold += stock.getAmount(goods::CONSUMER_GOODS) / 4;   // was /5
-            economicActivityGold += stock.getAmount(goods::PROCESSED_FOOD) / 4;   // was /5
-            economicActivityGold += stock.getAmount(goods::CLOTHING)       / 2;   // was /3
-            economicActivityGold += stock.getAmount(goods::ELECTRONICS)    / 1;   // was /2
+            int32_t economicActivityGold        = 0;
+            economicActivityGold += stock.getAmount(goods::CONSUMER_GOODS) / 4; // was /5
+            economicActivityGold += stock.getAmount(goods::PROCESSED_FOOD) / 4; // was /5
+            economicActivityGold += stock.getAmount(goods::CLOTHING) / 2;       // was /3
+            economicActivityGold += stock.getAmount(goods::ELECTRONICS) / 1;    // was /2
             cityGold += static_cast<CurrencyAmount>(std::min(economicActivityGold, 15));
         }
 
         // Distance-based corruption: reduces gold based on distance from capital.
         // Varies by government type (Communism has 0 distance corruption).
         if (!city->isOriginalCapital() && govDef.distanceCorruptionRate > 0.0f) {
-            int32_t dist = grid.distance(city->location(), capitalLocation);
-            float maxDist = static_cast<float>(std::max(grid.width(), grid.height()));
+            int32_t dist       = grid.distance(city->location(), capitalLocation);
+            float maxDist      = static_cast<float>(std::max(grid.width(), grid.height()));
             float distFraction = static_cast<float>(dist) / maxDist;
-            float corruptionPct = govDef.corruptionRate + distFraction * govDef.distanceCorruptionRate * 0.1f;
-            corruptionPct = std::min(corruptionPct, 0.50f);  // Cap at 50%
-            cityGold = static_cast<CurrencyAmount>(
-                static_cast<float>(cityGold) * (1.0f - corruptionPct));
+            float corruptionPct =
+                govDef.corruptionRate + distFraction * govDef.distanceCorruptionRate * 0.1f;
+            corruptionPct = std::min(corruptionPct, 0.50f); // Cap at 50%
+            cityGold =
+                static_cast<CurrencyAmount>(static_cast<float>(cityGold) * (1.0f - corruptionPct));
         }
 
         // Named governor: Financier +20%, Merchant +10%, Tax Haven +10% (Governor.hpp).
-        cityGold = static_cast<CurrencyAmount>(
-            static_cast<float>(cityGold) * city->governor().goldMultiplier());
+        cityGold = static_cast<CurrencyAmount>(static_cast<float>(cityGold) *
+                                               city->governor().goldMultiplier());
         goldIncome += cityGold;
     }
 
@@ -371,7 +394,7 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
     {
         const int32_t moneySupply = player.monetary().totalCoinValue();
         if (moneySupply > 0) {
-            constexpr float MONEY_VELOCITY = 0.35f;  // 35% of supply transacts per turn
+            constexpr float MONEY_VELOCITY = 0.35f; // 35% of supply transacts per turn
 
             float collectionEfficiency = 0.50f;
             for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
@@ -382,10 +405,18 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
                     }
                     for (BuildingId bid : d.buildings) {
                         const uint16_t bv = bid.value;
-                        if (bv == 6u)  { collectionEfficiency += 0.08f; }   // Market
-                        if (bv == 20u) { collectionEfficiency += 0.12f; }   // Bank
-                        if (bv == 21u) { collectionEfficiency += 0.18f; }   // Stock Exchange
-                        if (bv == 13u) { collectionEfficiency += 0.10f; }   // Telecom Hub
+                        if (bv == 6u) {
+                            collectionEfficiency += 0.08f;
+                        } // Market
+                        if (bv == 20u) {
+                            collectionEfficiency += 0.12f;
+                        } // Bank
+                        if (bv == 21u) {
+                            collectionEfficiency += 0.18f;
+                        } // Stock Exchange
+                        if (bv == 13u) {
+                            collectionEfficiency += 0.10f;
+                        } // Telecom Hub
                     }
                 }
             }
@@ -402,8 +433,8 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
     // Government gold multiplier (policy cards / inherent bonus).
     {
         GovernmentModifiers gov = computeGovernmentModifiers(player.government());
-        goldIncome = static_cast<CurrencyAmount>(
-            static_cast<float>(goldIncome) * gov.goldMultiplier);
+        goldIncome =
+            static_cast<CurrencyAmount>(static_cast<float>(goldIncome) * gov.goldMultiplier);
     }
 
     // Civ ability: +N gold per active trade route. Flat, after the multipliers,
@@ -418,10 +449,10 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
 
     // Apply gold allocation slider: only the gold fraction goes to treasury.
     // The rest is allocated to science and luxury bonuses (handled in their respective systems).
-    CurrencyAmount effectiveGold = static_cast<CurrencyAmount>(
-        static_cast<float>(goldIncome) * player.monetary().goldAllocation);
+    CurrencyAmount effectiveGold = static_cast<CurrencyAmount>(static_cast<float>(goldIncome) *
+                                                               player.monetary().goldAllocation);
     player.addGold(effectiveGold);
-    player.setIncomePerTurn(goldIncome);  // Display full income before split
+    player.setIncomePerTurn(goldIncome); // Display full income before split
     return goldIncome;
 }
 
@@ -430,24 +461,30 @@ void processUnitMaintenance(aoc::game::Player& player) {
     // Armor/Air/Naval units consume 1 FUEL per turn. Nuclear bombs do not
     // tick (one-shot). If stockpile empty, unit takes attrition damage.
     {
-        int32_t fuelCity = -1;  // first city found with FUEL stockpile
+        int32_t fuelCity = -1; // first city found with FUEL stockpile
         // Units don't have direct stockpile — drain from any owned city.
         for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
-            if (unit == nullptr) { continue; }
+            if (unit == nullptr) {
+                continue;
+            }
             const aoc::sim::UnitClass uc = unit->typeDef().unitClass;
-            const bool needsFuel = (uc == aoc::sim::UnitClass::Armor
-                                 || uc == aoc::sim::UnitClass::Air
-                                 || uc == aoc::sim::UnitClass::Helicopter
-                                 || uc == aoc::sim::UnitClass::Naval);
-            if (!needsFuel) { continue; }
+            const bool needsFuel =
+                (uc == aoc::sim::UnitClass::Armor || uc == aoc::sim::UnitClass::Air ||
+                 uc == aoc::sim::UnitClass::Helicopter || uc == aoc::sim::UnitClass::Naval);
+            if (!needsFuel) {
+                continue;
+            }
             // Find a city with FUEL.
-            bool drained = false;
+            bool drained    = false;
             int32_t cityIdx = 0;
             for (const std::unique_ptr<aoc::game::City>& c : player.cities()) {
-                if (c == nullptr) { ++cityIdx; continue; }
+                if (c == nullptr) {
+                    ++cityIdx;
+                    continue;
+                }
                 if (c->stockpile().getAmount(aoc::sim::goods::FUEL) > 0) {
                     if (c->stockpile().consumeGoods(aoc::sim::goods::FUEL, 1)) {
-                        drained = true;
+                        drained  = true;
                         fuelCity = cityIdx;
                         break;
                     }
@@ -469,20 +506,20 @@ void processUnitMaintenance(aoc::game::Player& player) {
 
     // In barter mode with no coins, money doesn't exist yet.
     // Units are maintained by the city's food/production (not tracked monetarily).
-    if (player.monetary().system == MonetarySystemType::Barter
-        && player.monetary().totalCoinCount() == 0) {
+    if (player.monetary().system == MonetarySystemType::Barter &&
+        player.monetary().totalCoinCount() == 0) {
         return;
     }
 
     // Hard floor: the treasury must never drop below -500.  Below this point
     // debt compounds faster than any realistic income can recover it.
-    constexpr CurrencyAmount TREASURY_HARD_FLOOR    = -500;
+    constexpr CurrencyAmount TREASURY_HARD_FLOOR = -500;
     // Threshold at which we switch to military-only mode.
     constexpr CurrencyAmount TREASURY_DEFICIT_LIMIT = 0;
     // Minimum garrison we never disband below.
-    constexpr int32_t        MIN_GARRISON           = 2;
+    constexpr int32_t MIN_GARRISON = 2;
     // Maximum tax rate applied automatically when bankrupt to boost income.
-    constexpr float          MAX_TAX_RATE           = 0.40f;
+    constexpr float MAX_TAX_RATE = 0.40f;
 
     // When deeply bankrupt, force maximum tax rate to maximise income recovery.
     if (player.treasury() < TREASURY_HARD_FLOOR) {
@@ -490,8 +527,7 @@ void processUnitMaintenance(aoc::game::Player& player) {
             player.monetary().taxRate = MAX_TAX_RATE;
             LOG_WARN("Player %u [Maintenance.cpp:processUnitMaintenance] treasury %lld "
                      "below hard floor -- tax rate forced to %.2f",
-                     static_cast<unsigned>(player.id()),
-                     static_cast<long long>(player.treasury()),
+                     static_cast<unsigned>(player.id()), static_cast<long long>(player.treasury()),
                      static_cast<double>(MAX_TAX_RATE));
         }
     }
@@ -508,14 +544,14 @@ void processUnitMaintenance(aoc::game::Player& player) {
     // unit immediately so the treasury stops bleeding.
     if (player.treasury() < TREASURY_HARD_FLOOR && militaryCount > MIN_GARRISON) {
         aoc::game::Unit* disbandTarget = nullptr;
-        int32_t worstCost = 0;
+        int32_t worstCost              = 0;
         for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
             if (unit->typeDef().unitClass == UnitClass::Settler) {
                 continue;
             }
             const int32_t cost = unit->typeDef().maintenanceGold();
             if (isMilitary(unit->typeDef().unitClass) && cost > worstCost) {
-                worstCost    = cost;
+                worstCost     = cost;
                 disbandTarget = unit.get();
             }
         }
@@ -527,7 +563,7 @@ void processUnitMaintenance(aoc::game::Player& player) {
                 }
                 const int32_t cost = unit->typeDef().maintenanceGold();
                 if (cost > worstCost) {
-                    worstCost    = cost;
+                    worstCost     = cost;
                     disbandTarget = unit.get();
                 }
             }
@@ -535,10 +571,8 @@ void processUnitMaintenance(aoc::game::Player& player) {
         if (disbandTarget != nullptr) {
             LOG_WARN("Player %u [Maintenance.cpp:processUnitMaintenance] hard-floor "
                      "bankruptcy (treasury %lld): disbanding %s (cost %d gold/turn)",
-                     static_cast<unsigned>(player.id()),
-                     static_cast<long long>(player.treasury()),
-                     disbandTarget->typeDef().name.data(),
-                     worstCost);
+                     static_cast<unsigned>(player.id()), static_cast<long long>(player.treasury()),
+                     disbandTarget->typeDef().name.data(), worstCost);
             player.removeUnit(disbandTarget);
             --militaryCount;
         }
@@ -547,7 +581,7 @@ void processUnitMaintenance(aoc::game::Player& player) {
     // Per-unit maintenance: each military unit costs gold based on its era.
     // Civilian units (settlers, builders, traders, scouts) are free.
     CurrencyAmount totalMaintenance = 0;
-    int32_t paidUnits = 0;
+    int32_t paidUnits               = 0;
 
     for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
         const int32_t cost = unit->typeDef().maintenanceGold();
@@ -568,8 +602,7 @@ void processUnitMaintenance(aoc::game::Player& player) {
         // turn, which is the correct pressure relief mechanism.
         LOG_INFO("Player %u unit maintenance skipped (treasury %lld < 0): "
                  "would have cost %lld gold",
-                 static_cast<unsigned>(player.id()),
-                 static_cast<long long>(player.treasury()),
+                 static_cast<unsigned>(player.id()), static_cast<long long>(player.treasury()),
                  static_cast<long long>(totalMaintenance));
     } else {
         // Treasury is non-negative: pay in full, but apply the hard floor to
@@ -607,27 +640,24 @@ void processUnitMaintenance(aoc::game::Player& player) {
     // Sustained bankruptcy (>= 5 consecutive turns below -200): disband the
     // most expensive unit, still respecting the minimum garrison.
     constexpr CurrencyAmount SUSTAINED_THRESHOLD = -200;
-    if (player.monetary().consecutiveNegativeTurns >= 5
-        && player.treasury() < SUSTAINED_THRESHOLD
-        && militaryCount > MIN_GARRISON)
-    {
+    if (player.monetary().consecutiveNegativeTurns >= 5 &&
+        player.treasury() < SUSTAINED_THRESHOLD && militaryCount > MIN_GARRISON) {
         aoc::game::Unit* disbandTarget = nullptr;
-        int32_t worstCost = 0;
+        int32_t worstCost              = 0;
         for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
             if (unit->typeDef().unitClass == UnitClass::Settler) {
                 continue;
             }
             const int32_t cost = unit->typeDef().maintenanceGold();
             if (cost > worstCost) {
-                worstCost    = cost;
+                worstCost     = cost;
                 disbandTarget = unit.get();
             }
         }
         if (disbandTarget != nullptr) {
             LOG_WARN("Player %u [Maintenance.cpp:processUnitMaintenance] sustained "
                      "bankruptcy (%d turns, treasury %lld): disbanded %s",
-                     static_cast<unsigned>(player.id()),
-                     player.monetary().consecutiveNegativeTurns,
+                     static_cast<unsigned>(player.id()), player.monetary().consecutiveNegativeTurns,
                      static_cast<long long>(player.treasury()),
                      disbandTarget->typeDef().name.data());
             player.removeUnit(disbandTarget);
@@ -639,8 +669,8 @@ void processUnitMaintenance(aoc::game::Player& player) {
 
 void processBuildingMaintenance(aoc::game::Player& player) {
     // In barter mode with no coins, money doesn't exist yet — no building upkeep.
-    if (player.monetary().system == MonetarySystemType::Barter
-        && player.monetary().totalCoinCount() == 0) {
+    if (player.monetary().system == MonetarySystemType::Barter &&
+        player.monetary().totalCoinCount() == 0) {
         return;
     }
 
@@ -651,8 +681,7 @@ void processBuildingMaintenance(aoc::game::Player& player) {
     constexpr CurrencyAmount SKIP_THRESHOLD = -200;
     if (player.treasury() < SKIP_THRESHOLD) {
         LOG_INFO("Player %u building/city maintenance skipped (treasury %lld < %lld)",
-                 static_cast<unsigned>(player.id()),
-                 static_cast<long long>(player.treasury()),
+                 static_cast<unsigned>(player.id()), static_cast<long long>(player.treasury()),
                  static_cast<long long>(SKIP_THRESHOLD));
         return;
     }
@@ -685,44 +714,42 @@ void processBuildingMaintenance(aoc::game::Player& player) {
     }
 
     // Scale by inflation price level.
-    const float priceMultiplier = priceLevelMaintenanceMultiplier(
-        player.monetary().priceLevel);
-    const CurrencyAmount adjustedMaintenance = static_cast<CurrencyAmount>(
-        static_cast<float>(totalMaintenance) * priceMultiplier);
+    const float priceMultiplier = priceLevelMaintenanceMultiplier(player.monetary().priceLevel);
+    const CurrencyAmount adjustedMaintenance =
+        static_cast<CurrencyAmount>(static_cast<float>(totalMaintenance) * priceMultiplier);
 
     // Apply the hard floor: never let a single maintenance tick punch the
     // treasury below -500.
     constexpr CurrencyAmount TREASURY_HARD_FLOOR = -500;
-    const CurrencyAmount afterDeduction = player.treasury() - adjustedMaintenance;
+    const CurrencyAmount afterDeduction          = player.treasury() - adjustedMaintenance;
     if (afterDeduction < TREASURY_HARD_FLOOR) {
         const CurrencyAmount allowed = player.treasury() - TREASURY_HARD_FLOOR;
         if (allowed > 0) {
             player.addGold(-allowed);
         }
-        LOG_INFO("Player %u building/city maintenance partially paid: %lld of %lld gold "
-                 "(hard floor hit, treasury: %lld)",
-                 static_cast<unsigned>(player.id()),
-                 static_cast<long long>(allowed > 0 ? allowed : 0),
-                 static_cast<long long>(adjustedMaintenance),
-                 static_cast<long long>(player.treasury()));
+        LOG_INFO(
+            "Player %u building/city maintenance partially paid: %lld of %lld gold "
+            "(hard floor hit, treasury: %lld)",
+            static_cast<unsigned>(player.id()), static_cast<long long>(allowed > 0 ? allowed : 0),
+            static_cast<long long>(adjustedMaintenance), static_cast<long long>(player.treasury()));
     } else {
         player.addGold(-adjustedMaintenance);
         LOG_INFO("Player %u building/city maintenance: %lld gold (treasury: %lld)",
-                 static_cast<unsigned>(player.id()),
-                 static_cast<long long>(adjustedMaintenance),
+                 static_cast<unsigned>(player.id()), static_cast<long long>(adjustedMaintenance),
                  static_cast<long long>(player.treasury()));
     }
 }
 
-void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
-                                     const aoc::map::HexGrid& grid,
-                                     aoc::game::Player& player) {
+void processMilitaryFoodConsumption(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                                    aoc::game::Player& player) {
     // A civilization without a city forages: no demand, no desertion. The
     // escort of a still-walking settler used to desert on turn 5 (2026-09-04
     // Tutorial, finding 1), leaving the settler alone to die of attrition.
     if (player.cities().empty()) {
         for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
-            if (unit->turnsStarving() > 0) { unit->setTurnsStarving(0); }
+            if (unit->turnsStarving() > 0) {
+                unit->setTurnsStarving(0);
+            }
         }
         return;
     }
@@ -730,20 +757,26 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
     // WP-P1: aggregate food demand across all military / mounted / armor units.
     // WP-Q: only units OUTSIDE owned territory drain stockpile. Garrison
     // forages locally (zero cost). Expeditionary forces need supply lines.
-    int32_t demand = 0;
-    int32_t fed = 0;
+    int32_t demand   = 0;
+    int32_t fed      = 0;
     int32_t starving = 0;
     for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
-        if (unit->typeDef().foodPerTurn() <= 0) { continue; }
+        if (unit->typeDef().foodPerTurn() <= 0) {
+            continue;
+        }
         const int32_t pIdx = grid.toIndex(unit->position());
         if (grid.owner(pIdx) == player.id()) {
             // Reset starving on garrison (returning home heals food state).
-            if (unit->turnsStarving() > 0) { unit->setTurnsStarving(0); }
+            if (unit->turnsStarving() > 0) {
+                unit->setTurnsStarving(0);
+            }
             continue;
         }
         demand += unit->typeDef().foodPerTurn();
     }
-    if (demand <= 0) { return; }
+    if (demand <= 0) {
+        return;
+    }
 
     // WP-S: lazy-seed Encampment buffers for any owned encampment improvement
     // that has no buffer entry yet (100 food + 100 fuel seed). Also auto-
@@ -751,54 +784,77 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
     {
         const int32_t tilesN = grid.tileCount();
         for (int32_t ti = 0; ti < tilesN; ++ti) {
-            if (grid.improvement(ti) != aoc::map::ImprovementType::Encampment) { continue; }
-            if (grid.owner(ti) != player.id()) { continue; }
+            if (grid.improvement(ti) != aoc::map::ImprovementType::Encampment) {
+                continue;
+            }
+            if (grid.owner(ti) != player.id()) {
+                continue;
+            }
             std::unordered_map<int32_t, aoc::game::GameState::EncampmentBuffer>::iterator it =
                 gameState.encampments().find(ti);
             if (it == gameState.encampments().end()) {
                 aoc::game::GameState::EncampmentBuffer buf;
                 buf.owner = player.id();
-                buf.food = 100;
-                buf.fuel = 100;
+                buf.food  = 100;
+                buf.fuel  = 100;
                 gameState.encampments().emplace(ti, buf);
                 continue;
             }
             // WP-S2 lite: auto-refill if buffers below cap (100/100).
             // Drains 5 food + 5 fuel from nearest owned city's stockpile.
-            constexpr int32_t REFILL_RATE = 5;
-            constexpr int32_t CAP = 100;
+            constexpr int32_t REFILL_RATE    = 5;
+            constexpr int32_t CAP            = 100;
             const aoc::hex::AxialCoord depot = grid.toAxial(ti);
-            aoc::game::City* nearest = nullptr;
-            int32_t bestDist = std::numeric_limits<int32_t>::max();
+            aoc::game::City* nearest         = nullptr;
+            int32_t bestDist                 = std::numeric_limits<int32_t>::max();
             for (const std::unique_ptr<aoc::game::City>& c : player.cities()) {
-                if (c == nullptr) { continue; }
+                if (c == nullptr) {
+                    continue;
+                }
                 const int32_t d = grid.distance(depot, c->location());
-                if (d < bestDist) { bestDist = d; nearest = c.get(); }
+                if (d < bestDist) {
+                    bestDist = d;
+                    nearest  = c.get();
+                }
             }
-            if (nearest == nullptr) { continue; }
+            if (nearest == nullptr) {
+                continue;
+            }
             CityStockpileComponent& sp = nearest->stockpile();
             if (it->second.food < CAP) {
                 const int32_t want = std::min(REFILL_RATE, CAP - it->second.food);
-                int32_t got = 0;
-                for (uint16_t gid : {goods::PROCESSED_FOOD, goods::WHEAT,
-                                      goods::CATTLE, goods::FISH, goods::RICE}) {
-                    if (got >= want) { break; }
+                int32_t got        = 0;
+                for (uint16_t gid : {goods::PROCESSED_FOOD, goods::WHEAT, goods::CATTLE,
+                                     goods::FISH, goods::RICE}) {
+                    if (got >= want) {
+                        break;
+                    }
                     const int32_t avail = sp.getAmount(gid);
-                    if (avail <= 0) { continue; }
+                    if (avail <= 0) {
+                        continue;
+                    }
                     const int32_t take = std::min(avail, want - got);
-                    if (sp.consumeGoods(gid, take)) { got += take; }
+                    if (sp.consumeGoods(gid, take)) {
+                        got += take;
+                    }
                 }
                 it->second.food += got;
             }
             if (it->second.fuel < CAP) {
                 const int32_t want = std::min(REFILL_RATE, CAP - it->second.fuel);
-                int32_t got = 0;
+                int32_t got        = 0;
                 for (uint16_t gid : {goods::FUEL, goods::COAL}) {
-                    if (got >= want) { break; }
+                    if (got >= want) {
+                        break;
+                    }
                     const int32_t avail = sp.getAmount(gid);
-                    if (avail <= 0) { continue; }
+                    if (avail <= 0) {
+                        continue;
+                    }
                     const int32_t take = std::min(avail, want - got);
-                    if (sp.consumeGoods(gid, take)) { got += take; }
+                    if (sp.consumeGoods(gid, take)) {
+                        got += take;
+                    }
                 }
                 it->second.fuel += got;
             }
@@ -810,13 +866,21 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
     {
         for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
             const int32_t cost = unit->typeDef().foodPerTurn();
-            if (cost <= 0) { continue; }
-            for (std::pair<const int32_t, aoc::game::GameState::EncampmentBuffer>& kv
-                    : gameState.encampments()) {
-                if (kv.second.owner != player.id()) { continue; }
-                if (kv.second.food <= 0) { continue; }
+            if (cost <= 0) {
+                continue;
+            }
+            for (std::pair<const int32_t, aoc::game::GameState::EncampmentBuffer>& kv :
+                 gameState.encampments()) {
+                if (kv.second.owner != player.id()) {
+                    continue;
+                }
+                if (kv.second.food <= 0) {
+                    continue;
+                }
                 const aoc::hex::AxialCoord depot = grid.toAxial(kv.first);
-                if (grid.distance(unit->position(), depot) > 5) { continue; }
+                if (grid.distance(unit->position(), depot) > 5) {
+                    continue;
+                }
                 const int32_t take = std::min(cost, kv.second.food);
                 kv.second.food -= take;
                 remaining -= take;
@@ -826,18 +890,22 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
     }
 
     // Drain priority order: processed first (most efficient), then raw foods.
-    constexpr std::array<uint16_t, 5> FOOD_GOODS = {
-        goods::PROCESSED_FOOD, goods::WHEAT, goods::CATTLE,
-        goods::FISH, goods::RICE
-    };
+    constexpr std::array<uint16_t, 5> FOOD_GOODS = {goods::PROCESSED_FOOD, goods::WHEAT,
+                                                    goods::CATTLE, goods::FISH, goods::RICE};
 
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
-        if (remaining <= 0) { break; }
+        if (remaining <= 0) {
+            break;
+        }
         CityStockpileComponent& sp = city->stockpile();
         for (uint16_t goodId : FOOD_GOODS) {
-            if (remaining <= 0) { break; }
+            if (remaining <= 0) {
+                break;
+            }
             const int32_t avail = sp.getAmount(goodId);
-            if (avail <= 0) { continue; }
+            if (avail <= 0) {
+                continue;
+            }
             const int32_t take = std::min(avail, remaining);
             (void)sp.consumeGoods(goodId, take);
             remaining -= take;
@@ -851,15 +919,18 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
     std::vector<aoc::game::Unit*> sorted;
     sorted.reserve(player.units().size());
     for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
-        if (unit->typeDef().foodPerTurn() <= 0) { continue; }
+        if (unit->typeDef().foodPerTurn() <= 0) {
+            continue;
+        }
         const int32_t pIdx = grid.toIndex(unit->position());
-        if (grid.owner(pIdx) == player.id()) { continue; }
+        if (grid.owner(pIdx) == player.id()) {
+            continue;
+        }
         sorted.push_back(unit.get());
     }
-    std::sort(sorted.begin(), sorted.end(),
-        [](const aoc::game::Unit* a, const aoc::game::Unit* b) {
-            return a->typeDef().foodPerTurn() < b->typeDef().foodPerTurn();
-        });
+    std::sort(sorted.begin(), sorted.end(), [](const aoc::game::Unit* a, const aoc::game::Unit* b) {
+        return a->typeDef().foodPerTurn() < b->typeDef().foodPerTurn();
+    });
 
     int32_t budget = fed;
     for (aoc::game::Unit* unit : sorted) {
@@ -877,10 +948,10 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
 
     // 5+ consecutive starving turns → auto-disband oldest starving unit.
     aoc::game::Unit* disbandTarget = nullptr;
-    int32_t worst = 0;
+    int32_t worst                  = 0;
     for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
         if (unit->turnsStarving() >= 5 && unit->turnsStarving() > worst) {
-            worst = unit->turnsStarving();
+            worst         = unit->turnsStarving();
             disbandTarget = unit.get();
         }
     }
@@ -888,8 +959,7 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
         LOG_WARN("Player %u unit '%.*s' deserted after %d starving turns",
                  static_cast<unsigned>(player.id()),
                  static_cast<int>(disbandTarget->typeDef().name.size()),
-                 disbandTarget->typeDef().name.data(),
-                 disbandTarget->turnsStarving());
+                 disbandTarget->typeDef().name.data(), disbandTarget->turnsStarving());
         player.removeUnit(disbandTarget);
     }
 
@@ -899,7 +969,9 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
     // disband). Famine as a STANDALONE event is gated to drought
     // disasters only (WorldEventId::FamineWarning fires on globalTemp
     // ≥ 2.0); routine food deficit is silent.
-    (void)demand; (void)fed; (void)starving;
+    (void)demand;
+    (void)fed;
+    (void)starving;
 }
 
 } // namespace aoc::sim

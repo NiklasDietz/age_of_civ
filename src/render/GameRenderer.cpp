@@ -1957,15 +1957,20 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
             const aoc::game::City* pc = this->districtPreviewCity;
             const std::vector<aoc::hex::AxialCoord> sites =
                 aoc::sim::districtCandidateTiles(gameState, grid, *pc, this->districtPreviewType);
-            // Scored once per frame, not once per draw: the score walks every
-            // district in the world, so asking twice per tile is not free.
+            // Scored once per frame against one index, not once per draw:
+            // building the index walks every city the owner has.
+            aoc::sim::DistrictIndex previewIndex;
+            const aoc::game::Player* previewOwner = gameState.player(pc->owner());
+            if (previewOwner != nullptr) {
+                previewIndex.build(*previewOwner);
+            }
             std::vector<float> scores;
             scores.reserve(sites.size());
             float bestScore  = 0.0f;
             float worstScore = 0.0f;
             for (const aoc::hex::AxialCoord& site : sites) {
-                const float score =
-                    aoc::sim::districtTileScore(gameState, grid, this->districtPreviewType, site);
+                const float score = aoc::sim::districtTileScore(previewIndex, grid,
+                                                                this->districtPreviewType, site);
                 if (scores.empty()) {
                     bestScore  = score;
                     worstScore = score;

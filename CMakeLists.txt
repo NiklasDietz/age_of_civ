@@ -973,6 +973,7 @@ if(AOC_BUILD_TESTS)
         test_deal_proposals
         test_natural_disasters
         test_district_placement
+        test_district_adjacency
         test_promotions
         test_formations
         test_governors

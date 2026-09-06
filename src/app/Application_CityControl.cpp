@@ -56,7 +56,7 @@ bool readIntParam(const std::unordered_map<std::string, std::string>& query, con
 } // namespace
 
 void Application::registerCityControlRoutes() {
-    using DSM = aoc::debug::DebugServer::Method;
+    using DSM   = aoc::debug::DebugServer::Method;
     using Query = std::unordered_map<std::string, std::string>;
 
     // Every city route names the city by its centre tile: player, q, r.
@@ -64,8 +64,8 @@ void Application::registerCityControlRoutes() {
                              std::string& err) -> bool {
         int32_t cq = 0;
         int32_t cr = 0;
-        if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", cq, err)
-            || !readIntParam(q, "r", cr, err)) {
+        if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", cq, err) ||
+            !readIntParam(q, "r", cr, err)) {
             return false;
         }
         at = aoc::hex::AxialCoord{cq, cr};
@@ -90,8 +90,8 @@ void Application::registerCityControlRoutes() {
             int32_t faith  = 0;
             aoc::hex::AxialCoord at{};
             std::string err;
-            if (!readCity(q, player, at, err) || !readIntParam(q, "type", type, err)
-                || !readIntParam(q, "item", item, err)) {
+            if (!readCity(q, player, at, err) || !readIntParam(q, "type", type, err) ||
+                !readIntParam(q, "item", item, err)) {
                 return err;
             }
             if (q.count("faith") != 0 && !readIntParam(q, "faith", faith, err)) {
@@ -145,8 +145,8 @@ void Application::registerCityControlRoutes() {
             int32_t tr     = 0;
             aoc::hex::AxialCoord at{};
             std::string err;
-            if (!readCity(q, player, at, err) || !readIntParam(q, "tq", tq, err)
-                || !readIntParam(q, "tr", tr, err)) {
+            if (!readCity(q, player, at, err) || !readIntParam(q, "tq", tq, err) ||
+                !readIntParam(q, "tr", tr, err)) {
                 return err;
             }
             aoc::debug::ToggleTileLockCommand cmd{};
@@ -177,7 +177,8 @@ void Application::registerCityControlRoutes() {
             return queued(cmd);
         });
 
-    // POST /game/city/project?player=&q=&r=&project=   (0 Bread and Circuses .. 5 Military Training)
+    // POST /game/city/project?player=&q=&r=&project=   (0 Bread and Circuses .. 5 Military
+    // Training)
     this->m_debugServer->routeJson(
         DSM::Post, "/game/city/project",
         [this, readCity, queued](const Query& q, const std::string&) -> std::string {
@@ -203,14 +204,14 @@ void Application::registerCityControlRoutes() {
 }
 
 void Application::registerBuilderControlRoutes() {
-    using DSM = aoc::debug::DebugServer::Method;
-    using Query = std::unordered_map<std::string, std::string>;
+    using DSM           = aoc::debug::DebugServer::Method;
+    using Query         = std::unordered_map<std::string, std::string>;
     const auto readUnit = [](const Query& q, int32_t& player, aoc::hex::AxialCoord& at,
                              std::string& err) -> bool {
         int32_t uq = 0;
         int32_t ur = 0;
-        if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", uq, err)
-            || !readIntParam(q, "r", ur, err)) {
+        if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", uq, err) ||
+            !readIntParam(q, "r", ur, err)) {
             return false;
         }
         at = aoc::hex::AxialCoord{uq, ur};
@@ -286,14 +287,14 @@ void Application::registerBuilderControlRoutes() {
 }
 
 void Application::registerUnitOrderRoutes() {
-    using DSM = aoc::debug::DebugServer::Method;
-    using Query = std::unordered_map<std::string, std::string>;
+    using DSM           = aoc::debug::DebugServer::Method;
+    using Query         = std::unordered_map<std::string, std::string>;
     const auto readUnit = [](const Query& q, int32_t& player, aoc::hex::AxialCoord& at,
                              std::string& err) -> bool {
         int32_t uq = 0;
         int32_t ur = 0;
-        if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", uq, err)
-            || !readIntParam(q, "r", ur, err)) {
+        if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", uq, err) ||
+            !readIntParam(q, "r", ur, err)) {
             return false;
         }
         at = aoc::hex::AxialCoord{uq, ur};
@@ -307,7 +308,8 @@ void Application::registerUnitOrderRoutes() {
     const auto simpleRoute = [this, readUnit, queued](const char* path, auto makeCommand) {
         this->m_debugServer->routeJson(
             DSM::Post, path,
-            [this, readUnit, queued, makeCommand](const Query& q, const std::string&) -> std::string {
+            [this, readUnit, queued, makeCommand](const Query& q,
+                                                  const std::string&) -> std::string {
                 if (this->m_appState != AppState::InGame) {
                     throw aoc::debug::ServiceUnavailableError("no active game");
                 }
@@ -346,12 +348,13 @@ void Application::registerUnitOrderRoutes() {
             if (!readUnit(q, player, at, err) || !readIntParam(q, "promotion", promotion, err)) {
                 return err;
             }
-            if (promotion < 0 || promotion >= static_cast<int32_t>(aoc::sim::PROMOTION_DEFS.size())) {
+            if (promotion < 0 ||
+                promotion >= static_cast<int32_t>(aoc::sim::PROMOTION_DEFS.size())) {
                 return std::string("{\"error\":\"promotion out of range\"}");
             }
-            return queued(aoc::debug::PromoteUnitCommand{
-                static_cast<aoc::PlayerId>(player), at,
-                aoc::PromotionId{static_cast<uint8_t>(promotion)}});
+            return queued(
+                aoc::debug::PromoteUnitCommand{static_cast<aoc::PlayerId>(player), at,
+                                               aoc::PromotionId{static_cast<uint8_t>(promotion)}});
         });
 
     // POST /game/unit/alert?player=&q=&r=&on=
@@ -371,13 +374,14 @@ void Application::registerUnitOrderRoutes() {
             if (q.count("on") != 0 && !readIntParam(q, "on", on, err)) {
                 return err;
             }
-            return queued(aoc::debug::SetAlertCommand{static_cast<aoc::PlayerId>(player), at, on != 0});
+            return queued(
+                aoc::debug::SetAlertCommand{static_cast<aoc::PlayerId>(player), at, on != 0});
         });
 }
 
 void Application::registerReligionRoutes() {
-    using DSM = aoc::debug::DebugServer::Method;
-    using Query = std::unordered_map<std::string, std::string>;
+    using DSM         = aoc::debug::DebugServer::Method;
+    using Query       = std::unordered_map<std::string, std::string>;
     const auto queued = [this](const aoc::debug::GameControlCommand& cmd) -> std::string {
         std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
         this->m_pendingCommands.push_back(cmd);
@@ -393,7 +397,8 @@ void Application::registerReligionRoutes() {
             int32_t player = 0;
             int32_t belief = 0;
             std::string err;
-            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "belief", belief, err)) {
+            if (!readIntParam(q, "player", player, err) ||
+                !readIntParam(q, "belief", belief, err)) {
                 return err;
             }
             if (belief < 0 || belief >= static_cast<int32_t>(aoc::sim::BELIEF_COUNT)) {
@@ -409,19 +414,20 @@ void Application::registerReligionRoutes() {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
-            int32_t player = 0;
-            int32_t founder = 0;
-            int32_t worship = 0;
+            int32_t player   = 0;
+            int32_t founder  = 0;
+            int32_t worship  = 0;
             int32_t enhancer = 0;
             std::string err;
-            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "founder", founder, err)
-                || !readIntParam(q, "worship", worship, err)
-                || !readIntParam(q, "enhancer", enhancer, err)) {
+            if (!readIntParam(q, "player", player, err) ||
+                !readIntParam(q, "founder", founder, err) ||
+                !readIntParam(q, "worship", worship, err) ||
+                !readIntParam(q, "enhancer", enhancer, err)) {
                 return err;
             }
             const int32_t count = static_cast<int32_t>(aoc::sim::BELIEF_COUNT);
-            if (founder < 0 || founder >= count || worship < 0 || worship >= count || enhancer < 0
-                || enhancer >= count) {
+            if (founder < 0 || founder >= count || worship < 0 || worship >= count ||
+                enhancer < 0 || enhancer >= count) {
                 return std::string("{\"error\":\"belief out of range\"}");
             }
             return queued(aoc::debug::FoundReligionCommand{
@@ -441,10 +447,10 @@ void warnRejected(const char* what, aoc::PlayerId player, aoc::hex::AxialCoord a
 
 void Application::executeGameControlCommand(const aoc::debug::CityPurchaseCommand& cmd) {
     const ErrorCode rc = cmd.withFaith
-        ? aoc::sim::requestFaithPurchase(this->m_gameState, cmd.player, cmd.at,
-                                         aoc::UnitTypeId{cmd.itemId})
-        : aoc::sim::requestPurchase(this->m_gameState, &this->m_hexGrid, cmd.player, cmd.at,
-                                    cmd.type, cmd.itemId);
+                             ? aoc::sim::requestFaithPurchase(this->m_gameState, cmd.player, cmd.at,
+                                                              aoc::UnitTypeId{cmd.itemId})
+                             : aoc::sim::requestPurchase(this->m_gameState, &this->m_hexGrid,
+                                                         cmd.player, cmd.at, cmd.type, cmd.itemId);
     if (rc != ErrorCode::Ok) {
         warnRejected("Purchase", cmd.player, cmd.at, rc);
     }
@@ -485,8 +491,8 @@ void Application::executeGameControlCommand(const aoc::debug::QueueProjectComman
 void Application::executeGameControlCommand(const aoc::debug::PlaceImprovementCommand& cmd) {
     aoc::game::Player* owner = this->m_gameState.player(cmd.player);
     aoc::game::Unit* builder = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
-    const ErrorCode rc = aoc::sim::requestPlaceImprovement(this->m_gameState, this->m_hexGrid,
-                                                           cmd.player, cmd.at, cmd.type);
+    const ErrorCode rc       = aoc::sim::requestPlaceImprovement(this->m_gameState, this->m_hexGrid,
+                                                                 cmd.player, cmd.at, cmd.type);
     if (rc != ErrorCode::Ok) {
         warnRejected("Improvement", cmd.player, cmd.at, rc);
         return;
@@ -497,7 +503,8 @@ void Application::executeGameControlCommand(const aoc::debug::PlaceImprovementCo
 void Application::executeGameControlCommand(const aoc::debug::BuilderChopCommand& cmd) {
     aoc::game::Player* owner = this->m_gameState.player(cmd.player);
     aoc::game::Unit* builder = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
-    const ErrorCode rc = aoc::sim::requestChop(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
+    const ErrorCode rc =
+        aoc::sim::requestChop(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
     if (rc != ErrorCode::Ok) {
         warnRejected("Chop", cmd.player, cmd.at, rc);
         return;
@@ -508,7 +515,8 @@ void Application::executeGameControlCommand(const aoc::debug::BuilderChopCommand
 void Application::executeGameControlCommand(const aoc::debug::BuilderHarvestCommand& cmd) {
     aoc::game::Player* owner = this->m_gameState.player(cmd.player);
     aoc::game::Unit* builder = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
-    const ErrorCode rc = aoc::sim::requestHarvest(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
+    const ErrorCode rc =
+        aoc::sim::requestHarvest(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
     if (rc != ErrorCode::Ok) {
         warnRejected("Harvest", cmd.player, cmd.at, rc);
         return;
@@ -517,8 +525,8 @@ void Application::executeGameControlCommand(const aoc::debug::BuilderHarvestComm
 }
 
 void Application::executeGameControlCommand(const aoc::debug::PillageCommand& cmd) {
-    const ErrorCode rc = aoc::sim::requestPillage(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at,
-                                                  &this->m_diplomacy);
+    const ErrorCode rc = aoc::sim::requestPillage(this->m_gameState, this->m_hexGrid, cmd.player,
+                                                  cmd.at, &this->m_diplomacy);
     if (rc != ErrorCode::Ok) {
         warnRejected("Pillage", cmd.player, cmd.at, rc);
     }
@@ -527,7 +535,8 @@ void Application::executeGameControlCommand(const aoc::debug::PillageCommand& cm
 void Application::executeGameControlCommand(const aoc::debug::RepairCommand& cmd) {
     aoc::game::Player* owner = this->m_gameState.player(cmd.player);
     aoc::game::Unit* builder = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
-    const ErrorCode rc = aoc::sim::requestRepair(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
+    const ErrorCode rc =
+        aoc::sim::requestRepair(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
     if (rc != ErrorCode::Ok) {
         warnRejected("Repair", cmd.player, cmd.at, rc);
         return;
@@ -542,21 +551,24 @@ void Application::executeGameControlCommand(const aoc::debug::DeleteUnitCommand&
         this->m_selectedUnit    = nullptr;
         this->m_actionPanelUnit = nullptr;
     }
-    const ErrorCode rc = aoc::sim::requestDeleteUnit(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
+    const ErrorCode rc =
+        aoc::sim::requestDeleteUnit(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
     if (rc != ErrorCode::Ok) {
         warnRejected("Delete", cmd.player, cmd.at, rc);
     }
 }
 
 void Application::executeGameControlCommand(const aoc::debug::SetAlertCommand& cmd) {
-    const ErrorCode rc = aoc::sim::requestSetAlert(this->m_gameState, cmd.player, cmd.at, cmd.alert);
+    const ErrorCode rc =
+        aoc::sim::requestSetAlert(this->m_gameState, cmd.player, cmd.at, cmd.alert);
     if (rc != ErrorCode::Ok) {
         warnRejected("Alert", cmd.player, cmd.at, rc);
     }
 }
 
 void Application::executeGameControlCommand(const aoc::debug::PromoteUnitCommand& cmd) {
-    const ErrorCode rc = aoc::sim::requestPromotion(this->m_gameState, cmd.player, cmd.at, cmd.promotion);
+    const ErrorCode rc =
+        aoc::sim::requestPromotion(this->m_gameState, cmd.player, cmd.at, cmd.promotion);
     if (rc != ErrorCode::Ok) {
         warnRejected("Promotion", cmd.player, cmd.at, rc);
     }
@@ -580,7 +592,7 @@ void Application::executeGameControlCommand(const aoc::debug::FoundReligionComma
 }
 
 void Application::registerCultureRoutes() {
-    using DSM = aoc::debug::DebugServer::Method;
+    using DSM   = aoc::debug::DebugServer::Method;
     using Query = std::unordered_map<std::string, std::string>;
 
     this->m_debugServer->routeJson(
@@ -590,15 +602,15 @@ void Application::registerCultureRoutes() {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
             int32_t player = 0;
-            int32_t fromQ = 0;
-            int32_t fromR = 0;
-            int32_t index = 0;
-            int32_t toQ = 0;
-            int32_t toR = 0;
+            int32_t fromQ  = 0;
+            int32_t fromR  = 0;
+            int32_t index  = 0;
+            int32_t toQ    = 0;
+            int32_t toR    = 0;
             std::string err;
-            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", fromQ, err)
-                || !readIntParam(q, "r", fromR, err) || !readIntParam(q, "index", index, err)
-                || !readIntParam(q, "toQ", toQ, err) || !readIntParam(q, "toR", toR, err)) {
+            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", fromQ, err) ||
+                !readIntParam(q, "r", fromR, err) || !readIntParam(q, "index", index, err) ||
+                !readIntParam(q, "toQ", toQ, err) || !readIntParam(q, "toR", toR, err)) {
                 return err;
             }
             std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
@@ -609,8 +621,8 @@ void Application::registerCultureRoutes() {
 }
 
 void Application::executeGameControlCommand(const aoc::debug::MoveGreatWorkCommand& cmd) {
-    const ErrorCode rc = aoc::sim::requestMoveGreatWork(this->m_gameState, cmd.player, cmd.from,
-                                                        cmd.index, cmd.to);
+    const ErrorCode rc =
+        aoc::sim::requestMoveGreatWork(this->m_gameState, cmd.player, cmd.from, cmd.index, cmd.to);
     if (rc != ErrorCode::Ok) {
         LOG_WARN("Great Work move for player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
                  static_cast<int>(describeError(rc).size()), describeError(rc).data());
@@ -618,7 +630,7 @@ void Application::executeGameControlCommand(const aoc::debug::MoveGreatWorkComma
 }
 
 void Application::registerCityStateRoutes() {
-    using DSM = aoc::debug::DebugServer::Method;
+    using DSM   = aoc::debug::DebugServer::Method;
     using Query = std::unordered_map<std::string, std::string>;
 
     // player + index, then one command type per route.
@@ -630,32 +642,37 @@ void Application::registerCityStateRoutes() {
                     throw aoc::debug::ServiceUnavailableError("no active game");
                 }
                 int32_t player = 0;
-                int32_t index = 0;
+                int32_t index  = 0;
                 std::string err;
-                if (!readIntParam(q, "player", player, err) || !readIntParam(q, "index", index, err)) {
+                if (!readIntParam(q, "player", player, err) ||
+                    !readIntParam(q, "index", index, err)) {
                     return err;
                 }
-                if (index < 0 || static_cast<std::size_t>(index) >= this->m_gameState.cityStates().size()) {
+                if (index < 0 ||
+                    static_cast<std::size_t>(index) >= this->m_gameState.cityStates().size()) {
                     return std::string("{\"error\":\"index out of range\"}");
                 }
                 std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
-                this->m_pendingCommands.push_back(makeCommand(static_cast<aoc::PlayerId>(player), index));
+                this->m_pendingCommands.push_back(
+                    makeCommand(static_cast<aoc::PlayerId>(player), index));
                 return std::string("{\"queued\":true}");
             });
     };
-    csRoute("/game/citystate/envoy", [](aoc::PlayerId p, int32_t i) -> aoc::debug::GameControlCommand {
-        return aoc::debug::SendEnvoyCommand{p, i};
-    });
-    csRoute("/game/citystate/levy", [](aoc::PlayerId p, int32_t i) -> aoc::debug::GameControlCommand {
-        return aoc::debug::LevyCityStateCommand{p, i};
-    });
-    csRoute("/game/citystate/bully", [](aoc::PlayerId p, int32_t i) -> aoc::debug::GameControlCommand {
-        return aoc::debug::BullyCityStateCommand{p, i};
-    });
+    csRoute("/game/citystate/envoy",
+            [](aoc::PlayerId p, int32_t i) -> aoc::debug::GameControlCommand {
+                return aoc::debug::SendEnvoyCommand{p, i};
+            });
+    csRoute("/game/citystate/levy",
+            [](aoc::PlayerId p, int32_t i) -> aoc::debug::GameControlCommand {
+                return aoc::debug::LevyCityStateCommand{p, i};
+            });
+    csRoute("/game/citystate/bully",
+            [](aoc::PlayerId p, int32_t i) -> aoc::debug::GameControlCommand {
+                return aoc::debug::BullyCityStateCommand{p, i};
+            });
 
     this->m_debugServer->routeJson(
-        DSM::Get, "/game/citystates",
-        [this](const Query& q, const std::string&) -> std::string {
+        DSM::Get, "/game/citystates", [this](const Query& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -664,25 +681,33 @@ void Application::registerCityStateRoutes() {
             if (!readIntParam(q, "player", player, err)) {
                 return err;
             }
-            const aoc::PlayerId pid = static_cast<aoc::PlayerId>(player);
+            const aoc::PlayerId pid     = static_cast<aoc::PlayerId>(player);
             const aoc::game::Player* me = this->m_gameState.player(pid);
-            std::string json = "{\"available\":" + std::to_string(me != nullptr ? me->envoys().available : 0)
-                               + ",\"cityStates\":[";
-            const std::vector<aoc::sim::CityStateComponent>& states = this->m_gameState.cityStates();
+            std::string json =
+                "{\"available\":" + std::to_string(me != nullptr ? me->envoys().available : 0) +
+                ",\"cityStates\":[";
+            const std::vector<aoc::sim::CityStateComponent>& states =
+                this->m_gameState.cityStates();
             for (std::size_t i = 0; i < states.size(); ++i) {
                 const aoc::sim::CityStateComponent& cs = states[i];
-                const int32_t mine = pid < MAX_PLAYERS ? cs.envoys[pid] : 0;
+                const int32_t mine                     = pid < MAX_PLAYERS ? cs.envoys[pid] : 0;
                 const std::string_view name = cs.defId < aoc::sim::CITY_STATE_DEFS.size()
                                                   ? aoc::sim::CITY_STATE_DEFS[cs.defId].name
                                                   : std::string_view("?");
-                if (i > 0) { json += ","; }
-                json += "{\"index\":" + std::to_string(i) + ",\"name\":\"" + std::string(name) + "\",\"type\":\""
-                        + std::string(aoc::sim::cityStateTypeName(cs.type)) + "\",\"met\":"
-                        + (cs.hasMet(pid) ? "true" : "false") + ",\"envoys\":" + std::to_string(mine)
-                        + ",\"suzerain\":" + std::to_string(static_cast<unsigned>(cs.suzerain))
-                        + ",\"q\":" + std::to_string(cs.location.q) + ",\"r\":" + std::to_string(cs.location.r)
-                        + ",\"questActive\":" + (cs.activeQuest.isActive && cs.activeQuest.assignedTo == pid ? "true" : "false")
-                        + ",\"levyPlayer\":" + std::to_string(static_cast<unsigned>(cs.levyPlayer)) + "}";
+                if (i > 0) {
+                    json += ",";
+                }
+                json += "{\"index\":" + std::to_string(i) + ",\"name\":\"" + std::string(name) +
+                        "\",\"type\":\"" + std::string(aoc::sim::cityStateTypeName(cs.type)) +
+                        "\",\"met\":" + (cs.hasMet(pid) ? "true" : "false") +
+                        ",\"envoys\":" + std::to_string(mine) +
+                        ",\"suzerain\":" + std::to_string(static_cast<unsigned>(cs.suzerain)) +
+                        ",\"q\":" + std::to_string(cs.location.q) +
+                        ",\"r\":" + std::to_string(cs.location.r) + ",\"questActive\":" +
+                        (cs.activeQuest.isActive && cs.activeQuest.assignedTo == pid ? "true"
+                                                                                     : "false") +
+                        ",\"levyPlayer\":" + std::to_string(static_cast<unsigned>(cs.levyPlayer)) +
+                        "}";
             }
             json += "]}";
             return json;
@@ -717,7 +742,7 @@ void Application::executeGameControlCommand(const aoc::debug::BullyCityStateComm
 }
 
 void Application::registerDiplomacyRoutes() {
-    using DSM = aoc::debug::DebugServer::Method;
+    using DSM   = aoc::debug::DebugServer::Method;
     using Query = std::unordered_map<std::string, std::string>;
 
     // player + target, one command type per route; war also takes cb (CasusBelliType index).
@@ -730,9 +755,10 @@ void Application::registerDiplomacyRoutes() {
                 }
                 int32_t player = 0;
                 int32_t target = 0;
-                int32_t cb = 0;
+                int32_t cb     = 0;
                 std::string err;
-                if (!readIntParam(q, "player", player, err) || !readIntParam(q, "target", target, err)) {
+                if (!readIntParam(q, "player", player, err) ||
+                    !readIntParam(q, "target", target, err)) {
                     return err;
                 }
                 if (withCasusBelli && !readIntParam(q, "cb", cb, err)) {
@@ -781,8 +807,7 @@ void Application::registerDiplomacyRoutes() {
               });
 
     this->m_debugServer->routeJson(
-        DSM::Get, "/game/diplomacy",
-        [this](const Query& q, const std::string&) -> std::string {
+        DSM::Get, "/game/diplomacy", [this](const Query& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -795,35 +820,39 @@ void Application::registerDiplomacyRoutes() {
                 return std::string("{\"error\":\"player out of range\"}");
             }
             const aoc::PlayerId me = static_cast<aoc::PlayerId>(player);
-            const int32_t turn    = this->m_gameState.currentTurn();
-            std::string json      = "{\"turn\":" + std::to_string(turn) + ",\"relations\":[";
-            bool first            = true;
+            const int32_t turn     = this->m_gameState.currentTurn();
+            std::string json       = "{\"turn\":" + std::to_string(turn) + ",\"relations\":[";
+            bool first             = true;
             for (const std::unique_ptr<aoc::game::Player>& other : this->m_gameState.players()) {
-                if (other == nullptr || other->id() == me
-                    || other->id() >= this->m_diplomacy.playerCount()) {
+                if (other == nullptr || other->id() == me ||
+                    other->id() >= this->m_diplomacy.playerCount()) {
                     continue;
                 }
                 const aoc::sim::PairwiseRelation& rel = this->m_diplomacy.relation(me, other->id());
-                if (!first) { json += ","; }
+                if (!first) {
+                    json += ",";
+                }
                 first = false;
-                json += "{\"id\":" + std::to_string(static_cast<unsigned>(other->id()))
-                        + ",\"met\":" + (rel.hasMet ? "true" : "false")
-                        + ",\"atWar\":" + (rel.isAtWar ? "true" : "false")
-                        + ",\"score\":" + std::to_string(rel.totalScore())
-                        + ",\"stance\":\"" + std::string(aoc::sim::stanceName(rel.stance())) + "\""
-                        + ",\"openBorders\":" + (rel.hasOpenBorders ? "true" : "false")
-                        + ",\"openBordersUntil\":" + std::to_string(rel.openBordersUntilTurn)
-                        + ",\"friendsUntil\":" + std::to_string(rel.friendshipUntilTurn)
-                        + ",\"denouncedOn\":" + std::to_string(rel.denouncedOnTurn)
-                        + ",\"delegation\":" + (rel.hasDelegation ? "true" : "false")
-                        + ",\"embassy\":" + (rel.hasEmbassy ? "true" : "false")
-                        + ",\"turnsSincePeace\":" + std::to_string(rel.turnsSincePeace)
-                        + ",\"warDeclaredOn\":" + std::to_string(rel.warDeclaredOnTurn)
-                        + ",\"casusBelli\":[";
+                json += "{\"id\":" + std::to_string(static_cast<unsigned>(other->id())) +
+                        ",\"met\":" + (rel.hasMet ? "true" : "false") +
+                        ",\"atWar\":" + (rel.isAtWar ? "true" : "false") +
+                        ",\"score\":" + std::to_string(rel.totalScore()) + ",\"stance\":\"" +
+                        std::string(aoc::sim::stanceName(rel.stance())) + "\"" +
+                        ",\"openBorders\":" + (rel.hasOpenBorders ? "true" : "false") +
+                        ",\"openBordersUntil\":" + std::to_string(rel.openBordersUntilTurn) +
+                        ",\"friendsUntil\":" + std::to_string(rel.friendshipUntilTurn) +
+                        ",\"denouncedOn\":" + std::to_string(rel.denouncedOnTurn) +
+                        ",\"delegation\":" + (rel.hasDelegation ? "true" : "false") +
+                        ",\"embassy\":" + (rel.hasEmbassy ? "true" : "false") +
+                        ",\"turnsSincePeace\":" + std::to_string(rel.turnsSincePeace) +
+                        ",\"warDeclaredOn\":" + std::to_string(rel.warDeclaredOnTurn) +
+                        ",\"casusBelli\":[";
                 bool firstCb = true;
                 for (const aoc::sim::CasusBelliType cb : aoc::sim::availableCasusBelli(
                          this->m_gameState, this->m_diplomacy, me, other->id(), turn)) {
-                    if (!firstCb) { json += ","; }
+                    if (!firstCb) {
+                        json += ",";
+                    }
                     firstCb = false;
                     json += std::to_string(static_cast<int>(cb));
                 }
@@ -836,7 +865,8 @@ void Application::registerDiplomacyRoutes() {
 
 namespace {
 
-void logDiplomacyResult(const char* what, aoc::PlayerId player, aoc::PlayerId target, ErrorCode rc) {
+void logDiplomacyResult(const char* what, aoc::PlayerId player, aoc::PlayerId target,
+                        ErrorCode rc) {
     if (rc != ErrorCode::Ok) {
         LOG_WARN("%s by player %u toward %u rejected: %.*s", what, static_cast<unsigned>(player),
                  static_cast<unsigned>(target), static_cast<int>(describeError(rc).size()),
@@ -847,12 +877,11 @@ void logDiplomacyResult(const char* what, aoc::PlayerId player, aoc::PlayerId ta
 } // namespace
 
 void Application::executeGameControlCommand(const aoc::debug::DeclareWarCommand& cmd) {
-    logDiplomacyResult("Declare war", cmd.player, cmd.target,
-                       aoc::sim::requestDeclareWar(this->m_gameState, this->m_diplomacy, cmd.player,
-                                                   cmd.target,
-                                                   static_cast<aoc::sim::CasusBelliType>(cmd.casusBelli),
-                                                   this->m_gameState.currentTurn(),
-                                                   &this->m_allianceTracker));
+    logDiplomacyResult(
+        "Declare war", cmd.player, cmd.target,
+        aoc::sim::requestDeclareWar(this->m_gameState, this->m_diplomacy, cmd.player, cmd.target,
+                                    static_cast<aoc::sim::CasusBelliType>(cmd.casusBelli),
+                                    this->m_gameState.currentTurn(), &this->m_allianceTracker));
 }
 
 void Application::executeGameControlCommand(const aoc::debug::MakePeaceCommand& cmd) {
@@ -876,8 +905,8 @@ void Application::executeGameControlCommand(const aoc::debug::DeclareFriendshipC
 
 void Application::executeGameControlCommand(const aoc::debug::SendDelegationCommand& cmd) {
     logDiplomacyResult("Delegation", cmd.player, cmd.target,
-                       aoc::sim::requestSendDelegation(this->m_gameState, this->m_diplomacy, cmd.player,
-                                                       cmd.target));
+                       aoc::sim::requestSendDelegation(this->m_gameState, this->m_diplomacy,
+                                                       cmd.player, cmd.target));
 }
 
 void Application::executeGameControlCommand(const aoc::debug::EstablishEmbassyCommand& cmd) {
@@ -888,8 +917,9 @@ void Application::executeGameControlCommand(const aoc::debug::EstablishEmbassyCo
 
 void Application::executeGameControlCommand(const aoc::debug::OpenBordersCommand& cmd) {
     logDiplomacyResult("Open borders", cmd.player, cmd.target,
-                       aoc::sim::requestOpenBorders(this->m_gameState, this->m_diplomacy, cmd.player,
-                                                    cmd.target, this->m_gameState.currentTurn()));
+                       aoc::sim::requestOpenBorders(this->m_gameState, this->m_diplomacy,
+                                                    cmd.player, cmd.target,
+                                                    this->m_gameState.currentTurn()));
 }
 
 namespace {
@@ -904,10 +934,13 @@ bool readOptionalInt(const std::unordered_map<std::string, std::string>& query, 
     return readIntParam(query, name, out, errorJson);
 }
 
-std::string dealTermsJson(const aoc::game::GameState& gameState, const aoc::sim::DiplomaticDeal& deal) {
+std::string dealTermsJson(const aoc::game::GameState& gameState,
+                          const aoc::sim::DiplomaticDeal& deal) {
     std::string json = "[";
     for (std::size_t t = 0; t < deal.terms.size(); ++t) {
-        if (t > 0) { json += ","; }
+        if (t > 0) {
+            json += ",";
+        }
         json += "\"" + aoc::sim::describeDealTerm(gameState, deal.terms[t]) + "\"";
     }
     return json + "]";
@@ -916,66 +949,65 @@ std::string dealTermsJson(const aoc::game::GameState& gameState, const aoc::sim:
 } // namespace
 
 void Application::registerDealRoutes() {
-    using DSM = aoc::debug::DebugServer::Method;
+    using DSM   = aoc::debug::DebugServer::Method;
     using Query = std::unordered_map<std::string, std::string>;
 
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/deal/propose",
-        [this](const Query& q, const std::string&) -> std::string {
+        DSM::Post, "/game/deal/propose", [this](const Query& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
-            int32_t player = 0;
-            int32_t target = 0;
-            int32_t giveGold = 0;
-            int32_t askGold = 0;
-            int32_t openBorders = 0;
+            int32_t player        = 0;
+            int32_t target        = 0;
+            int32_t giveGold      = 0;
+            int32_t askGold       = 0;
+            int32_t openBorders   = 0;
             int32_t nonAggression = 0;
             std::string err;
-            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "target", target, err)
-                || !readOptionalInt(q, "giveGold", 0, giveGold, err) || !readOptionalInt(q, "askGold", 0, askGold, err)
-                || !readOptionalInt(q, "openBorders", 0, openBorders, err)
-                || !readOptionalInt(q, "nonAggression", 0, nonAggression, err)) {
+            if (!readIntParam(q, "player", player, err) ||
+                !readIntParam(q, "target", target, err) ||
+                !readOptionalInt(q, "giveGold", 0, giveGold, err) ||
+                !readOptionalInt(q, "askGold", 0, askGold, err) ||
+                !readOptionalInt(q, "openBorders", 0, openBorders, err) ||
+                !readOptionalInt(q, "nonAggression", 0, nonAggression, err)) {
                 return err;
             }
-            if (player < 0 || target < 0 || player >= MAX_PLAYERS || target >= MAX_PLAYERS || giveGold < 0
-                || askGold < 0) {
+            if (player < 0 || target < 0 || player >= MAX_PLAYERS || target >= MAX_PLAYERS ||
+                giveGold < 0 || askGold < 0) {
                 return std::string("{\"error\":\"player, target or gold out of range\"}");
             }
             std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
             this->m_pendingCommands.push_back(aoc::debug::ProposeDealCommand{
-                static_cast<aoc::PlayerId>(player), static_cast<aoc::PlayerId>(target), giveGold, askGold,
-                openBorders != 0, nonAggression != 0});
+                static_cast<aoc::PlayerId>(player), static_cast<aoc::PlayerId>(target), giveGold,
+                askGold, openBorders != 0, nonAggression != 0});
             return std::string("{\"queued\":true}");
         });
 
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/deal/respond",
-        [this](const Query& q, const std::string&) -> std::string {
+        DSM::Post, "/game/deal/respond", [this](const Query& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
             int32_t player = 0;
-            int32_t index = 0;
+            int32_t index  = 0;
             int32_t accept = 0;
             std::string err;
-            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "index", index, err)
-                || !readIntParam(q, "accept", accept, err)) {
+            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "index", index, err) ||
+                !readIntParam(q, "accept", accept, err)) {
                 return err;
             }
-            if (player < 0 || player >= MAX_PLAYERS || index < 0
-                || static_cast<std::size_t>(index) >= this->m_gameState.pendingProposals().size()) {
+            if (player < 0 || player >= MAX_PLAYERS || index < 0 ||
+                static_cast<std::size_t>(index) >= this->m_gameState.pendingProposals().size()) {
                 return std::string("{\"error\":\"player or index out of range\"}");
             }
             std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
-            this->m_pendingCommands.push_back(
-                aoc::debug::RespondProposalCommand{static_cast<aoc::PlayerId>(player), index, accept != 0});
+            this->m_pendingCommands.push_back(aoc::debug::RespondProposalCommand{
+                static_cast<aoc::PlayerId>(player), index, accept != 0});
             return std::string("{\"queued\":true}");
         });
 
     this->m_debugServer->routeJson(
-        DSM::Get, "/game/deals",
-        [this](const Query& q, const std::string&) -> std::string {
+        DSM::Get, "/game/deals", [this](const Query& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -985,28 +1017,40 @@ void Application::registerDealRoutes() {
                 return err;
             }
             const aoc::PlayerId me = static_cast<aoc::PlayerId>(player);
-            std::string json = "{\"inbox\":[";
-            bool first = true;
-            const std::vector<aoc::sim::PendingProposal>& inbox = this->m_gameState.pendingProposals();
+            std::string json       = "{\"inbox\":[";
+            bool first             = true;
+            const std::vector<aoc::sim::PendingProposal>& inbox =
+                this->m_gameState.pendingProposals();
             for (std::size_t i = 0; i < inbox.size(); ++i) {
-                if (inbox[i].to != me) { continue; }
-                if (!first) { json += ","; }
+                if (inbox[i].to != me) {
+                    continue;
+                }
+                if (!first) {
+                    json += ",";
+                }
                 first = false;
-                json += "{\"index\":" + std::to_string(i) + ",\"from\":" + std::to_string(static_cast<unsigned>(inbox[i].from))
-                        + ",\"expiresTurn\":" + std::to_string(inbox[i].expiresTurn)
-                        + ",\"terms\":" + dealTermsJson(this->m_gameState, inbox[i].deal) + "}";
+                json += "{\"index\":" + std::to_string(i) +
+                        ",\"from\":" + std::to_string(static_cast<unsigned>(inbox[i].from)) +
+                        ",\"expiresTurn\":" + std::to_string(inbox[i].expiresTurn) +
+                        ",\"terms\":" + dealTermsJson(this->m_gameState, inbox[i].deal) + "}";
             }
             json += "],\"activeDeals\":[";
             first = true;
             for (const aoc::sim::DiplomaticDeal& deal : this->m_dealTracker.activeDeals) {
-                if (deal.playerA != me && deal.playerB != me) { continue; }
-                if (!first) { json += ","; }
+                if (deal.playerA != me && deal.playerB != me) {
+                    continue;
+                }
+                if (!first) {
+                    json += ",";
+                }
                 first = false;
-                json += "{\"with\":" + std::to_string(static_cast<unsigned>(deal.playerA == me ? deal.playerB : deal.playerA))
-                        + ",\"accepted\":" + (deal.isAccepted ? "true" : "false")
-                        + ",\"broken\":" + (deal.isBroken ? "true" : "false")
-                        + ",\"turnsRemaining\":" + std::to_string(deal.turnsRemaining)
-                        + ",\"terms\":" + dealTermsJson(this->m_gameState, deal) + "}";
+                json += "{\"with\":" +
+                        std::to_string(static_cast<unsigned>(deal.playerA == me ? deal.playerB
+                                                                                : deal.playerA)) +
+                        ",\"accepted\":" + (deal.isAccepted ? "true" : "false") +
+                        ",\"broken\":" + (deal.isBroken ? "true" : "false") +
+                        ",\"turnsRemaining\":" + std::to_string(deal.turnsRemaining) +
+                        ",\"terms\":" + dealTermsJson(this->m_gameState, deal) + "}";
             }
             json += "]}";
             return json;
@@ -1035,8 +1079,11 @@ void Application::executeGameControlCommand(const aoc::debug::ProposeDealCommand
     }
     for (const aoc::sim::DealTermType pact :
          {aoc::sim::DealTermType::OpenBorders, aoc::sim::DealTermType::NonAggression}) {
-        const bool wanted = pact == aoc::sim::DealTermType::OpenBorders ? cmd.openBorders : cmd.nonAggression;
-        if (!wanted) { continue; }
+        const bool wanted =
+            pact == aoc::sim::DealTermType::OpenBorders ? cmd.openBorders : cmd.nonAggression;
+        if (!wanted) {
+            continue;
+        }
         aoc::sim::DealTerm t{};
         t.type       = pact;
         t.fromPlayer = cmd.player;
@@ -1045,15 +1092,15 @@ void Application::executeGameControlCommand(const aoc::debug::ProposeDealCommand
         deal.terms.push_back(t);
     }
     logDiplomacyResult("Deal proposal", cmd.player, cmd.target,
-                       aoc::sim::requestProposeDeal(this->m_gameState, this->m_hexGrid, this->m_dealTracker,
-                                                    this->m_diplomacy, deal, this->m_gameState.currentTurn()));
+                       aoc::sim::requestProposeDeal(this->m_gameState, this->m_hexGrid,
+                                                    this->m_dealTracker, this->m_diplomacy, deal,
+                                                    this->m_gameState.currentTurn()));
 }
 
 void Application::executeGameControlCommand(const aoc::debug::RespondProposalCommand& cmd) {
-    const ErrorCode rc = aoc::sim::requestRespondToProposal(this->m_gameState, this->m_hexGrid, this->m_dealTracker,
-                                                            this->m_diplomacy, cmd.player,
-                                                            static_cast<std::size_t>(cmd.index), cmd.accept,
-                                                            this->m_gameState.currentTurn());
+    const ErrorCode rc = aoc::sim::requestRespondToProposal(
+        this->m_gameState, this->m_hexGrid, this->m_dealTracker, this->m_diplomacy, cmd.player,
+        static_cast<std::size_t>(cmd.index), cmd.accept, this->m_gameState.currentTurn());
     if (rc != ErrorCode::Ok) {
         LOG_WARN("Proposal answer by player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
                  static_cast<int>(describeError(rc).size()), describeError(rc).data());
@@ -1061,7 +1108,7 @@ void Application::executeGameControlCommand(const aoc::debug::RespondProposalCom
 }
 
 void Application::registerDistrictRoutes() {
-    using DSM = aoc::debug::DebugServer::Method;
+    using DSM   = aoc::debug::DebugServer::Method;
     using Query = std::unordered_map<std::string, std::string>;
 
     this->m_debugServer->routeJson(
@@ -1070,25 +1117,27 @@ void Application::registerDistrictRoutes() {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
-            int32_t player = 0;
-            int32_t cityQ = 0;
-            int32_t cityR = 0;
+            int32_t player   = 0;
+            int32_t cityQ    = 0;
+            int32_t cityR    = 0;
             int32_t district = 0;
-            int32_t tileQ = 0;
-            int32_t tileR = 0;
+            int32_t tileQ    = 0;
+            int32_t tileR    = 0;
             std::string err;
-            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", cityQ, err)
-                || !readIntParam(q, "r", cityR, err) || !readIntParam(q, "district", district, err)
-                || !readIntParam(q, "tileQ", tileQ, err) || !readIntParam(q, "tileR", tileR, err)) {
+            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", cityQ, err) ||
+                !readIntParam(q, "r", cityR, err) || !readIntParam(q, "district", district, err) ||
+                !readIntParam(q, "tileQ", tileQ, err) || !readIntParam(q, "tileR", tileR, err)) {
                 return err;
             }
             if (district < 0 || district >= static_cast<int32_t>(aoc::sim::DistrictType::Count)) {
                 return std::string("{\"error\":\"district out of range\"}");
             }
             std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
-            this->m_pendingCommands.push_back(aoc::debug::PlaceDistrictCommand{
-                static_cast<aoc::PlayerId>(player), {cityQ, cityR}, static_cast<uint8_t>(district),
-                {tileQ, tileR}});
+            this->m_pendingCommands.push_back(
+                aoc::debug::PlaceDistrictCommand{static_cast<aoc::PlayerId>(player),
+                                                 {cityQ, cityR},
+                                                 static_cast<uint8_t>(district),
+                                                 {tileQ, tileR}});
             return std::string("{\"queued\":true}");
         });
 
@@ -1098,38 +1147,44 @@ void Application::registerDistrictRoutes() {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
-            int32_t player = 0;
-            int32_t cityQ = 0;
-            int32_t cityR = 0;
+            int32_t player   = 0;
+            int32_t cityQ    = 0;
+            int32_t cityR    = 0;
             int32_t district = 0;
             std::string err;
-            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", cityQ, err)
-                || !readIntParam(q, "r", cityR, err) || !readIntParam(q, "district", district, err)) {
+            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "q", cityQ, err) ||
+                !readIntParam(q, "r", cityR, err) || !readIntParam(q, "district", district, err)) {
                 return err;
             }
             if (district < 0 || district >= static_cast<int32_t>(aoc::sim::DistrictType::Count)) {
                 return std::string("{\"error\":\"district out of range\"}");
             }
-            const aoc::game::Player* owner = this->m_gameState.player(static_cast<aoc::PlayerId>(player));
-            const aoc::game::City* city = owner != nullptr ? owner->cityAt({cityQ, cityR}) : nullptr;
+            const aoc::game::Player* owner =
+                this->m_gameState.player(static_cast<aoc::PlayerId>(player));
+            const aoc::game::City* city =
+                owner != nullptr ? owner->cityAt({cityQ, cityR}) : nullptr;
             if (city == nullptr) {
                 return std::string("{\"error\":\"no such city\"}");
             }
             const aoc::sim::DistrictType type = static_cast<aoc::sim::DistrictType>(district);
             const aoc::hex::AxialCoord best =
                 aoc::sim::bestDistrictTile(this->m_gameState, this->m_hexGrid, *city, type);
-            std::string json = "{\"best\":{\"q\":" + std::to_string(best.q) + ",\"r\":"
-                               + std::to_string(best.r) + "},\"sites\":[";
+            std::string json = "{\"best\":{\"q\":" + std::to_string(best.q) +
+                               ",\"r\":" + std::to_string(best.r) + "},\"sites\":[";
+            aoc::sim::DistrictIndex districts;
+            districts.build(*owner);
             bool first = true;
-            for (const aoc::hex::AxialCoord& tile :
-                 aoc::sim::districtCandidateTiles(this->m_gameState, this->m_hexGrid, *city, type)) {
-                if (!first) { json += ","; }
+            for (const aoc::hex::AxialCoord& tile : aoc::sim::districtCandidateTiles(
+                     this->m_gameState, this->m_hexGrid, *city, type)) {
+                if (!first) {
+                    json += ",";
+                }
                 first = false;
-                json += "{\"q\":" + std::to_string(tile.q) + ",\"r\":" + std::to_string(tile.r)
-                        + ",\"score\":"
-                        + std::to_string(static_cast<int32_t>(aoc::sim::districtTileScore(
-                              this->m_gameState, this->m_hexGrid, type, tile)))
-                        + "}";
+                json += "{\"q\":" + std::to_string(tile.q) + ",\"r\":" + std::to_string(tile.r) +
+                        ",\"score\":" +
+                        std::to_string(static_cast<int32_t>(
+                            aoc::sim::districtTileScore(districts, this->m_hexGrid, type, tile))) +
+                        "}";
             }
             json += "]}";
             return json;
@@ -1141,8 +1196,9 @@ void Application::executeGameControlCommand(const aoc::debug::PlaceDistrictComma
         this->m_gameState, this->m_hexGrid, cmd.player, cmd.cityLocation,
         static_cast<aoc::sim::DistrictType>(cmd.district), cmd.tile);
     if (rc != ErrorCode::Ok) {
-        LOG_WARN("District placement for player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
-                 static_cast<int>(describeError(rc).size()), describeError(rc).data());
+        LOG_WARN("District placement for player %u rejected: %.*s",
+                 static_cast<unsigned>(cmd.player), static_cast<int>(describeError(rc).size()),
+                 describeError(rc).data());
     }
 }
 

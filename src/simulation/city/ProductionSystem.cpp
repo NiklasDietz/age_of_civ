@@ -57,8 +57,7 @@ static bool cityHasPowerPlant(const aoc::game::City& c) {
     return false;
 }
 
-static bool cityIsPowered(const aoc::game::Player& player,
-                          const aoc::game::City& city,
+static bool cityIsPowered(const aoc::game::Player& player, const aoc::game::City& city,
                           const aoc::map::HexGrid& grid) {
     if (cityHasPowerPlant(city)) {
         return true;
@@ -70,8 +69,12 @@ static bool cityIsPowered(const aoc::game::Player& player,
     // Collect same-player plant-city center tile indices for fast check.
     std::unordered_set<int32_t> plantTileIndices;
     for (const std::unique_ptr<aoc::game::City>& other : player.cities()) {
-        if (other.get() == &city) { continue; }
-        if (!grid.isValid(other->location())) { continue; }
+        if (other.get() == &city) {
+            continue;
+        }
+        if (!grid.isValid(other->location())) {
+            continue;
+        }
         if (cityHasPowerPlant(*other)) {
             plantTileIndices.insert(grid.toIndex(other->location()));
         }
@@ -100,16 +103,23 @@ static bool cityIsPowered(const aoc::game::Player& player,
         if (plantTileIndices.count(idx) != 0) {
             return true;
         }
-        const aoc::hex::AxialCoord pos = grid.toAxial(idx);
+        const aoc::hex::AxialCoord pos                 = grid.toAxial(idx);
         const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(pos);
         for (const aoc::hex::AxialCoord& n : nbrs) {
-            if (!grid.isValid(n)) { continue; }
+            if (!grid.isValid(n)) {
+                continue;
+            }
             const int32_t nIdx = grid.toIndex(n);
-            if (visited.count(nIdx) != 0) { continue; }
-            if (grid.owner(nIdx) != player.id()) { continue; }
-            const bool passable = grid.hasPowerPole(nIdx)
-                               || ownedCityCenters.count(nIdx) != 0;
-            if (!passable) { continue; }
+            if (visited.count(nIdx) != 0) {
+                continue;
+            }
+            if (grid.owner(nIdx) != player.id()) {
+                continue;
+            }
+            const bool passable = grid.hasPowerPole(nIdx) || ownedCityCenters.count(nIdx) != 0;
+            if (!passable) {
+                continue;
+            }
             visited.insert(nIdx);
             frontier.push_back(nIdx);
         }
@@ -117,26 +127,25 @@ static bool cityIsPowered(const aoc::game::Player& player,
     return false;
 }
 
-static float computeCityProductionGS(const aoc::game::Player& player,
-                                      const aoc::game::City& city,
-                                      const aoc::map::HexGrid& grid,
-                                      const aoc::game::GameState& gameState,
-                                      const GovernmentModifiers& govMods) {
+static float computeCityProductionGS(const aoc::game::Player& player, const aoc::game::City& city,
+                                     const aoc::map::HexGrid& grid,
+                                     const aoc::game::GameState& gameState,
+                                     const GovernmentModifiers& govMods) {
     // Sum production from worked tiles
-    float totalProduction = 0.0f;
+    float totalProduction          = 0.0f;
     const CivilizationDef& civSpec = civDef(player.civId());
     for (const aoc::hex::AxialCoord& tile : city.workedTiles()) {
         if (grid.isValid(tile)) {
-            int32_t index = grid.toIndex(tile);
+            int32_t index             = grid.toIndex(tile);
             aoc::map::TileYield yield = effectiveTileYield(grid, index);
             totalProduction += static_cast<float>(yield.production);
             // Conditional production-from-tile bonuses.
-            if (civSpec.modifiers.productionFromMine > 0
-             && grid.improvement(index) == aoc::map::ImprovementType::Mine) {
+            if (civSpec.modifiers.productionFromMine > 0 &&
+                grid.improvement(index) == aoc::map::ImprovementType::Mine) {
                 totalProduction += static_cast<float>(civSpec.modifiers.productionFromMine);
             }
-            if (civSpec.modifiers.productionFromForest > 0
-             && grid.feature(index) == aoc::map::FeatureType::Forest) {
+            if (civSpec.modifiers.productionFromForest > 0 &&
+                grid.feature(index) == aoc::map::FeatureType::Forest) {
                 totalProduction += static_cast<float>(civSpec.modifiers.productionFromForest);
             }
         }
@@ -146,10 +155,6 @@ static float computeCityProductionGS(const aoc::game::Player& player,
     // built once per city; computeAdjacencyBonus used to re-walk every district
     // of every city of every player once per neighbour of every district here.
     const CityDistrictsComponent& districts = city.districts();
-    DistrictIndex districtIndex;
-    if (!districts.districts.empty()) {
-        districtIndex.build(gameState);
-    }
     for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
         for (BuildingId bid : district.buildings) {
             totalProduction += static_cast<float>(buildingDef(bid).productionBonus);
@@ -159,12 +164,13 @@ static float computeCityProductionGS(const aoc::game::Player& player,
                 totalProduction += static_cast<float>(civSpec.uniqueBuilding.productionBonus);
             }
         }
-        // Adjacency bonus, including districts owned by other players.
-        if (grid.isValid(district.location)) {
-            AdjacencyBonus adj = computeAdjacencyBonus(
-                grid, districtIndex, district.type, grid.toIndex(district.location));
-            totalProduction += adj.production;
-        }
+    }
+    // District adjacency, through the one shared path. Only the owner's own
+    // districts count, so the index is built from the player.
+    if (!districts.districts.empty()) {
+        DistrictIndex districtIndex;
+        districtIndex.build(player);
+        totalProduction += cityAdjacencyYields(grid, districtIndex, city).production;
     }
 
     // Civ unique improvement passive: applied once per city as flat bonus.
@@ -185,7 +191,7 @@ static float computeCityProductionGS(const aoc::game::Player& player,
     {
         const float eff = city.power().powerEfficiency();
         if (eff < 1.0f) {
-            const float scaled = 0.5f + 0.5f * eff;  // 1.0 efficiency → 1.0×, 0.0 → 0.5×
+            const float scaled = 0.5f + 0.5f * eff; // 1.0 efficiency → 1.0×, 0.0 → 0.5×
             totalProduction *= scaled;
         }
     }
@@ -221,14 +227,15 @@ static float computeCityProductionGS(const aoc::game::Player& player,
             totalProduction *= 1.25f;
         } else {
             const int32_t cityIdx = grid.toIndex(city.location());
-            int32_t poleCount = 0;
+            int32_t poleCount     = 0;
             if (grid.hasPowerPole(cityIdx) && grid.owner(cityIdx) == player.id()) {
                 ++poleCount;
             }
-            const std::array<aoc::hex::AxialCoord, 6> nbrs =
-                aoc::hex::neighbors(city.location());
+            const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(city.location());
             for (const aoc::hex::AxialCoord& n : nbrs) {
-                if (!grid.isValid(n)) { continue; }
+                if (!grid.isValid(n)) {
+                    continue;
+                }
                 const int32_t nIdx = grid.toIndex(n);
                 if (grid.hasPowerPole(nIdx) && grid.owner(nIdx) == player.id()) {
                     ++poleCount;
@@ -250,8 +257,8 @@ static float computeCityProductionGS(const aoc::game::Player& player,
     }
 
     // Corruption
-    float corruption = computeCorruption(player.government().government,
-                                          player.ownedCityCount(), govMods.corruptionReduction);
+    float corruption = computeCorruption(player.government().government, player.ownedCityCount(),
+                                         govMods.corruptionReduction);
     totalProduction *= (1.0f - corruption);
 
     // Inflation modifier
@@ -266,17 +273,20 @@ static float computeCityProductionGS(const aoc::game::Player& player,
     return totalProduction;
 }
 
-void processProductionQueues(aoc::game::GameState& gameState,
-                              aoc::map::HexGrid& grid,
-                              PlayerId player) {
+void processProductionQueues(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
+                             PlayerId player) {
     aoc::game::Player* gsPlayer = gameState.player(player);
-    if (gsPlayer == nullptr) { return; }
+    if (gsPlayer == nullptr) {
+        return;
+    }
 
     // The government modifiers are per player; they used to be recomputed per city.
     const GovernmentModifiers govMods = computeGovernmentModifiers(gsPlayer->government());
     for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
         ProductionQueueComponent& queue = city->production();
-        if (queue.isEmpty()) { continue; }
+        if (queue.isEmpty()) {
+            continue;
+        }
 
         float production = computeCityProductionGS(*gsPlayer, *city, grid, gameState, govMods);
 
@@ -285,20 +295,21 @@ void processProductionQueues(aoc::game::GameState& gameState,
         //   - Venetian Arsenal (17): doubles Naval unit production (+100%),
         //     empire-wide. Bonus applied only in cities whose production
         //     queue front is a unit of the matching class.
-        if (!queue.isEmpty()
-            && queue.queue.front().type == ProductionItemType::Unit) {
+        if (!queue.isEmpty() && queue.queue.front().type == ProductionItemType::Unit) {
             const UnitTypeDef& udef = unitTypeDef(UnitTypeId{queue.queue.front().itemId});
-            bool hasStatue = false;
-            bool hasArsenal = false;
+            bool hasStatue          = false;
+            bool hasArsenal         = false;
             for (const std::unique_ptr<aoc::game::City>& c : gsPlayer->cities()) {
                 const CityWondersComponent& cw = c->wonders();
-                if (!hasStatue  && cw.hasWonder(static_cast<aoc::sim::WonderId>(20))) {
+                if (!hasStatue && cw.hasWonder(static_cast<aoc::sim::WonderId>(20))) {
                     hasStatue = true;
                 }
                 if (!hasArsenal && cw.hasWonder(static_cast<aoc::sim::WonderId>(17))) {
                     hasArsenal = true;
                 }
-                if (hasStatue && hasArsenal) { break; }
+                if (hasStatue && hasArsenal) {
+                    break;
+                }
             }
             if (hasStatue && udef.unitClass == UnitClass::Settler) {
                 production *= 1.50f;
@@ -315,15 +326,15 @@ void processProductionQueues(aoc::game::GameState& gameState,
 
             // Check resource requirements
             CityStockpileComponent& stockpile = city->stockpile();
-            bool resourcesAvailable = true;
-            uint16_t missingGoodId = 0xFFFF;
+            bool resourcesAvailable           = true;
+            uint16_t missingGoodId            = 0xFFFF;
 
             if (item.type == ProductionItemType::Unit) {
                 const UnitTypeDef& udef = unitTypeDef(UnitTypeId{item.itemId});
                 for (const UnitResourceReq& req : udef.resourceReqs) {
                     if (req.isValid() && stockpile.getAmount(req.goodId) < req.amount) {
                         resourcesAvailable = false;
-                        missingGoodId = req.goodId;
+                        missingGoodId      = req.goodId;
                         break;
                     }
                 }
@@ -332,7 +343,7 @@ void processProductionQueues(aoc::game::GameState& gameState,
                 for (const BuildingResourceCost& cost : bdef.resourceCosts) {
                     if (cost.isValid() && stockpile.getAmount(cost.goodId) < cost.amount) {
                         resourcesAvailable = false;
-                        missingGoodId = cost.goodId;
+                        missingGoodId      = cost.goodId;
                         break;
                     }
                 }
@@ -345,10 +356,8 @@ void processProductionQueues(aoc::game::GameState& gameState,
                 // forever — it retries next turn once the good arrives. Warn so
                 // the stall is diagnosable.
                 LOG_WARN("Production stalled in %s: %.*s needs good %u (insufficient stock)",
-                         city->name().c_str(),
-                         static_cast<int>(item.name.size()),
-                         item.name.c_str(),
-                         static_cast<unsigned>(missingGoodId));
+                         city->name().c_str(), static_cast<int>(item.name.size()),
+                         item.name.c_str(), static_cast<unsigned>(missingGoodId));
 
                 // A3 (2026-09-03): "retries next turn once the good arrives"
                 // assumes the good ever arrives. When nothing in the empire
@@ -361,10 +370,8 @@ void processProductionQueues(aoc::game::GameState& gameState,
                 ++item.stalledTurns;
                 if (item.stalledTurns >= MAX_STALLED_TURNS) {
                     LOG_WARN("Abandoning %.*s in %s after %d stalled turns (good %u never arrived)",
-                             static_cast<int>(item.name.size()),
-                             item.name.c_str(),
-                             city->name().c_str(),
-                             item.stalledTurns,
+                             static_cast<int>(item.name.size()), item.name.c_str(),
+                             city->name().c_str(), item.stalledTurns,
                              static_cast<unsigned>(missingGoodId));
                     queue.queue.erase(queue.queue.begin());
                 }
@@ -378,13 +385,13 @@ void processProductionQueues(aoc::game::GameState& gameState,
             // underflowed unexpectedly (a real bug). Abort the completion for
             // this item — do NOT produce a unit/building we could not pay for —
             // and warn so the discrepancy is surfaced.
-            bool consumed = true;
+            bool consumed            = true;
             uint16_t underflowGoodId = 0xFFFF;
             if (item.type == ProductionItemType::Unit) {
                 const UnitTypeDef& udef = unitTypeDef(UnitTypeId{item.itemId});
                 for (const UnitResourceReq& req : udef.resourceReqs) {
                     if (req.isValid() && !stockpile.consumeGoods(req.goodId, req.amount)) {
-                        consumed = false;
+                        consumed        = false;
                         underflowGoodId = req.goodId;
                         break;
                     }
@@ -393,7 +400,7 @@ void processProductionQueues(aoc::game::GameState& gameState,
                 const BuildingDef& bdef = buildingDef(BuildingId{item.itemId});
                 for (const BuildingResourceCost& cost : bdef.resourceCosts) {
                     if (cost.isValid() && !stockpile.consumeGoods(cost.goodId, cost.amount)) {
-                        consumed = false;
+                        consumed        = false;
                         underflowGoodId = cost.goodId;
                         break;
                     }
@@ -401,182 +408,175 @@ void processProductionQueues(aoc::game::GameState& gameState,
             }
 
             if (!consumed) {
-                LOG_WARN("Stockpile underflow in %s producing %.*s: good %u consume failed after pre-check passed",
-                         city->name().c_str(),
-                         static_cast<int>(item.name.size()),
-                         item.name.c_str(),
-                         static_cast<unsigned>(underflowGoodId));
+                LOG_WARN("Stockpile underflow in %s producing %.*s: good %u consume failed after "
+                         "pre-check passed",
+                         city->name().c_str(), static_cast<int>(item.name.size()),
+                         item.name.c_str(), static_cast<unsigned>(underflowGoodId));
                 continue;
             }
 
             // Complete the item
             switch (item.type) {
-                case ProductionItemType::Unit: {
-                    UnitTypeId unitTypeId{item.itemId};
-                    aoc::game::Unit& newUnit =
-                        gsPlayer->addUnit(unitTypeId, city->location());
-                    // A7 Pyramids (0) unique effect: +1 builder charge on
-                    // newly produced Civilian-class (Builder) units.
-                    if (newUnit.typeDef().unitClass == UnitClass::Civilian) {
-                        bool hasPyramids = false;
-                        for (const std::unique_ptr<aoc::game::City>& c
-                                : gsPlayer->cities()) {
-                            if (c->wonders().hasWonder(
-                                    static_cast<aoc::sim::WonderId>(0))) {
-                                hasPyramids = true;
-                                break;
-                            }
-                        }
-                        if (hasPyramids && newUnit.chargesRemaining() > 0) {
-                            newUnit.setChargesRemaining(
-                                newUnit.chargesRemaining() + 1);
-                        }
-                    }
-                    LOG_INFO("Produced %.*s in %s",
-                             static_cast<int>(item.name.size()),
-                             item.name.c_str(),
-                             city->name().c_str());
-                    break;
-                }
-                case ProductionItemType::Building: {
-                    BuildingId buildingId{item.itemId};
-                    CityDistrictsComponent& districts = city->districts();
-                    const BuildingDef& bdef = buildingDef(buildingId);
-                    bool placed = false;
-                    for (CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
-                        if (district.type == bdef.requiredDistrict) {
-                            district.buildings.push_back(buildingId);
-                            placed = true;
+            case ProductionItemType::Unit: {
+                UnitTypeId unitTypeId{item.itemId};
+                aoc::game::Unit& newUnit = gsPlayer->addUnit(unitTypeId, city->location());
+                // A7 Pyramids (0) unique effect: +1 builder charge on
+                // newly produced Civilian-class (Builder) units.
+                if (newUnit.typeDef().unitClass == UnitClass::Civilian) {
+                    bool hasPyramids = false;
+                    for (const std::unique_ptr<aoc::game::City>& c : gsPlayer->cities()) {
+                        if (c->wonders().hasWonder(static_cast<aoc::sim::WonderId>(0))) {
+                            hasPyramids = true;
                             break;
                         }
                     }
-                    if (!placed) {
-                        // The building needs a district the city never built:
-                        // raise one on its best tile rather than on the centre.
-                        const hex::AxialCoord site =
-                            bestDistrictTile(gameState, grid, *city, bdef.requiredDistrict);
-                        CityDistrictsComponent::PlacedDistrict& raised =
-                            placeDistrictOnTile(grid, *city, bdef.requiredDistrict, site);
-                        raised.buildings.push_back(buildingId);
+                    if (hasPyramids && newUnit.chargesRemaining() > 0) {
+                        newUnit.setChargesRemaining(newUnit.chargesRemaining() + 1);
                     }
-                    LOG_INFO("Built %.*s in %s",
-                             static_cast<int>(item.name.size()),
-                             item.name.c_str(),
-                             city->name().c_str());
-                    break;
                 }
-                case ProductionItemType::Project: {
-                    // Repeatable: the effect fires and the entry pops like any other.
-                    completeCityProject(gameState, *city,
-                                        static_cast<CityProjectType>(item.itemId));
-                    break;
+                LOG_INFO("Produced %.*s in %s", static_cast<int>(item.name.size()),
+                         item.name.c_str(), city->name().c_str());
+                break;
+            }
+            case ProductionItemType::Building: {
+                BuildingId buildingId{item.itemId};
+                CityDistrictsComponent& districts = city->districts();
+                const BuildingDef& bdef           = buildingDef(buildingId);
+                bool placed                       = false;
+                for (CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
+                    if (district.type == bdef.requiredDistrict) {
+                        district.buildings.push_back(buildingId);
+                        placed = true;
+                        break;
+                    }
                 }
-                case ProductionItemType::District: {
-                    const DistrictType districtType = static_cast<DistrictType>(item.itemId);
-                    // The human's choice, while it is still legal: a rival may
-                    // have taken the tile or the border may have moved since.
-                    const bool chosenStillLegal =
-                        item.hasTargetTile
-                        && districtTileReason(gameState, grid, *city, districtType, item.targetTile)
-                               == DistrictTileReason::Ok;
+                if (!placed) {
+                    // The building needs a district the city never built:
+                    // raise one on its best tile rather than on the centre.
                     const hex::AxialCoord site =
-                        chosenStillLegal ? item.targetTile
-                                         : bestDistrictTile(gameState, grid, *city, districtType);
-                    placeDistrictOnTile(grid, *city, districtType, site);
-                    LOG_INFO("Completed district %.*s in %s at (%d,%d)",
-                             static_cast<int>(item.name.size()),
-                             item.name.c_str(),
-                             city->name().c_str(), site.q, site.r);
-                    break;
+                        bestDistrictTile(gameState, grid, *city, bdef.requiredDistrict);
+                    CityDistrictsComponent::PlacedDistrict& raised =
+                        placeDistrictOnTile(grid, *city, bdef.requiredDistrict, site);
+                    raised.buildings.push_back(buildingId);
                 }
-                case ProductionItemType::Wonder: {
-                    WonderId wonderId = static_cast<WonderId>(item.itemId);
-                    // First-builder-wins: if another civ already built this
-                    // wonder this turn (or earlier), abort and refund.
-                    if (gameState.wonderTracker().isBuilt(wonderId)) {
-                        // Refund a portion of production: convert to gold to
-                        // soften the loss. 50% of wonder cost as gold.
-                        const int32_t refund = static_cast<int32_t>(
-                            static_cast<float>(wonderDef(wonderId).productionCost) * 0.5f);
-                        gsPlayer->addGold(refund);
-                        LOG_INFO("Wonder %.*s already built — %s race-lost, +%d gold refund",
-                                 static_cast<int>(item.name.size()),
-                                 item.name.c_str(),
-                                 city->name().c_str(), refund);
-                        // Pop from queue without granting wonder. Skip the
-                        // shared `popCompleted()` below — we already erased the
-                        // queue head here, and a second erase would drop the
-                        // *next* item the player just promoted into slot 0.
-                        if (!queue.queue.empty()) { queue.queue.erase(queue.queue.begin()); }
+                LOG_INFO("Built %.*s in %s", static_cast<int>(item.name.size()), item.name.c_str(),
+                         city->name().c_str());
+                break;
+            }
+            case ProductionItemType::Project: {
+                // Repeatable: the effect fires and the entry pops like any other.
+                completeCityProject(gameState, *city, static_cast<CityProjectType>(item.itemId));
+                break;
+            }
+            case ProductionItemType::District: {
+                const DistrictType districtType = static_cast<DistrictType>(item.itemId);
+                // The human's choice, while it is still legal: a rival may
+                // have taken the tile or the border may have moved since.
+                const bool chosenStillLegal =
+                    item.hasTargetTile &&
+                    districtTileReason(gameState, grid, *city, districtType, item.targetTile) ==
+                        DistrictTileReason::Ok;
+                const hex::AxialCoord site =
+                    chosenStillLegal ? item.targetTile
+                                     : bestDistrictTile(gameState, grid, *city, districtType);
+                placeDistrictOnTile(grid, *city, districtType, site);
+                LOG_INFO("Completed district %.*s in %s at (%d,%d)",
+                         static_cast<int>(item.name.size()), item.name.c_str(),
+                         city->name().c_str(), site.q, site.r);
+                break;
+            }
+            case ProductionItemType::Wonder: {
+                WonderId wonderId = static_cast<WonderId>(item.itemId);
+                // First-builder-wins: if another civ already built this
+                // wonder this turn (or earlier), abort and refund.
+                if (gameState.wonderTracker().isBuilt(wonderId)) {
+                    // Refund a portion of production: convert to gold to
+                    // soften the loss. 50% of wonder cost as gold.
+                    const int32_t refund = static_cast<int32_t>(
+                        static_cast<float>(wonderDef(wonderId).productionCost) * 0.5f);
+                    gsPlayer->addGold(refund);
+                    LOG_INFO("Wonder %.*s already built — %s race-lost, +%d gold refund",
+                             static_cast<int>(item.name.size()), item.name.c_str(),
+                             city->name().c_str(), refund);
+                    // Pop from queue without granting wonder. Skip the
+                    // shared `popCompleted()` below — we already erased the
+                    // queue head here, and a second erase would drop the
+                    // *next* item the player just promoted into slot 0.
+                    if (!queue.queue.empty()) {
+                        queue.queue.erase(queue.queue.begin());
+                    }
+                    continue;
+                }
+                city->wonders().wonders.push_back(wonderId);
+                gameState.wonderTracker().markBuilt(wonderId, city->owner());
+                LOG_INFO("Completed wonder %.*s in %s (player %u)",
+                         static_cast<int>(item.name.size()), item.name.c_str(),
+                         city->name().c_str(), static_cast<unsigned>(city->owner()));
+
+                // A7 Oracle (WonderId 13): grant the owner one free
+                // researchable civic — the first eligible civic whose
+                // prereqs are met and which isn't already completed.
+                if (wonderId == 13) {
+                    PlayerCivicComponent& civics = gsPlayer->civics();
+                    const uint16_t total         = aoc::sim::civicCount();
+                    for (uint16_t cid = 0; cid < total; ++cid) {
+                        const CivicId c{cid};
+                        if (!civics.hasCompleted(c) && civics.canResearch(c)) {
+                            if (c.value < civics.completedCivics.size()) {
+                                civics.completedCivics[c.value] = true;
+                            }
+                            LOG_INFO("Oracle: player %u granted free civic %u",
+                                     static_cast<unsigned>(gsPlayer->id()),
+                                     static_cast<unsigned>(cid));
+                            break;
+                        }
+                    }
+                }
+                {
+                    VisibilityEvent ev{};
+                    ev.type     = VisibilityEventType::WonderCompleted;
+                    ev.location = city->location();
+                    ev.actor    = city->owner();
+                    ev.payload  = static_cast<int32_t>(wonderId);
+                    gameState.visibilityBus().emit(ev);
+                }
+                // H4.8: refund 50% of invested production (as gold, 1:1) to
+                // every other civ that had the same wonder queued, and drop
+                // the queue entry so they don't waste another turn on it.
+                for (const std::unique_ptr<aoc::game::Player>& otherPtr : gameState.players()) {
+                    if (otherPtr == nullptr) {
                         continue;
                     }
-                    city->wonders().wonders.push_back(wonderId);
-                    gameState.wonderTracker().markBuilt(wonderId, city->owner());
-                    LOG_INFO("Completed wonder %.*s in %s (player %u)",
-                             static_cast<int>(item.name.size()),
-                             item.name.c_str(),
-                             city->name().c_str(),
-                             static_cast<unsigned>(city->owner()));
-
-                    // A7 Oracle (WonderId 13): grant the owner one free
-                    // researchable civic — the first eligible civic whose
-                    // prereqs are met and which isn't already completed.
-                    if (wonderId == 13) {
-                        PlayerCivicComponent& civics = gsPlayer->civics();
-                        const uint16_t total = aoc::sim::civicCount();
-                        for (uint16_t cid = 0; cid < total; ++cid) {
-                            const CivicId c{cid};
-                            if (!civics.hasCompleted(c) && civics.canResearch(c)) {
-                                if (c.value < civics.completedCivics.size()) {
-                                    civics.completedCivics[c.value] = true;
+                    if (otherPtr->id() == city->owner()) {
+                        continue;
+                    }
+                    for (const std::unique_ptr<aoc::game::City>& otherCity : otherPtr->cities()) {
+                        if (otherCity == nullptr) {
+                            continue;
+                        }
+                        ProductionQueueComponent& otherQueue = otherCity->production();
+                        for (auto qit = otherQueue.queue.begin(); qit != otherQueue.queue.end();) {
+                            if (qit->type == ProductionItemType::Wonder &&
+                                static_cast<WonderId>(qit->itemId) == wonderId) {
+                                const int32_t refund = static_cast<int32_t>(qit->progress * 0.5f);
+                                if (refund > 0) {
+                                    otherPtr->setTreasury(otherPtr->treasury() +
+                                                          static_cast<CurrencyAmount>(refund));
                                 }
-                                LOG_INFO("Oracle: player %u granted free civic %u",
-                                         static_cast<unsigned>(gsPlayer->id()),
-                                         static_cast<unsigned>(cid));
-                                break;
+                                LOG_INFO(
+                                    "Wonder race loss: Player %u refunded %d gold from %.*s in %s",
+                                    static_cast<unsigned>(otherPtr->id()), refund,
+                                    static_cast<int>(qit->name.size()), qit->name.c_str(),
+                                    otherCity->name().c_str());
+                                qit = otherQueue.queue.erase(qit);
+                            } else {
+                                ++qit;
                             }
                         }
                     }
-                    {
-                        VisibilityEvent ev{};
-                        ev.type = VisibilityEventType::WonderCompleted;
-                        ev.location = city->location();
-                        ev.actor = city->owner();
-                        ev.payload = static_cast<int32_t>(wonderId);
-                        gameState.visibilityBus().emit(ev);
-                    }
-                    // H4.8: refund 50% of invested production (as gold, 1:1) to
-                    // every other civ that had the same wonder queued, and drop
-                    // the queue entry so they don't waste another turn on it.
-                    for (const std::unique_ptr<aoc::game::Player>& otherPtr : gameState.players()) {
-                        if (otherPtr == nullptr) { continue; }
-                        if (otherPtr->id() == city->owner()) { continue; }
-                        for (const std::unique_ptr<aoc::game::City>& otherCity : otherPtr->cities()) {
-                            if (otherCity == nullptr) { continue; }
-                            ProductionQueueComponent& otherQueue = otherCity->production();
-                            for (auto qit = otherQueue.queue.begin(); qit != otherQueue.queue.end(); ) {
-                                if (qit->type == ProductionItemType::Wonder
-                                    && static_cast<WonderId>(qit->itemId) == wonderId) {
-                                    const int32_t refund = static_cast<int32_t>(qit->progress * 0.5f);
-                                    if (refund > 0) {
-                                        otherPtr->setTreasury(otherPtr->treasury()
-                                            + static_cast<CurrencyAmount>(refund));
-                                    }
-                                    LOG_INFO("Wonder race loss: Player %u refunded %d gold from %.*s in %s",
-                                             static_cast<unsigned>(otherPtr->id()),
-                                             refund,
-                                             static_cast<int>(qit->name.size()),
-                                             qit->name.c_str(),
-                                             otherCity->name().c_str());
-                                    qit = otherQueue.queue.erase(qit);
-                                } else {
-                                    ++qit;
-                                }
-                            }
-                        }
-                    }
-                    break;
                 }
+                break;
+            }
             }
 
             queue.popCompleted();
@@ -590,19 +590,16 @@ float cityProductionPerTurn(const aoc::game::Player& player, const aoc::game::Ci
     return computeCityProductionGS(player, city, grid, gameState, govMods);
 }
 
-ErrorCode purchaseInCity(aoc::game::GameState& /*gameState*/,
-                         aoc::game::Player& player,
-                         aoc::game::City& city,
-                         ProductionItemType type,
-                         uint16_t itemId) {
+ErrorCode purchaseInCity(aoc::game::GameState& /*gameState*/, aoc::game::Player& player,
+                         aoc::game::City& city, ProductionItemType type, uint16_t itemId) {
     float baseCost = 0.0f;
 
     if (type == ProductionItemType::Unit) {
         const UnitTypeDef& udef = unitTypeDef(UnitTypeId{itemId});
-        baseCost = static_cast<float>(udef.productionCost);
+        baseCost                = static_cast<float>(udef.productionCost);
     } else if (type == ProductionItemType::Building) {
         const BuildingDef& bdef = buildingDef(BuildingId{itemId});
-        baseCost = static_cast<float>(bdef.productionCost);
+        baseCost                = static_cast<float>(bdef.productionCost);
     } else {
         return ErrorCode::InvalidArgument;
     }
@@ -624,14 +621,12 @@ ErrorCode purchaseInCity(aoc::game::GameState& /*gameState*/,
         player.addUnit(UnitTypeId{itemId}, city.location());
         LOG_INFO("Purchased %.*s in %s for %d gold (player %u)",
                  static_cast<int>(unitTypeDef(UnitTypeId{itemId}).name.size()),
-                 unitTypeDef(UnitTypeId{itemId}).name.data(),
-                 city.name().c_str(),
-                 goldCost,
+                 unitTypeDef(UnitTypeId{itemId}).name.data(), city.name().c_str(), goldCost,
                  static_cast<unsigned>(player.id()));
     } else if (type == ProductionItemType::Building) {
-        const BuildingDef& bdef = buildingDef(BuildingId{itemId});
+        const BuildingDef& bdef           = buildingDef(BuildingId{itemId});
         CityDistrictsComponent& districts = city.districts();
-        bool placed = false;
+        bool placed                       = false;
         for (CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
             if (district.type == bdef.requiredDistrict) {
                 district.buildings.push_back(BuildingId{itemId});
@@ -641,16 +636,13 @@ ErrorCode purchaseInCity(aoc::game::GameState& /*gameState*/,
         }
         if (!placed) {
             CityDistrictsComponent::PlacedDistrict newDistrict;
-            newDistrict.type = bdef.requiredDistrict;
+            newDistrict.type     = bdef.requiredDistrict;
             newDistrict.location = city.location();
             newDistrict.buildings.push_back(BuildingId{itemId});
             districts.districts.push_back(std::move(newDistrict));
         }
-        LOG_INFO("Purchased %.*s in %s for %d gold (player %u)",
-                 static_cast<int>(bdef.name.size()),
-                 bdef.name.data(),
-                 city.name().c_str(),
-                 goldCost,
+        LOG_INFO("Purchased %.*s in %s for %d gold (player %u)", static_cast<int>(bdef.name.size()),
+                 bdef.name.data(), city.name().c_str(), goldCost,
                  static_cast<unsigned>(player.id()));
     }
 

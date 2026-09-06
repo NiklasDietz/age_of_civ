@@ -31,17 +31,20 @@ namespace aoc::sim {
 // GameState-native implementations
 // ============================================================================
 
-float computePlayerScience(const aoc::game::Player& player,
-                            const aoc::map::HexGrid& grid) {
+float computePlayerScience(const aoc::game::Player& player, const aoc::map::HexGrid& grid) {
     float totalScience = 0.0f;
 
     // Precompute per-player religion curve inputs.  Derived from researched
     // techs rather than PlayerEraComponent::currentEra because the latter is
     // not reliably updated during normal play.
-    const EraId playerEra = effectiveEraFromTech(player);
+    const EraId playerEra              = effectiveEraFromTech(player);
     const int32_t renaissancePlusTechs = countRenaissancePlusTechs(player);
-    const float religionScienceCoef =
-        religionScienceCoefficient(playerEra, renaissancePlusTechs);
+    const float religionScienceCoef = religionScienceCoefficient(playerEra, renaissancePlusTechs);
+
+    // One index for the whole empire; district adjacency counts only the
+    // owner's own districts.
+    DistrictIndex districtIndex;
+    districtIndex.build(player);
 
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         float cityScience = 0.0f;
@@ -50,12 +53,12 @@ float computePlayerScience(const aoc::game::Player& player,
         const aoc::sim::CivilizationDef& civModSpec = aoc::sim::civDef(player.civId());
         for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
             if (grid.isValid(tile)) {
-                const int32_t tIdx = grid.toIndex(tile);
+                const int32_t tIdx        = grid.toIndex(tile);
                 aoc::map::TileYield yield = effectiveTileYield(grid, tIdx);
                 cityScience += static_cast<float>(yield.science);
                 // Conditional: scienceFromMine on Mine improvement.
-                if (civModSpec.modifiers.scienceFromMine > 0
-                 && grid.improvement(tIdx) == aoc::map::ImprovementType::Mine) {
+                if (civModSpec.modifiers.scienceFromMine > 0 &&
+                    grid.improvement(tIdx) == aoc::map::ImprovementType::Mine) {
                     cityScience += static_cast<float>(civModSpec.modifiers.scienceFromMine);
                 }
             }
@@ -77,8 +80,8 @@ float computePlayerScience(const aoc::game::Player& player,
         }
 
         // 4. Building bonuses and multiplier
-        float bestMultiplier = 1.0f;
-        const CivilizationDef& civSpec = civDef(player.civId());
+        float bestMultiplier                    = 1.0f;
+        const CivilizationDef& civSpec          = civDef(player.civId());
         const CityDistrictsComponent& districts = city->districts();
         for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
             for (BuildingId bid : district.buildings) {
@@ -91,18 +94,12 @@ float computePlayerScience(const aoc::game::Player& player,
                     }
                 }
             }
-
-            // 4b. Campus adjacency science bonus (B2). Mirrors the grid-only
-            // subset of computeAdjacencyBonus so Campus districts contribute
-            // science from adjacent mountains/rainforests/natural wonders.
-            if (district.type == DistrictType::Campus && grid.isValid(district.location)) {
-                const NeighborTerrainCounts adj =
-                    countNeighborTerrain(grid, district.location);
-                cityScience += static_cast<float>(adj.mountains) * 1.0f;
-                cityScience += static_cast<float>(adj.rainforests) * 0.5f;
-                cityScience += static_cast<float>(adj.wonders) * 2.0f;
-            }
         }
+
+        // 4b. District adjacency science, through the one shared path: what a
+        // Campus earns from adjacent mountains, rainforests, natural wonders
+        // and other Campus districts.
+        cityScience += cityAdjacencyYields(grid, districtIndex, *city).science;
 
         // 5. Apply multiplier
         cityScience *= bestMultiplier;
@@ -112,8 +109,8 @@ float computePlayerScience(const aoc::game::Player& player,
         // science, not a religion modifier.
         for (const WonderId wid : city->wonders().wonders) {
             const WonderDef& wdef = wonderDef(wid);
-            cityScience += wdef.effect.scienceBonus
-                         * wonderEraDecayFactor(wdef, player.era().currentEra);
+            cityScience +=
+                wdef.effect.scienceBonus * wonderEraDecayFactor(wdef, player.era().currentEra);
         }
 
         // 7. Religion-vs-education curve: net Devotion * era coefficient.
@@ -160,26 +157,27 @@ float computePlayerScience(const aoc::game::Player& player,
     return totalScience;
 }
 
-float computePlayerCulture(const aoc::game::Player& player,
-                            const aoc::map::HexGrid& grid) {
+float computePlayerCulture(const aoc::game::Player& player, const aoc::map::HexGrid& grid) {
     float totalCulture = 0.0f;
 
     const aoc::sim::CivilizationDef& cultCivSpec = aoc::sim::civDef(player.civId());
+    DistrictIndex districtIndex;
+    districtIndex.build(player);
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         // Culture from worked tiles
         for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
             if (grid.isValid(tile)) {
-                const int32_t tIdx = grid.toIndex(tile);
+                const int32_t tIdx        = grid.toIndex(tile);
                 aoc::map::TileYield yield = grid.tileYield(tIdx);
                 totalCulture += static_cast<float>(yield.culture);
                 // Conditional culture-from-feature bonuses (Brazil/Vietnam etc).
                 const aoc::map::FeatureType ft = grid.feature(tIdx);
-                if (cultCivSpec.modifiers.cultureFromForest > 0
-                 && ft == aoc::map::FeatureType::Forest) {
+                if (cultCivSpec.modifiers.cultureFromForest > 0 &&
+                    ft == aoc::map::FeatureType::Forest) {
                     totalCulture += static_cast<float>(cultCivSpec.modifiers.cultureFromForest);
                 }
-                if (cultCivSpec.modifiers.cultureFromRainforest > 0
-                 && ft == aoc::map::FeatureType::Jungle) {
+                if (cultCivSpec.modifiers.cultureFromRainforest > 0 &&
+                    ft == aoc::map::FeatureType::Jungle) {
                     totalCulture += static_cast<float>(cultCivSpec.modifiers.cultureFromRainforest);
                 }
             }
@@ -194,7 +192,7 @@ float computePlayerCulture(const aoc::game::Player& player,
         }
 
         // Building culture (Theatre Square district buildings)
-        const CivilizationDef& civSpec = civDef(player.civId());
+        const CivilizationDef& civSpec          = civDef(player.civId());
         const CityDistrictsComponent& districts = city->districts();
         for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
             for (BuildingId bid : district.buildings) {
@@ -207,13 +205,17 @@ float computePlayerCulture(const aoc::game::Player& player,
             }
         }
 
+        // District adjacency culture: what a Theatre Square earns from adjacent
+        // natural wonders, districts and other Theatre Squares.
+        totalCulture += cityAdjacencyYields(grid, districtIndex, *city).culture;
+
         // Wonder culture bonus (H4.9): Eiffel Tower, Forbidden City, etc.
         // WP-A7: era-decay so earlier-era wonders still contribute late game
         // but stop dominating over modern additions.
         for (const WonderId wid : city->wonders().wonders) {
             const WonderDef& wdef = wonderDef(wid);
-            totalCulture += wdef.effect.cultureBonus
-                          * wonderEraDecayFactor(wdef, player.era().currentEra);
+            totalCulture +=
+                wdef.effect.cultureBonus * wonderEraDecayFactor(wdef, player.era().currentEra);
         }
 
         // Civ unique improvement culture bonus per city.
@@ -248,9 +250,8 @@ float computePlayerCulture(const aoc::game::Player& player,
 // GameState overloads (delegate to Player versions)
 // ============================================================================
 
-float computePlayerScience(const aoc::game::GameState& gameState,
-                            const aoc::map::HexGrid& grid,
-                            PlayerId player) {
+float computePlayerScience(const aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                           PlayerId player) {
     const aoc::game::Player* gsPlayer = gameState.player(player);
     if (gsPlayer == nullptr) {
         return 0.0f;
@@ -258,9 +259,8 @@ float computePlayerScience(const aoc::game::GameState& gameState,
     return computePlayerScience(*gsPlayer, grid);
 }
 
-float computePlayerCulture(const aoc::game::GameState& gameState,
-                            const aoc::map::HexGrid& grid,
-                            PlayerId player) {
+float computePlayerCulture(const aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                           PlayerId player) {
     const aoc::game::Player* gsPlayer = gameState.player(player);
     if (gsPlayer == nullptr) {
         return 0.0f;

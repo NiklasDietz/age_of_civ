@@ -38,10 +38,19 @@
 #include <cstdint>
 #include <unordered_map>
 
-namespace aoc::map { class HexGrid; }
-namespace aoc::game { class GameState; }
+namespace aoc::map {
+class HexGrid;
+}
+namespace aoc::game {
+class GameState;
+}
 
-namespace aoc::game { class City; }
+namespace aoc::game {
+class City;
+}
+namespace aoc::game {
+class Player;
+}
 
 namespace aoc::sim {
 
@@ -71,11 +80,9 @@ struct AdjacencyBonus {
  * @param tileIndex     Tile where the district is placed.
  * @return Computed adjacency bonus.
  */
-[[nodiscard]] AdjacencyBonus computeAdjacencyBonus(
-    const aoc::map::HexGrid& grid,
-    const aoc::game::GameState& gameState,
-    DistrictType districtType,
-    int32_t tileIndex);
+[[nodiscard]] AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
+                                                   const aoc::game::GameState& gameState,
+                                                   DistrictType districtType, int32_t tileIndex);
 
 // ============================================================================
 // Shared adjacency primitives
@@ -99,7 +106,7 @@ struct NeighborTerrainCounts {
 /// skipped. Counters are integers, so the result does not depend on the order
 /// the neighbours are visited.
 [[nodiscard]] NeighborTerrainCounts countNeighborTerrain(const aoc::map::HexGrid& grid,
-                                                          aoc::hex::AxialCoord center);
+                                                         aoc::hex::AxialCoord center);
 
 /// Every player's placed districts keyed by tile, so an adjacency check is a
 /// hash lookup instead of a walk over every district of every city.
@@ -117,15 +124,23 @@ public:
         int32_t industrial = 0;
         int32_t cityCenter = 0;
         int32_t campus     = 0;
+        int32_t theatre    = 0;
     };
 
     /// Rebuild from the current world. Cheap enough to call once per city.
     void build(const aoc::game::GameState& gameState);
 
+    /// Rebuild from one player's cities. Adjacency counts only the owner's own
+    /// districts, which is both the Civ VI rule and what lets every yield path
+    /// build an index without a GameState in its signature.
+    void build(const aoc::game::Player& player);
+
     /// Districts on `location`; all-zero when none.
     [[nodiscard]] TileDistricts at(aoc::hex::AxialCoord location) const;
 
 private:
+    void addCity(const aoc::game::City& city);
+
     [[nodiscard]] static int64_t key(aoc::hex::AxialCoord c) {
         return (static_cast<int64_t>(c.q) << 32) ^ static_cast<uint32_t>(c.r);
     }
@@ -134,41 +149,46 @@ private:
 
 /// Adjacency bonus using a prebuilt index. The four-argument overload builds a
 /// throwaway index per call; prefer this one when scoring several districts.
-[[nodiscard]] AdjacencyBonus computeAdjacencyBonus(
-    const aoc::map::HexGrid& grid,
-    const DistrictIndex& districts,
-    DistrictType districtType,
-    int32_t tileIndex);
+[[nodiscard]] AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
+                                                   const DistrictIndex& districts,
+                                                   DistrictType districtType, int32_t tileIndex);
+
+/// Every placed district of one city, summed into one six-yield bonus. This is
+/// the single path: production, science, culture, faith and gold each read one
+/// field of it instead of open-coding their own subset of the adjacency rules.
+[[nodiscard]] AdjacencyBonus cityAdjacencyYields(const aoc::map::HexGrid& grid,
+                                                 const DistrictIndex& districts,
+                                                 const aoc::game::City& city);
 
 // ============================================================================
 // City Projects
 // ============================================================================
 
 enum class CityProjectType : uint8_t {
-    BreadAndCircuses,    ///< +20 loyalty for 10 turns
-    CampusResearch,      ///< Burst of science
-    IndustrialSurge,     ///< Burst of production
-    CommercialInvestment,///< Burst of gold
-    ShipyardRush,        ///< -50% next naval unit cost
-    MilitaryTraining,    ///< +XP for all units trained in this city
+    BreadAndCircuses,     ///< +20 loyalty for 10 turns
+    CampusResearch,       ///< Burst of science
+    IndustrialSurge,      ///< Burst of production
+    CommercialInvestment, ///< Burst of gold
+    ShipyardRush,         ///< -50% next naval unit cost
+    MilitaryTraining,     ///< +XP for all units trained in this city
 
     Count
 };
 
 struct CityProjectDef {
-    CityProjectType  type;
+    CityProjectType type;
     std::string_view name;
-    int32_t          productionCost;
-    DistrictType     requiredDistrict;
+    int32_t productionCost;
+    DistrictType requiredDistrict;
 };
 
 inline constexpr std::array<CityProjectDef, 6> CITY_PROJECT_DEFS = {{
-    {CityProjectType::BreadAndCircuses,     "Bread and Circuses",   50, DistrictType::CityCenter},
-    {CityProjectType::CampusResearch,       "Campus Research Grant", 80, DistrictType::Campus},
-    {CityProjectType::IndustrialSurge,      "Industrial Surge",     80, DistrictType::Industrial},
+    {CityProjectType::BreadAndCircuses, "Bread and Circuses", 50, DistrictType::CityCenter},
+    {CityProjectType::CampusResearch, "Campus Research Grant", 80, DistrictType::Campus},
+    {CityProjectType::IndustrialSurge, "Industrial Surge", 80, DistrictType::Industrial},
     {CityProjectType::CommercialInvestment, "Commercial Investment", 60, DistrictType::Commercial},
-    {CityProjectType::ShipyardRush,         "Shipyard Rush",        60, DistrictType::Harbor},
-    {CityProjectType::MilitaryTraining,     "Military Training",    70, DistrictType::Encampment},
+    {CityProjectType::ShipyardRush, "Shipyard Rush", 60, DistrictType::Harbor},
+    {CityProjectType::MilitaryTraining, "Military Training", 70, DistrictType::Encampment},
 }};
 
 /**

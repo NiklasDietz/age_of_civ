@@ -46,16 +46,26 @@ constexpr float ADJACENCY_WEIGHT = 10.0f;
 
 std::string_view districtTileReasonName(DistrictTileReason reason) {
     switch (reason) {
-        case DistrictTileReason::Ok:         return "Ok";
-        case DistrictTileReason::OffMap:     return "Off the map";
-        case DistrictTileReason::NotOwned:   return "Not your territory";
-        case DistrictTileReason::TooFar:     return "Too far from the city";
-        case DistrictTileReason::CityCenter: return "The city centre";
-        case DistrictTileReason::Occupied:   return "A district stands here";
-        case DistrictTileReason::NeedsWater: return "A Harbor needs coastal water";
-        case DistrictTileReason::NeedsLand:  return "Districts need land";
-        case DistrictTileReason::Impassable: return "Nothing can build here";
-        default:                             return "Unknown";
+    case DistrictTileReason::Ok:
+        return "Ok";
+    case DistrictTileReason::OffMap:
+        return "Off the map";
+    case DistrictTileReason::NotOwned:
+        return "Not your territory";
+    case DistrictTileReason::TooFar:
+        return "Too far from the city";
+    case DistrictTileReason::CityCenter:
+        return "The city centre";
+    case DistrictTileReason::Occupied:
+        return "A district stands here";
+    case DistrictTileReason::NeedsWater:
+        return "A Harbor needs coastal water";
+    case DistrictTileReason::NeedsLand:
+        return "Districts need land";
+    case DistrictTileReason::Impassable:
+        return "Nothing can build here";
+    default:
+        return "Unknown";
     }
 }
 
@@ -73,8 +83,9 @@ bool tileHasDistrict(const aoc::game::GameState& gameState, hex::AxialCoord at) 
     return false;
 }
 
-DistrictTileReason districtTileReason(const aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
-                                      const aoc::game::City& city, DistrictType type, hex::AxialCoord at) {
+DistrictTileReason districtTileReason(const aoc::game::GameState& gameState,
+                                      const aoc::map::HexGrid& grid, const aoc::game::City& city,
+                                      DistrictType type, hex::AxialCoord at) {
     if (!grid.isValid(at)) {
         return DistrictTileReason::OffMap;
     }
@@ -113,7 +124,8 @@ DistrictTileReason districtTileReason(const aoc::game::GameState& gameState, con
 
 std::vector<hex::AxialCoord> districtCandidateTiles(const aoc::game::GameState& gameState,
                                                     const aoc::map::HexGrid& grid,
-                                                    const aoc::game::City& city, DistrictType type) {
+                                                    const aoc::game::City& city,
+                                                    DistrictType type) {
     std::vector<hex::AxialCoord> tiles;
     std::vector<hex::AxialCoord> nearby;
     nearby.reserve(64);
@@ -126,28 +138,44 @@ std::vector<hex::AxialCoord> districtCandidateTiles(const aoc::game::GameState& 
     return tiles;
 }
 
-float districtTileScore(const aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+float districtTileScore(const DistrictIndex& districts, const aoc::map::HexGrid& grid,
                         DistrictType type, hex::AxialCoord at) {
     if (!grid.isValid(at)) {
         return 0.0f;
     }
     const int32_t index    = grid.toIndex(at);
-    const AdjacencyBonus a = computeAdjacencyBonus(grid, gameState, type, index);
+    const AdjacencyBonus a = computeAdjacencyBonus(grid, districts, type, index);
     const float adjacency  = a.food + a.production + a.gold + a.science + a.culture + a.faith;
     const aoc::map::TileYield yield = grid.tileYield(index);
-    const float lost = static_cast<float>(yield.food) + static_cast<float>(yield.production)
-                     + static_cast<float>(yield.gold);
+    const float lost = static_cast<float>(yield.food) + static_cast<float>(yield.production) +
+                       static_cast<float>(yield.gold);
     return adjacency * ADJACENCY_WEIGHT - lost;
 }
 
-hex::AxialCoord bestDistrictTile(const aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
-                                 const aoc::game::City& city, DistrictType type) {
-    const std::vector<hex::AxialCoord> candidates = districtCandidateTiles(gameState, grid, city, type);
+float districtTileScore(const aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                        DistrictType type, hex::AxialCoord at) {
+    DistrictIndex districts;
+    districts.build(gameState);
+    return districtTileScore(districts, grid, type, at);
+}
+
+hex::AxialCoord bestDistrictTile(const aoc::game::GameState& gameState,
+                                 const aoc::map::HexGrid& grid, const aoc::game::City& city,
+                                 DistrictType type) {
+    const std::vector<hex::AxialCoord> candidates =
+        districtCandidateTiles(gameState, grid, city, type);
+    // One index for the whole candidate list, scoped to the city's owner: only
+    // his own districts grant adjacency.
+    DistrictIndex districts;
+    const aoc::game::Player* owner = gameState.player(city.owner());
+    if (owner != nullptr) {
+        districts.build(*owner);
+    }
     hex::AxialCoord best = city.location();
     bool found           = false;
     float bestScore      = 0.0f;
     for (const hex::AxialCoord& tile : candidates) {
-        const float score = districtTileScore(gameState, grid, type, tile);
+        const float score = districtTileScore(districts, grid, type, tile);
         // Strictly greater, so the first candidate of a tie wins; the candidate
         // list is a spiral around the centre, so the choice is the same in
         // every run.
@@ -174,16 +202,16 @@ ErrorCode requestPlaceDistrict(aoc::game::GameState& gameState, const aoc::map::
     const DistrictTileReason reason = districtTileReason(gameState, grid, *city, type, tile);
     if (reason != DistrictTileReason::Ok) {
         LOG_INFO("Player %u cannot put a %.*s at (%d,%d): %.*s", static_cast<unsigned>(player),
-                 static_cast<int>(districtTypeName(type).size()), districtTypeName(type).data(), tile.q,
-                 tile.r, static_cast<int>(districtTileReasonName(reason).size()),
+                 static_cast<int>(districtTypeName(type).size()), districtTypeName(type).data(),
+                 tile.q, tile.r, static_cast<int>(districtTileReasonName(reason).size()),
                  districtTileReasonName(reason).data());
         return ErrorCode::InvalidUnitAction;
     }
     // A queued district is its own authorization: the tech and population gates
     // were checked when the city took the order.
     for (ProductionQueueItem& item : city->production().queue) {
-        if (item.type == ProductionItemType::District
-            && static_cast<DistrictType>(item.itemId) == type) {
+        if (item.type == ProductionItemType::District &&
+            static_cast<DistrictType>(item.itemId) == type) {
             item.targetTile    = tile;
             item.hasTargetTile = true;
             return ErrorCode::Ok;
@@ -194,7 +222,8 @@ ErrorCode requestPlaceDistrict(aoc::game::GameState& gameState, const aoc::map::
     return ErrorCode::InvalidState;
 }
 
-CityDistrictsComponent::PlacedDistrict& placeDistrictOnTile(aoc::map::HexGrid& grid, aoc::game::City& city,
+CityDistrictsComponent::PlacedDistrict& placeDistrictOnTile(aoc::map::HexGrid& grid,
+                                                            aoc::game::City& city,
                                                             DistrictType type, hex::AxialCoord at) {
     CityDistrictsComponent::PlacedDistrict placed;
     placed.type     = type;

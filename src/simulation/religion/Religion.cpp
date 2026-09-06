@@ -34,27 +34,44 @@ namespace aoc::sim {
 namespace {
 
 constexpr std::array<BeliefDef, BELIEF_COUNT> BELIEFS = {{
-    // {id, name, type, description, goldPerFollowerCity, sciencePerFollowerCity, amenityBonus, foodBonus, faithBonus, spreadStrength}
+    // {id, name, type, description, goldPerFollowerCity, sciencePerFollowerCity, amenityBonus,
+    // foodBonus, faithBonus, spreadStrength}
     // Founder beliefs (0-3)
-    {0, "Tithe",                BeliefType::Founder,  "Gold from follower cities",       1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-    {1, "Church Property",      BeliefType::Founder,  "Gold and faith from cities",      0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f},
-    {2, "World Church",         BeliefType::Founder,  "More gold from cities",           2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-    {3, "Papal Primacy",        BeliefType::Founder,  "Diplomatic influence",            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+    {0, "Tithe", BeliefType::Founder, "Gold from follower cities", 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+     0.0f},
+    {1, "Church Property", BeliefType::Founder, "Gold and faith from cities", 0.5f, 0.0f, 0.0f,
+     0.0f, 1.0f, 0.0f},
+    {2, "World Church", BeliefType::Founder, "More gold from cities", 2.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+     0.0f},
+    {3, "Papal Primacy", BeliefType::Founder, "Diplomatic influence", 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+     0.0f},
     // Follower beliefs (4-7)
-    {4, "Choral Music",         BeliefType::Follower, "Amenities from religion",         0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},
-    {5, "Religious Community",  BeliefType::Follower, "Small amenity boost",             0.0f, 0.0f, 0.5f, 0.0f, 0.0f, 0.0f},
-    {6, "Feed the World",       BeliefType::Follower, "Food bonus from shrines",         0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f},
-    {7, "Zen Meditation",       BeliefType::Follower, "Large amenity boost",             0.0f, 0.0f, 1.5f, 0.0f, 0.0f, 0.0f},
+    {4, "Choral Music", BeliefType::Follower, "Amenities from religion", 0.0f, 0.0f, 1.0f, 0.0f,
+     0.0f, 0.0f},
+    {5, "Religious Community", BeliefType::Follower, "Small amenity boost", 0.0f, 0.0f, 0.5f, 0.0f,
+     0.0f, 0.0f},
+    {6, "Feed the World", BeliefType::Follower, "Food bonus from shrines", 0.0f, 0.0f, 0.0f, 1.0f,
+     0.0f, 0.0f},
+    {7, "Zen Meditation", BeliefType::Follower, "Large amenity boost", 0.0f, 0.0f, 1.5f, 0.0f, 0.0f,
+     0.0f},
     // Worship beliefs (8-11)
-    {8, "Cathedral",            BeliefType::Worship,  "Culture worship building",        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-    {9, "Mosque",               BeliefType::Worship,  "Faith worship building",          0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f},
-    {10, "Pagoda",              BeliefType::Worship,  "Amenity worship building",        0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},
-    {11, "Synagogue",           BeliefType::Worship,  "Faith worship building",          0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f},
+    {8, "Cathedral", BeliefType::Worship, "Culture worship building", 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+     0.0f},
+    {9, "Mosque", BeliefType::Worship, "Faith worship building", 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+     0.0f},
+    {10, "Pagoda", BeliefType::Worship, "Amenity worship building", 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+     0.0f},
+    {11, "Synagogue", BeliefType::Worship, "Faith worship building", 0.0f, 0.0f, 0.0f, 0.0f, 2.0f,
+     0.0f},
     // Enhancer beliefs (12-15)
-    {12, "Holy Order",          BeliefType::Enhancer, "Cheaper missionaries",            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-    {13, "Missionary Zeal",     BeliefType::Enhancer, "Stronger missionaries",           0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.5f},
-    {14, "Religious Texts",     BeliefType::Enhancer, "Faster passive spread",           0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.3f},
-    {15, "Itinerant Preachers", BeliefType::Enhancer, "Wider spread range",              0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.2f},
+    {12, "Holy Order", BeliefType::Enhancer, "Cheaper missionaries", 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+     0.0f},
+    {13, "Missionary Zeal", BeliefType::Enhancer, "Stronger missionaries", 0.0f, 0.0f, 0.0f, 0.0f,
+     0.0f, 1.5f},
+    {14, "Religious Texts", BeliefType::Enhancer, "Faster passive spread", 0.0f, 0.0f, 0.0f, 0.0f,
+     0.0f, 1.3f},
+    {15, "Itinerant Preachers", BeliefType::Enhancer, "Wider spread range", 0.0f, 0.0f, 0.0f, 0.0f,
+     0.0f, 1.2f},
 }};
 
 } // anonymous namespace
@@ -73,6 +90,8 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
     float faithGain = 0.0f;
 
     const ReligionId myRel = playerFaith.foundedReligion;
+    aoc::sim::DistrictIndex districtIndex;
+    districtIndex.build(player);
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         // Religious-spread asymmetry: a city whose dominant religion no
         // longer matches our founded religion contributes only 30% of its
@@ -86,7 +105,7 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
             }
         }
         const float faithBeforeCity = faithGain;
-        faithGain = 0.0f;
+        faithGain                   = 0.0f;
 
         // Base faith income: every city produces 1 faith per turn regardless of buildings.
         // Without this floor, players never accumulate enough faith to found a pantheon
@@ -96,31 +115,28 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
         // Faith from worked tiles
         for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
             if (grid.isValid(tile)) {
-                int32_t tileIdx = grid.toIndex(tile);
+                int32_t tileIdx           = grid.toIndex(tile);
                 aoc::map::TileYield yield = grid.tileYield(tileIdx);
                 faithGain += static_cast<float>(yield.faith);
             }
         }
 
-        // Faith from Holy Site district (+2 base, on top of the per-city 1)
-        // plus grid-only adjacency bonus (B2). Mountains/forests/natural
-        // wonders adjacent to the Holy Site add faith, mirroring the Civ 6
-        // rule used in computeAdjacencyBonus.
-        for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& d
-                : city->districts().districts) {
-            if (d.type != DistrictType::HolySite) { continue; }
+        // Faith from Holy Site district (+2 base, on top of the per-city 1).
+        for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& d :
+             city->districts().districts) {
+            if (d.type != DistrictType::HolySite) {
+                continue;
+            }
             faithGain += 2.0f;
-            if (!grid.isValid(d.location)) { continue; }
-            const aoc::sim::NeighborTerrainCounts adj =
-                aoc::sim::countNeighborTerrain(grid, d.location);
-            faithGain += static_cast<float>(adj.mountains) * 1.0f;
-            faithGain += static_cast<float>(adj.forests) * 0.5f;
-            faithGain += static_cast<float>(adj.wonders) * 2.0f;
         }
 
+        // District adjacency faith, through the one shared path: mountains,
+        // forests and natural wonders beside a Holy Site.
+        faithGain += aoc::sim::cityAdjacencyYields(grid, districtIndex, *city).faith;
+
         // Faith from buildings (Shrine/Temple/Cathedral).
-        for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& d
-                : city->districts().districts) {
+        for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& d :
+             city->districts().districts) {
             for (const BuildingId& bid : d.buildings) {
                 faithGain += static_cast<float>(buildingDef(bid).faithBonus);
             }
@@ -130,8 +146,8 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
         // WP-A7: era-decay.
         for (const WonderId wid : city->wonders().wonders) {
             const WonderDef& wdef = wonderDef(wid);
-            faithGain += wdef.effect.faithBonus
-                       * wonderEraDecayFactor(wdef, player.era().currentEra);
+            faithGain +=
+                wdef.effect.faithBonus * wonderEraDecayFactor(wdef, player.era().currentEra);
         }
 
         // Apply per-city religious match multiplier and re-add prior cities.
@@ -164,13 +180,12 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
 // processReligiousSpread - still uses ECS for GlobalReligionTracker
 // ============================================================================
 
-void processReligiousSpread(aoc::game::GameState& gameState,
-                             const aoc::map::HexGrid& grid,
-                             const DiplomacyManager* diplomacy) {
+void processReligiousSpread(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                            const DiplomacyManager* diplomacy) {
     // Audit 2026-04: SPREAD_RANGE was 3, then 5; pressure rose to 2.0. Now 7
     // + base 3.0 so dominant religion saturates rivals within 800t. Religion
     // wins were 1-3/12; pushing to 3-4/12.
-    constexpr int32_t SPREAD_RANGE = 7;
+    constexpr int32_t SPREAD_RANGE        = 7;
     constexpr float BASE_PASSIVE_PRESSURE = 3.0f;
 
     // Gather city info from GameState. Owner is tracked so cross-owner spread
@@ -188,12 +203,12 @@ void processReligiousSpread(aoc::game::GameState& gameState,
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
         for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
             ReligionId dominant = city->religion().dominantReligion();
-            bool hasHolySite = city->districts().hasDistrict(DistrictType::HolySite);
+            bool hasHolySite    = city->districts().hasDistrict(DistrictType::HolySite);
             cities.push_back({city->location(), dominant, hasHolySite, city->owner(), city.get()});
         }
     }
 
-    const GlobalReligionTracker& religions = gameState.religionTracker();
+    const GlobalReligionTracker& religions             = gameState.religionTracker();
     const std::array<BeliefDef, BELIEF_COUNT>& beliefs = allBeliefs();
 
     // Apply passive pressure from cities with dominant religions
@@ -220,15 +235,19 @@ void processReligiousSpread(aoc::game::GameState& gameState,
         }
 
         for (const CityInfo& target : cities) {
-            if (target.cityPtr == source.cityPtr) { continue; }
+            if (target.cityPtr == source.cityPtr) {
+                continue;
+            }
             int32_t dist = grid.distance(source.location, target.location);
-            if (dist > SPREAD_RANGE) { continue; }
+            if (dist > SPREAD_RANGE) {
+                continue;
+            }
 
             // Cross-owner gate: hostile enemies don't passively adopt each
             // other's religion.  Same-owner spread is always allowed.
-            if (source.owner != target.owner && diplomacy != nullptr
-                && source.owner != INVALID_PLAYER && target.owner != INVALID_PLAYER
-                && diplomacy->isAtWar(source.owner, target.owner)) {
+            if (source.owner != target.owner && diplomacy != nullptr &&
+                source.owner != INVALID_PLAYER && target.owner != INVALID_PLAYER &&
+                diplomacy->isAtWar(source.owner, target.owner)) {
                 continue;
             }
 
@@ -240,27 +259,25 @@ void processReligiousSpread(aoc::game::GameState& gameState,
                     (afterDominant < MAX_RELIGIONS)
                         ? std::string_view(religions.religions[afterDominant].name)
                         : std::string_view("?");
-                LOG_INFO("religion spread: city at (%d,%d) converted to '%.*s' (pressure from owner P%u)",
-                         target.location.q, target.location.r,
-                         static_cast<int>(afterName.size()), afterName.data(),
-                         static_cast<unsigned>(source.owner));
+                LOG_INFO("religion spread: city at (%d,%d) converted to '%.*s' (pressure from "
+                         "owner P%u)",
+                         target.location.q, target.location.r, static_cast<int>(afterName.size()),
+                         afterName.data(), static_cast<unsigned>(source.owner));
 
                 // WP-A2: converting a foreign-owned city to your religion
                 // irritates the target's civ. -8 relation, decays 30 turns.
                 // Only fires across distinct real players (skip city-states
                 // and unowned free cities).
-                if (diplomacy != nullptr
-                    && target.owner != INVALID_PLAYER
-                    && source.owner != INVALID_PLAYER
-                    && target.owner != source.owner
-                    && target.owner < aoc::sim::CITY_STATE_PLAYER_BASE
-                    && source.owner < aoc::sim::CITY_STATE_PLAYER_BASE) {
+                if (diplomacy != nullptr && target.owner != INVALID_PLAYER &&
+                    source.owner != INVALID_PLAYER && target.owner != source.owner &&
+                    target.owner < aoc::sim::CITY_STATE_PLAYER_BASE &&
+                    source.owner < aoc::sim::CITY_STATE_PLAYER_BASE) {
                     aoc::sim::RelationModifier mod{};
                     mod.reason         = "Converted one of our cities";
                     mod.amount         = -8;
                     mod.turnsRemaining = 30;
-                    const_cast<DiplomacyManager*>(diplomacy)->addModifier(
-                        target.owner, source.owner, mod);
+                    const_cast<DiplomacyManager*>(diplomacy)->addModifier(target.owner,
+                                                                          source.owner, mod);
                 }
             }
         }
@@ -300,9 +317,8 @@ void applyReligionBonuses(aoc::game::Player& player) {
 // rushBuildingWithFaith (WP-A1)
 // ============================================================================
 
-ErrorCode rushBuildingWithFaith(aoc::game::Player& player,
-                                 aoc::game::City& city,
-                                 int32_t currentTurn) {
+ErrorCode rushBuildingWithFaith(aoc::game::Player& player, aoc::game::City& city,
+                                int32_t currentTurn) {
     if (city.owner() != player.id()) {
         return ErrorCode::InvalidArgument;
     }
@@ -328,12 +344,11 @@ ErrorCode rushBuildingWithFaith(aoc::game::Player& player,
         return ErrorCode::InsufficientResources;
     }
     playerFaith.faith -= faithCost;
-    head.progress = head.totalCost;
+    head.progress           = head.totalCost;
     queue.lastFaithRushTurn = currentTurn;
     LOG_INFO("Faith rush: player %u city %s completed %.*s for %.0f faith",
              static_cast<unsigned>(player.id()), city.name().c_str(),
-             static_cast<int>(head.name.size()), head.name.c_str(),
-             static_cast<double>(faithCost));
+             static_cast<int>(head.name.size()), head.name.c_str(), static_cast<double>(faithCost));
     return ErrorCode::Ok;
 }
 
@@ -350,8 +365,8 @@ uint8_t firstFreeBelief(const aoc::game::GameState& gameState, BeliefType type) 
         bool taken = false;
         for (uint8_t r = 0; r < tracker.religionsFoundedCount && !taken; ++r) {
             const ReligionDef& def = tracker.religions[r];
-            taken = def.founderBelief == belief.id || def.followerBelief == belief.id
-                 || def.worshipBelief == belief.id || def.enhancerBelief == belief.id;
+            taken = def.founderBelief == belief.id || def.followerBelief == belief.id ||
+                    def.worshipBelief == belief.id || def.enhancerBelief == belief.id;
         }
         for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
             if (other->faith().hasPantheon && other->faith().pantheonBelief == belief.id) {
@@ -372,8 +387,8 @@ bool beliefIsFree(const aoc::game::GameState& gameState, uint8_t belief, BeliefT
     const GlobalReligionTracker& tracker = gameState.religionTracker();
     for (uint8_t r = 0; r < tracker.religionsFoundedCount; ++r) {
         const ReligionDef& def = tracker.religions[r];
-        if (def.founderBelief == belief || def.followerBelief == belief
-            || def.worshipBelief == belief || def.enhancerBelief == belief) {
+        if (def.founderBelief == belief || def.followerBelief == belief ||
+            def.worshipBelief == belief || def.enhancerBelief == belief) {
             return false;
         }
     }
@@ -389,8 +404,8 @@ namespace {
 
 void foundPantheonWith(aoc::game::Player& gsPlayer, uint8_t belief) {
     PlayerFaithComponent& faith = gsPlayer.faith();
-    faith.hasPantheon    = true;
-    faith.pantheonBelief = belief;
+    faith.hasPantheon           = true;
+    faith.pantheonBelief        = belief;
     faith.faith -= PANTHEON_FAITH_COST;
     LOG_INFO("Player %u founded pantheon with belief %.*s (faith remaining: %.1f)",
              static_cast<unsigned>(gsPlayer.id()), static_cast<int>(BELIEFS[belief].name.size()),
@@ -401,13 +416,13 @@ void foundPantheonWith(aoc::game::Player& gsPlayer, uint8_t belief) {
 
 bool foundPantheonFor(aoc::game::GameState& gameState, PlayerId player) {
     aoc::game::Player* gsPlayer = gameState.player(player);
-    if (gsPlayer == nullptr || gsPlayer->faith().hasPantheon
-        || gsPlayer->faith().faith < PANTHEON_FAITH_COST) {
+    if (gsPlayer == nullptr || gsPlayer->faith().hasPantheon ||
+        gsPlayer->faith().faith < PANTHEON_FAITH_COST) {
         return false;
     }
     uint8_t belief = firstFreeBelief(gameState, BeliefType::Follower);
     if (belief == 255) {
-        belief = 4;   // every follower belief is claimed: share the first one
+        belief = 4; // every follower belief is claimed: share the first one
     }
     foundPantheonWith(*gsPlayer, belief);
     return true;
@@ -429,20 +444,26 @@ ErrorCode requestFoundPantheon(aoc::game::GameState& gameState, PlayerId player,
 }
 
 ReligionId foundReligionFor(aoc::game::GameState& gameState, PlayerId player) {
-    aoc::game::Player* gsPlayer = gameState.player(player);
+    aoc::game::Player* gsPlayer    = gameState.player(player);
     GlobalReligionTracker& tracker = gameState.religionTracker();
-    if (gsPlayer == nullptr || !gsPlayer->faith().hasPantheon
-        || gsPlayer->faith().foundedReligion != NO_RELIGION
-        || gsPlayer->faith().faith < RELIGION_FAITH_COST || !tracker.canFoundReligion()) {
+    if (gsPlayer == nullptr || !gsPlayer->faith().hasPantheon ||
+        gsPlayer->faith().foundedReligion != NO_RELIGION ||
+        gsPlayer->faith().faith < RELIGION_FAITH_COST || !tracker.canFoundReligion()) {
         return NO_RELIGION;
     }
     // Pick the beliefs before founding so the new religion does not block itself.
     uint8_t founder  = firstFreeBelief(gameState, BeliefType::Founder);
     uint8_t worship  = firstFreeBelief(gameState, BeliefType::Worship);
     uint8_t enhancer = firstFreeBelief(gameState, BeliefType::Enhancer);
-    if (founder == 255)  { founder = 0; }
-    if (worship == 255)  { worship = 8; }
-    if (enhancer == 255) { enhancer = 13; }
+    if (founder == 255) {
+        founder = 0;
+    }
+    if (worship == 255) {
+        worship = 8;
+    }
+    if (enhancer == 255) {
+        enhancer = 13;
+    }
     return foundReligionWith(gameState, *gsPlayer, founder, worship, enhancer);
 }
 
@@ -450,13 +471,13 @@ ErrorCode requestFoundReligion(aoc::game::GameState& gameState, PlayerId player,
                                uint8_t worship, uint8_t enhancer, ReligionId* outId) {
     aoc::game::Player* gsPlayer    = gameState.player(player);
     GlobalReligionTracker& tracker = gameState.religionTracker();
-    if (gsPlayer == nullptr || !beliefIsFree(gameState, founder, BeliefType::Founder)
-        || !beliefIsFree(gameState, worship, BeliefType::Worship)
-        || !beliefIsFree(gameState, enhancer, BeliefType::Enhancer)) {
+    if (gsPlayer == nullptr || !beliefIsFree(gameState, founder, BeliefType::Founder) ||
+        !beliefIsFree(gameState, worship, BeliefType::Worship) ||
+        !beliefIsFree(gameState, enhancer, BeliefType::Enhancer)) {
         return ErrorCode::InvalidArgument;
     }
-    if (!gsPlayer->faith().hasPantheon || gsPlayer->faith().foundedReligion != NO_RELIGION
-        || !tracker.canFoundReligion()) {
+    if (!gsPlayer->faith().hasPantheon || gsPlayer->faith().foundedReligion != NO_RELIGION ||
+        !tracker.canFoundReligion()) {
         return ErrorCode::InvalidState;
     }
     if (gsPlayer->faith().faith < RELIGION_FAITH_COST) {
@@ -484,7 +505,7 @@ ReligionId foundReligionWith(aoc::game::GameState& gameState, aoc::game::Player&
     def.enhancerBelief     = enhancer;
 
     PlayerFaithComponent& faith = gsPlayer->faith();
-    faith.foundedReligion = newId;
+    faith.foundedReligion       = newId;
     faith.faith -= RELIGION_FAITH_COST;
 
     // Seed pressure in the founder's own cities so the religion exists on the map.
@@ -501,9 +522,13 @@ ReligionId foundReligionWith(aoc::game::GameState& gameState, aoc::game::Player&
 
 void processAIReligionFounding(aoc::game::GameState& gameState) {
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
         // Human players found through the Religion screen (same two functions).
-        if (playerPtr->isHuman()) { continue; }
+        if (playerPtr->isHuman()) {
+            continue;
+        }
         static_cast<void>(foundPantheonFor(gameState, playerPtr->id()));
         static_cast<void>(foundReligionFor(gameState, playerPtr->id()));
     }
@@ -522,15 +547,15 @@ namespace {
 /// University (1 + 2 = 3 education) and still contribute to the science
 /// penalty.  Players who only put a Shrine in their capital sit at devotion
 /// 1-2, which is easily cancelled by a single Library.
-constexpr float DEVOTION_SHRINE          = 1.0f;
-constexpr float DEVOTION_TEMPLE          = 2.0f;
-constexpr float DEVOTION_CATHEDRAL       = 3.0f;
-constexpr float DEVOTION_HOLY_SITE       = 1.0f;
-constexpr float DEVOTION_DOMINANT_FAITH  = 1.0f;
+constexpr float DEVOTION_SHRINE         = 1.0f;
+constexpr float DEVOTION_TEMPLE         = 2.0f;
+constexpr float DEVOTION_CATHEDRAL      = 3.0f;
+constexpr float DEVOTION_HOLY_SITE      = 1.0f;
+constexpr float DEVOTION_DOMINANT_FAITH = 1.0f;
 
-constexpr float EDUCATION_LIBRARY        = 1.0f;
-constexpr float EDUCATION_UNIVERSITY     = 2.0f;
-constexpr float EDUCATION_RESEARCH_LAB   = 3.0f;
+constexpr float EDUCATION_LIBRARY      = 1.0f;
+constexpr float EDUCATION_UNIVERSITY   = 2.0f;
+constexpr float EDUCATION_RESEARCH_LAB = 3.0f;
 
 constexpr BuildingId BUILDING_LIBRARY      = BuildingId{7};
 constexpr BuildingId BUILDING_RESEARCH_LAB = BuildingId{12};
@@ -548,9 +573,15 @@ float computeCityDevotion(const aoc::game::City& city) {
     if (districts.hasDistrict(DistrictType::HolySite)) {
         devotion += DEVOTION_HOLY_SITE;
     }
-    if (districts.hasBuilding(BUILDING_SHRINE))    { devotion += DEVOTION_SHRINE; }
-    if (districts.hasBuilding(BUILDING_TEMPLE))    { devotion += DEVOTION_TEMPLE; }
-    if (districts.hasBuilding(BUILDING_CATHEDRAL)) { devotion += DEVOTION_CATHEDRAL; }
+    if (districts.hasBuilding(BUILDING_SHRINE)) {
+        devotion += DEVOTION_SHRINE;
+    }
+    if (districts.hasBuilding(BUILDING_TEMPLE)) {
+        devotion += DEVOTION_TEMPLE;
+    }
+    if (districts.hasBuilding(BUILDING_CATHEDRAL)) {
+        devotion += DEVOTION_CATHEDRAL;
+    }
 
     if (city.religion().dominantReligion() != NO_RELIGION) {
         devotion += DEVOTION_DOMINANT_FAITH;
@@ -563,21 +594,29 @@ float computeCityEducation(const aoc::game::City& city) {
     float education = 0.0f;
 
     const CityDistrictsComponent& districts = city.districts();
-    if (districts.hasBuilding(BUILDING_LIBRARY))      { education += EDUCATION_LIBRARY; }
-    if (districts.hasBuilding(BUILDING_UNIVERSITY))   { education += EDUCATION_UNIVERSITY; }
-    if (districts.hasBuilding(BUILDING_RESEARCH_LAB)) { education += EDUCATION_RESEARCH_LAB; }
+    if (districts.hasBuilding(BUILDING_LIBRARY)) {
+        education += EDUCATION_LIBRARY;
+    }
+    if (districts.hasBuilding(BUILDING_UNIVERSITY)) {
+        education += EDUCATION_UNIVERSITY;
+    }
+    if (districts.hasBuilding(BUILDING_RESEARCH_LAB)) {
+        education += EDUCATION_RESEARCH_LAB;
+    }
 
     return education;
 }
 
 EraId effectiveEraFromTech(const aoc::game::Player& player) {
     const PlayerTechComponent& pt = player.tech();
-    const uint16_t total = techCount();
-    uint8_t maxEra = 0;
+    const uint16_t total          = techCount();
+    uint8_t maxEra                = 0;
     for (uint16_t ti = 0; ti < total; ++ti) {
         if (pt.hasResearched(TechId{ti})) {
             const uint8_t e = static_cast<uint8_t>(techDef(TechId{ti}).era.value);
-            if (e > maxEra) { maxEra = e; }
+            if (e > maxEra) {
+                maxEra = e;
+            }
         }
     }
     return EraId{maxEra};
@@ -585,8 +624,8 @@ EraId effectiveEraFromTech(const aoc::game::Player& player) {
 
 int32_t countRenaissancePlusTechs(const aoc::game::Player& player) {
     const PlayerTechComponent& pt = player.tech();
-    const uint16_t total = techCount();
-    int32_t count = 0;
+    const uint16_t total          = techCount();
+    int32_t count                 = 0;
     for (uint16_t ti = 0; ti < total; ++ti) {
         if (pt.hasResearched(TechId{ti}) && techDef(TechId{ti}).era.value >= 3) {
             ++count;
@@ -598,11 +637,19 @@ int32_t countRenaissancePlusTechs(const aoc::game::Player& player) {
 float religionScienceCoefficient(EraId era, int32_t techsResearchedRenaissancePlus) {
     float baseline;
     switch (era.value) {
-        case 0:
-        case 1:  baseline =  0.50f; break;   // Ancient/Classical: boon
-        case 2:  baseline =  0.00f; break;   // Medieval: neutral
-        case 3:  baseline = -0.30f; break;   // Renaissance: friction
-        default: baseline = -0.70f; break;   // Industrial+: drag
+    case 0:
+    case 1:
+        baseline = 0.50f;
+        break; // Ancient/Classical: boon
+    case 2:
+        baseline = 0.00f;
+        break; // Medieval: neutral
+    case 3:
+        baseline = -0.30f;
+        break; // Renaissance: friction
+    default:
+        baseline = -0.70f;
+        break; // Industrial+: drag
     }
 
     // Each Renaissance-or-later tech adds -0.05 to the coefficient.  Clamped
@@ -612,7 +659,9 @@ float religionScienceCoefficient(EraId era, int32_t techsResearchedRenaissancePl
         constexpr float PER_TECH_KICK = -0.05f;
         constexpr float MAX_KICK      = -1.50f;
         float kick = static_cast<float>(techsResearchedRenaissancePlus) * PER_TECH_KICK;
-        if (kick < MAX_KICK) { kick = MAX_KICK; }
+        if (kick < MAX_KICK) {
+            kick = MAX_KICK;
+        }
         baseline += kick;
     }
 
