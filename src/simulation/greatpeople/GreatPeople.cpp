@@ -469,14 +469,24 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
         }
 
         case GreatPersonType::Prophet: {
-            // Faith in the bank, and a religion if the civ has none yet.
-            PlayerFaithComponent& faith = playerObj->faith();
-            faith.faith += 300.0f;
-            if (faith.foundedReligion == NO_RELIGION) {
-                faith.hasPantheon = true;
-                LOG_INFO("Prophet: +300 faith, and the civ is ready to found a religion");
+            // The faith comes first, because founding spends it. Then the
+            // prophet walks the same path a player does: a pantheon if the civ
+            // has none (which picks a follower belief properly, where setting
+            // hasPantheon by hand left pantheonBelief unchosen at 255), then
+            // the religion itself. When there is nothing left to found -- the
+            // civ already has a religion, or the world has run out of them --
+            // the faith is the whole gift.
+            playerObj->faith().faith += PROPHET_FAITH;
+            if (!playerObj->faith().hasPantheon) {
+                static_cast<void>(foundPantheonFor(gameState, gp.owner));
+            }
+            const ReligionId founded = foundReligionFor(gameState, gp.owner);
+            if (founded != NO_RELIGION) {
+                LOG_INFO("Prophet founded a religion for player %u",
+                         static_cast<unsigned>(gp.owner));
             } else {
-                LOG_INFO("Prophet: +300 faith");
+                LOG_INFO("Prophet: +%.0f faith, nothing left to found",
+                         static_cast<double>(PROPHET_FAITH));
             }
             break;
         }

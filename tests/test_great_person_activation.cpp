@@ -12,6 +12,7 @@
 #include "support/World.hpp"
 
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
 
 using aoc::PlayerId;
 using aoc::sim::GreatPersonType;
@@ -159,19 +160,39 @@ aoc::game::Unit* recruitOf(aoc::test::World& w, GreatPersonType type) {
 
 } // namespace
 
-TEST_CASE("a Prophet brings faith and readies a religion for a civ that has none") {
+TEST_CASE("a Prophet founds a religion for a civ that has none") {
     aoc::test::World w = aoc::test::makeWorld(2);
     aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Home");
     aoc::game::Player& p = *w.gameState.players()[0];
-    const float faithBefore = p.faith().faith;
     REQUIRE(p.faith().foundedReligion == aoc::sim::NO_RELIGION);
+    REQUIRE_FALSE(p.faith().hasPantheon);
 
     REQUIRE(recruitOf(w, GreatPersonType::Prophet) != nullptr);
     CHECK(aoc::sim::requestGreatPersonActivation(w.gameState, w.grid, PlayerId{0}, {5, 5})
           == aoc::ErrorCode::Ok);
-    CHECK(p.faith().faith > faithBefore);
     CHECK(p.faith().hasPantheon);
-    CHECK(p.unitCount() == 0); // spent
+    CHECK(p.faith().pantheonBelief != 255);                  // a belief was really chosen
+    CHECK(p.faith().foundedReligion != aoc::sim::NO_RELIGION); // the religion exists
+    CHECK(p.unitCount() == 0);                                // the prophet is spent
+}
+
+TEST_CASE("a second Prophet cannot found a second religion, so it leaves its faith") {
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Home");
+    aoc::game::Player& p = *w.gameState.players()[0];
+
+    REQUIRE(recruitOf(w, GreatPersonType::Prophet) != nullptr);
+    REQUIRE(aoc::sim::requestGreatPersonActivation(w.gameState, w.grid, PlayerId{0}, {5, 5})
+            == aoc::ErrorCode::Ok);
+    const aoc::sim::ReligionId first = p.faith().foundedReligion;
+    REQUIRE(first != aoc::sim::NO_RELIGION);
+    const float faithAfterFirst = p.faith().faith;
+
+    REQUIRE(recruitOf(w, GreatPersonType::Prophet) != nullptr);
+    CHECK(aoc::sim::requestGreatPersonActivation(w.gameState, w.grid, PlayerId{0}, {5, 5})
+          == aoc::ErrorCode::Ok);
+    CHECK(p.faith().foundedReligion == first);              // still the same one
+    CHECK(p.faith().faith == doctest::Approx(faithAfterFirst + aoc::sim::PROPHET_FAITH));
 }
 
 TEST_CASE("a Writer and a Musician push the civics along when no slot is free") {

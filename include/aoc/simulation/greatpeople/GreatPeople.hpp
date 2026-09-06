@@ -64,6 +64,10 @@ inline constexpr float GP_AURA_STRENGTH = 5.0f;
 [[nodiscard]] ErrorCode requestRetireGreatPerson(aoc::game::GameState& gameState, PlayerId player,
                                                  hex::AxialCoord at);
 
+/// Faith a Great Prophet brings. Comfortably above RELIGION_FAITH_COST so the
+/// prophet can pay for the religion it founds out of what it carries.
+inline constexpr float PROPHET_FAITH = 300.0f;
+
 /// Gold a retirement pays.
 inline constexpr int64_t GP_RETIRE_GOLD = 150;
 
