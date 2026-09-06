@@ -476,6 +476,10 @@ int main(int argc, char* argv[]) {
     config.stopFlag       = &g_stopRequested;
     config.opponentMode   = args.opponentMode;
     config.hallOfFameSize = args.hallOfFameSize;
+    // Tuning a leader means tuning it in its own seat: --seed-leader N seats
+    // the evaluated genome on civ N. Without this, tuning Montezuma evolved
+    // his genes while playing Rome's abilities and agenda.
+    config.subjectCiv     = args.seedLeader;
     config.balanceWinrate = args.balanceWinrate;
     config.balanceBonus   = args.balanceBonus;
 

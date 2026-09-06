@@ -110,3 +110,39 @@ TEST_CASE("playerOutcomeScore: zero income -> balancedFlow 0, no divide-by-zero"
     const float s = aoc::ga::playerOutcomeScore(r, 0, 100);
     CHECK(s == doctest::Approx(0.25f));
 }
+
+TEST_CASE("the evaluated genome is seated on the civ it is being tuned for") {
+    // --seed-leader N tunes leader N's genes, and those genes only mean
+    // something alongside civ N's abilities and agenda. Player 0 used to be
+    // civ 0 unconditionally, so tuning Montezuma evolved his genome while
+    // playing Rome. The mapping must stay a permutation: the override table
+    // is keyed by civId, so two players sharing one would collide.
+    const int32_t civCount = static_cast<int32_t>(aoc::sim::CIV_COUNT);
+
+    SUBCASE("no subject civ keeps the plain player-index mapping") {
+        for (int32_t p = 0; p < 8; ++p) {
+            CHECK(aoc::ga::civForPlayer(p, -1)
+                  == static_cast<aoc::sim::CivId>(p % civCount));
+        }
+    }
+
+    SUBCASE("a subject civ seats player 0 and swaps the displaced player") {
+        constexpr int32_t MONTEZUMA = 8;
+        CHECK(aoc::ga::civForPlayer(0, MONTEZUMA)
+              == static_cast<aoc::sim::CivId>(MONTEZUMA));
+        CHECK(aoc::ga::civForPlayer(MONTEZUMA, MONTEZUMA) == static_cast<aoc::sim::CivId>(0));
+        CHECK(aoc::ga::civForPlayer(3, MONTEZUMA) == static_cast<aoc::sim::CivId>(3));
+    }
+
+    SUBCASE("every subject civ yields a permutation, so no two players collide") {
+        for (int32_t subject = 0; subject < 12; ++subject) {
+            std::vector<bool> seen(static_cast<std::size_t>(civCount), false);
+            for (int32_t p = 0; p < civCount; ++p) {
+                const auto civ = static_cast<std::size_t>(aoc::ga::civForPlayer(p, subject));
+                REQUIRE(civ < seen.size());
+                CHECK_FALSE(seen[civ]); // never handed out twice
+                seen[civ] = true;
+            }
+        }
+    }
+}

@@ -136,6 +136,12 @@ struct GAConfig {
     OpponentMode opponentMode    = OpponentMode::Fixed;
     int32_t      hallOfFameSize  = 8;    ///< Top-K best-ever preserved for Champion mode
 
+    /// Civ the evaluated genome plays. --seed-leader N tunes leader N's genes,
+    /// and those genes only mean anything alongside civ N's abilities and
+    /// agenda. Player 0 used to be civ 0 unconditionally, so tuning Montezuma
+    /// evolved his genome while playing Rome. -1 keeps the old behaviour.
+    int32_t      subjectCiv      = -1;
+
     /// Optional per-game turn counts. When non-empty, game k uses
     /// turnsList[k % turnsList.size()] instead of turnsPerGame. Enables
     /// mixed-size training (short + long games in one fitness eval).

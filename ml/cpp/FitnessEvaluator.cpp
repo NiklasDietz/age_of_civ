@@ -61,10 +61,22 @@
 
 namespace aoc::ga {
 
+aoc::sim::CivId civForPlayer(int32_t p, int32_t subjectCiv) {
+    const int32_t plain = p % static_cast<int32_t>(aoc::sim::CIV_COUNT);
+    if (subjectCiv < 0) {
+        return static_cast<aoc::sim::CivId>(plain);
+    }
+    const int32_t wanted = subjectCiv % static_cast<int32_t>(aoc::sim::CIV_COUNT);
+    if (plain == 0)      { return static_cast<aoc::sim::CivId>(wanted); }
+    if (plain == wanted) { return static_cast<aoc::sim::CivId>(0); }
+    return static_cast<aoc::sim::CivId>(plain);
+}
+
 SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed,
                                 const std::atomic<bool>* stopFlag,
                                 std::span<const Individual* const> overrides,
-                                aoc::map::MapType mapType) {
+                                aoc::map::MapType mapType,
+                                int32_t subjectCiv) {
     // Per-player personality overrides: install one LeaderPersonalityDef on
     // each player's civId (civId = p % CIV_COUNT). Storage is local to this
     // call so the setLeaderPersonalityOverride pointer stays valid for the
@@ -93,7 +105,7 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
         std::min(overrides.size(), static_cast<std::size_t>(playerCount));
     for (std::size_t i = 0; i < slotCount; ++i) {
         if (overrides[i] == nullptr) { continue; }
-        aoc::sim::CivId civId = static_cast<aoc::sim::CivId>(i % aoc::sim::CIV_COUNT);
+        aoc::sim::CivId civId = civForPlayer(static_cast<int32_t>(i), subjectCiv);
         overrideDefs.push_back(aoc::sim::LEADER_PERSONALITIES[civId]);
         overrideDefs.back().behavior = overrides[i]->toBehavior();
         aoc::sim::setLeaderPersonalityOverride(civId, &overrideDefs.back());
@@ -284,7 +296,7 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
         // Configure player
         aoc::game::Player* gsPlayer = gameState.player(player);
         if (gsPlayer != nullptr) {
-            gsPlayer->setCivId(static_cast<aoc::sim::CivId>(p % aoc::sim::CIV_COUNT));
+            gsPlayer->setCivId(civForPlayer(p, subjectCiv));
             gsPlayer->setHuman(false);
             gsPlayer->setTreasury(0);
 
@@ -603,7 +615,8 @@ GameScore scoreOneGame(std::span<const Individual* const> overrides,
                            % config.mapsList.size()];
 
     SimulationResult simResult = runSimulation(turns, playerCount, gameSeed,
-                                                config.stopFlag, overrides, mapType);
+                                                config.stopFlag, overrides, mapType,
+                                                config.subjectCiv);
     if (!simResult.valid || simResult.eraVP.empty()) { return out; }
 
     constexpr std::size_t P0 = 0;

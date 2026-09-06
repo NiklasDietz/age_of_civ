@@ -70,11 +70,22 @@ struct SimulationResult {
 ///
 /// Assumes playerCount <= CIV_COUNT so distinct civIds are assigned to
 /// each player; colliding civIds would share the same override slot.
+/// Civ that player `p` sits on. With `subjectCiv` >= 0, player 0 takes that
+/// civ and the player who would have held it takes civ 0, so the mapping
+/// stays a permutation: no two players ever share a civId, which the
+/// personality-override table relies on.
+[[nodiscard]] aoc::sim::CivId civForPlayer(int32_t p, int32_t subjectCiv);
+
+/// `subjectCiv` >= 0 seats player 0 on that civ, swapping whichever player
+/// would otherwise have held it onto civ 0, so a genome is always evaluated
+/// alongside the civ abilities it was tuned for. -1 keeps the plain
+/// player-index mapping.
 [[nodiscard]] SimulationResult runSimulation(int32_t turns, int32_t playerCount,
                                               uint64_t seed,
                                               const std::atomic<bool>* stopFlag = nullptr,
                                               std::span<const Individual* const> overrides = {},
-                                              aoc::map::MapType mapType = aoc::map::MapType::Continents);
+                                              aoc::map::MapType mapType = aoc::map::MapType::Continents,
+                                              int32_t subjectCiv = -1);
 
 /// Outcome-component fitness for one player in a finished `SimulationResult`:
 ///   1.0·relativeWin + 0.25·economicHealth + 0.25·survival
