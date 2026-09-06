@@ -11,27 +11,34 @@
 # NOTE: hashes are machine-local (release builds use -march=native, float
 # results may differ across CPUs). Re-bless once when switching machines.
 #
-# Usage: test_golden_sim.sh <aoc_simulate-binary> <output-dir> <golden-file> [--bless]
+# Usage: test_golden_sim.sh <aoc_simulate-binary> <output-dir> <golden-file> [--bless] [seed]
+#
+# The seed defaults to 42. A second blessed seed exists because a single one
+# hides divergence: a balance change repeatedly moved the conquest count on one
+# seed and left the others alone, which a lone golden cannot show.
 set -euo pipefail
 
 SIM="$1"
 OUTDIR="$2"
 GOLDEN_FILE="$3"
 BLESS="${4:-}"
-SEED=42
+SEED="${5:-42}"
 TURNS=500
 PLAYERS=4
 
-"${SIM}" --turns ${TURNS} --players ${PLAYERS} --seed ${SEED} \
-    --output "${OUTDIR}/golden_run.csv" > "${OUTDIR}/golden_run.log" 2>&1
+# Per-seed output names so two golden tests can run side by side.
+RUN="${OUTDIR}/golden_run_seed${SEED}"
 
-actual=$(cat "${OUTDIR}/golden_run.csv" \
-             "${OUTDIR}/golden_run_events.csv" \
-             "${OUTDIR}/golden_run_tiles.csv" | sha256sum | cut -d' ' -f1)
+"${SIM}" --turns ${TURNS} --players ${PLAYERS} --seed ${SEED} \
+    --output "${RUN}.csv" > "${RUN}.log" 2>&1
+
+actual=$(cat "${RUN}.csv" \
+             "${RUN}_events.csv" \
+             "${RUN}_tiles.csv" | sha256sum | cut -d' ' -f1)
 
 if [[ "${BLESS}" == "--bless" ]]; then
     echo "${actual}" > "${GOLDEN_FILE}"
-    echo "golden: blessed ${actual}"
+    echo "golden: blessed seed ${SEED}: ${actual}"
     exit 0
 fi
 
@@ -42,10 +49,10 @@ fi
 
 expected=$(cat "${GOLDEN_FILE}")
 if [[ "${actual}" != "${expected}" ]]; then
-    echo "golden: MISMATCH" >&2
+    echo "golden: MISMATCH (seed ${SEED})" >&2
     echo "  expected ${expected}" >&2
     echo "  actual   ${actual}" >&2
     echo "  If this behavior change is intentional, re-bless and explain in the commit." >&2
     exit 1
 fi
-echo "golden: OK (${actual})"
+echo "golden: OK (seed ${SEED}: ${actual})"

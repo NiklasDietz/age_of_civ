@@ -1160,12 +1160,20 @@ if(AOC_BUILD_TESTS)
                          $<TARGET_FILE:aoc_simulate> ${CMAKE_BINARY_DIR}
                  WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
         if(AOC_PORTABLE_GOLDEN)
-            add_test(NAME test_golden_sim
-                     COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_golden_sim.sh
-                             $<TARGET_FILE:aoc_simulate> ${CMAKE_BINARY_DIR}
-                             ${CMAKE_SOURCE_DIR}/tests/golden/seed42_turns500.sha256
-                     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-            set_tests_properties(test_golden_sim PROPERTIES LABELS "golden")
+            # Two seeds, not one. A single golden hides divergence: balance
+            # changes repeatedly moved the conquest count on one seed and left
+            # the others alone, which seed 42 on its own cannot show. Seed 43
+            # is the second because it is the one that keeps diverging.
+            foreach(golden_seed 42 43)
+                add_test(NAME test_golden_sim_seed${golden_seed}
+                         COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_golden_sim.sh
+                                 $<TARGET_FILE:aoc_simulate> ${CMAKE_BINARY_DIR}
+                                 ${CMAKE_SOURCE_DIR}/tests/golden/seed${golden_seed}_turns500.sha256
+                                 "" ${golden_seed}
+                         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+                set_tests_properties(test_golden_sim_seed${golden_seed}
+                                     PROPERTIES LABELS "golden")
+            endforeach()
         endif()
     endif()
 endif()
