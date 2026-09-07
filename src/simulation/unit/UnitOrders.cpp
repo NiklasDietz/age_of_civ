@@ -3,6 +3,7 @@
  * @brief Pillage, repair, delete and alert (see UnitOrders.hpp).
  */
 
+#include "aoc/simulation/unit/BuilderActions.hpp"
 #include "aoc/simulation/unit/UnitOrders.hpp"
 
 #include "aoc/core/Log.hpp"
@@ -50,19 +51,19 @@ ErrorCode requestPillage(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
     if (!unit->isMilitary() || unit->movementRemaining() <= 0) {
         return ErrorCode::InvalidUnitAction;
     }
-    const int32_t tileIndex = grid.toIndex(at);
+    const int32_t tileIndex  = grid.toIndex(at);
     const PlayerId tileOwner = grid.owner(tileIndex);
     if (tileOwner == player || tileOwner == INVALID_PLAYER) {
-        return ErrorCode::InvalidArgument;   // only another seat's improvements
+        return ErrorCode::InvalidArgument; // only another seat's improvements
     }
     const aoc::map::ImprovementType improvement = grid.improvement(tileIndex);
-    if (improvement == aoc::map::ImprovementType::None
-        || improvement == aoc::map::ImprovementType::Road || grid.isPillaged(tileIndex)) {
+    if (improvement == aoc::map::ImprovementType::None ||
+        improvement == aoc::map::ImprovementType::Road || grid.isPillaged(tileIndex)) {
         return ErrorCode::InvalidArgument;
     }
-    if (diplomacy != nullptr && tileOwner < CITY_STATE_PLAYER_BASE
-        && !diplomacy->isAtWar(player, tileOwner)) {
-        return ErrorCode::InvalidState;   // at peace with the tile's owner
+    if (diplomacy != nullptr && tileOwner < CITY_STATE_PLAYER_BASE &&
+        !diplomacy->isAtWar(player, tileOwner)) {
+        return ErrorCode::InvalidState; // at peace with the tile's owner
     }
     grid.setPillaged(tileIndex, true);
     unit->heal(PILLAGE_HEAL);
@@ -82,8 +83,8 @@ ErrorCode requestRepair(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     }
     aoc::game::Unit* builder = nullptr;
     for (const std::unique_ptr<aoc::game::Unit>& unit : owner->units()) {
-        if (unit->position() == at && unit->typeDef().unitClass == UnitClass::Civilian
-            && unit->hasCharges()) {
+        if (unit->position() == at && unit->typeDef().unitClass == UnitClass::Civilian &&
+            unit->hasCharges()) {
             builder = unit.get();
             break;
         }
@@ -93,7 +94,7 @@ ErrorCode requestRepair(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         return ErrorCode::InvalidArgument;
     }
     grid.setPillaged(tileIndex, false);
-    builder->useCharge();
+    spendChargeAndRetire(*owner, *builder);
     LOG_INFO("Player %u repaired (%d,%d)", static_cast<unsigned>(player), at.q, at.r);
     return ErrorCode::Ok;
 }

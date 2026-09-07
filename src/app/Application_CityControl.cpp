@@ -489,39 +489,33 @@ void Application::executeGameControlCommand(const aoc::debug::QueueProjectComman
 }
 
 void Application::executeGameControlCommand(const aoc::debug::PlaceImprovementCommand& cmd) {
-    aoc::game::Player* owner = this->m_gameState.player(cmd.player);
-    aoc::game::Unit* builder = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
     const ErrorCode rc       = aoc::sim::requestPlaceImprovement(this->m_gameState, this->m_hexGrid,
                                                                  cmd.player, cmd.at, cmd.type);
     if (rc != ErrorCode::Ok) {
         warnRejected("Improvement", cmd.player, cmd.at, rc);
         return;
     }
-    this->finishBuilderAction(builder);
+    this->finishBuilderAction(cmd.player, cmd.at);
 }
 
 void Application::executeGameControlCommand(const aoc::debug::BuilderChopCommand& cmd) {
-    aoc::game::Player* owner = this->m_gameState.player(cmd.player);
-    aoc::game::Unit* builder = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
     const ErrorCode rc =
         aoc::sim::requestChop(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
     if (rc != ErrorCode::Ok) {
         warnRejected("Chop", cmd.player, cmd.at, rc);
         return;
     }
-    this->finishBuilderAction(builder);
+    this->finishBuilderAction(cmd.player, cmd.at);
 }
 
 void Application::executeGameControlCommand(const aoc::debug::BuilderHarvestCommand& cmd) {
-    aoc::game::Player* owner = this->m_gameState.player(cmd.player);
-    aoc::game::Unit* builder = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
     const ErrorCode rc =
         aoc::sim::requestHarvest(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
     if (rc != ErrorCode::Ok) {
         warnRejected("Harvest", cmd.player, cmd.at, rc);
         return;
     }
-    this->finishBuilderAction(builder);
+    this->finishBuilderAction(cmd.player, cmd.at);
 }
 
 void Application::executeGameControlCommand(const aoc::debug::PillageCommand& cmd) {
@@ -533,15 +527,13 @@ void Application::executeGameControlCommand(const aoc::debug::PillageCommand& cm
 }
 
 void Application::executeGameControlCommand(const aoc::debug::RepairCommand& cmd) {
-    aoc::game::Player* owner = this->m_gameState.player(cmd.player);
-    aoc::game::Unit* builder = owner != nullptr ? owner->unitAt(cmd.at) : nullptr;
     const ErrorCode rc =
         aoc::sim::requestRepair(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at);
     if (rc != ErrorCode::Ok) {
         warnRejected("Repair", cmd.player, cmd.at, rc);
         return;
     }
-    this->finishBuilderAction(builder);
+    this->finishBuilderAction(cmd.player, cmd.at);
 }
 
 void Application::executeGameControlCommand(const aoc::debug::DeleteUnitCommand& cmd) {

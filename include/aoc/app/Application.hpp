@@ -325,7 +325,7 @@ private:
     /// building, and whether the next right-click on the map places it.
     aoc::hex::AxialCoord m_pendingDistrictCity{0, 0};
     aoc::sim::DistrictType m_pendingDistrictType = aoc::sim::DistrictType::Campus;
-    bool m_pendingDistrictActive = false;
+    bool m_pendingDistrictActive                 = false;
     aoc::ui::TradeScreen m_tradeScreen;
     aoc::ui::TradeRouteSetupScreen m_tradeRouteSetupScreen;
     aoc::ui::DiplomacyScreen m_diplomacyScreen;
@@ -717,8 +717,11 @@ private:
     aoc::PlayerId m_pendingWarTarget = aoc::INVALID_PLAYER;
     int32_t m_pendingWarTurn         = -1;
 
-    /// Remove a civilian unit that spent its last charge and drop the selection.
-    void finishBuilderAction(aoc::game::Unit* builder);
+    /// Drop the selection and the improvement picker if the builder that stood
+    /// at `at` is gone -- the request layer retires one that spent its last
+    /// charge. Takes a position, not a pointer, because after a successful
+    /// builder request the unit may already be destroyed.
+    void finishBuilderAction(PlayerId owner, aoc::hex::AxialCoord at);
 
     /// Floating list of improvements the selected builder may place (Pick button).
     aoc::ui::WidgetId m_improvementPicker = aoc::ui::INVALID_WIDGET;

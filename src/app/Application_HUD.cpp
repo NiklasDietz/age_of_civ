@@ -427,12 +427,15 @@ void Application::buildHUD() {
                     [this](aoc::hex::AxialCoord loc) { this->centerCameraOn(loc); },
                     [this](aoc::hex::AxialCoord loc) {
                         aoc::game::Player* human = this->m_gameState.humanPlayer();
-                        aoc::game::City* city = human != nullptr ? human->cityAt(loc) : nullptr;
-                        if (city == nullptr) { return; }
+                        aoc::game::City* city    = human != nullptr ? human->cityAt(loc) : nullptr;
+                        if (city == nullptr) {
+                            return;
+                        }
                         this->m_selectedCity = city;
                         this->m_selectedUnit = nullptr;
                         this->centerCameraOn(loc);
-                        this->m_cityDetailScreen.setContext(&this->m_gameState, &this->m_hexGrid, loc, 0);
+                        this->m_cityDetailScreen.setContext(&this->m_gameState, &this->m_hexGrid,
+                                                            loc, 0);
                         if (!this->m_cityDetailScreen.isOpen()) {
                             this->m_cityDetailScreen.open(this->m_uiManager);
                         }
@@ -468,7 +471,7 @@ void Application::buildHUD() {
             makeDropBtn(this->m_menuDropdown, "Religion Lens", [this]() {
                 this->m_uiManager.removeWidget(this->m_menuDropdown);
                 this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
-                using OM = aoc::render::GameRenderer::MapOverlay;
+                using OM             = aoc::render::GameRenderer::MapOverlay;
                 this->m_gameRenderer.overlayMode =
                     (this->m_gameRenderer.overlayMode == OM::Religion) ? OM::None : OM::Religion;
             });
@@ -482,8 +485,10 @@ void Application::buildHUD() {
                     [this](aoc::hex::AxialCoord loc) { this->centerCameraOn(loc); },
                     [this](aoc::hex::AxialCoord loc) {
                         aoc::game::Player* human = this->m_gameState.humanPlayer();
-                        aoc::game::Unit* unit = human != nullptr ? human->unitAt(loc) : nullptr;
-                        if (unit == nullptr) { return; }
+                        aoc::game::Unit* unit    = human != nullptr ? human->unitAt(loc) : nullptr;
+                        if (unit == nullptr) {
+                            return;
+                        }
                         this->m_selectedUnit = unit;
                         this->m_selectedCity = nullptr;
                         this->centerCameraOn(loc);
@@ -697,9 +702,9 @@ void Application::updateDiploStrip() {
             // Click → open DiplomacyScreen focused on this civ.
             icon.onClick = [this]() {
                 if (!this->m_diplomacyScreen.isOpen()) {
-                    this->m_diplomacyScreen.setContext(&this->m_gameState, PlayerId{0},
-                                                       &this->m_diplomacy, &this->m_hexGrid,
-                                                       &this->m_dealTracker, &this->m_allianceTracker);
+                    this->m_diplomacyScreen.setContext(
+                        &this->m_gameState, PlayerId{0}, &this->m_diplomacy, &this->m_hexGrid,
+                        &this->m_dealTracker, &this->m_allianceTracker);
                     this->m_diplomacyScreen.open(this->m_uiManager);
                 }
             };
@@ -863,25 +868,24 @@ void Application::updateHUD() {
         if (humanHud != nullptr) {
             CurrencyAmount goldTreasury = humanHud->treasury();
             CurrencyAmount goldIncome   = humanHud->incomePerTurn();
-            goldText           = std::to_string(goldTreasury) + (goldIncome >= 0 ? "  (+" : "  (") +
-                                 std::to_string(goldIncome) + ")";
+            goldText = std::to_string(goldTreasury) + (goldIncome >= 0 ? "  (+" : "  (") +
+                       std::to_string(goldIncome) + ")";
             // Same formulas the turn uses (TurnProcessor), not the worked-tile
             // yields alone: those read "+0" while techs completed (2026-09-04).
-            const float totalScience =
-                aoc::sim::computePlayerScience(*humanHud, this->m_hexGrid);
-            sciText = "+" + std::to_string(static_cast<int32_t>(totalScience));
-            const float totalCulture =
-                aoc::sim::computePlayerCulture(*humanHud, this->m_hexGrid);
-            culText = "+" + std::to_string(static_cast<int32_t>(totalCulture));
-            faithText          = std::to_string(static_cast<int32_t>(humanHud->faith().faith));
-            tourismText        = "+" + std::to_string(static_cast<int32_t>(humanHud->tourism().tourismPerTurn));
+            const float totalScience = aoc::sim::computePlayerScience(*humanHud, this->m_hexGrid);
+            sciText                  = "+" + std::to_string(static_cast<int32_t>(totalScience));
+            const float totalCulture = aoc::sim::computePlayerCulture(*humanHud, this->m_hexGrid);
+            culText                  = "+" + std::to_string(static_cast<int32_t>(totalCulture));
+            faithText = std::to_string(static_cast<int32_t>(humanHud->faith().faith));
+            tourismText =
+                "+" + std::to_string(static_cast<int32_t>(humanHud->tourism().tourismPerTurn));
         } else {
-            goldText  = "0  (+0)";
-            float ts  = aoc::sim::computePlayerScience(this->m_gameState, this->m_hexGrid, 0);
-            sciText   = "+" + std::to_string(static_cast<int32_t>(ts));
-            float tc  = aoc::sim::computePlayerCulture(this->m_gameState, this->m_hexGrid, 0);
-            culText   = "+" + std::to_string(static_cast<int32_t>(tc));
-            faithText = "0";
+            goldText    = "0  (+0)";
+            float ts    = aoc::sim::computePlayerScience(this->m_gameState, this->m_hexGrid, 0);
+            sciText     = "+" + std::to_string(static_cast<int32_t>(ts));
+            float tc    = aoc::sim::computePlayerCulture(this->m_gameState, this->m_hexGrid, 0);
+            culText     = "+" + std::to_string(static_cast<int32_t>(tc));
+            faithText   = "0";
             tourismText = "+0";
         }
         if (this->m_goldLabel != aoc::ui::INVALID_WIDGET) {
@@ -944,9 +948,9 @@ void Application::updateHUD() {
                 const aoc::sim::TechDef& tdef = aoc::sim::techDef(tech.currentResearch);
                 const float effectiveCost =
                     aoc::sim::effectiveResearchCost(tech, tech.currentResearch);
-                researchText = "Research: " + std::string(tdef.name) + " " +
-                               std::to_string(static_cast<int>(tech.researchProgress)) + "/" +
-                               std::to_string(static_cast<int>(effectiveCost));
+                researchText     = "Research: " + std::string(tdef.name) + " " +
+                                   std::to_string(static_cast<int>(tech.researchProgress)) + "/" +
+                                   std::to_string(static_cast<int>(effectiveCost));
                 researchFraction = aoc::sim::researchFraction(tech);
             }
         }
@@ -1108,32 +1112,40 @@ void Application::rebuildUnitActionPanel() {
         this->m_uiManager.removeWidget(this->m_improvementPicker);
         this->m_improvementPicker = aoc::ui::INVALID_WIDGET;
     }
-    const int32_t unitTileIdx  = this->m_hexGrid.isValid(unit.position())
-        ? this->m_hexGrid.toIndex(unit.position()) : -1;
-    const bool canChopHere     = unitTileIdx >= 0 && aoc::sim::canChopAt(this->m_hexGrid, unitTileIdx);
-    const bool canHarvestHere  = unitTileIdx >= 0 && aoc::sim::canHarvestAt(this->m_hexGrid, unitTileIdx);
+    const int32_t unitTileIdx =
+        this->m_hexGrid.isValid(unit.position()) ? this->m_hexGrid.toIndex(unit.position()) : -1;
+    const bool canChopHere = unitTileIdx >= 0 && aoc::sim::canChopAt(this->m_hexGrid, unitTileIdx);
+    const bool canHarvestHere =
+        unitTileIdx >= 0 && aoc::sim::canHarvestAt(this->m_hexGrid, unitTileIdx);
 
-    const bool canPillageHere = unitTileIdx >= 0 && aoc::sim::isMilitary(def.unitClass)
-        && this->m_hexGrid.owner(unitTileIdx) != unit.owner()
-        && this->m_hexGrid.owner(unitTileIdx) != aoc::INVALID_PLAYER
-        && this->m_hexGrid.improvement(unitTileIdx) != aoc::map::ImprovementType::None
-        && this->m_hexGrid.improvement(unitTileIdx) != aoc::map::ImprovementType::Road
-        && !this->m_hexGrid.isPillaged(unitTileIdx);
-    const bool canRepairHere = unitTileIdx >= 0 && def.unitClass == aoc::sim::UnitClass::Civilian
-        && this->m_hexGrid.owner(unitTileIdx) == unit.owner() && this->m_hexGrid.isPillaged(unitTileIdx);
+    const bool canPillageHere =
+        unitTileIdx >= 0 && aoc::sim::isMilitary(def.unitClass) &&
+        this->m_hexGrid.owner(unitTileIdx) != unit.owner() &&
+        this->m_hexGrid.owner(unitTileIdx) != aoc::INVALID_PLAYER &&
+        this->m_hexGrid.improvement(unitTileIdx) != aoc::map::ImprovementType::None &&
+        this->m_hexGrid.improvement(unitTileIdx) != aoc::map::ImprovementType::Road &&
+        !this->m_hexGrid.isPillaged(unitTileIdx);
+    const bool canRepairHere = unitTileIdx >= 0 && def.unitClass == aoc::sim::UnitClass::Civilian &&
+                               this->m_hexGrid.owner(unitTileIdx) == unit.owner() &&
+                               this->m_hexGrid.isPillaged(unitTileIdx);
 
-    const std::vector<aoc::PromotionId> promotionChoices = unit.experience().canPromote()
-        ? aoc::sim::availablePromotions(unit.experience(), def.unitClass)
-        : std::vector<aoc::PromotionId>{};
+    const std::vector<aoc::PromotionId> promotionChoices =
+        unit.experience().canPromote()
+            ? aoc::sim::availablePromotions(unit.experience(), def.unitClass)
+            : std::vector<aoc::PromotionId>{};
 
     // Count buttons to size the panel
     int32_t buttonCount = 3; // Skip + Sleep + Delete always
     if (aoc::sim::isMilitary(def.unitClass)) {
         buttonCount += 2; // Fortify + Alert
-        if (canPillageHere) { ++buttonCount; }
+        if (canPillageHere) {
+            ++buttonCount;
+        }
     }
     buttonCount += static_cast<int32_t>(promotionChoices.size());
-    if (canRepairHere) { ++buttonCount; }
+    if (canRepairHere) {
+        ++buttonCount;
+    }
     if (def.unitClass == aoc::sim::UnitClass::Scout) {
         ++buttonCount; // Auto-Explore
     }
@@ -1142,8 +1154,12 @@ void Application::rebuildUnitActionPanel() {
     }
     if (def.unitClass == aoc::sim::UnitClass::Civilian) {
         buttonCount += 3; // Improve + Pick + Auto-Improve
-        if (canChopHere)    { ++buttonCount; }
-        if (canHarvestHere) { ++buttonCount; }
+        if (canChopHere) {
+            ++buttonCount;
+        }
+        if (canHarvestHere) {
+            ++buttonCount;
+        }
     }
 
     const std::vector<aoc::sim::UnitUpgradeDef> upgrades =
@@ -1302,7 +1318,7 @@ void Application::rebuildUnitActionPanel() {
                 this->m_gameState, this->m_hexGrid, selectedUnitPtr->owner(),
                 selectedUnitPtr->position());
             if (result == ErrorCode::Ok) {
-                this->m_selectedUnit = nullptr;  // the unit was removed
+                this->m_selectedUnit = nullptr; // the unit was removed
             }
         });
     }
@@ -1355,33 +1371,38 @@ void Application::rebuildUnitActionPanel() {
     // -- Promotion choice: one button per promotion the unit may take (Civ VI) --
     for (aoc::PromotionId choice : promotionChoices) {
         const aoc::sim::PromotionDef& pdef = aoc::sim::PROMOTION_DEFS[choice.value];
-        makeActionBtn("Promote: " + std::string(pdef.name), {0.45f, 0.35f, 0.12f, 0.9f},
-                      [this, selectedUnitPtr, choice]() {
-            if (selectedUnitPtr == nullptr) { return; }
-            const ErrorCode rc = aoc::sim::requestPromotion(this->m_gameState, selectedUnitPtr->owner(),
-                                                            selectedUnitPtr->position(), choice);
-            if (rc != ErrorCode::Ok) {
-                LOG_WARN("Promotion refused: %.*s", static_cast<int>(describeError(rc).size()),
-                         describeError(rc).data());
-                return;
-            }
-            this->rebuildUnitActionPanel();
-        });
+        makeActionBtn(
+            "Promote: " + std::string(pdef.name), {0.45f, 0.35f, 0.12f, 0.9f},
+            [this, selectedUnitPtr, choice]() {
+                if (selectedUnitPtr == nullptr) {
+                    return;
+                }
+                const ErrorCode rc =
+                    aoc::sim::requestPromotion(this->m_gameState, selectedUnitPtr->owner(),
+                                               selectedUnitPtr->position(), choice);
+                if (rc != ErrorCode::Ok) {
+                    LOG_WARN("Promotion refused: %.*s", static_cast<int>(describeError(rc).size()),
+                             describeError(rc).data());
+                    return;
+                }
+                this->rebuildUnitActionPanel();
+            });
     }
 
     // -- Pillage / Alert (military), Delete (any): Civ VI unit orders, 2026-09-05 --
     if (aoc::sim::isMilitary(def.unitClass)) {
         if (canPillageHere) {
             makeActionBtn("Pillage", {0.35f, 0.15f, 0.12f, 0.9f}, [this, selectedUnitPtr]() {
-                if (selectedUnitPtr == nullptr) { return; }
-                const ErrorCode rc = aoc::sim::requestPillage(this->m_gameState, this->m_hexGrid,
-                                                              selectedUnitPtr->owner(),
-                                                              selectedUnitPtr->position(),
-                                                              &this->m_diplomacy);
+                if (selectedUnitPtr == nullptr) {
+                    return;
+                }
+                const ErrorCode rc = aoc::sim::requestPillage(
+                    this->m_gameState, this->m_hexGrid, selectedUnitPtr->owner(),
+                    selectedUnitPtr->position(), &this->m_diplomacy);
                 if (rc != ErrorCode::Ok) {
-                    this->m_notificationManager.push(
-                        std::string("Cannot pillage: ") + std::string(describeError(rc)), 3.0f, 1.0f,
-                        0.5f, 0.4f);
+                    this->m_notificationManager.push(std::string("Cannot pillage: ") +
+                                                         std::string(describeError(rc)),
+                                                     3.0f, 1.0f, 0.5f, 0.4f);
                     return;
                 }
                 this->rebuildUnitActionPanel();
@@ -1389,34 +1410,47 @@ void Application::rebuildUnitActionPanel() {
         }
         makeActionBtn(unit.alertStance ? "Alert: on" : "Alert", {0.25f, 0.25f, 0.35f, 0.9f},
                       [this, selectedUnitPtr]() {
-            if (selectedUnitPtr == nullptr) { return; }
-            const ErrorCode rc = aoc::sim::requestSetAlert(this->m_gameState, selectedUnitPtr->owner(),
-                                                           selectedUnitPtr->position(),
-                                                           !selectedUnitPtr->alertStance);
-            if (rc == ErrorCode::Ok) { this->rebuildUnitActionPanel(); }
-        });
+                          if (selectedUnitPtr == nullptr) {
+                              return;
+                          }
+                          const ErrorCode rc = aoc::sim::requestSetAlert(
+                              this->m_gameState, selectedUnitPtr->owner(),
+                              selectedUnitPtr->position(), !selectedUnitPtr->alertStance);
+                          if (rc == ErrorCode::Ok) {
+                              this->rebuildUnitActionPanel();
+                          }
+                      });
     }
     makeActionBtn("Delete", {0.35f, 0.12f, 0.12f, 0.9f}, [this, selectedUnitPtr]() {
-        if (selectedUnitPtr == nullptr) { return; }
-        const PlayerId ownerId       = selectedUnitPtr->owner();
-        const hex::AxialCoord where  = selectedUnitPtr->position();
-        this->m_selectedUnit    = nullptr;
-        this->m_actionPanelUnit = nullptr;
-        const ErrorCode rc = aoc::sim::requestDeleteUnit(this->m_gameState, this->m_hexGrid, ownerId, where);
+        if (selectedUnitPtr == nullptr) {
+            return;
+        }
+        const PlayerId ownerId      = selectedUnitPtr->owner();
+        const hex::AxialCoord where = selectedUnitPtr->position();
+        this->m_selectedUnit        = nullptr;
+        this->m_actionPanelUnit     = nullptr;
+        const ErrorCode rc =
+            aoc::sim::requestDeleteUnit(this->m_gameState, this->m_hexGrid, ownerId, where);
         if (rc != ErrorCode::Ok) {
-            LOG_WARN("Delete refused: %.*s", static_cast<int>(describeError(rc).size()), describeError(rc).data());
+            LOG_WARN("Delete refused: %.*s", static_cast<int>(describeError(rc).size()),
+                     describeError(rc).data());
         }
     });
     if (canRepairHere) {
         makeActionBtn("Repair", {0.20f, 0.30f, 0.20f, 0.9f}, [this, selectedUnitPtr]() {
-            if (selectedUnitPtr == nullptr) { return; }
-            const ErrorCode rc = aoc::sim::requestRepair(this->m_gameState, this->m_hexGrid,
-                                                         selectedUnitPtr->owner(), selectedUnitPtr->position());
-            if (rc != ErrorCode::Ok) {
-                LOG_WARN("Repair refused: %.*s", static_cast<int>(describeError(rc).size()), describeError(rc).data());
+            if (selectedUnitPtr == nullptr) {
                 return;
             }
-            this->finishBuilderAction(selectedUnitPtr);
+            const PlayerId builderOwner          = selectedUnitPtr->owner();
+            const aoc::hex::AxialCoord builderAt = selectedUnitPtr->position();
+            const ErrorCode rc = aoc::sim::requestRepair(this->m_gameState, this->m_hexGrid,
+                                                        builderOwner, builderAt);
+            if (rc != ErrorCode::Ok) {
+                LOG_WARN("Repair refused: %.*s", static_cast<int>(describeError(rc).size()),
+                         describeError(rc).data());
+                return;
+            }
+            this->finishBuilderAction(builderOwner, builderAt);
         });
     }
 
@@ -1428,7 +1462,8 @@ void Application::rebuildUnitActionPanel() {
             }
 
             const int32_t tileIndex = this->m_hexGrid.toIndex(selectedUnitPtr->position());
-            const aoc::game::Player* builderOwner = this->m_gameState.player(selectedUnitPtr->owner());
+            const aoc::game::Player* builderOwner =
+                this->m_gameState.player(selectedUnitPtr->owner());
             const aoc::sim::PlayerTechComponent* ownerTech =
                 builderOwner != nullptr ? &builderOwner->tech() : nullptr;
             const aoc::map::ImprovementType bestImpr =
@@ -1437,15 +1472,18 @@ void Application::rebuildUnitActionPanel() {
             if (bestImpr == aoc::map::ImprovementType::None) {
                 return;
             }
+            // Snapshot before the request: it retires a builder that spends
+            // its last charge, so selectedUnitPtr may dangle afterwards.
+            const PlayerId actingOwner        = selectedUnitPtr->owner();
+            const aoc::hex::AxialCoord actingAt = selectedUnitPtr->position();
             const ErrorCode rc = aoc::sim::requestPlaceImprovement(
-                this->m_gameState, this->m_hexGrid, selectedUnitPtr->owner(),
-                selectedUnitPtr->position(), bestImpr);
+                this->m_gameState, this->m_hexGrid, actingOwner, actingAt, bestImpr);
             if (rc != ErrorCode::Ok) {
                 LOG_INFO("Improve refused: %.*s", static_cast<int>(describeError(rc).size()),
                          describeError(rc).data());
                 return;
             }
-            this->finishBuilderAction(selectedUnitPtr);
+            this->finishBuilderAction(actingOwner, actingAt);
         });
 
         // -- Pick: every improvement this unit may place here, one button each --
@@ -1458,15 +1496,17 @@ void Application::rebuildUnitActionPanel() {
                 this->m_improvementPicker = aoc::ui::INVALID_WIDGET;
                 return;
             }
-            const aoc::game::Player* builderOwner = this->m_gameState.player(selectedUnitPtr->owner());
+            const aoc::game::Player* builderOwner =
+                this->m_gameState.player(selectedUnitPtr->owner());
             if (builderOwner == nullptr || !this->m_hexGrid.isValid(selectedUnitPtr->position())) {
                 return;
             }
             const int32_t tileIndex = this->m_hexGrid.toIndex(selectedUnitPtr->position());
             const std::vector<aoc::map::ImprovementType> options = aoc::sim::placeableImprovements(
                 this->m_hexGrid, tileIndex, *selectedUnitPtr, builderOwner->tech());
-            const float rowH   = 22.0f;
-            const float panelH = 30.0f + rowH * static_cast<float>(std::max<std::size_t>(options.size(), 1)) + 12.0f;
+            const float rowH = 22.0f;
+            const float panelH =
+                30.0f + rowH * static_cast<float>(std::max<std::size_t>(options.size(), 1)) + 12.0f;
             aoc::ui::PanelData pickBg;
             pickBg.backgroundColor = aoc::ui::tokens::SURFACE_PARCHMENT;
             pickBg.borderColor     = aoc::ui::tokens::BRONZE_BASE;
@@ -1488,7 +1528,9 @@ void Application::rebuildUnitActionPanel() {
             for (aoc::map::ImprovementType option : options) {
                 std::string name = "Improvement";
                 for (const aoc::sim::ImprovementDef& idef : aoc::sim::IMPROVEMENT_DEFS) {
-                    if (idef.type == option) { name = std::string(idef.name); }
+                    if (idef.type == option) {
+                        name = std::string(idef.name);
+                    }
                 }
                 aoc::ui::ButtonData ob;
                 ob.label        = name;
@@ -1498,54 +1540,62 @@ void Application::rebuildUnitActionPanel() {
                 ob.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
                 ob.pressedColor = aoc::ui::tokens::BRONZE_DARK;
                 ob.onClick      = [this, selectedUnitPtr, option]() {
+                    const PlayerId builderOwner          = selectedUnitPtr->owner();
+                    const aoc::hex::AxialCoord builderAt = selectedUnitPtr->position();
                     const ErrorCode rc = aoc::sim::requestPlaceImprovement(
-                        this->m_gameState, this->m_hexGrid, selectedUnitPtr->owner(),
-                        selectedUnitPtr->position(), option);
+                        this->m_gameState, this->m_hexGrid, builderOwner, builderAt, option);
                     if (this->m_improvementPicker != aoc::ui::INVALID_WIDGET) {
                         this->m_uiManager.removeWidget(this->m_improvementPicker);
                         this->m_improvementPicker = aoc::ui::INVALID_WIDGET;
                     }
                     if (rc != ErrorCode::Ok) {
                         LOG_WARN("Placing improvement refused: %.*s",
-                                 static_cast<int>(describeError(rc).size()), describeError(rc).data());
+                                 static_cast<int>(describeError(rc).size()),
+                                 describeError(rc).data());
                         return;
                     }
-                    this->finishBuilderAction(selectedUnitPtr);
+                    this->finishBuilderAction(builderOwner, builderAt);
                 };
-                (void)this->m_uiManager.createButton(this->m_improvementPicker,
-                                                     {0.0f, 0.0f, 228.0f, rowH - 2.0f}, std::move(ob));
+                (void)this->m_uiManager.createButton(
+                    this->m_improvementPicker, {0.0f, 0.0f, 228.0f, rowH - 2.0f}, std::move(ob));
             }
             this->m_uiManager.layout();
         });
 
         if (canChopHere) {
             makeActionBtn("Chop", {0.30f, 0.22f, 0.12f, 0.9f}, [this, selectedUnitPtr]() {
-                if (selectedUnitPtr == nullptr) { return; }
-                const ErrorCode rc = aoc::sim::requestChop(this->m_gameState, this->m_hexGrid,
-                                                           selectedUnitPtr->owner(),
-                                                           selectedUnitPtr->position());
-                if (rc != ErrorCode::Ok) {
-                    this->m_notificationManager.push(
-                        std::string("Cannot chop here: ") + std::string(describeError(rc)), 3.0f,
-                        1.0f, 0.5f, 0.4f);
+                if (selectedUnitPtr == nullptr) {
                     return;
                 }
-                this->finishBuilderAction(selectedUnitPtr);
+                const PlayerId builderOwner          = selectedUnitPtr->owner();
+                const aoc::hex::AxialCoord builderAt = selectedUnitPtr->position();
+                const ErrorCode rc = aoc::sim::requestChop(this->m_gameState, this->m_hexGrid,
+                                                          builderOwner, builderAt);
+                if (rc != ErrorCode::Ok) {
+                    this->m_notificationManager.push(std::string("Cannot chop here: ") +
+                                                         std::string(describeError(rc)),
+                                                     3.0f, 1.0f, 0.5f, 0.4f);
+                    return;
+                }
+                this->finishBuilderAction(builderOwner, builderAt);
             });
         }
         if (canHarvestHere) {
             makeActionBtn("Harvest", {0.30f, 0.28f, 0.12f, 0.9f}, [this, selectedUnitPtr]() {
-                if (selectedUnitPtr == nullptr) { return; }
-                const ErrorCode rc = aoc::sim::requestHarvest(this->m_gameState, this->m_hexGrid,
-                                                              selectedUnitPtr->owner(),
-                                                              selectedUnitPtr->position());
-                if (rc != ErrorCode::Ok) {
-                    this->m_notificationManager.push(
-                        std::string("Cannot harvest here: ") + std::string(describeError(rc)), 3.0f,
-                        1.0f, 0.5f, 0.4f);
+                if (selectedUnitPtr == nullptr) {
                     return;
                 }
-                this->finishBuilderAction(selectedUnitPtr);
+                const PlayerId builderOwner          = selectedUnitPtr->owner();
+                const aoc::hex::AxialCoord builderAt = selectedUnitPtr->position();
+                const ErrorCode rc = aoc::sim::requestHarvest(this->m_gameState, this->m_hexGrid,
+                                                             builderOwner, builderAt);
+                if (rc != ErrorCode::Ok) {
+                    this->m_notificationManager.push(std::string("Cannot harvest here: ") +
+                                                         std::string(describeError(rc)),
+                                                     3.0f, 1.0f, 0.5f, 0.4f);
+                    return;
+                }
+                this->finishBuilderAction(builderOwner, builderAt);
             });
         }
 
@@ -1852,13 +1902,13 @@ void Application::centerCameraOn(aoc::hex::AxialCoord location) {
     this->m_cameraController.setPosition(px, py);
 }
 
-void Application::finishBuilderAction(aoc::game::Unit* builder) {
-    if (builder == nullptr || builder->hasCharges()) {
-        return;
-    }
-    aoc::game::Player* owner = this->m_gameState.player(builder->owner());
-    if (owner != nullptr) {
-        owner->removeUnit(builder);
+void Application::finishBuilderAction(PlayerId owner, aoc::hex::AxialCoord at) {
+    // The request layer retires a builder that spent its last charge, so by the
+    // time we get here the unit may already be destroyed. Ask the game state
+    // whether one still stands there rather than dereferencing a stale pointer.
+    aoc::game::Player* player = this->m_gameState.player(owner);
+    if (player != nullptr && player->unitAt(at) != nullptr) {
+        return; // still has charges, still selectable
     }
     this->m_selectedUnit    = nullptr;
     this->m_actionPanelUnit = nullptr;

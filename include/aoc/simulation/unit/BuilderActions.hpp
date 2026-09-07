@@ -19,8 +19,15 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::game { class GameState; class Unit; class City; }
-namespace aoc::sim { struct PlayerTechComponent; }
+namespace aoc::game {
+class GameState;
+class Player;
+class Unit;
+class City;
+} // namespace aoc::game
+namespace aoc::sim {
+struct PlayerTechComponent;
+}
 
 namespace aoc::sim {
 
@@ -35,15 +42,24 @@ inline constexpr int32_t BUILDER_YIELD_RANGE = 3;
 
 [[nodiscard]] bool isMilitaryEngineer(const aoc::game::Unit& unit);
 
-/// Production a chop yields at era `era` (an EraId value: 20 + 10 per era); harvest food uses the same curve.
+/// Spend one of `unit`'s charges and remove it if that was its last.
+///
+/// Every builder request ends this way, so the request layer -- not each of its
+/// callers -- decides when a builder is used up. Callers must treat the unit as
+/// possibly destroyed once a builder request returns `ErrorCode::Ok`, and must
+/// not dereference their pointer to it afterwards.
+void spendChargeAndRetire(aoc::game::Player& owner, aoc::game::Unit& unit);
+
+/// Production a chop yields at era `era` (an EraId value: 20 + 10 per era); harvest food uses the
+/// same curve.
 [[nodiscard]] int32_t builderYield(uint16_t era);
 
 /// The improvements this unit may place on `tileIndex` right now: a Builder
 /// gets every terrain-legal, tech-known type except roads, railways and forts;
 /// a Military Engineer gets exactly those three.
-[[nodiscard]] std::vector<aoc::map::ImprovementType> placeableImprovements(
-    const aoc::map::HexGrid& grid, int32_t tileIndex, const aoc::game::Unit& unit,
-    const PlayerTechComponent& tech);
+[[nodiscard]] std::vector<aoc::map::ImprovementType>
+placeableImprovements(const aoc::map::HexGrid& grid, int32_t tileIndex, const aoc::game::Unit& unit,
+                      const PlayerTechComponent& tech);
 
 /// Place `type` with the civilian unit standing on `at` (a Railway may replace
 /// a Road; any other tile must be empty). Spends one charge.

@@ -23,12 +23,12 @@ namespace aoc::sim {
 
 namespace {
 
-constexpr TechId CHOP_FOREST_TECH{0};   // Mining
-constexpr TechId CHOP_JUNGLE_TECH{4};   // Bronze Working
+constexpr TechId CHOP_FOREST_TECH{0}; // Mining
+constexpr TechId CHOP_JUNGLE_TECH{4}; // Bronze Working
 
 bool isEngineerImprovement(aoc::map::ImprovementType type) {
-    return type == aoc::map::ImprovementType::Road || type == aoc::map::ImprovementType::Railway
-        || type == aoc::map::ImprovementType::Fort;
+    return type == aoc::map::ImprovementType::Road || type == aoc::map::ImprovementType::Railway ||
+           type == aoc::map::ImprovementType::Fort;
 }
 
 /// The civilian unit of `player` standing on `at` with a charge left, or null.
@@ -39,9 +39,11 @@ aoc::game::Unit* builderAt(aoc::game::GameState& gameState, PlayerId player, hex
         return nullptr;
     }
     for (const std::unique_ptr<aoc::game::Unit>& unit : owner->units()) {
-        if (unit->position() == at && unit->typeDef().unitClass == UnitClass::Civilian
-            && unit->hasCharges()) {
-            if (ownerOut != nullptr) { *ownerOut = owner; }
+        if (unit->position() == at && unit->typeDef().unitClass == UnitClass::Civilian &&
+            unit->hasCharges()) {
+            if (ownerOut != nullptr) {
+                *ownerOut = owner;
+            }
             return unit.get();
         }
     }
@@ -54,7 +56,9 @@ aoc::game::City* nearestCity(aoc::game::Player& owner, const aoc::map::HexGrid& 
     aoc::game::City* best = nullptr;
     int32_t bestDist      = std::numeric_limits<int32_t>::max();
     for (const std::unique_ptr<aoc::game::City>& city : owner.cities()) {
-        if (city == nullptr || city->owner() != owner.id()) { continue; }
+        if (city == nullptr || city->owner() != owner.id()) {
+            continue;
+        }
         const int32_t d = grid.distance(city->location(), at);
         if (d <= BUILDER_YIELD_RANGE && d < bestDist) {
             bestDist = d;
@@ -65,6 +69,19 @@ aoc::game::City* nearestCity(aoc::game::Player& owner, const aoc::map::HexGrid& 
 }
 
 } // namespace
+
+void spendChargeAndRetire(aoc::game::Player& owner, aoc::game::Unit& unit) {
+    unit.useCharge();
+    if (unit.hasCharges()) {
+        return;
+    }
+    // A builder that has spent its last charge is consumed by the work. This
+    // used to be the caller's job, done in the HUD, the game-control dispatcher
+    // and the AI separately, so a caller that forgot -- or any future one --
+    // left a 0-charge builder standing on the map forever. Callers must not
+    // touch the unit after a request that succeeds; it may no longer exist.
+    owner.removeUnit(&unit);
+}
 
 bool isMilitaryEngineer(const aoc::game::Unit& unit) {
     return unit.typeId() == MILITARY_ENGINEER_ID;
@@ -79,15 +96,23 @@ std::vector<aoc::map::ImprovementType> placeableImprovements(const aoc::map::Hex
                                                              const aoc::game::Unit& unit,
                                                              const PlayerTechComponent& tech) {
     std::vector<aoc::map::ImprovementType> out;
-    const bool engineer = isMilitaryEngineer(unit);
+    const bool engineer                      = isMilitaryEngineer(unit);
     const aoc::map::ImprovementType existing = grid.improvement(tileIndex);
     for (const ImprovementDef& def : IMPROVEMENT_DEFS) {
-        if (def.type == aoc::map::ImprovementType::None) { continue; }
-        if (isEngineerImprovement(def.type) != engineer) { continue; }
-        const bool replacesRoad = def.type == aoc::map::ImprovementType::Railway
-                               && existing == aoc::map::ImprovementType::Road;
-        if (existing != aoc::map::ImprovementType::None && !replacesRoad) { continue; }
-        if (!canPlaceImprovement(grid, tileIndex, def.type, &tech)) { continue; }
+        if (def.type == aoc::map::ImprovementType::None) {
+            continue;
+        }
+        if (isEngineerImprovement(def.type) != engineer) {
+            continue;
+        }
+        const bool replacesRoad = def.type == aoc::map::ImprovementType::Railway &&
+                                  existing == aoc::map::ImprovementType::Road;
+        if (existing != aoc::map::ImprovementType::None && !replacesRoad) {
+            continue;
+        }
+        if (!canPlaceImprovement(grid, tileIndex, def.type, &tech)) {
+            continue;
+        }
         out.push_back(def.type);
     }
     return out;
@@ -106,7 +131,9 @@ ErrorCode requestPlaceImprovement(aoc::game::GameState& gameState, aoc::map::Hex
         placeableImprovements(grid, tileIndex, *unit, owner->tech());
     bool allowed = false;
     for (aoc::map::ImprovementType option : options) {
-        if (option == type) { allowed = true; }
+        if (option == type) {
+            allowed = true;
+        }
     }
     if (!allowed) {
         return ErrorCode::InvalidUnitAction;
@@ -116,7 +143,7 @@ ErrorCode requestPlaceImprovement(aoc::game::GameState& gameState, aoc::map::Hex
     if (type == aoc::map::ImprovementType::Quarry) {
         checkEurekaConditions(*owner, EurekaCondition::BuildQuarry);
     }
-    unit->useCharge();
+    spendChargeAndRetire(*owner, *unit);
     LOG_INFO("Player %u placed improvement %u at (%d,%d)", static_cast<unsigned>(player),
              static_cast<unsigned>(type), at.q, at.r);
     return ErrorCode::Ok;
@@ -124,8 +151,8 @@ ErrorCode requestPlaceImprovement(aoc::game::GameState& gameState, aoc::map::Hex
 
 bool canChopAt(const aoc::map::HexGrid& grid, int32_t tileIndex) {
     const aoc::map::FeatureType feature = grid.feature(tileIndex);
-    return feature == aoc::map::FeatureType::Forest || feature == aoc::map::FeatureType::Jungle
-        || feature == aoc::map::FeatureType::Marsh;
+    return feature == aoc::map::FeatureType::Forest || feature == aoc::map::FeatureType::Jungle ||
+           feature == aoc::map::FeatureType::Marsh;
 }
 
 bool canHarvestAt(const aoc::map::HexGrid& grid, int32_t tileIndex) {
@@ -148,20 +175,23 @@ ErrorCode requestChop(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, 
         return ErrorCode::InvalidArgument;
     }
     const aoc::map::FeatureType feature = grid.feature(tileIndex);
-    if (feature == aoc::map::FeatureType::Forest && !owner->tech().hasResearched(CHOP_FOREST_TECH)) {
+    if (feature == aoc::map::FeatureType::Forest &&
+        !owner->tech().hasResearched(CHOP_FOREST_TECH)) {
         return ErrorCode::TechPrerequisiteNotMet;
     }
-    if (feature == aoc::map::FeatureType::Jungle && !owner->tech().hasResearched(CHOP_JUNGLE_TECH)) {
+    if (feature == aoc::map::FeatureType::Jungle &&
+        !owner->tech().hasResearched(CHOP_JUNGLE_TECH)) {
         return ErrorCode::TechPrerequisiteNotMet;
     }
     aoc::game::City* city = nearestCity(*owner, grid, at);
     if (city == nullptr || city->production().isEmpty()) {
-        return ErrorCode::InvalidState;   // the yield needs a city that is building something
+        return ErrorCode::InvalidState; // the yield needs a city that is building something
     }
     const int32_t yield = builderYield(effectiveEraFromTech(*owner).value);
-    [[maybe_unused]] const bool completed = city->production().addProgress(static_cast<float>(yield));
+    [[maybe_unused]] const bool completed =
+        city->production().addProgress(static_cast<float>(yield));
     grid.setFeature(tileIndex, aoc::map::FeatureType::None);
-    unit->useCharge();
+    spendChargeAndRetire(*owner, *unit);
     LOG_INFO("Player %u chopped (%d,%d): +%d production to %s", static_cast<unsigned>(player), at.q,
              at.r, yield, city->name().c_str());
     return ErrorCode::Ok;
@@ -185,7 +215,7 @@ ErrorCode requestHarvest(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
     const int32_t yield = builderYield(effectiveEraFromTech(*owner).value);
     city->setFoodSurplus(city->foodSurplus() + static_cast<float>(yield));
     grid.setResource(tileIndex, ResourceId{});
-    unit->useCharge();
+    spendChargeAndRetire(*owner, *unit);
     LOG_INFO("Player %u harvested (%d,%d): +%d food to %s", static_cast<unsigned>(player), at.q,
              at.r, yield, city->name().c_str());
     return ErrorCode::Ok;
