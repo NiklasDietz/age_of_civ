@@ -179,7 +179,10 @@ inline constexpr std::array<UnitTypeDef, 78> UNIT_TYPE_DEFS = {{
     {UnitTypeId{4},  "Horseman",        UnitClass::Cavalry,  UnitEra::Ancient,      100, 28,  0, 0, 4,  80, TechId{40}, UnitTypeId{12}, 70,  {{4, 1}}},              // Horseback Riding
     {UnitTypeId{12}, "Knight",          UnitClass::Cavalry,  UnitEra::Medieval,     120, 45,  0, 0, 4, 150, TechId{52}, UnitTypeId{40}, 100, {{4, 1}, {60, 1}}},     // Stirrups
     {UnitTypeId{40}, "Cuirassier",      UnitClass::Cavalry,  UnitEra::Renaissance,  130, 55,  0, 0, 5, 200, TechId{58}, UnitTypeId{14}, 130, {{4, 1}}},              // Metal Casting
-    {UnitTypeId{14}, "Cavalry",         UnitClass::Cavalry,  UnitEra::Industrial,   130, 62,  0, 0, 5, 250, TechId{11}, UnitTypeId{},   0,   {{4, 1}}},              // 1 Horses
+    // Cavalry ends the horse line by becoming armour, which is the one upgrade
+    // the retired UPGRADE_PATHS table had and this one lacked. Without it
+    // Cavalry, and the Heavy Chariot line that feeds into it, dead-ended.
+    {UnitTypeId{14}, "Cavalry",         UnitClass::Cavalry,  UnitEra::Industrial,   130, 62,  0, 0, 5, 250, TechId{11}, UnitTypeId{17}, 180, {{4, 1}}},              // 1 Horses; -> Tank
 
     // ========================================================================
     // ARMOR (mechanized vehicles): Landship -> Tank -> Modern Armor -> Giant Death Robot

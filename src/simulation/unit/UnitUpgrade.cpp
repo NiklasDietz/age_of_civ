@@ -15,39 +15,30 @@
 
 namespace aoc::sim {
 
-namespace {
-
-/// Static upgrade path table.
-struct UpgradePathEntry {
-    uint16_t fromValue;
-    uint16_t toValue;
-    uint16_t requiredTechValue;
-};
-
-constexpr std::array<UpgradePathEntry, 8> UPGRADE_PATHS = {{
-    { 0, 10,  8},  // Warrior -> Swordsman, requires Metallurgy
-    { 1, 11,  7},  // Slinger -> Crossbowman, requires Apprenticeship
-    { 9, 46, 10},  // Spearman -> Pike and Shot, requires Gunpowder (13 never existed)
-    {10, 15, 11},  // Swordsman -> Infantry, requires Industrialization
-    {11, 16, 14},  // Crossbowman -> Artillery, requires Electricity
-    {12, 14, 11},  // Knight -> Cavalry, requires Industrialization
-    {14, 17, 15},  // Cavalry -> Tank, requires Mass Production
-    { 4, 12,  8},  // Horseman -> Knight, requires Metallurgy
-}};
-
-} // anonymous namespace
-
 std::vector<UnitUpgradeDef> getAvailableUpgrades(UnitTypeId currentType) {
+    // UNIT_TYPE_DEFS is the single source of truth. An eight-row UPGRADE_PATHS
+    // table used to live here and answer this question instead, so the
+    // upgradesTo and upgradeCost columns on all 78 unit rows were dead --
+    // Unit::upgradeTarget, canUpgrade and upgradeCost, their only readers, had
+    // no callers at all. The two tables also disagreed: this one sent a Slinger
+    // to the Archer, UPGRADE_PATHS sent it to the Crossbowman.
+    //
+    // The tech gate is the successor's own requiredTech. A separate column for
+    // it is what let the two tables drift apart in the first place: a unit you
+    // cannot build yet is a unit you cannot upgrade into.
     std::vector<UnitUpgradeDef> result;
-    for (const UpgradePathEntry& entry : UPGRADE_PATHS) {
-        if (entry.fromValue == currentType.value) {
-            UnitUpgradeDef def{};
-            def.from = UnitTypeId{entry.fromValue};
-            def.to = UnitTypeId{entry.toValue};
-            def.requiredTech = TechId{entry.requiredTechValue};
-            result.push_back(def);
-        }
+    if (currentType.value >= UNIT_TYPE_COUNT) {
+        return result;
     }
+    const UnitTypeId next = unitTypeDef(currentType).upgradesTo;
+    if (!next.isValid() || next.value >= UNIT_TYPE_COUNT) {
+        return result;
+    }
+    UnitUpgradeDef def{};
+    def.from         = currentType;
+    def.to           = next;
+    def.requiredTech = unitTypeDef(next).requiredTech;
+    result.push_back(def);
     return result;
 }
 
