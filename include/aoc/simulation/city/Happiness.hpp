@@ -1,5 +1,7 @@
 #pragma once
 
+#include "aoc/simulation/religion/Religion.hpp"
+
 /**
  * @file Happiness.hpp
  * @brief City happiness/amenity system.
@@ -66,6 +68,12 @@ struct CityHappinessComponent {
  * war weariness, inflation penalty, tax penalty, empire size,
  * military unit unhappiness, specialist entertainers.
  */
-void computeCityHappiness(aoc::game::Player& player);
+/// `tracker` supplies the follower beliefs of whichever religion holds each
+/// city. Passing it is what let the belief bonus be applied at all: the
+/// religions live on GameState, and this used to see only the Player, so the
+/// follower amenity bonus sat behind a comment saying it would be added when
+/// the global state was reachable.
+void computeCityHappiness(aoc::game::Player& player,
+                          const aoc::sim::GlobalReligionTracker* tracker = nullptr);
 
 } // namespace aoc::sim

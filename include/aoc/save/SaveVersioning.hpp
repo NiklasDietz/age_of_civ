@@ -107,6 +107,9 @@ namespace aoc::save {
  * person roster after the per-player blocks: claimed count and pass mask per
  * type. Without it a reloaded game re-offers figures another civ already holds
  * and forgets every pass. Every v27 save becomes unloadable. */
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 28;
+/* v29 (2026-09-07): each ReligionDef carries its holy city (a flag and a
+ * coordinate) after its four belief indices. Every v28 save becomes
+ * unloadable. */
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 29;
 
 } // namespace aoc::save

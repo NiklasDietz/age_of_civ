@@ -1401,6 +1401,11 @@ void writeReligionSection(WriteBuffer& out, const aoc::game::GameState& gameStat
         section.writeU8(def.followerBelief);
         section.writeU8(def.worshipBelief);
         section.writeU8(def.enhancerBelief);
+        // v29: the faith's seat. Without it a reloaded holy city stops
+        // radiating and can never be taken from anyone.
+        section.writeU8(def.hasHolyCity ? 1 : 0);
+        section.writeI32(def.holyCity.q);
+        section.writeI32(def.holyCity.r);
     }
     section.writeU32(static_cast<uint32_t>(gameState.players().size()));
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
@@ -3297,6 +3302,9 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 def.followerBelief = beliefs[1];
                 def.worshipBelief  = beliefs[2];
                 def.enhancerBelief = beliefs[3];
+                def.hasHolyCity    = (buf.readU8() != 0);
+                def.holyCity.q     = buf.readI32();
+                def.holyCity.r     = buf.readI32();
             }
             const uint32_t faithCount = buf.readU32();
             if (faithCount > MAX_PLAYERS || !buf.canReadRecords(faithCount, 8)) {

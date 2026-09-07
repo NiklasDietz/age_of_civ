@@ -579,7 +579,7 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     }
 
     // City happiness
-    computeCityHappiness(*gsPlayer);
+    computeCityHappiness(*gsPlayer, &turnContext.gameState->religionTracker());
 
     // City loyalty
     computeCityLoyalty(*turnContext.gameState, grid, player);
@@ -870,7 +870,13 @@ void processGlobalSystems(TurnContext& turnContext) {
     aoc::map::HexGrid& grid = *turnContext.grid;
 
     // Religious spread (global, affects all cities)
+    // Decay first, then holy cities renew, then the faiths spread. Ordering
+    // matters: decaying after a spread would eat the turn's own gains.
+    processHolyCityAndDecay(gameState);
     processReligiousSpread(gameState, grid, turnContext.diplomacy);
+    // Pay each founder for the cities their faith holds, after the spread has
+    // settled so the count reflects this turn.
+    processFounderBeliefs(gameState);
 
     // AI religion founding: auto-found pantheons and religions for non-human players
     // once they accumulate sufficient faith. Human players use the UI screen.

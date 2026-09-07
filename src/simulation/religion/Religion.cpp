@@ -43,8 +43,12 @@ constexpr std::array<BeliefDef, BELIEF_COUNT> BELIEFS = {{
      0.0f, 1.0f, 0.0f},
     {2, "World Church", BeliefType::Founder, "More gold from cities", 2.0f, 0.0f, 0.0f, 0.0f, 0.0f,
      0.0f},
-    {3, "Papal Primacy", BeliefType::Founder, "Diplomatic influence", 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-     0.0f},
+    // Papal Primacy, Cathedral and Holy Order carried no effect values at all:
+    // three of the sixteen beliefs were a name and a sentence. Their flavour
+    // says what they should do, so each now pays in the nearest currency the
+    // belief system already has.
+    {3, "Papal Primacy", BeliefType::Founder, "Gold from every city that follows you",
+     2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
     // Follower beliefs (4-7)
     {4, "Choral Music", BeliefType::Follower, "Amenities from religion", 0.0f, 0.0f, 1.0f, 0.0f,
      0.0f, 0.0f},
@@ -55,8 +59,8 @@ constexpr std::array<BeliefDef, BELIEF_COUNT> BELIEFS = {{
     {7, "Zen Meditation", BeliefType::Follower, "Large amenity boost", 0.0f, 0.0f, 1.5f, 0.0f, 0.0f,
      0.0f},
     // Worship beliefs (8-11)
-    {8, "Cathedral", BeliefType::Worship, "Culture worship building", 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-     0.0f},
+    {8, "Cathedral", BeliefType::Worship, "A grand church: contentment and faith",
+     0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f},
     {9, "Mosque", BeliefType::Worship, "Faith worship building", 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
      0.0f},
     {10, "Pagoda", BeliefType::Worship, "Amenity worship building", 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
@@ -64,14 +68,70 @@ constexpr std::array<BeliefDef, BELIEF_COUNT> BELIEFS = {{
     {11, "Synagogue", BeliefType::Worship, "Faith worship building", 0.0f, 0.0f, 0.0f, 0.0f, 2.0f,
      0.0f},
     // Enhancer beliefs (12-15)
-    {12, "Holy Order", BeliefType::Enhancer, "Cheaper missionaries", 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-     0.0f},
+    {12, "Holy Order", BeliefType::Enhancer, "Missionaries who travel further",
+     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.5f},
     {13, "Missionary Zeal", BeliefType::Enhancer, "Stronger missionaries", 0.0f, 0.0f, 0.0f, 0.0f,
      0.0f, 1.5f},
     {14, "Religious Texts", BeliefType::Enhancer, "Faster passive spread", 0.0f, 0.0f, 0.0f, 0.0f,
      0.0f, 1.3f},
     {15, "Itinerant Preachers", BeliefType::Enhancer, "Wider spread range", 0.0f, 0.0f, 0.0f, 0.0f,
      0.0f, 1.2f},
+
+    // --- Second rank (16-39) ---
+    // Sixteen beliefs meant four per type: with several religions in a game the
+    // choice was picked over before the last civ founded anything, and two
+    // faiths often ran identical doctrine. Twenty-four more spread the choice
+    // out. Every one carries an effect the simulation reads; the belief-effects
+    // test fails on any row that does not.
+    // Founder (16-23)
+    {16, "Crusade", BeliefType::Founder, "Gold from the faithful abroad", 1.5f, 0.0f, 0.0f, 0.0f,
+     0.0f, 0.0f},
+    {17, "Scholasticism", BeliefType::Founder, "Science from follower cities", 0.0f, 1.5f, 0.0f,
+     0.0f, 0.0f, 0.0f},
+    {18, "Monastic Isolation", BeliefType::Founder, "Quiet study in every follower city", 0.0f,
+     2.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+    {19, "Pilgrimage Routes", BeliefType::Founder, "Gold and faith from pilgrims", 1.0f, 0.0f, 0.0f,
+     0.0f, 1.0f, 0.0f},
+    {20, "Tithe of Learning", BeliefType::Founder, "Gold and science together", 0.8f, 0.8f, 0.0f,
+     0.0f, 0.0f, 0.0f},
+    {21, "Almsgiving", BeliefType::Founder, "Faith from every follower city", 0.0f, 0.0f, 0.0f,
+     0.0f, 1.5f, 0.0f},
+    {22, "Sacred Treasury", BeliefType::Founder, "A rich church", 2.5f, 0.0f, 0.0f, 0.0f, 0.0f,
+     0.0f},
+    {23, "Illuminated Manuscripts", BeliefType::Founder, "Copied knowledge", 0.0f, 1.0f, 0.0f, 0.0f,
+     0.5f, 0.0f},
+    // Follower (24-31)
+    {24, "Harvest Festival", BeliefType::Follower, "Food from the faith", 0.0f, 0.0f, 0.0f, 1.5f,
+     0.0f, 0.0f},
+    {25, "Sacred Groves", BeliefType::Follower, "Contentment among the trees", 0.0f, 0.0f, 1.2f,
+     0.0f, 0.0f, 0.0f},
+    {26, "Communal Kitchens", BeliefType::Follower, "Bread shared out", 0.0f, 0.0f, 0.5f, 1.0f,
+     0.0f, 0.0f},
+    {27, "Ancestor Veneration", BeliefType::Follower, "Faith at every hearth", 0.0f, 0.0f, 0.0f,
+     0.0f, 1.2f, 0.0f},
+    {28, "Fasting and Feast", BeliefType::Follower, "Lean months, glad ones", 0.0f, 0.0f, 1.0f,
+     0.5f, 0.0f, 0.0f},
+    {29, "Sabbath Rest", BeliefType::Follower, "A day set aside", 0.0f, 0.0f, 2.0f, 0.0f, 0.0f,
+     0.0f},
+    {30, "Hospitallers", BeliefType::Follower, "Care for the sick", 0.0f, 0.0f, 0.8f, 0.8f, 0.0f,
+     0.0f},
+    {31, "Divine Inspiration", BeliefType::Follower, "Faith and gladness", 0.0f, 0.0f, 0.6f, 0.0f,
+     1.0f, 0.0f},
+    // Worship (32-35)
+    {32, "Stupa", BeliefType::Worship, "A dome of quiet", 0.0f, 0.0f, 1.2f, 0.0f, 0.5f, 0.0f},
+    {33, "Wat", BeliefType::Worship, "A temple complex", 0.0f, 0.0f, 0.8f, 0.0f, 1.2f, 0.0f},
+    {34, "Gurdwara", BeliefType::Worship, "A kitchen and a hall", 0.0f, 0.0f, 0.5f, 1.0f, 0.5f,
+     0.0f},
+    {35, "Meeting House", BeliefType::Worship, "Plain walls, full benches", 0.0f, 0.0f, 1.0f, 0.5f,
+     0.0f, 0.0f},
+    // Enhancer (36-39)
+    {36, "Printed Sermons", BeliefType::Enhancer, "The word travels on paper", 0.0f, 0.0f, 0.0f,
+     0.0f, 0.0f, 1.6f},
+    {37, "Martyrdom", BeliefType::Enhancer, "Blood is seed", 0.0f, 0.0f, 0.0f, 0.0f, 0.5f, 1.4f},
+    {38, "Trade Missions", BeliefType::Enhancer, "Faith follows the caravans", 0.0f, 0.0f, 0.0f,
+     0.0f, 0.0f, 1.35f},
+    {39, "Charismatic Preachers", BeliefType::Enhancer, "Crowds gather", 0.0f, 0.0f, 0.0f, 0.0f,
+     0.0f, 1.8f},
 }};
 
 } // anonymous namespace
@@ -220,6 +280,18 @@ void processReligiousSpread(aoc::game::GameState& gameState, const aoc::map::Hex
         float pressure = BASE_PASSIVE_PRESSURE;
         if (source.hasHolySite) {
             pressure *= 2.0f;
+        }
+        // Enhancer belief: the whole point of the type is to spread further and
+        // faster, and until 2026-09-07 `spreadStrength` was a number the screen
+        // printed and nothing else ever read.
+        if (source.dominantReligion != NO_RELIGION
+            && source.dominantReligion < gameState.religionTracker().religionsFoundedCount) {
+            const ReligionDef& faith =
+                gameState.religionTracker().religions[source.dominantReligion];
+            if (faith.enhancerBelief < BELIEF_COUNT) {
+                const float strength = allBeliefs()[faith.enhancerBelief].spreadStrength;
+                if (strength > 0.0f) { pressure *= strength; }
+            }
         }
 
         // Enhancer belief multiplier (e.g. Missionary Zeal x1.5, Religious Texts x1.3).
@@ -509,6 +581,16 @@ ReligionId foundReligionWith(aoc::game::GameState& gameState, aoc::game::Player&
     faith.faith -= RELIGION_FAITH_COST;
 
     // Seed pressure in the founder's own cities so the religion exists on the map.
+    // The faith takes a seat: its first city becomes the holy city, which is
+    // what a rival can later take from it.
+    for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+        if (city != nullptr) {
+            def.holyCity    = city->location();
+            def.hasHolyCity = true;
+            break;
+        }
+    }
+
     for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
         city->religion().addPressure(newId, 5.0f);
     }
@@ -673,6 +755,72 @@ float religionLoyaltyCoefficient(EraId era) {
     // Renaissance onward: secular institutions replace it, so Devotion no
     // longer props up loyalty.
     return (era.value <= 2) ? 0.30f : 0.0f;
+}
+
+void processHolyCityAndDecay(aoc::game::GameState& gameState) {
+    const GlobalReligionTracker& tracker = gameState.religionTracker();
+
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        if (player == nullptr) { continue; }
+        for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
+            if (city == nullptr) { continue; }
+            CityReligionComponent& rel = city->religion();
+
+            // Everything fades a little. Without this, pressure only ever
+            // climbed: a faith that reached a city once held it forever.
+            for (uint8_t r = 0; r < MAX_RELIGIONS; ++r) {
+                if (rel.pressure[r] <= 0.0f) { continue; }
+                rel.pressure[r] *= (1.0f - PRESSURE_DECAY_PER_TURN);
+                if (rel.pressure[r] < PRESSURE_FLOOR) { rel.pressure[r] = 0.0f; }
+            }
+
+            // A holy city keeps its own faith burning, for whoever holds it.
+            for (uint8_t r = 0; r < tracker.religionsFoundedCount && r < MAX_RELIGIONS; ++r) {
+                const ReligionDef& faith = tracker.religions[r];
+                if (faith.hasHolyCity && faith.holyCity == city->location()) {
+                    rel.addPressure(r, HOLY_CITY_PRESSURE);
+                }
+            }
+        }
+    }
+}
+
+void processFounderBeliefs(aoc::game::GameState& gameState) {
+    const GlobalReligionTracker& tracker = gameState.religionTracker();
+    if (tracker.religionsFoundedCount == 0) {
+        return;
+    }
+
+    // Count the cities each religion holds, across the whole world: a founder
+    // is paid for reach, including reach into rival empires.
+    std::array<int32_t, MAX_RELIGIONS> followerCities{};
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        if (player == nullptr) { continue; }
+        for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
+            if (city == nullptr) { continue; }
+            const ReligionId dominant = city->religion().dominantReligion();
+            if (dominant != NO_RELIGION && dominant < MAX_RELIGIONS) {
+                ++followerCities[dominant];
+            }
+        }
+    }
+
+    for (uint8_t r = 0; r < tracker.religionsFoundedCount && r < MAX_RELIGIONS; ++r) {
+        const ReligionDef& faith = tracker.religions[r];
+        if (faith.founderBelief >= BELIEF_COUNT || followerCities[r] == 0) { continue; }
+        aoc::game::Player* founder = gameState.player(faith.founder);
+        if (founder == nullptr) { continue; }
+
+        const BeliefDef& belief = allBeliefs()[faith.founderBelief];
+        const float cities      = static_cast<float>(followerCities[r]);
+        if (belief.goldPerFollowerCity > 0.0f) {
+            founder->monetary().treasury +=
+                static_cast<CurrencyAmount>(belief.goldPerFollowerCity * cities);
+        }
+        if (belief.sciencePerFollowerCity > 0.0f) {
+            founder->tech().researchProgress += belief.sciencePerFollowerCity * cities;
+        }
+    }
 }
 
 } // namespace aoc::sim

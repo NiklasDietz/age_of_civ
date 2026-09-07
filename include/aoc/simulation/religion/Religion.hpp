@@ -63,7 +63,7 @@ struct BeliefDef {
     float spreadStrength         = 0.0f;  ///< Enhancer (multiplier on spread)
 };
 
-inline constexpr uint8_t BELIEF_COUNT = 16;
+inline constexpr uint8_t BELIEF_COUNT = 40;
 [[nodiscard]] const std::array<BeliefDef, BELIEF_COUNT>& allBeliefs();
 
 // ============================================================================
@@ -78,7 +78,29 @@ struct ReligionDef {
     uint8_t          followerBelief = 255;
     uint8_t          worshipBelief = 255;
     uint8_t          enhancerBelief = 255;
+
+    /// The city the faith was founded in. A religion had no seat at all, so
+    /// there was nothing for a rival to take and nothing for the faithful to
+    /// look toward. Set when the religion is founded; the holy city radiates
+    /// stronger pressure and keeps doing so for whoever holds it, which is what
+    /// makes capturing one worth doing.
+    hex::AxialCoord  holyCity{};
+    bool             hasHolyCity = false;
 };
+
+/// Pressure the holy city adds to its own faith every turn, on top of ordinary
+/// spread. Enough to matter, not enough to make the faith unshiftable.
+inline constexpr float HOLY_CITY_PRESSURE = 4.0f;
+
+/// Share of a religion's pressure in a city that fades each turn when nothing
+/// reinforces it. Without decay, pressure only ever climbed: a faith that
+/// reached a city once held it for the rest of the game and religion could
+/// never recede, only advance.
+inline constexpr float PRESSURE_DECAY_PER_TURN = 0.02f;
+
+/// Below this, a trace of pressure is dropped entirely rather than lingering
+/// forever as a rounding artefact.
+inline constexpr float PRESSURE_FLOOR = 0.5f;
 
 // ============================================================================
 // Per-player faith state (ECS component)
@@ -228,6 +250,16 @@ bool foundPantheonFor(aoc::game::GameState& gameState, PlayerId player);
 [[nodiscard]] ReligionId foundReligionFor(aoc::game::GameState& gameState, PlayerId player);
 
 /// Cost to found a pantheon.
+/// Pay the founder of each religion for the cities that follow it: gold and
+/// science per follower city, from its Founder belief. Those two fields sat on
+/// `BeliefDef` unread until 2026-09-07, so choosing a founder belief changed
+/// only the text on the religion screen.
+void processFounderBeliefs(aoc::game::GameState& gameState);
+
+/// Fade every religion's grip a little, then let each holy city renew its own.
+/// Run once per turn, before the spread pass.
+void processHolyCityAndDecay(aoc::game::GameState& gameState);
+
 inline constexpr float PANTHEON_FAITH_COST = 25.0f;
 
 /// Cost to found a religion (must have pantheon first).

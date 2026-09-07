@@ -26,7 +26,8 @@
 
 namespace aoc::sim {
 
-void computeCityHappiness(aoc::game::Player& player) {
+void computeCityHappiness(aoc::game::Player& player,
+                          const GlobalReligionTracker* tracker) {
     // War weariness penalty
     float warWearinessPenalty = warWearinessHappinessPenalty(
         player.warWeariness().weariness);
@@ -172,10 +173,15 @@ void computeCityHappiness(aoc::game::Player& player) {
 
         // Religion follower belief amenity bonus
         const CityReligionComponent& cityReligion = city->religion();
-        ReligionId dominant = cityReligion.dominantReligion();
-        if (dominant != NO_RELIGION) {
-            // Religion tracker is global - needs to be passed or accessed differently.
-            // For now, skip religion bonus (will be added when global state is in GameState)
+        const ReligionId dominant = cityReligion.dominantReligion();
+        if (dominant != NO_RELIGION && tracker != nullptr) {
+            if (dominant < tracker->religionsFoundedCount) {
+                const ReligionDef& faith = tracker->religions[dominant];
+                if (faith.followerBelief < BELIEF_COUNT) {
+                    // The follower belief of whatever religion holds this city.
+                    happiness.amenities += allBeliefs()[faith.followerBelief].amenityBonus;
+                }
+            }
         }
 
         // Empire size penalty

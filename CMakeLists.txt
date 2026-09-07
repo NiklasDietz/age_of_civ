@@ -961,6 +961,7 @@ if(AOC_BUILD_TESTS)
         test_culture_victory_paths
         test_great_person_activation
         test_eureka_coverage
+        test_belief_effects
         test_civ_route_bonuses
         test_world_congress
         test_air_sorties
