@@ -444,7 +444,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                                                                  targetUnit->position()) ==
                                      ErrorCode::Ok;
                         } else {
-                            aoc::sim::resolveRangedCombat(gameState, rng, grid, *unit, *targetUnit);
+                            aoc::sim::resolveRangedCombat(gameState, rng, grid, *unit, *targetUnit, diplomacy);
                         }
                         // Verified (audit WP-10 #3): resolveRangedCombat takes a
                         // const grid, never moves the attacker, and inflicts zero
@@ -496,7 +496,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                 if (enemyPlayer != nullptr) {
                     aoc::game::Unit* targetUnit = enemyPlayer->unitAt(weakestAdj->position);
                     if (targetUnit != nullptr) {
-                        aoc::sim::resolveMeleeCombat(gameState, rng, grid, *unit, *targetUnit);
+                        aoc::sim::resolveMeleeCombat(gameState, rng, grid, *unit, *targetUnit, diplomacy);
                         attacked = true;
                         // Re-look-up: we may have died in the exchange.
                         unit = gsPlayer->unitAt(snap.position);

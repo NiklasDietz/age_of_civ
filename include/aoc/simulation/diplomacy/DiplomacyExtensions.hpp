@@ -172,6 +172,13 @@ struct AllianceYieldModifiers {
     float goldMult    = 1.0f;
     float faithMult   = 1.0f;
     float combatBonus = 0.0f;  ///< Flat combat strength bonus (military alliance)
+    float tourismMult = 1.0f;  ///< Cultural alliance level 2
+
+    /// Military alliance level 2: you see what your ally sees.
+    bool  sharedVisibility = false;
+
+    /// Cultural alliance level 3: allied cities lend Great Work capacity.
+    int32_t sharedGreatWorkSlots = 0;
 };
 
 class DiplomacyManager;

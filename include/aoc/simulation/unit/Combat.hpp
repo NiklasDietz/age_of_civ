@@ -27,6 +27,8 @@ class HexGrid;
 
 namespace aoc::sim {
 
+class DiplomacyManager;
+
 struct CombatResult {
     int32_t attackerDamage; ///< HP lost by attacker
     int32_t defenderDamage; ///< HP lost by defender
@@ -50,9 +52,14 @@ struct CombatResult {
  * @param defender  The defending unit.
  * @return Combat outcome.
  */
+/// `diplomacy` is optional and defaults to none. It carries the level-3
+/// Military alliance combat bonus, whose field on AllianceYieldModifiers had no
+/// reader at all -- the one alliance type whose whole payload is military gave
+/// nothing military. Callers without a handle simply get no alliance bonus.
 CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rng,
                                 const aoc::map::HexGrid& grid, aoc::game::Unit& attacker,
-                                aoc::game::Unit& defender);
+                                aoc::game::Unit& defender,
+                                const DiplomacyManager* diplomacy = nullptr);
 
 /**
  * @brief Resolve ranged attack.
@@ -62,7 +69,8 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rn
  */
 CombatResult resolveRangedCombat(aoc::game::GameState& gameState, aoc::Random& rng,
                                  const aoc::map::HexGrid& grid, aoc::game::Unit& attacker,
-                                 aoc::game::Unit& defender);
+                                 aoc::game::Unit& defender,
+                                 const DiplomacyManager* diplomacy = nullptr);
 
 /**
  * @brief Count friendly units adjacent to a position (for flanking bonus).
@@ -133,7 +141,8 @@ struct CombatStrengths {
 [[nodiscard]] CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
                                                      const aoc::map::HexGrid& grid,
                                                      const aoc::game::Unit& attacker,
-                                                     const aoc::game::Unit& defender, bool ranged);
+                                                     const aoc::game::Unit& defender, bool ranged,
+                                                     const DiplomacyManager* diplomacy = nullptr);
 
 /// The damage curve every fight uses: 30 * (attack / defense) * a roll between
 /// 0.8 and 1.2, both operands floored at 0.01 and the result clamped to 0..100.

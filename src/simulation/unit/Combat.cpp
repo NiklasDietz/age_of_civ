@@ -16,6 +16,7 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/CombatExtensions.hpp"
 #include "aoc/simulation/unit/SupplyLines.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyExtensions.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/simulation/economy/DomesticCourier.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
@@ -179,7 +180,7 @@ aoc::game::Player* findOwningPlayer(aoc::game::GameState& gameState, const aoc::
 
 CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rng,
                                 const aoc::map::HexGrid& grid, aoc::game::Unit& attacker,
-                                aoc::game::Unit& defender) {
+                                aoc::game::Unit& defender, const DiplomacyManager* diplomacy) {
     // Embarked defenders: melee attacks are rejected outright. Embarkation
     // cuts strength 50% and stacks with health + terrain penalties, letting
     // the defense strength collapse toward the insta-kill shortcut. Embarked
@@ -189,7 +190,7 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rn
     }
 
     const CombatStrengths strengths =
-        computeCombatStrengths(gameState, grid, attacker, defender, false);
+        computeCombatStrengths(gameState, grid, attacker, defender, false, diplomacy);
     const float atkStrength = strengths.attack;
     const float defStrength = strengths.defense;
 
@@ -462,9 +463,9 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rn
 
 CombatResult resolveRangedCombat(aoc::game::GameState& gameState, aoc::Random& rng,
                                  const aoc::map::HexGrid& grid, aoc::game::Unit& attacker,
-                                 aoc::game::Unit& defender) {
+                                 aoc::game::Unit& defender, const DiplomacyManager* diplomacy) {
     const CombatStrengths strengths =
-        computeCombatStrengths(gameState, grid, attacker, defender, true);
+        computeCombatStrengths(gameState, grid, attacker, defender, true, diplomacy);
     const float atkStrength = strengths.attack;
     const float defStrength = strengths.defense;
 
@@ -596,7 +597,7 @@ void applyCivGovernmentAndAura(const aoc::game::GameState& gameState,
                                const aoc::map::HexGrid& grid,
                                const aoc::game::Unit& attacker,
                                const aoc::game::Unit& defender, float& atkStrength,
-                               float& defStrength) {
+                               float& defStrength, const DiplomacyManager* diplomacy) {
     const aoc::game::Player* atkPlayer = gameState.player(attacker.owner());
     const aoc::game::Player* defPlayer = gameState.player(defender.owner());
     if (atkPlayer != nullptr) {
@@ -638,6 +639,16 @@ void applyCivGovernmentAndAura(const aoc::game::GameState& gameState,
     // to the fight, for whoever it belongs to.
     atkStrength += greatPersonAuraBonus(gameState, grid, attacker);
     defStrength += greatPersonAuraBonus(gameState, grid, defender);
+
+    // A level-3 Military alliance lends combat strength. AllianceYieldModifiers
+    // carried this field with no reader anywhere.
+    if (diplomacy != nullptr) {
+        const uint8_t seats = static_cast<uint8_t>(gameState.playerCount());
+        atkStrength +=
+            computeAllianceYieldModifiers(*diplomacy, attacker.owner(), seats).combatBonus;
+        defStrength +=
+            computeAllianceYieldModifiers(*diplomacy, defender.owner(), seats).combatBonus;
+    }
 }
 
 } // namespace
@@ -654,7 +665,8 @@ float eraAdvantageModifier(UnitEra own, UnitEra other) {
 CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
                                        const aoc::map::HexGrid& grid,
                                        const aoc::game::Unit& attacker,
-                                       const aoc::game::Unit& defender, bool ranged) {
+                                       const aoc::game::Unit& defender, bool ranged,
+                                       const DiplomacyManager* diplomacy) {
     float atkStrength = 0.0f;
     float defStrength = 0.0f;
     if (ranged) {
@@ -702,7 +714,8 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
         defStrength += static_cast<float>(defender.experience().totalCombatBonus());
 
         // Civ ability, government and great-person aura (symmetric with melee).
-        applyCivGovernmentAndAura(gameState, grid, attacker, defender, atkStrength, defStrength);
+        applyCivGovernmentAndAura(gameState, grid, attacker, defender, atkStrength, defStrength,
+                                  diplomacy);
 
         // Era advantage. Only the side that is ahead gets an edge, so the two
         // modifiers never work against each other twice for one gap.
@@ -813,7 +826,8 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
             }
         }
 
-        applyCivGovernmentAndAura(gameState, grid, attacker, defender, atkStrength, defStrength);
+        applyCivGovernmentAndAura(gameState, grid, attacker, defender, atkStrength, defStrength,
+                                  diplomacy);
 
         // Era advantage. Only the side that is ahead gets an edge, so the two
         // modifiers never work against each other twice for one gap.

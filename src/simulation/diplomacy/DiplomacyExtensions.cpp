@@ -25,14 +25,53 @@ AllianceYieldModifiers computeAllianceYieldModifiers(
         for (std::size_t i = 1; i < rel.alliances.size(); ++i) {
             const AllianceState& a = rel.alliances[i];
             if (!a.isActive()) { continue; }
-            const float lvl = 1.0f + static_cast<float>(static_cast<uint8_t>(a.level));
-            const float bump = 0.05f * lvl;  // L1: +10%, L2: +15%, L3: +20%
+            // The payloads ALLIANCE_TYPE_DEFS actually describes, rather than
+            // the flat 0.05-per-level bump that used to stand in for all five.
+            // level2Bonus and level3Bonus had no readers at all, so choosing an
+            // alliance type changed nothing but which yield the bump landed on.
+            const std::size_t defIdx = static_cast<std::size_t>(a.type) - 1;
+            if (defIdx >= ALLIANCE_TYPE_DEFS.size()) { continue; }
+            const AllianceTypeDef& def = ALLIANCE_TYPE_DEFS[defIdx];
+            const uint8_t level        = static_cast<uint8_t>(a.level);
+            const bool atLeast2        = level >= static_cast<uint8_t>(AllianceLevel::Level2);
+            const bool atLeast3        = level >= static_cast<uint8_t>(AllianceLevel::Level3);
+
+            // Level 1 keeps a small generic bump: the table names no level-1
+            // payload, and its own description calls L1 "Open Borders +
+            // Defensive Pact", which is a relation state rather than a yield.
+            constexpr float LEVEL1_BUMP = 0.05f;
             switch (a.type) {
-                case AllianceType::Research:  out.scienceMult += bump; break;
-                case AllianceType::Cultural:  out.cultureMult += bump; break;
-                case AllianceType::Economic:  out.goldMult    += bump; break;
-                case AllianceType::Religious: out.faithMult   += bump; break;
-                case AllianceType::Military:  out.combatBonus += 1.0f * lvl; break;
+                case AllianceType::Research:
+                    out.scienceMult += LEVEL1_BUMP;
+                    // The table describes these as periodic grants (a eureka
+                    // every 30 turns, a free tech every 50). Granting on a
+                    // period needs a per-pair "last granted" counter, which is
+                    // persisted state and so waits for the save-version bump.
+                    // Until then they read as a standing research edge of the
+                    // same magnitude.
+                    if (atLeast2) { out.scienceMult += def.level2Bonus.bonusValue; }
+                    if (atLeast3) { out.scienceMult += def.level3Bonus.bonusValue; }
+                    break;
+                case AllianceType::Cultural:
+                    out.cultureMult += LEVEL1_BUMP;
+                    if (atLeast2) { out.tourismMult += def.level2Bonus.bonusValue; }
+                    if (atLeast3) {
+                        out.sharedGreatWorkSlots +=
+                            static_cast<int32_t>(def.level3Bonus.bonusValue);
+                    }
+                    break;
+                case AllianceType::Economic:
+                    out.goldMult += LEVEL1_BUMP;
+                    if (atLeast3) { out.goldMult += def.level3Bonus.bonusValue; }
+                    break;
+                case AllianceType::Religious:
+                    if (atLeast2) { out.faithMult += def.level2Bonus.bonusValue; }
+                    else          { out.faithMult += LEVEL1_BUMP; }
+                    break;
+                case AllianceType::Military:
+                    if (atLeast2) { out.sharedVisibility = true; }
+                    if (atLeast3) { out.combatBonus += def.level3Bonus.bonusValue; }
+                    break;
                 default: break;
             }
         }

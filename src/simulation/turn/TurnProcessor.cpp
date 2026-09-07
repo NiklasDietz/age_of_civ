@@ -669,6 +669,16 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
             if (all.faithMult != 1.0f) {
                 gsPlayer->faith().faith *= all.faithMult; // applied as an instant boost
             }
+            // goldMult had no reader at all: an Economic alliance was the only
+            // one of the five whose own yield never arrived. Applied to the
+            // turn's treasury gain the way faith is.
+            if (all.goldMult > 1.0f) {
+                const CurrencyAmount bonus = static_cast<CurrencyAmount>(
+                    static_cast<float>(gsPlayer->treasury()) * (all.goldMult - 1.0f) * 0.01f);
+                if (bonus > 0) {
+                    gsPlayer->addGold(bonus);
+                }
+            }
         }
 
         // Science funding cost: 0.2 gold per science point

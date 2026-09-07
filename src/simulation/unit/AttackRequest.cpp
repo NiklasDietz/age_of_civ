@@ -148,7 +148,7 @@ ErrorCode requestAttack(aoc::game::GameState& gameState, aoc::Random& rng, aoc::
         if (distance > def.range) {
             return ErrorCode::InvalidUnitAction;
         }
-        static_cast<void>(resolveRangedCombat(gameState, rng, grid, *attacker, *defender));
+        static_cast<void>(resolveRangedCombat(gameState, rng, grid, *attacker, *defender, diplomacy));
     } else {
         if (distance != 1) {
             return ErrorCode::InvalidUnitAction;
@@ -158,7 +158,7 @@ ErrorCode requestAttack(aoc::game::GameState& gameState, aoc::Random& rng, aoc::
             // result); until 2026-09-05 the attacker still lost its turn.
             return ErrorCode::InvalidUnitAction;
         }
-        static_cast<void>(resolveMeleeCombat(gameState, rng, grid, *attacker, *defender));
+        static_cast<void>(resolveMeleeCombat(gameState, rng, grid, *attacker, *defender, diplomacy));
     }
     // Either attack is the unit's action for the turn. Combat may have removed
     // the attacker (melee retaliation), so it is looked up again, never reused.
