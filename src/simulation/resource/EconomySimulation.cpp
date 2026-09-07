@@ -659,10 +659,14 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 //   IR #4 Information Age: +6 (cumulative)
                 //   IR #5 Post-Industrial: +10
                 {
-                    const IndustrialRevolutionId rev = playerPtr->industrial().currentRevolution;
-                    if (rev >= IndustrialRevolutionId::Third)        { robotSlots += 3; }
-                    if (rev >= IndustrialRevolutionId::Fourth)       { robotSlots += 3; }
-                    if (rev >= IndustrialRevolutionId::Fifth)        { robotSlots += 4; }
+                    const PlayerIndustrialComponent& ind = playerPtr->industrial();
+                    const IndustrialRevolutionId rev     = ind.currentRevolution;
+                    // hasAutomation() is the header's own name for "reached the
+                    // third revolution". Re-testing the enum inline here is what
+                    // left that accessor looking dead to an audit.
+                    if (ind.hasAutomation())                  { robotSlots += 3; }
+                    if (rev >= IndustrialRevolutionId::Fourth) { robotSlots += 3; }
+                    if (rev >= IndustrialRevolutionId::Fifth)  { robotSlots += 4; }
                 }
                 const int32_t maxSlots = totalWorkerCapacity(city->population(), robotSlots);
                 // Each recipe consumes workerSlots (1 for basic, 2-3 for advanced).

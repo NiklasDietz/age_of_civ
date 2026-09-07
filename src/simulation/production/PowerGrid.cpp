@@ -8,6 +8,7 @@
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/economy/EnergyDependency.hpp"
+#include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -158,8 +159,18 @@ CityPowerComponent computeCityPower(aoc::game::GameState& gameState, const aoc::
         result.energySupply += plantDef.energyOutput;
 
         if (plantDef.emissions > 0) {
-            pollution.co2ContributionPerTurn += plantDef.emissions;
-            pollution.wasteAccumulated += plantDef.emissions;
+            // REVOLUTION_DEFS calls this column "how much pollution is
+            // generated", and revolutionPollutionMultiplier computed it for
+            // nobody: its only caller was its own definition, so a Steam Age
+            // civ and a Post-Industrial one fouled the air at exactly the same
+            // rate. Emissions are where that column means something.
+            aoc::game::Player* emitter = gameState.player(city.owner());
+            const float dirtiness =
+                (emitter != nullptr) ? revolutionPollutionMultiplier(emitter->industrial()) : 1.0f;
+            const int32_t emitted = std::max(
+                1, static_cast<int32_t>(static_cast<float>(plantDef.emissions) * dirtiness));
+            pollution.co2ContributionPerTurn += emitted;
+            pollution.wasteAccumulated += emitted;
         }
 
         if (plantDef.type == PowerPlantType::Nuclear) {

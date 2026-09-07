@@ -73,10 +73,12 @@ struct RevolutionBonuses {
     float goldPerCitizenBonus;        ///< Extra gold per citizen (knowledge/services economy)
     float populationGrowthBonus;      ///< Growth rate boost in industrial cities
     float pollutionMultiplier;        ///< How much pollution is generated (higher = more)
-    bool  unlockRailways;             ///< Enables Railway improvement
-    bool  unlockHighways;             ///< Enables Highway improvement
-    bool  unlockAutomation;           ///< Enables Robot Workers recipe
-    bool  unlockCleanEnergy;          ///< Enables Solar/Wind power plants
+    // There were four `unlock*` bools here -- Railway, Highway, Automation,
+    // CleanEnergy. Nothing ever read one. Every one of those gates belongs to
+    // the tech tree already (Highway needs Plastics + Steel; Solar and Wind are
+    // tech-gated buildings; Robot Workers is a recipe), so this was a second
+    // gate that always lost to the first. Removed 2026-09-07 rather than wired,
+    // because one gate per unlock is the point.
 };
 
 struct RevolutionDef {
@@ -105,7 +107,7 @@ inline constexpr std::array<RevolutionDef, 5> REVOLUTION_DEFS = {{
     {IndustrialRevolutionId::First, "Steam Age",
      {{TechId{11}, TechId{18}, TechId{21}},
       {rev_goods::CHARCOAL, rev_goods::IRON_ORE, rev_goods::NONE}, 1},
-     {1.50f, 1.0f, 1.0f, 0.5f, 1.15f, 1.5f, true, false, false, false}},
+     {1.50f, 1.0f, 1.0f, 0.5f, 1.15f, 1.5f}},
 
     // 2nd: Electric Age -- Electricity(14) + Precision Instruments(22) + Steel(47).
     // 2026-05-03: replaced Telecommunications(25) requirement. Telecom is
@@ -117,27 +119,27 @@ inline constexpr std::array<RevolutionDef, 5> REVOLUTION_DEFS = {{
     {IndustrialRevolutionId::Second, "Electric Age",
      {{TechId{14}, TechId{22}, TechId{47}},
       {rev_goods::OIL, rev_goods::STEEL_GOOD, rev_goods::NONE}, 2},
-     {1.25f, 1.5f, 1.10f, 1.0f, 1.10f, 1.3f, true, false, false, false}},
+     {1.25f, 1.5f, 1.10f, 1.0f, 1.10f, 1.3f}},
 
     // 3rd: Digital Age -- Computers(16) + Semiconductors tech(23) + Semiconductors good
     // Knowledge economy: each citizen generates significant gold (services sector).
     {IndustrialRevolutionId::Third, "Digital Age",
      {{TechId{16}, TechId{23}, TechId{}},
       {rev_goods::SEMICONDUCTORS_GOOD, rev_goods::NONE, rev_goods::NONE}, 2},
-     {1.15f, 2.0f, 1.20f, 2.0f, 1.0f, 1.0f, true, true, true, false}},
+     {1.15f, 2.0f, 1.20f, 2.0f, 1.0f, 1.0f}},
 
     // 4th: Information Age -- Internet(27) + Computers(16) + Software
     // Small tech-savvy nations can become economic powerhouses (Singapore model).
     {IndustrialRevolutionId::Fourth, "Information Age",
      {{TechId{27}, TechId{16}, TechId{}},
       {rev_goods::SOFTWARE_GOOD, rev_goods::NONE, rev_goods::NONE}, 2},
-     {1.10f, 2.5f, 1.30f, 3.0f, 1.0f, 0.8f, true, true, true, false}},
+     {1.10f, 2.5f, 1.30f, 3.0f, 1.0f, 0.8f}},
 
     // 5th: Post-Industrial -- Nuclear Fission(17) + expanded Fusion(64)
     {IndustrialRevolutionId::Fifth, "Post-Industrial",
      {{TechId{17}, TechId{64}, TechId{}},
       {rev_goods::NONE, rev_goods::NONE, rev_goods::NONE}, 2},
-     {1.20f, 3.0f, 1.50f, 5.0f, 1.20f, 0.5f, true, true, true, true}},
+     {1.20f, 3.0f, 1.50f, 5.0f, 1.20f, 0.5f}},
 }};
 
 [[nodiscard]] inline constexpr const RevolutionDef& revolutionDef(IndustrialRevolutionId id) {
@@ -196,20 +198,11 @@ struct PlayerIndustrialComponent {
         return static_cast<uint8_t>(this->currentRevolution) >= 1;
     }
 
-    /// Whether highways are unlocked (3rd revolution+).
-    [[nodiscard]] bool hasHighways() const {
-        return static_cast<uint8_t>(this->currentRevolution) >= 3;
-    }
-
     /// Whether automation (Robot Workers) is unlocked (3rd revolution+).
     [[nodiscard]] bool hasAutomation() const {
         return static_cast<uint8_t>(this->currentRevolution) >= 3;
     }
 
-    /// Whether clean energy (Solar/Wind) is unlocked (5th revolution).
-    [[nodiscard]] bool hasCleanEnergy() const {
-        return static_cast<uint8_t>(this->currentRevolution) >= 5;
-    }
 };
 
 // ============================================================================

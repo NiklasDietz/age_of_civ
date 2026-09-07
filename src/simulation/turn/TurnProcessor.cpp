@@ -761,6 +761,12 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         // civs at 1.5x. Closes the loop between schools and tech speed.
         science *= gsPlayer->humanCapital().scienceMultiplier();
 
+        // Industrial revolutions. REVOLUTION_DEFS gives each revolution a
+        // production, trade, science and gold bonus; production and gold both
+        // reached the game, science did not -- cumulativeScienceMultiplier had
+        // no caller, so half the reward for reaching an age was inert.
+        science *= gsPlayer->industrial().cumulativeScienceMultiplier();
+
         // WP-B1: Lunar Colony project — flat +20 science/turn empire-wide
         // ("low-gravity physics" research bonus).
         if (gsPlayer->spaceRace()

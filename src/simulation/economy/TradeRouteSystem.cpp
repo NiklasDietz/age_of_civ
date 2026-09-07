@@ -8,6 +8,7 @@
 #include "aoc/balance/BalanceParams.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
+#include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -835,7 +836,16 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
         ? ownerPtrForCargo->monetary().system
         : MonetarySystemType::Barter;
     const bool railOutbound = pathOnRail(trader, grid);
-    const int32_t cargoSlots = trader.effectiveCargoSlots(ownerSys, railOutbound);
+    // REVOLUTION_DEFS names this column tradeCapacityMultiplier: an industrial
+    // age widens what a route can haul. cumulativeTradeMultiplier had no caller,
+    // so that column of the table was inert while its production and gold
+    // siblings both reached the game.
+    const float tradeMult = (ownerPtrForCargo != nullptr)
+                                ? ownerPtrForCargo->industrial().cumulativeTradeMultiplier()
+                                : 1.0f;
+    const int32_t baseSlots  = trader.effectiveCargoSlots(ownerSys, railOutbound);
+    const int32_t cargoSlots = std::max(
+        1, static_cast<int32_t>(static_cast<float>(baseSlots) * tradeMult));
     selectTradeGoods(originStock, &destStock, market, trader.cargo, cargoSlots);
     for (TradeCargo& c : trader.cargo) {
         // WP-O: pull from exportBuffer first (drains the queue), then
