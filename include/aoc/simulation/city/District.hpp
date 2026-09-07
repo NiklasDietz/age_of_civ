@@ -11,7 +11,7 @@
 
 #include "aoc/core/Types.hpp"
 #include "aoc/map/HexCoord.hpp"
-#include "aoc/simulation/wonder/Wonder.hpp"  // WonderAdjacencyReq (alias SpatialReq)
+#include "aoc/simulation/wonder/Wonder.hpp" // WonderAdjacencyReq (alias SpatialReq)
 
 #include <array>
 #include <cstdint>
@@ -25,14 +25,14 @@ namespace aoc::sim {
 // ============================================================================
 
 enum class DistrictType : uint8_t {
-    CityCenter,     ///< Automatic, built when city is founded
-    Industrial,     ///< Enables smelting, forging, manufacturing
-    Commercial,     ///< Enables trade, banking, markets
-    Campus,         ///< Science buildings
-    HolySite,       ///< Faith buildings
-    Harbor,         ///< Coastal trade, fishing
-    Encampment,     ///< Military buildings
-    Theatre,        ///< Culture buildings, great works
+    CityCenter, ///< Automatic, built when city is founded
+    Industrial, ///< Enables smelting, forging, manufacturing
+    Commercial, ///< Enables trade, banking, markets
+    Campus,     ///< Science buildings
+    HolySite,   ///< Faith buildings
+    Harbor,     ///< Coastal trade, fishing
+    Encampment, ///< Military buildings
+    Theatre,    ///< Culture buildings, great works
 
     Count
 };
@@ -40,10 +40,9 @@ enum class DistrictType : uint8_t {
 static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType::Count);
 
 [[nodiscard]] constexpr std::string_view districtTypeName(DistrictType type) {
-    constexpr std::array<std::string_view, DISTRICT_TYPE_COUNT> NAMES = {{
-        "City Center", "Industrial Zone", "Commercial Hub", "Campus",
-        "Holy Site", "Harbor", "Encampment", "Theatre Square"
-    }};
+    constexpr std::array<std::string_view, DISTRICT_TYPE_COUNT> NAMES = {
+        {"City Center", "Industrial Zone", "Commercial Hub", "Campus", "Holy Site", "Harbor",
+         "Encampment", "Theatre Square"}};
     return NAMES[static_cast<uint8_t>(type)];
 }
 
@@ -64,17 +63,17 @@ static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType
 [[nodiscard]] inline constexpr aoc::sim::WonderAdjacencyReq buildingSpatialReq(BuildingId id) {
     aoc::sim::WonderAdjacencyReq r{};
     switch (id.value) {
-        case 28:  // Hydroelectric Dam → must touch river
-            r.requiresRiver = true;
-            break;
-        case 14:  // Airport → flat ground (no mountain/hill)
-            r.requiresFlat = true;
-            break;
-        case 23:  // Shipyard → coast (also enforced via Harbor district)
-            r.requiresCoast = true;
-            break;
-        default:
-            break;
+    case 28: // Hydroelectric Dam → must touch river
+        r.requiresRiver = true;
+        break;
+    case 14: // Airport → flat ground (no mountain/hill)
+        r.requiresFlat = true;
+        break;
+    case 23: // Shipyard → coast (also enforced via Harbor district)
+        r.requiresCoast = true;
+        break;
+    default:
+        break;
     }
     return r;
 }
@@ -83,13 +82,20 @@ static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType
 /// One table instead of id checks scattered through the happiness pass.
 [[nodiscard]] inline constexpr float buildingAmenities(BuildingId id) {
     switch (id.value) {
-        case 6:  return 0.5f;   // Market
-        case 15: return 0.5f;   // Granary
-        case 16: return 0.5f;   // Monument
-        case 22: return 1.0f;   // Hospital
-        case 43: return 2.0f;   // Entertainment Complex
-        case 44: return 2.0f;   // Water Park
-        default: return 0.0f;
+    case 6:
+        return 0.5f; // Market
+    case 15:
+        return 0.5f; // Granary
+    case 16:
+        return 0.5f; // Monument
+    case 22:
+        return 1.0f; // Hospital
+    case 43:
+        return 2.0f; // Entertainment Complex
+    case 44:
+        return 2.0f; // Water Park
+    default:
+        return 0.0f;
     }
 }
 
@@ -98,11 +104,16 @@ static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType
 /// is connected to fresh water (the caller checks `aqueductConnected`).
 [[nodiscard]] inline constexpr int32_t buildingHousing(BuildingId id) {
     switch (id.value) {
-        case 15: return 2;   // Granary
-        case 22: return 4;   // Hospital
-        case 42: return 4;   // Aqueduct (when connected)
-        case 45: return 4;   // Neighborhood
-        default: return 0;
+    case 15:
+        return 2; // Granary
+    case 22:
+        return 4; // Hospital
+    case 42:
+        return 4; // Aqueduct (when connected)
+    case 45:
+        return 4; // Neighborhood: ordinary value; appeal scales it in computeCityHousing
+    default:
+        return 0;
     }
 }
 
@@ -110,8 +121,10 @@ static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType
 /// processGovernment derives PlayerGovernmentComponent::bonusWildcardSlots from it.
 [[nodiscard]] inline constexpr uint8_t buildingWildcardSlots(BuildingId id) {
     switch (id.value) {
-        case 47: return 1;   // Government Plaza
-        default: return 0;
+    case 47:
+        return 1; // Government Plaza
+    default:
+        return 0;
     }
 }
 
@@ -121,22 +134,24 @@ static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType
 
 /// Resource consumed when constructing a building.
 struct BuildingResourceCost {
-    uint16_t goodId = 0xFFFF;  ///< 0xFFFF = no requirement
-    int32_t  amount = 0;
+    uint16_t goodId = 0xFFFF; ///< 0xFFFF = no requirement
+    int32_t amount  = 0;
 
-    [[nodiscard]] constexpr bool isValid() const { return this->goodId != 0xFFFF && this->amount > 0; }
+    [[nodiscard]] constexpr bool isValid() const {
+        return this->goodId != 0xFFFF && this->amount > 0;
+    }
 };
 
 struct BuildingDef {
-    BuildingId       id;
+    BuildingId id;
     std::string_view name;
-    DistrictType     requiredDistrict;
-    int32_t          productionCost;       ///< Hammers to build
-    int32_t          maintenanceCost;      ///< Gold per turn
-    int32_t          productionBonus;      ///< Flat bonus to city production
-    int32_t          scienceBonus;
-    int32_t          goldBonus;
-    float            scienceMultiplier = 1.0f;  ///< Multiplicative science bonus (1.0 = no effect)
+    DistrictType requiredDistrict;
+    int32_t productionCost;  ///< Hammers to build
+    int32_t maintenanceCost; ///< Gold per turn
+    int32_t productionBonus; ///< Flat bonus to city production
+    int32_t scienceBonus;
+    int32_t goldBonus;
+    float scienceMultiplier = 1.0f; ///< Multiplicative science bonus (1.0 = no effect)
 
     /// Resources consumed when constructing this building (up to 2 types).
     BuildingResourceCost resourceCosts[2] = {};
@@ -144,10 +159,10 @@ struct BuildingDef {
     /// Ongoing fuel: good consumed each turn to keep the building operational.
     /// 0xFFFF = no fuel needed. If fuel is unavailable, building is unpowered.
     uint16_t ongoingFuelGoodId = 0xFFFF;
-    int32_t  ongoingFuelPerTurn = 0;
+    int32_t ongoingFuelPerTurn = 0;
 
-    int32_t faithBonus = 0;    ///< Per-turn faith generated (Shrine/Temple/Cathedral)
-    int32_t cultureBonus = 0;  ///< Per-turn culture generated (Theatre buildings)
+    int32_t faithBonus      = 0; ///< Per-turn faith generated (Shrine/Temple/Cathedral)
+    int32_t cultureBonus    = 0; ///< Per-turn culture generated (Theatre buildings)
     uint8_t greatWorksSlots = 0; ///< Capacity for housed great works
 
     /// Optional civic prerequisite (alongside requiredTech, which lives on
@@ -195,95 +210,383 @@ struct BuildingDef {
 //   30 = Solar Array        (power, free, late game)
 //   31 = Wind Farm          (power, free, late game)
 
-// Format: {id, name, district, prodCost, maint, prodBonus, sciBonus, goldBonus, sciMult, resourceCosts, fuelGoodId, fuelPerTurn}
-// Resource costs and fuel added for mid/late-game buildings per plan Phase 1C/1D.
+// Format: {id, name, district, prodCost, maint, prodBonus, sciBonus, goldBonus, sciMult,
+// resourceCosts, fuelGoodId, fuelPerTurn} Resource costs and fuel added for mid/late-game buildings
+// per plan Phase 1C/1D.
 inline constexpr std::array<BuildingDef, 51> BUILDING_DEFS = {{
     //                                                                                                                     resourceCosts         fuel
-    {BuildingId{0},  "Forge",              DistrictType::Industrial,  60, 1, 2, 0, 0, 1.0f},                            // no cost, no fuel
-    {BuildingId{1},  "Workshop",           DistrictType::Industrial,  40, 1, 1, 0, 0, 1.0f},
+    {BuildingId{0}, "Forge", DistrictType::Industrial, 60, 1, 2, 0, 0, 1.0f}, // no cost, no fuel
+    {BuildingId{1}, "Workshop", DistrictType::Industrial, 40, 1, 1, 0, 0, 1.0f},
     // Construction-resource costs removed from chain-enabler buildings so
     // civs aren't stuck in a "need Steel to build Refinery, which produces
     // the chain that consumes Steel" loop.  The buildings are still
     // production-expensive (100-250 hammers); only the tile-good prereq is
     // dropped.  Industrial Complex (building 5) keeps its cost because it's
     // a capstone, not a chain entry.
-    {BuildingId{2},  "Refinery",           DistrictType::Industrial, 100, 2, 3, 0, 0, 1.0f},
-    {BuildingId{3},  "Factory",            DistrictType::Industrial, 120, 2, 4, 0, 1, 1.0f},
-    {BuildingId{4},  "Electronics Plant",  DistrictType::Industrial, 180, 3, 3, 2, 2, 1.0f},
-    {BuildingId{5},  "Industrial Complex", DistrictType::Industrial, 250, 4, 6, 0, 3, 1.0f},
-    {BuildingId{6},  "Market",             DistrictType::Commercial,  50, 0, 0, 0, 6, 1.0f, {{44, 1}}},                // 1 Stone (counter)
-    {BuildingId{7},  "Library",            DistrictType::Campus,      90, 1, 0, 3, 0, 1.0f, {{62, 1}}},                // 1 Lumber (shelves)
-    {BuildingId{8},  "Textile Mill",       DistrictType::Industrial,  80, 1, 2, 0, 1, 1.0f},
-    {BuildingId{9},  "Food Proc. Plant",   DistrictType::Industrial,  90, 1, 1, 0, 1, 1.0f},
-    {BuildingId{10}, "Precision Workshop", DistrictType::Industrial, 140, 2, 3, 1, 0, 1.0f,  {{63, 1}}},                // 1 Tools
+    {BuildingId{2}, "Refinery", DistrictType::Industrial, 100, 2, 3, 0, 0, 1.0f},
+    {BuildingId{3}, "Factory", DistrictType::Industrial, 120, 2, 4, 0, 1, 1.0f},
+    {BuildingId{4}, "Electronics Plant", DistrictType::Industrial, 180, 3, 3, 2, 2, 1.0f},
+    {BuildingId{5}, "Industrial Complex", DistrictType::Industrial, 250, 4, 6, 0, 3, 1.0f},
+    {BuildingId{6},
+     "Market",
+     DistrictType::Commercial,
+     50,
+     0,
+     0,
+     0,
+     6,
+     1.0f,
+     {{44, 1}}}, // 1 Stone (counter)
+    {BuildingId{7}, "Library", DistrictType::Campus, 90, 1, 0, 3, 0, 1.0f, {{62, 1}}}, // 1 Lumber
+                                                                                       // (shelves)
+    {BuildingId{8}, "Textile Mill", DistrictType::Industrial, 80, 1, 2, 0, 1, 1.0f},
+    {BuildingId{9}, "Food Proc. Plant", DistrictType::Industrial, 90, 1, 1, 0, 1, 1.0f},
+    {BuildingId{10},
+     "Precision Workshop",
+     DistrictType::Industrial,
+     140,
+     2,
+     3,
+     1,
+     0,
+     1.0f,
+     {{63, 1}}}, // 1 Tools
     // Late-tech buildings cheaper so cities actually finish them before
     // the 700-900-turn victory window closes.
-    {BuildingId{11}, "Semiconductor Fab",  DistrictType::Industrial, 160, 4, 2, 3, 2, 1.0f},
-    {BuildingId{12}, "Research Lab",       DistrictType::Campus,     280, 3, 0, 10, 0, 1.5f, {{76, 1}}},                // 1 Glass
-    {BuildingId{13}, "Telecom Hub",        DistrictType::Commercial, 130, 2, 0, 1, 4, 1.0f},
-    {BuildingId{14}, "Airport",            DistrictType::Industrial, 200, 3, 2, 0, 3, 1.0f,  {{64, 2}}},                // 2 Steel
-    {BuildingId{15}, "Granary",            DistrictType::CityCenter,  40, 1, 1, 0, 0, 1.0f, {{62, 1}}},                // 1 Lumber (silo)
-    {BuildingId{16}, "Monument",           DistrictType::CityCenter,  30, 0, 0, 0, 0, 1.0f, {{44, 1}}},                // 1 Stone
-    {BuildingId{17}, "Walls",              DistrictType::Encampment,  60, 0, 0, 0, 0, 1.0f,  {{44, 2}}},                // 2 Stone
-    {BuildingId{18}, "Barracks",           DistrictType::Encampment,  70, 2, 0, 0, 0, 1.0f, {{62, 1}}},                // 1 Lumber
-    {BuildingId{19}, "University",         DistrictType::Campus,     250, 2, 0, 6, 0, 1.0f, {{44, 1}, {62, 1}}},       // 1 Stone + 1 Lumber
-    {BuildingId{20}, "Bank",               DistrictType::Commercial, 100, 0, 0, 0, 10, 1.0f, {{44, 1}}},                // 1 Stone
-    {BuildingId{21}, "Stock Exchange",     DistrictType::Commercial, 200, 0, 0, 0, 15, 1.0f, {{44, 2}}},                // 2 Stone
-    {BuildingId{22}, "Hospital",           DistrictType::CityCenter, 150, 2, 0, 0, 0, 1.0f, {{44, 2}}},                // 2 Stone
-    {BuildingId{23}, "Shipyard",           DistrictType::Harbor,     120, 2, 3, 0, 2, 1.0f,  {{62, 2}}},                // 2 Lumber
-    {BuildingId{24}, "Mint",               DistrictType::CityCenter,  70, 1, 0, 0, 4, 1.0f, {{44, 1}}},                // 1 Stone
-    {BuildingId{25}, "Waste Treatment",    DistrictType::Industrial, 100, 2, 0, 0, 0, 1.0f},
-    {BuildingId{26}, "Coal Plant",         DistrictType::Industrial,  80, 2, 0, 0, 0, 1.0f,  {}, 2, 1},                 // burns 1 Coal/turn
-    {BuildingId{27}, "Oil Plant",          DistrictType::Industrial, 120, 3, 0, 0, 0, 1.0f,  {}, 65, 1},                // burns 1 Fuel/turn
-    {BuildingId{28}, "Hydroelectric Dam",  DistrictType::Industrial, 150, 1, 0, 0, 0, 1.0f},
-    {BuildingId{29}, "Nuclear Plant",      DistrictType::Industrial, 300, 5, 0, 0, 0, 1.0f,  {{64, 2}}, 6, 1},          // 2 Steel to build, 1 Uranium/turn
-    {BuildingId{30}, "Solar Array",        DistrictType::Industrial, 200, 1, 0, 1, 0, 1.0f},
-    {BuildingId{31}, "Wind Farm",          DistrictType::Industrial, 160, 1, 0, 0, 0, 1.0f},
+    {BuildingId{11}, "Semiconductor Fab", DistrictType::Industrial, 160, 4, 2, 3, 2, 1.0f},
+    {BuildingId{12},
+     "Research Lab",
+     DistrictType::Campus,
+     280,
+     3,
+     0,
+     10,
+     0,
+     1.5f,
+     {{76, 1}}}, // 1 Glass
+    {BuildingId{13}, "Telecom Hub", DistrictType::Commercial, 130, 2, 0, 1, 4, 1.0f},
+    {BuildingId{14},
+     "Airport",
+     DistrictType::Industrial,
+     200,
+     3,
+     2,
+     0,
+     3,
+     1.0f,
+     {{64, 2}}}, // 2 Steel
+    {BuildingId{15},
+     "Granary",
+     DistrictType::CityCenter,
+     40,
+     1,
+     1,
+     0,
+     0,
+     1.0f,
+     {{62, 1}}}, // 1 Lumber (silo)
+    {BuildingId{16},
+     "Monument",
+     DistrictType::CityCenter,
+     30,
+     0,
+     0,
+     0,
+     0,
+     1.0f,
+     {{44, 1}}},                                                                          // 1 Stone
+    {BuildingId{17}, "Walls", DistrictType::Encampment, 60, 0, 0, 0, 0, 1.0f, {{44, 2}}}, // 2 Stone
+    {BuildingId{18},
+     "Barracks",
+     DistrictType::Encampment,
+     70,
+     2,
+     0,
+     0,
+     0,
+     1.0f,
+     {{62, 1}}}, // 1 Lumber
+    {BuildingId{19},
+     "University",
+     DistrictType::Campus,
+     250,
+     2,
+     0,
+     6,
+     0,
+     1.0f,
+     {{44, 1}, {62, 1}}}, // 1 Stone + 1 Lumber
+    {BuildingId{20}, "Bank", DistrictType::Commercial, 100, 0, 0, 0, 10, 1.0f, {{44, 1}}}, // 1
+                                                                                           // Stone
+    {BuildingId{21},
+     "Stock Exchange",
+     DistrictType::Commercial,
+     200,
+     0,
+     0,
+     0,
+     15,
+     1.0f,
+     {{44, 2}}}, // 2 Stone
+    {BuildingId{22},
+     "Hospital",
+     DistrictType::CityCenter,
+     150,
+     2,
+     0,
+     0,
+     0,
+     1.0f,
+     {{44, 2}}},                                                                          // 2 Stone
+    {BuildingId{23}, "Shipyard", DistrictType::Harbor, 120, 2, 3, 0, 2, 1.0f, {{62, 2}}}, // 2
+                                                                                          // Lumber
+    {BuildingId{24}, "Mint", DistrictType::CityCenter, 70, 1, 0, 0, 4, 1.0f, {{44, 1}}},  // 1 Stone
+    {BuildingId{25}, "Waste Treatment", DistrictType::Industrial, 100, 2, 0, 0, 0, 1.0f},
+    {BuildingId{26},
+     "Coal Plant",
+     DistrictType::Industrial,
+     80,
+     2,
+     0,
+     0,
+     0,
+     1.0f,
+     {},
+     2,
+     1}, // burns 1 Coal/turn
+    {BuildingId{27},
+     "Oil Plant",
+     DistrictType::Industrial,
+     120,
+     3,
+     0,
+     0,
+     0,
+     1.0f,
+     {},
+     65,
+     1}, // burns 1 Fuel/turn
+    {BuildingId{28}, "Hydroelectric Dam", DistrictType::Industrial, 150, 1, 0, 0, 0, 1.0f},
+    {BuildingId{29},
+     "Nuclear Plant",
+     DistrictType::Industrial,
+     300,
+     5,
+     0,
+     0,
+     0,
+     1.0f,
+     {{64, 2}},
+     6,
+     1}, // 2 Steel to build, 1 Uranium/turn
+    {BuildingId{30}, "Solar Array", DistrictType::Industrial, 200, 1, 0, 1, 0, 1.0f},
+    {BuildingId{31}, "Wind Farm", DistrictType::Industrial, 160, 1, 0, 0, 0, 1.0f},
     // New energy buildings
-    {BuildingId{32}, "Gas Plant",          DistrictType::Industrial, 100, 2, 0, 0, 0, 1.0f,  {}, 12, 1},                // burns 1 Natural Gas/turn
-    {BuildingId{33}, "Biofuel Plant",      DistrictType::Industrial, 120, 2, 1, 0, 0, 1.0f},                            // enables biofuel recipes
-    {BuildingId{34}, "Geothermal Plant",   DistrictType::Industrial, 180, 1, 0, 0, 0, 1.0f},                            // free power, requires volcanic/mountain
-    {BuildingId{35}, "Fusion Reactor",     DistrictType::Industrial, 350, 8, 0, 2, 0, 1.0f,  {{64, 3}, {76, 2}}, 80, 1}, // 3 Steel + 2 Glass to build, 1 Deuterium/turn
+    {BuildingId{32},
+     "Gas Plant",
+     DistrictType::Industrial,
+     100,
+     2,
+     0,
+     0,
+     0,
+     1.0f,
+     {},
+     12,
+     1}, // burns 1 Natural Gas/turn
+    {BuildingId{33}, "Biofuel Plant", DistrictType::Industrial, 120, 2, 1, 0, 0,
+     1.0f}, // enables biofuel recipes
+    {BuildingId{34}, "Geothermal Plant", DistrictType::Industrial, 180, 1, 0, 0, 0,
+     1.0f}, // free power, requires volcanic/mountain
+    {BuildingId{35},
+     "Fusion Reactor",
+     DistrictType::Industrial,
+     350,
+     8,
+     0,
+     2,
+     0,
+     1.0f,
+     {{64, 3}, {76, 2}},
+     80,
+     1}, // 3 Steel + 2 Glass to build, 1 Deuterium/turn
     // Faith buildings -- gate each city's faith output. Must be built on HolySite district.
-    {BuildingId{36}, "Shrine",             DistrictType::HolySite,    40, 1, 0, 0, 0, 1.0f, {}, 0xFFFF, 0, 2},
-    {BuildingId{37}, "Temple",             DistrictType::HolySite,   100, 2, 0, 0, 0, 1.0f, {}, 0xFFFF, 0, 4},
-    {BuildingId{38}, "Cathedral",          DistrictType::HolySite,   200, 3, 0, 0, 2, 1.0f, {}, 0xFFFF, 0, 6},
-    // Culture buildings -- Theatre Square district. cultureBonus per turn, greatWorksSlots for housing works.
-    {BuildingId{39}, "Amphitheater",       DistrictType::Theatre,     60, 1, 0, 0, 0, 1.0f, {}, 0xFFFF, 0, 0, 2, 2},
-    {BuildingId{40}, "Art Museum",         DistrictType::Theatre,    150, 2, 0, 0, 1, 1.0f, {}, 0xFFFF, 0, 0, 3, 3},
-    {BuildingId{41}, "Archaeological Museum", DistrictType::Theatre, 150, 2, 0, 0, 1, 1.0f, {}, 0xFFFF, 0, 0, 3, 3},
+    {BuildingId{36}, "Shrine", DistrictType::HolySite, 40, 1, 0, 0, 0, 1.0f, {}, 0xFFFF, 0, 2},
+    {BuildingId{37}, "Temple", DistrictType::HolySite, 100, 2, 0, 0, 0, 1.0f, {}, 0xFFFF, 0, 4},
+    {BuildingId{38}, "Cathedral", DistrictType::HolySite, 200, 3, 0, 0, 2, 1.0f, {}, 0xFFFF, 0, 6},
+    // Culture buildings -- Theatre Square district. cultureBonus per turn, greatWorksSlots for
+    // housing works.
+    {BuildingId{39},
+     "Amphitheater",
+     DistrictType::Theatre,
+     60,
+     1,
+     0,
+     0,
+     0,
+     1.0f,
+     {},
+     0xFFFF,
+     0,
+     0,
+     2,
+     2},
+    {BuildingId{40},
+     "Art Museum",
+     DistrictType::Theatre,
+     150,
+     2,
+     0,
+     0,
+     1,
+     1.0f,
+     {},
+     0xFFFF,
+     0,
+     0,
+     3,
+     3},
+    {BuildingId{41},
+     "Archaeological Museum",
+     DistrictType::Theatre,
+     150,
+     2,
+     0,
+     0,
+     1,
+     1.0f,
+     {},
+     0xFFFF,
+     0,
+     0,
+     3,
+     3},
     // Housing infrastructure: Aqueduct grants +4 housing. Requires adjacent river
     // or mountain (enforced at production-time, not at def level).
-    {BuildingId{42}, "Aqueduct",           DistrictType::CityCenter,  80, 1, 0, 0, 0, 1.0f, {{44, 2}}}, // 2 Stone
+    {BuildingId{42},
+     "Aqueduct",
+     DistrictType::CityCenter,
+     80,
+     1,
+     0,
+     0,
+     0,
+     1.0f,
+     {{44, 2}}}, // 2 Stone
     // Amenity sources (2026-09-05). Buildings rather than new district types, so the
     // AI district table, adjacency and the district UI stay untouched; +2 amenities
     // each via buildingAmenities(). Water Park is coastal by living in the Harbor.
-    {BuildingId{43}, "Entertainment Complex", DistrictType::CityCenter, 150, 2, 0, 0, 0, 1.0f, {{44, 2}},
-     0xFFFF, 0, 0, 0, 0, CivicId{20}},  // 2 Stone; Games and Recreation
-    {BuildingId{44}, "Water Park",            DistrictType::Harbor,     180, 2, 0, 0, 1, 1.0f, {{44, 2}},
-     0xFFFF, 0, 0, 0, 0, CivicId{34}},  // 2 Stone; Urbanization
-    // Housing (2026-09-05): the Neighborhood is plain housing next to the Aqueduct,
-    // which stays the fresh-water building with its river / mountain connection
-    // rule. +4 housing via buildingHousing(); no district renumbering.
-    {BuildingId{45}, "Neighborhood",          DistrictType::CityCenter, 120, 1, 0, 0, 0, 1.0f, {{44, 2}},
-     0xFFFF, 0, 0, 0, 0, CivicId{34}},  // 2 Stone; Urbanization
+    {BuildingId{43},
+     "Entertainment Complex",
+     DistrictType::CityCenter,
+     150,
+     2,
+     0,
+     0,
+     0,
+     1.0f,
+     {{44, 2}},
+     0xFFFF,
+     0,
+     0,
+     0,
+     0,
+     CivicId{20}}, // 2 Stone; Games and Recreation
+    {BuildingId{44},
+     "Water Park",
+     DistrictType::Harbor,
+     180,
+     2,
+     0,
+     0,
+     1,
+     1.0f,
+     {{44, 2}},
+     0xFFFF,
+     0,
+     0,
+     0,
+     0,
+     CivicId{34}}, // 2 Stone; Urbanization
+    // Housing: the Aqueduct stays the fresh-water building with its connection
+    // rule. The Neighborhood shipped as flat +4 in 2026-09-05 because tile
+    // appeal did not exist yet; now that it does, its housing depends on how
+    // pleasant its city's ground is, so it is worth most where people want to
+    // live. See neighborhoodHousing in CityGrowth.
+    {BuildingId{45},
+     "Neighborhood",
+     DistrictType::CityCenter,
+     120,
+     1,
+     0,
+     0,
+     0,
+     1.0f,
+     {{44, 2}},
+     0xFFFF,
+     0,
+     0,
+     0,
+     0,
+     CivicId{34}}, // 2 Stone; Urbanization
     // Space race (2026-09-05): the Spaceport is the building every space project
     // needs (SpaceRace.cpp), unlocked by Surface Plate, the first project's own
     // tech (TechTree.cpp). No resource cost:
     // Steel is never produced in practice and would make it unbuildable.
-    {BuildingId{46}, "Spaceport",             DistrictType::Industrial, 300, 3, 0, 2, 0, 1.0f},
+    {BuildingId{46}, "Spaceport", DistrictType::Industrial, 300, 3, 0, 2, 0, 1.0f},
     // Government (2026-09-05): one Plaza per empire matters; +1 wildcard policy slot
     // via buildingWildcardSlots(), capped by MAX_POLICY_SLOTS.
-    {BuildingId{47}, "Government Plaza",      DistrictType::CityCenter, 200, 2, 0, 0, 1, 1.0f, {{44, 2}},
-     0xFFFF, 0, 0, 0, 0, CivicId{14}},  // 2 Stone; State Workforce,
+    {BuildingId{47},
+     "Government Plaza",
+     DistrictType::CityCenter,
+     200,
+     2,
+     0,
+     0,
+     1,
+     1.0f,
+     {{44, 2}},
+     0xFFFF,
+     0,
+     0,
+     0,
+     0,
+     CivicId{14}}, // 2 Stone; State Workforce,
     // Wall tiers. Each is built, not granted: before this the era alone
     // upgraded a city's masonry, so an Industrial civ got Steel walls free.
     // Each tier needs the one below it (BUILDING_TIER_PREREQS) and its own
     // tech (TechTree unlockedBuildings). Ancient walls stay BuildingId 17 so
     // saved cities keep the walls they built.
-    {BuildingId{48}, "Medieval Walls",         DistrictType::Encampment, 120, 1, 0, 0, 0, 1.0f, {{44, 3}}},  // 3 Stone
-    {BuildingId{49}, "Renaissance Walls",      DistrictType::Encampment, 200, 1, 0, 0, 0, 1.0f, {{44, 4}}},  // 4 Stone
-    {BuildingId{50}, "Steel Fortress",         DistrictType::Encampment, 300, 2, 0, 0, 0, 1.0f, {{64, 2}}},  // 2 Steel
+    {BuildingId{48},
+     "Medieval Walls",
+     DistrictType::Encampment,
+     120,
+     1,
+     0,
+     0,
+     0,
+     1.0f,
+     {{44, 3}}}, // 3 Stone
+    {BuildingId{49},
+     "Renaissance Walls",
+     DistrictType::Encampment,
+     200,
+     1,
+     0,
+     0,
+     0,
+     1.0f,
+     {{44, 4}}}, // 4 Stone
+    {BuildingId{50},
+     "Steel Fortress",
+     DistrictType::Encampment,
+     300,
+     2,
+     0,
+     0,
+     0,
+     1.0f,
+     {{64, 2}}}, // 2 Steel
 }};
 
 [[nodiscard]] inline constexpr const BuildingDef& buildingDef(BuildingId id) {
@@ -294,19 +597,32 @@ inline constexpr std::array<BuildingDef, 51> BUILDING_DEFS = {{
 /// negative = cleans (e.g. Waste Treatment). 0 = neutral.
 [[nodiscard]] inline constexpr int32_t buildingPollutionEmission(BuildingId id) {
     switch (id.value) {
-        case 0:  return 1;   // Forge
-        case 2:  return 4;   // Refinery
-        case 3:  return 5;   // Factory
-        case 4:  return 3;   // Electronics Plant
-        case 5:  return 6;   // Industrial Complex
-        case 11: return 3;   // Semiconductor Fab
-        case 25: return -5;  // Waste Treatment (cleans)
-        case 26: return 8;   // Coal Plant
-        case 27: return 6;   // Oil Plant
-        case 29: return 2;   // Nuclear Plant
-        case 32: return 4;   // Gas Plant
-        case 33: return 2;   // Biofuel Plant
-        default: return 0;
+    case 0:
+        return 1; // Forge
+    case 2:
+        return 4; // Refinery
+    case 3:
+        return 5; // Factory
+    case 4:
+        return 3; // Electronics Plant
+    case 5:
+        return 6; // Industrial Complex
+    case 11:
+        return 3; // Semiconductor Fab
+    case 25:
+        return -5; // Waste Treatment (cleans)
+    case 26:
+        return 8; // Coal Plant
+    case 27:
+        return 6; // Oil Plant
+    case 29:
+        return 2; // Nuclear Plant
+    case 32:
+        return 4; // Gas Plant
+    case 33:
+        return 2; // Biofuel Plant
+    default:
+        return 0;
     }
 }
 
@@ -317,7 +633,7 @@ inline constexpr std::array<BuildingDef, 51> BUILDING_DEFS = {{
 /// Attached to a city entity to track which districts and buildings it has.
 struct CityDistrictsComponent {
     struct PlacedDistrict {
-        DistrictType    type;
+        DistrictType type;
         hex::AxialCoord location;
         std::vector<BuildingId> buildings;
     };

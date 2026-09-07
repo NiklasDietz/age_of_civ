@@ -288,4 +288,65 @@ void completeCityProject(aoc::game::GameState& gameState, aoc::game::City& city,
     }
 }
 
+int32_t tileAppeal(const aoc::map::HexGrid& grid, const aoc::game::GameState& gameState,
+                   aoc::hex::AxialCoord at) {
+    if (!grid.isValid(at)) {
+        return 0;
+    }
+    int32_t appeal = 0;
+
+    // What stands on the tile itself.
+    const int32_t here = grid.toIndex(at);
+    switch (grid.feature(here)) {
+        case aoc::map::FeatureType::Forest: appeal += 1; break;
+        case aoc::map::FeatureType::Oasis:  appeal += 2; break;
+        case aoc::map::FeatureType::Reef:   appeal += 1; break;
+        case aoc::map::FeatureType::Marsh:  appeal -= 2; break;
+        case aoc::map::FeatureType::Jungle: appeal -= 1; break;
+        case aoc::map::FeatureType::Fallout: appeal -= 4; break;
+        default: break;
+    }
+    if (grid.naturalWonder(here) != aoc::map::NaturalWonderType::None) {
+        appeal += 3;
+    }
+
+    // And what it looks out on. Ring 1 only: appeal is about the immediate
+    // outlook, and a wider scan would make every tile in a busy empire the same.
+    for (const aoc::hex::AxialCoord& nbr : aoc::hex::neighbors(at)) {
+        if (!grid.isValid(nbr)) { continue; }
+        const int32_t ni = grid.toIndex(nbr);
+
+        if (grid.naturalWonder(ni) != aoc::map::NaturalWonderType::None) { appeal += 2; }
+        if (grid.terrain(ni) == aoc::map::TerrainType::Mountain)    { appeal += 1; }
+        if (aoc::map::isWater(grid.terrain(ni)))                    { appeal += 1; }
+        if (grid.feature(ni) == aoc::map::FeatureType::Fallout)     { appeal -= 2; }
+
+        switch (grid.improvement(ni)) {
+            case aoc::map::ImprovementType::Mine:
+            case aoc::map::ImprovementType::Quarry:
+                appeal -= 1;
+                break;
+            default:
+                break;
+        }
+    }
+
+    // Districts nobody wants as a neighbour. Checked through the cities rather
+    // than a tile layer because that is where placed districts live.
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        if (player == nullptr) { continue; }
+        for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
+            if (city == nullptr) { continue; }
+            for (const CityDistrictsComponent::PlacedDistrict& d : city->districts().districts) {
+                if (aoc::hex::distance(d.location, at) > 1) { continue; }
+                if (d.type == DistrictType::Industrial || d.type == DistrictType::Encampment) {
+                    appeal -= 2;
+                }
+            }
+        }
+    }
+
+    return appeal;
+}
+
 } // namespace aoc::sim

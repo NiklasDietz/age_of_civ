@@ -4,6 +4,8 @@
  */
 
 #include "aoc/simulation/city/CityGrowth.hpp"
+
+#include "aoc/simulation/city/DistrictAdjacency.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
@@ -70,8 +72,37 @@ float foodForGrowth(int32_t currentPopulation) {
     return base * GamePace::instance().growthMultiplier;
 }
 
-int32_t computeCityHousing(const aoc::game::City& city, const aoc::map::HexGrid& grid) {
-    int32_t housing = 4;
+int32_t neighborhoodHousing(int32_t appeal) {
+    if (appeal >= APPEAL_PLEASANT) { return NEIGHBORHOOD_PLEASANT; }
+    if (appeal <= APPEAL_SQUALID)  { return NEIGHBORHOOD_SQUALID; }
+    return NEIGHBORHOOD_ORDINARY;
+}
+
+int32_t computeCityHousing(const aoc::game::City& city, const aoc::map::HexGrid& grid,
+                           const aoc::game::GameState* gameState) {
+    // Where a city sits decides how many people it can hold before it needs
+    // waterworks. Every city used to start at a flat 4 whatever its ground,
+    // so a town on a river bend and one in dry hills grew identically and the
+    // choice of site said nothing about growth.
+    int32_t housing = HOUSING_DRY;
+    if (grid.isValid(city.location())) {
+        const int32_t here = grid.toIndex(city.location());
+        bool freshWater = grid.riverEdges(here) != 0;
+        bool coastal    = false;
+        for (const aoc::hex::AxialCoord& nbr : aoc::hex::neighbors(city.location())) {
+            if (!grid.isValid(nbr)) { continue; }
+            const int32_t ni = grid.toIndex(nbr);
+            // River edges are the game's fresh-water rule already: the settler
+            // scorer uses exactly this test, and a second rule here would let
+            // the AI and the city disagree about the same tile.
+            if (grid.riverEdges(ni) != 0) { freshWater = true; }
+            if (aoc::map::isWater(grid.terrain(ni))) { coastal = true; }
+        }
+        // Fresh water beats salt: a river or a lake will keep a city, the sea
+        // only puts it in reach of one.
+        if (freshWater)     { housing = HOUSING_FRESH_WATER; }
+        else if (coastal)   { housing = HOUSING_COASTAL; }
+    }
     // One table (District.hpp buildingHousing) instead of per-id checks. The
     // Aqueduct only counts when a connected aqueduct chain reaches a fresh-water
     // source: builder-laid INFRA_AQUEDUCT segments + the turn-end BFS in
@@ -79,6 +110,14 @@ int32_t computeCityHousing(const aoc::game::City& city, const aoc::map::HexGrid&
     for (const CityDistrictsComponent::PlacedDistrict& d : city.districts().districts) {
         for (const BuildingId bid : d.buildings) {
             if (bid == BuildingId{42} && !city.aqueductConnected()) { continue; }
+            if (bid == BuildingId{45}) {
+                // The Neighborhood is worth what its ground is worth.
+                const int32_t appeal = (gameState != nullptr)
+                    ? tileAppeal(grid, *gameState, city.location())
+                    : 0;
+                housing += neighborhoodHousing(appeal);
+                continue;
+            }
             housing += buildingHousing(bid);
         }
     }

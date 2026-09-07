@@ -197,4 +197,25 @@ inline constexpr std::array<CityProjectDef, 6> CITY_PROJECT_DEFS = {{
 void completeCityProject(aoc::game::GameState& gameState, aoc::game::City& city,
                          CityProjectType project);
 
+/// How pleasant a tile is to live beside. The header above has described this
+/// since the district system was written, and until 2026-09-07 nothing computed
+/// it: there was no layer, no reader, and the Neighborhood shipped as flat
+/// housing because there was no appeal to key off.
+///
+/// Computed on demand from what stands on and around the tile rather than
+/// stored, so it needs no map layer and no save bump, and can never go stale
+/// against a chopped forest or a razed district.
+///
+/// Positive: forest, oasis, reef, an adjacent natural wonder or mountain.
+/// Negative: marsh, jungle, fallout, an adjacent mine or quarry, and the two
+/// districts nobody wants to live next to.
+[[nodiscard]] int32_t tileAppeal(const aoc::map::HexGrid& grid,
+                                 const aoc::game::GameState& gameState,
+                                 aoc::hex::AxialCoord at);
+
+/// Appeal at or above this counts as pleasant ground; below the negative
+/// counterpart is squalid. Named so callers do not each invent a threshold.
+inline constexpr int32_t APPEAL_PLEASANT = 2;
+inline constexpr int32_t APPEAL_SQUALID  = -2;
+
 } // namespace aoc::sim
