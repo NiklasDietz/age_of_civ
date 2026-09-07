@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/unit/BuilderActions.hpp"
+#include "aoc/simulation/tech/EurekaBoost.hpp"
 
 #include "aoc/core/Log.hpp"
 #include "aoc/game/City.hpp"
@@ -111,6 +112,10 @@ ErrorCode requestPlaceImprovement(aoc::game::GameState& gameState, aoc::map::Hex
         return ErrorCode::InvalidUnitAction;
     }
     grid.setImprovement(tileIndex, type);
+    // Cutting stone teaches you something about stone.
+    if (type == aoc::map::ImprovementType::Quarry) {
+        checkEurekaConditions(*owner, EurekaCondition::BuildQuarry);
+    }
     unit->useCharge();
     LOG_INFO("Player %u placed improvement %u at (%d,%d)", static_cast<unsigned>(player),
              static_cast<unsigned>(type), at.q, at.r);

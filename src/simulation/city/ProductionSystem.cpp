@@ -6,6 +6,8 @@
  */
 
 #include "aoc/simulation/city/ProductionSystem.hpp"
+
+#include "aoc/simulation/tech/EurekaBoost.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
@@ -420,6 +422,7 @@ void processProductionQueues(aoc::game::GameState& gameState, aoc::map::HexGrid&
             case ProductionItemType::Unit: {
                 UnitTypeId unitTypeId{item.itemId};
                 aoc::game::Unit& newUnit = gsPlayer->addUnit(unitTypeId, city->location());
+                checkEurekaConditions(*gsPlayer, EurekaCondition::TrainUnit);
                 // A7 Pyramids (0) unique effect: +1 builder charge on
                 // newly produced Civilian-class (Builder) units.
                 if (newUnit.typeDef().unitClass == UnitClass::Civilian) {
@@ -480,6 +483,12 @@ void processProductionQueues(aoc::game::GameState& gameState, aoc::map::HexGrid&
                     chosenStillLegal ? item.targetTile
                                      : bestDistrictTile(gameState, grid, *city, districtType);
                 placeDistrictOnTile(grid, *city, districtType, site);
+                // A Campus or a Harbour is a discovery in itself.
+                if (districtType == DistrictType::Campus) {
+                    checkEurekaConditions(*gsPlayer, EurekaCondition::BuildCampus);
+                } else if (districtType == DistrictType::Harbor) {
+                    checkEurekaConditions(*gsPlayer, EurekaCondition::BuildHarbor);
+                }
                 LOG_INFO("Completed district %.*s in %s at (%d,%d)",
                          static_cast<int>(item.name.size()), item.name.c_str(),
                          city->name().c_str(), site.q, site.r);

@@ -54,7 +54,10 @@ struct EurekaBoostDef {
 };
 
 /// Maximum number of eureka boosts in the game.
-static constexpr uint16_t MAX_EUREKA_BOOSTS = 64;
+/// 64 was not enough for one boost per tech and civic (77 + 47 = 124). The
+/// save writes the bit count alongside the bits and the reader bounds-checks
+/// against this, so widening it does not invalidate a file.
+static constexpr uint16_t MAX_EUREKA_BOOSTS = 128;
 
 // ============================================================================
 // Per-player ECS component

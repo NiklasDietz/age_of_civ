@@ -781,6 +781,8 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         const TechId techBeforeAdvance = gsPlayer->tech().currentResearch;
         if (advanceResearch(gsPlayer->tech(), science) && techBeforeAdvance.isValid()) {
             const aoc::sim::TechDef& doneTech = aoc::sim::techDef(techBeforeAdvance);
+            // One discovery is the spark for the next.
+            checkEurekaConditions(*gsPlayer, EurekaCondition::ResearchTech);
             gsPlayer->era().updateEra(doneTech.era);
             // Era score had exactly one source in the whole game, and it lived in
             // Application.cpp -- human player only, graphical build only. So every

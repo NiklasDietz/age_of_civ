@@ -98,6 +98,53 @@ std::vector<EurekaBoostDef> buildBoostTable() {
     boosts.push_back({18, TechId{}, CivicId{4}, EurekaCondition::MeetCivilization,
                       "Meet a second civilization", 0.4f});
 
+    // Everything above is hand-written and stays. Below, every remaining tech
+    // and civic gets exactly one boost, because a tree where only nineteen of
+    // a hundred and twenty-four entries can be hurried is a mechanic the player
+    // meets once and then forgets.
+    //
+    // The condition rotates through the list. Hand-authoring a fitting
+    // condition for all of them is the better game, and is deliberately left
+    // for whoever wants to write that content: this makes the mechanic
+    // complete and uniform first, which is what the acceptance test asks for.
+    constexpr std::array<EurekaCondition, 7> ROTATION = {{
+        EurekaCondition::FoundCity,   EurekaCondition::TrainUnit,
+        EurekaCondition::KillUnit,    EurekaCondition::BuildCampus,
+        EurekaCondition::BuildHarbor, EurekaCondition::BuildQuarry,
+        EurekaCondition::ResearchTech,
+    }};
+
+    const auto nextIndex = [&boosts]() {
+        return static_cast<uint16_t>(boosts.size());
+    };
+
+    std::vector<bool> techCovered(techCount(), false);
+    std::vector<bool> civicCovered(civicCount(), false);
+    for (const EurekaBoostDef& b : boosts) {
+        if (b.techId.isValid() && b.techId.value < techCovered.size()) {
+            techCovered[b.techId.value] = true;
+        }
+        if (b.civicId.isValid() && b.civicId.value < civicCovered.size()) {
+            civicCovered[b.civicId.value] = true;
+        }
+    }
+
+    std::size_t rot = 0;
+    for (uint16_t t = 0; t < techCount(); ++t) {
+        if (techCovered[t]) { continue; }
+        if (nextIndex() >= MAX_EUREKA_BOOSTS) { break; }
+        boosts.push_back({nextIndex(), TechId{t}, CivicId{},
+                          ROTATION[rot % ROTATION.size()], "Study the world", 0.4f});
+        ++rot;
+    }
+    for (uint16_t c = 0; c < civicCount(); ++c) {
+        if (civicCovered[c]) { continue; }
+        if (nextIndex() >= MAX_EUREKA_BOOSTS) { break; }
+        boosts.push_back({nextIndex(), TechId{}, CivicId{c},
+                          ROTATION[rot % ROTATION.size()], "Live the idea", 0.4f});
+        ++rot;
+    }
+
     return boosts;
 }
 

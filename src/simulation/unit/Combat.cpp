@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/unit/Combat.hpp"
+#include "aoc/simulation/tech/EurekaBoost.hpp"
 
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/government/Government.hpp"
@@ -214,6 +215,18 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
 
     result.defenderKilled = defender.isDead();
     result.attackerKilled = attacker.isDead();
+
+    // A victory in the field teaches the winner something.
+    if (result.defenderKilled) {
+        if (aoc::game::Player* victor = gameState.player(attacker.owner())) {
+            checkEurekaConditions(*victor, EurekaCondition::KillUnit);
+        }
+    }
+    if (result.attackerKilled) {
+        if (aoc::game::Player* victor = gameState.player(defender.owner())) {
+            checkEurekaConditions(*victor, EurekaCondition::KillUnit);
+        }
+    }
 
     // XP: base 5, bonus for killing.
     result.attackerXpGained = 5;
