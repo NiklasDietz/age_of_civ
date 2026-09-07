@@ -997,6 +997,7 @@ if(AOC_BUILD_TESTS)
         test_revolution_bonuses
         test_adjacency_food
         test_unit_upgrade_paths
+        test_zone_of_control
         test_spaceport
         test_government_plaza_and_dam
         test_great_works
