@@ -572,14 +572,12 @@ int main(int argc, char* argv[]) {
                 static_cast<double>(finalPop.front().fitness));
             std::fprintf(stderr,
                 "  baseLoyalty=%.2f radius=%d unrest=%d distant=%d cultT=%.0f\n"
-                "  cultW=%d cultLead=%.2f integT=%.2f integN=%d relFrac=%.2f space=%.2f\n",
+                "  cultW=%d cultLead=%.2f relFrac=%.2f space=%.2f\n",
                 static_cast<double>(tp.baseLoyalty), tp.loyaltyPressureRadius,
                 tp.sustainedUnrestTurns, tp.distantCityThreshold,
                 static_cast<double>(tp.cultureVictoryThreshold),
                 tp.cultureVictoryMinWonders,
                 static_cast<double>(tp.cultureVictoryLeadRatio),
-                static_cast<double>(tp.integrationThreshold),
-                tp.integrationTurnsRequired,
                 static_cast<double>(tp.religionDominanceFrac),
                 static_cast<double>(tp.spaceRaceCostMult));
         }

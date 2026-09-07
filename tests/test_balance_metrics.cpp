@@ -77,3 +77,30 @@ TEST_CASE("BalanceGenome round-trips through BalanceParams") {
 
     CHECK(g.g == g2.g);
 }
+
+TEST_CASE("every genome slot maps to a live parameter") {
+    // Slots 7 and 8 used to hold integrationThreshold and
+    // integrationTurnsRequired, tuning a Global Integration Project victory that
+    // does not exist -- there is no Integration in VictoryType and no check
+    // anywhere -- so two genes were mutated every generation for nothing.
+    //
+    // Round-tripping every slot through params and back proves each one still
+    // reaches a field: a slot that mapped to nothing would come back as zero
+    // and break the equality.
+    aoc::balance::BalanceGenome g;
+    for (int32_t i = 0; i < aoc::balance::BALANCE_PARAM_COUNT; ++i) {
+        g.g[static_cast<std::size_t>(i)] = 1.0f + static_cast<float>(i);
+    }
+    aoc::balance::BalanceGenome back;
+    back.fromParams(g.toParams());
+    CHECK(g.g == back.g);
+}
+
+TEST_CASE("the search bounds cover every slot and are ordered") {
+    const aoc::balance::BalanceBounds b = aoc::balance::defaultBalanceBounds();
+    for (int32_t i = 0; i < aoc::balance::BALANCE_PARAM_COUNT; ++i) {
+        const std::size_t idx = static_cast<std::size_t>(i);
+        // A slot left behind by a renumbering would keep its default 0/0 here.
+        CHECK(b.min[idx] < b.max[idx]);
+    }
+}

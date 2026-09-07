@@ -338,8 +338,6 @@ runBalanceGA(const BalanceGAConfig& cfg, uint64_t masterSeed, ThreadPool* pool) 
             static_cast<double>(tp.cultureVictoryThreshold),
             tp.cultureVictoryMinWonders,
             static_cast<double>(tp.cultureVictoryLeadRatio),
-            static_cast<double>(tp.integrationThreshold),
-            tp.integrationTurnsRequired,
             static_cast<double>(tp.religionDominanceFrac),
             static_cast<double>(tp.spaceRaceCostMult));
 
@@ -403,8 +401,6 @@ void saveBalanceSummary(const std::vector<BalanceIndividual>& sortedPop,
         f << "  cultureVictoryThreshold  = " << p.cultureVictoryThreshold  << "\n";
         f << "  cultureVictoryMinWonders = " << p.cultureVictoryMinWonders << "\n";
         f << "  cultureVictoryLeadRatio  = " << p.cultureVictoryLeadRatio  << "\n";
-        f << "  integrationThreshold     = " << p.integrationThreshold     << "\n";
-        f << "  integrationTurnsRequired = " << p.integrationTurnsRequired << "\n";
         f << "  religionDominanceFrac    = " << p.religionDominanceFrac    << "\n";
         f << "  spaceRaceCostMult        = " << p.spaceRaceCostMult        << "\n\n";
     }

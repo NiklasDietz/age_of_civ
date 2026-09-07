@@ -63,8 +63,11 @@ struct BalanceParams {
     int32_t cultureVictoryMinWonders = 3;
     float   cultureVictoryLeadRatio  = 1.25f;
 
-    float   integrationThreshold     = 1.66f;  // GA 2026-04-26
-    int32_t integrationTurnsRequired = 10;
+    // integrationThreshold and integrationTurnsRequired lived here and in the
+    // GA genome, tuning a "Global Integration Project" victory that does not
+    // exist: there is no Integration in VictoryType and no check anywhere. Two
+    // genes were mutated every generation for nothing. Removed 2026-09-07;
+    // building that victory is a design decision, not a wiring fix.
 
     // Victory: religion dominance fraction (0..1). Each other civ must have
     // this fraction of its cities following your religion for a religious win.
@@ -99,13 +102,17 @@ struct BalanceParams {
 
 /// Gene layout for the balance GA. Order fixed — used by toArray/fromArray.
 ///
-/// Slot layout (indices 0-12):
+/// Slot layout (indices 0-10):
 ///   0 baseLoyalty, 1 loyaltyPressureRadius, 2 sustainedUnrestTurns,
 ///   3 distantCityThreshold, 4 cultureVictoryThreshold, 5 cultureVictoryMinWonders,
-///   6 cultureVictoryLeadRatio, 7 integrationThreshold, 8 integrationTurnsRequired,
-///   9 religionDominanceFrac, 10 spaceRaceCostMult,
-///   11 chainOutputMult, 12 consumerDemandScale
-constexpr int32_t BALANCE_PARAM_COUNT = 13;
+///   6 cultureVictoryLeadRatio, 7 religionDominanceFrac, 8 spaceRaceCostMult,
+///   9 chainOutputMult, 10 consumerDemandScale
+///
+/// Was 13. The two integration slots were dropped 2026-09-07. Nothing on disk
+/// stores this genome positionally -- the tuner writes its report by parameter
+/// name and only ever builds a genome from BalanceParams defaults -- so the
+/// renumbering invalidates no saved state.
+constexpr int32_t BALANCE_PARAM_COUNT = 11;
 
 struct BalanceGenome {
     std::array<float, BALANCE_PARAM_COUNT> g{};

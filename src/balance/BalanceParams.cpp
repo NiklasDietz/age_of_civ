@@ -16,12 +16,10 @@ BalanceParams BalanceGenome::toParams() const {
     p.cultureVictoryThreshold  = this->g[4];
     p.cultureVictoryMinWonders = static_cast<int32_t>(this->g[5]);
     p.cultureVictoryLeadRatio  = this->g[6];
-    p.integrationThreshold     = this->g[7];
-    p.integrationTurnsRequired = static_cast<int32_t>(this->g[8]);
-    p.religionDominanceFrac    = this->g[9];
-    p.spaceRaceCostMult        = this->g[10];
-    p.chainOutputMult          = this->g[11];
-    p.consumerDemandScale      = this->g[12];
+    p.religionDominanceFrac    = this->g[7];
+    p.spaceRaceCostMult        = this->g[8];
+    p.chainOutputMult          = this->g[9];
+    p.consumerDemandScale      = this->g[10];
     return p;
 }
 
@@ -33,12 +31,10 @@ void BalanceGenome::fromParams(const BalanceParams& p) {
     this->g[4]  = p.cultureVictoryThreshold;
     this->g[5]  = static_cast<float>(p.cultureVictoryMinWonders);
     this->g[6]  = p.cultureVictoryLeadRatio;
-    this->g[7]  = p.integrationThreshold;
-    this->g[8]  = static_cast<float>(p.integrationTurnsRequired);
-    this->g[9]  = p.religionDominanceFrac;
-    this->g[10] = p.spaceRaceCostMult;
-    this->g[11] = p.chainOutputMult;
-    this->g[12] = p.consumerDemandScale;
+    this->g[7]  = p.religionDominanceFrac;
+    this->g[8]  = p.spaceRaceCostMult;
+    this->g[9]  = p.chainOutputMult;
+    this->g[10] = p.consumerDemandScale;
 }
 
 BalanceBounds defaultBalanceBounds() {
@@ -57,18 +53,14 @@ BalanceBounds defaultBalanceBounds() {
     b.min[5]  = 2.0f;    b.max[5]  = 6.0f;
     // cultureVictoryLeadRatio: [1.1, 2.0]
     b.min[6]  = 1.1f;    b.max[6]  = 2.0f;
-    // integrationThreshold: [0.9, 2.0]
-    b.min[7]  = 0.9f;    b.max[7]  = 2.0f;
-    // integrationTurnsRequired: [4, 15]
-    b.min[8]  = 4.0f;    b.max[8]  = 15.0f;
     // religionDominanceFrac: [0.3, 0.8]
-    b.min[9]  = 0.3f;    b.max[9]  = 0.8f;
+    b.min[7]  = 0.3f;    b.max[7]  = 0.8f;
     // spaceRaceCostMult: [0.5, 1.5]
-    b.min[10] = 0.5f;    b.max[10] = 1.5f;
+    b.min[8]  = 0.5f;    b.max[8]  = 1.5f;
     // chainOutputMult: [0.75, 2.0]  — production-chain yield multiplier
-    b.min[11] = 0.75f;   b.max[11] = 2.0f;
+    b.min[9]  = 0.75f;   b.max[9]  = 2.0f;
     // consumerDemandScale: [0.5, 2.5]  — pop-driven consumer drain scalar
-    b.min[12] = 0.5f;    b.max[12] = 2.5f;
+    b.min[10] = 0.5f;    b.max[10] = 2.5f;
     return b;
 }
 
