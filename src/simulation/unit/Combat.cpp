@@ -584,6 +584,64 @@ static aoc::game::Unit* findUnitByEntity(aoc::game::GameState& gameState, Entity
     return nullptr;
 }
 
+namespace {
+
+/// Civ ability, government and great-person-aura strength, added to both sides.
+///
+/// Shared by the melee and ranged branches. The ranged branch had already been
+/// brought level with melee on formation, promotion, flanking and fortification;
+/// these three families were the remainder, and an archer fought without its
+/// civ's combat bonus, its government's, or the general standing beside it.
+void applyCivGovernmentAndAura(const aoc::game::GameState& gameState,
+                               const aoc::map::HexGrid& grid,
+                               const aoc::game::Unit& attacker,
+                               const aoc::game::Unit& defender, float& atkStrength,
+                               float& defStrength) {
+    const aoc::game::Player* atkPlayer = gameState.player(attacker.owner());
+    const aoc::game::Player* defPlayer = gameState.player(defender.owner());
+    if (atkPlayer != nullptr) {
+        const aoc::sim::CivAbilityModifiers& m = aoc::sim::civDef(atkPlayer->civId()).modifiers;
+        atkStrength += m.combatStrengthBonus;
+        atkStrength +=
+            aoc::sim::computeGovernmentModifiers(atkPlayer->government()).combatStrengthBonus;
+        // Conditional combat bonuses keyed off attacker tile / context.
+        const int32_t atkIdx = grid.toIndex(attacker.position());
+        if (m.combatBonusOwnTerritory > 0 && grid.owner(atkIdx) == attacker.owner()) {
+            atkStrength += static_cast<float>(m.combatBonusOwnTerritory);
+        }
+        if (m.combatBonusInForest > 0 && grid.feature(atkIdx) == aoc::map::FeatureType::Forest) {
+            atkStrength += static_cast<float>(m.combatBonusInForest);
+        }
+        if (m.combatBonusVsDifferentReligion > 0 && defPlayer != nullptr) {
+            const ReligionId atkR = atkPlayer->faith().foundedReligion;
+            const ReligionId defR = defPlayer->faith().foundedReligion;
+            if (atkR != aoc::sim::NO_RELIGION && defR != aoc::sim::NO_RELIGION && atkR != defR) {
+                atkStrength += static_cast<float>(m.combatBonusVsDifferentReligion);
+            }
+        }
+    }
+    if (defPlayer != nullptr) {
+        const aoc::sim::CivAbilityModifiers& m = aoc::sim::civDef(defPlayer->civId()).modifiers;
+        defStrength += m.combatStrengthBonus;
+        defStrength +=
+            aoc::sim::computeGovernmentModifiers(defPlayer->government()).combatStrengthBonus;
+        const int32_t defIdx = grid.toIndex(defender.position());
+        if (m.combatBonusOwnTerritory > 0 && grid.owner(defIdx) == defender.owner()) {
+            defStrength += static_cast<float>(m.combatBonusOwnTerritory);
+        }
+        if (m.combatBonusInForest > 0 && grid.feature(defIdx) == aoc::map::FeatureType::Forest) {
+            defStrength += static_cast<float>(m.combatBonusInForest);
+        }
+    }
+
+    // A Great General or Admiral standing within two hexes lends its presence
+    // to the fight, for whoever it belongs to.
+    atkStrength += greatPersonAuraBonus(gameState, grid, attacker);
+    defStrength += greatPersonAuraBonus(gameState, grid, defender);
+}
+
+} // namespace
+
 CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
                                        const aoc::map::HexGrid& grid,
                                        const aoc::game::Unit& attacker,
@@ -633,6 +691,10 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
         // Promotion combat bonuses (symmetric with melee).
         atkStrength += static_cast<float>(attacker.experience().totalCombatBonus());
         defStrength += static_cast<float>(defender.experience().totalCombatBonus());
+
+        // Civ ability, government and great-person aura (symmetric with melee).
+        applyCivGovernmentAndAura(gameState, grid, attacker, defender, atkStrength, defStrength);
+
 
         float atkHealthMod =
             static_cast<float>(attacker.hitPoints()) / static_cast<float>(atkDef.maxHitPoints);
@@ -737,55 +799,7 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
             }
         }
 
-        // Civ ability: flat combat strength bonus for land units.
-        {
-            const aoc::game::Player* atkPlayer = gameState.player(attacker.owner());
-            const aoc::game::Player* defPlayer = gameState.player(defender.owner());
-            if (atkPlayer != nullptr) {
-                const aoc::sim::CivAbilityModifiers& m =
-                    aoc::sim::civDef(atkPlayer->civId()).modifiers;
-                atkStrength += m.combatStrengthBonus;
-                atkStrength += aoc::sim::computeGovernmentModifiers(atkPlayer->government())
-                                   .combatStrengthBonus;
-                // Conditional combat bonuses keyed off attacker tile / context.
-                const int32_t atkIdx = grid.toIndex(attacker.position());
-                if (m.combatBonusOwnTerritory > 0 && grid.owner(atkIdx) == attacker.owner()) {
-                    atkStrength += static_cast<float>(m.combatBonusOwnTerritory);
-                }
-                if (m.combatBonusInForest > 0 &&
-                    grid.feature(atkIdx) == aoc::map::FeatureType::Forest) {
-                    atkStrength += static_cast<float>(m.combatBonusInForest);
-                }
-                if (m.combatBonusVsDifferentReligion > 0 && defPlayer != nullptr) {
-                    const ReligionId atkR = atkPlayer->faith().foundedReligion;
-                    const ReligionId defR = defPlayer->faith().foundedReligion;
-                    if (atkR != aoc::sim::NO_RELIGION && defR != aoc::sim::NO_RELIGION &&
-                        atkR != defR) {
-                        atkStrength += static_cast<float>(m.combatBonusVsDifferentReligion);
-                    }
-                }
-            }
-            if (defPlayer != nullptr) {
-                const aoc::sim::CivAbilityModifiers& m =
-                    aoc::sim::civDef(defPlayer->civId()).modifiers;
-                defStrength += m.combatStrengthBonus;
-                defStrength += aoc::sim::computeGovernmentModifiers(defPlayer->government())
-                                   .combatStrengthBonus;
-                const int32_t defIdx = grid.toIndex(defender.position());
-                if (m.combatBonusOwnTerritory > 0 && grid.owner(defIdx) == defender.owner()) {
-                    defStrength += static_cast<float>(m.combatBonusOwnTerritory);
-                }
-                if (m.combatBonusInForest > 0 &&
-                    grid.feature(defIdx) == aoc::map::FeatureType::Forest) {
-                    defStrength += static_cast<float>(m.combatBonusInForest);
-                }
-            }
-        }
-
-        // A Great General or Admiral standing within two hexes lends its
-        // presence to the fight, for whoever it belongs to.
-        atkStrength += greatPersonAuraBonus(gameState, grid, attacker);
-        defStrength += greatPersonAuraBonus(gameState, grid, defender);
+        applyCivGovernmentAndAura(gameState, grid, attacker, defender, atkStrength, defStrength);
 
         // Embarked units fight at 50% strength
         if (attacker.state() == aoc::sim::UnitState::Embarked) {
