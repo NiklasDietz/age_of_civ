@@ -140,6 +140,22 @@ if(NOT AOC_HEADLESS)
     # This subdir calls find_package(Vulkan) again -- harmless, it caches.
     add_subdirectory(third_party/vulkan_renderer)
 
+    # Keep LTO off inside the renderer submodule. The release preset turns
+    # CMAKE_INTERPROCEDURAL_OPTIMIZATION on globally, which makes these archives
+    # LLVM bitcode rather than objects. lld scans an archive once: the bitcode in
+    # libvulkan_renderer_lib.a only names its vkutils dependencies during LTO
+    # codegen, by which point libvulkan_utils.a has already been scanned and
+    # passed over, so seventeen UI test targets failed to link with undefined
+    # vkutils::Shader::~Shader and friends. Incremental builds hid it -- the
+    # binaries were already on disk -- so it only appears on a build from
+    # scratch. These are third-party C++17 sources; LTO across them buys little.
+    foreach(aoc_vk_target vulkan_renderer_lib vulkan_utils)
+        if(TARGET ${aoc_vk_target})
+            set_property(TARGET ${aoc_vk_target}
+                         PROPERTY INTERPROCEDURAL_OPTIMIZATION OFF)
+        endif()
+    endforeach()
+
     # GLFW -- required for windowing. Discovery differs per platform:
     #   Linux   -- find_package(glfw3) via distro's glfw3Config.cmake.
     #   macOS   -- Homebrew installs the same config (glfw formula).

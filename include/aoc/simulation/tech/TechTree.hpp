@@ -63,11 +63,14 @@ struct PlayerTechComponent {
     std::vector<bool> knownTechs;
 
     /// Initialize with the right number of tech slots.
-    void initialize() {
-        this->completedTechs.resize(techCount(), false);
-        this->knownTechs.resize(techCount(), false);
-        this->currentResearch = TechId{};
-    }
+    ///
+    /// Defined in TechTree.cpp, not inline here. Inline, the only out-of-line
+    /// call it made was techCount(), so a translation unit reaching it through
+    /// a header (Serializer.cpp does) left the linker demanding techCount()
+    /// without demanding anything else from TechTree.cpp. Under LTO lld had
+    /// already scanned past that archive member, and three test targets failed
+    /// to link. Same reasoning as canResearch and availableTechs below.
+    void initialize();
 
     [[nodiscard]] bool hasResearched(TechId tech) const {
         if (!tech.isValid() || tech.value >= this->completedTechs.size()) {
@@ -89,31 +92,12 @@ struct PlayerTechComponent {
     }
 
     /// Check if all prerequisites for a tech are met.
-    [[nodiscard]] bool canResearch(TechId tech) const {
-        if (this->hasResearched(tech)) {
-            return false;
-        }
-        const TechDef& def = techDef(tech);
-        for (TechId prereq : def.prerequisites) {
-            if (!this->hasResearched(prereq)) {
-                return false;
-            }
-        }
-        return true;
-    }
+    /// Out of line for the same reason as initialize(): it calls techDef().
+    [[nodiscard]] bool canResearch(TechId tech) const;
 
     /// Get all currently researchable technologies.
-    [[nodiscard]] std::vector<TechId> availableTechs() const {
-        std::vector<TechId> result;
-        uint16_t count = techCount();
-        for (uint16_t i = 0; i < count; ++i) {
-            TechId id{i};
-            if (this->canResearch(id)) {
-                result.push_back(id);
-            }
-        }
-        return result;
-    }
+    /// Out of line for the same reason as initialize(): it calls techCount().
+    [[nodiscard]] std::vector<TechId> availableTechs() const;
 
     /// Complete current research, mark as done.
     void completeResearch() {

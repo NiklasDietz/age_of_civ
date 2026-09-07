@@ -408,6 +408,37 @@ uint16_t techCount() {
     return static_cast<uint16_t>(getTechs().size());
 }
 
+void PlayerTechComponent::initialize() {
+    this->completedTechs.resize(techCount(), false);
+    this->knownTechs.resize(techCount(), false);
+    this->currentResearch = TechId{};
+}
+
+bool PlayerTechComponent::canResearch(TechId tech) const {
+    if (this->hasResearched(tech)) {
+        return false;
+    }
+    const TechDef& def = techDef(tech);
+    for (TechId prereq : def.prerequisites) {
+        if (!this->hasResearched(prereq)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::vector<TechId> PlayerTechComponent::availableTechs() const {
+    std::vector<TechId> result;
+    const uint16_t count = techCount();
+    for (uint16_t i = 0; i < count; ++i) {
+        TechId id{i};
+        if (this->canResearch(id)) {
+            result.push_back(id);
+        }
+    }
+    return result;
+}
+
 float effectiveResearchCost(const PlayerTechComponent& tech, TechId techId) {
     if (!techId.isValid() || techId.value >= techCount()) {
         return 0.0f;
