@@ -15,6 +15,7 @@
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
@@ -517,6 +518,36 @@ ErrorCode requestFoundPantheon(aoc::game::GameState& gameState, PlayerId player,
     return ErrorCode::Ok;
 }
 
+/// The free belief of `type` this leader gets most from, or `fallback` when the
+/// type is exhausted. Weighted by the leader's own priorities, so a warmonger
+/// and a merchant prince do not converge on the same doctrine.
+[[nodiscard]] uint8_t bestFreeBelief(const aoc::game::GameState& gameState,
+                                     const aoc::game::Player& player, BeliefType type,
+                                     uint8_t fallback) {
+    const aoc::sim::LeaderBehavior& beh = leaderPersonality(player.civId()).behavior;
+    const std::array<BeliefDef, BELIEF_COUNT>& all = allBeliefs();
+
+    uint8_t best      = 255;
+    float   bestScore = -1.0f;
+    for (uint8_t i = 0; i < BELIEF_COUNT; ++i) {
+        const BeliefDef& b = all[i];
+        if (b.type != type || !beliefIsFree(gameState, i, type)) { continue; }
+        // Each effect is worth what this leader cares about. Faith and spread
+        // both serve religion, so both key off religiousZeal.
+        const float score = b.goldPerFollowerCity    * beh.economicFocus
+                          + b.sciencePerFollowerCity * beh.scienceFocus
+                          + b.amenityBonus           * beh.cultureFocus
+                          + b.foodBonus              * beh.expansionism
+                          + b.faithBonus             * beh.religiousZeal
+                          + b.spreadStrength         * beh.religiousZeal;
+        if (score > bestScore) {
+            bestScore = score;
+            best      = i;
+        }
+    }
+    return (best == 255) ? fallback : best;
+}
+
 ReligionId foundReligionFor(aoc::game::GameState& gameState, PlayerId player) {
     aoc::game::Player* gsPlayer    = gameState.player(player);
     GlobalReligionTracker& tracker = gameState.religionTracker();
@@ -526,18 +557,12 @@ ReligionId foundReligionFor(aoc::game::GameState& gameState, PlayerId player) {
         return NO_RELIGION;
     }
     // Pick the beliefs before founding so the new religion does not block itself.
-    uint8_t founder  = firstFreeBelief(gameState, BeliefType::Founder);
-    uint8_t worship  = firstFreeBelief(gameState, BeliefType::Worship);
-    uint8_t enhancer = firstFreeBelief(gameState, BeliefType::Enhancer);
-    if (founder == 255) {
-        founder = 0;
-    }
-    if (worship == 255) {
-        worship = 8;
-    }
-    if (enhancer == 255) {
-        enhancer = 13;
-    }
+    // Scored, not first-come: `firstFreeBelief` meant every civ took whatever
+    // sat lowest in the table, so with forty beliefs to choose from the AI
+    // reliably founded the same doctrine as everyone before it.
+    const uint8_t founder  = bestFreeBelief(gameState, *gsPlayer, BeliefType::Founder, 0);
+    const uint8_t worship  = bestFreeBelief(gameState, *gsPlayer, BeliefType::Worship, 8);
+    const uint8_t enhancer = bestFreeBelief(gameState, *gsPlayer, BeliefType::Enhancer, 13);
     return foundReligionWith(gameState, *gsPlayer, founder, worship, enhancer);
 }
 

@@ -64,10 +64,16 @@ TEST_CASE("founding runs through one path: exclusive beliefs and seeded pressure
     REQUIRE(first != aoc::sim::NO_RELIGION);
     const aoc::sim::ReligionDef& def = w.gameState.religionTracker().religions[first];
     CHECK(def.founder == PlayerId{0});
-    CHECK(def.founderBelief == 0);
-    CHECK(def.followerBelief == 4);
-    CHECK(def.worshipBelief == 8);
-    CHECK(def.enhancerBelief == 12); // Holy Order is the first free enhancer
+    // Beliefs are scored against the leader's priorities, not taken in table
+    // order, so assert the CONTRACT -- right type, really free -- rather than
+    // the indices a first-come picker happened to produce.
+    const auto isOfType = [](uint8_t belief, aoc::sim::BeliefType type) {
+        return belief < aoc::sim::BELIEF_COUNT && aoc::sim::allBeliefs()[belief].type == type;
+    };
+    CHECK(isOfType(def.founderBelief, aoc::sim::BeliefType::Founder));
+    CHECK(isOfType(def.followerBelief, aoc::sim::BeliefType::Follower));
+    CHECK(isOfType(def.worshipBelief, aoc::sim::BeliefType::Worship));
+    CHECK(isOfType(def.enhancerBelief, aoc::sim::BeliefType::Enhancer));
     CHECK(p0.faith().foundedReligion == first);
     CHECK(p0.faith().faith == doctest::Approx(10.0f));
     CHECK(home.religion().pressure[first] == doctest::Approx(5.0f));
@@ -80,10 +86,15 @@ TEST_CASE("founding runs through one path: exclusive beliefs and seeded pressure
     REQUIRE(second != aoc::sim::NO_RELIGION);
     CHECK(second != first);
     const aoc::sim::ReligionDef& def2 = w.gameState.religionTracker().religions[second];
-    CHECK(def2.founderBelief == 1);
-    CHECK(def2.followerBelief == 5);
-    CHECK(def2.worshipBelief == 9);
-    CHECK(def2.enhancerBelief == 13);
+    CHECK(isOfType(def2.founderBelief, aoc::sim::BeliefType::Founder));
+    CHECK(isOfType(def2.followerBelief, aoc::sim::BeliefType::Follower));
+    CHECK(isOfType(def2.worshipBelief, aoc::sim::BeliefType::Worship));
+    CHECK(isOfType(def2.enhancerBelief, aoc::sim::BeliefType::Enhancer));
+    // Exclusivity is the point of this case: no belief serves two religions.
+    CHECK(def2.founderBelief != def.founderBelief);
+    CHECK(def2.followerBelief != def.followerBelief);
+    CHECK(def2.worshipBelief != def.worshipBelief);
+    CHECK(def2.enhancerBelief != def.enhancerBelief);
 }
 
 TEST_CASE("the AI founds a pantheon and a religion with beliefs once it has the faith") {

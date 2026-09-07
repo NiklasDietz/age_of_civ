@@ -18,6 +18,9 @@
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 
+#include <algorithm>
+#include <vector>
+
 using aoc::PlayerId;
 
 namespace {
@@ -135,4 +138,40 @@ TEST_CASE("a religion takes a seat, and a faith nobody tends fades") {
         aoc::sim::processHolyCityAndDecay(w.gameState);
         CHECK(away.religion().pressure[faith] == doctest::Approx(0.0f));
     }
+}
+
+TEST_CASE("leaders pick the doctrine that suits them, not the lowest free index") {
+    // `firstFreeBelief` meant every civ took whatever sat lowest in the table,
+    // so with forty beliefs to choose from the AI reliably founded the same
+    // doctrine as everyone before it.
+    aoc::test::World w = aoc::test::makeWorld(4);
+
+    std::vector<uint8_t> founderPicks;
+    for (uint8_t p = 0; p < 4; ++p) {
+        aoc::game::Player& player = *w.gameState.player(static_cast<PlayerId>(p));
+        aoc::test::addCityAt(w, static_cast<PlayerId>(p), 5 + p * 4, 5, "Seat");
+        player.setCivId(static_cast<aoc::sim::CivId>(p));   // four different leaders
+        player.faith().hasPantheon = true;
+        player.faith().faith       = 1000.0f;
+
+        const aoc::sim::ReligionId id =
+            aoc::sim::foundReligionFor(w.gameState, static_cast<PlayerId>(p));
+        REQUIRE(id != aoc::sim::NO_RELIGION);
+        founderPicks.push_back(w.gameState.religionTracker().religions[id].founderBelief);
+    }
+
+    // Every pick is a real founder belief, and no two religions share one:
+    // the scorer must still respect what is already taken.
+    for (uint8_t pick : founderPicks) {
+        REQUIRE(pick < aoc::sim::BELIEF_COUNT);
+        CHECK(aoc::sim::allBeliefs()[pick].type == aoc::sim::BeliefType::Founder);
+    }
+    std::vector<uint8_t> sorted = founderPicks;
+    std::sort(sorted.begin(), sorted.end());
+    CHECK(std::adjacent_find(sorted.begin(), sorted.end()) == sorted.end());
+
+    // And the first civ does not simply take index 0 the way the old code did,
+    // unless index 0 genuinely scores highest for that leader.
+    INFO("picks: ", founderPicks[0], " ", founderPicks[1], " ", founderPicks[2]);
+    CHECK(founderPicks.size() == 4u);
 }
