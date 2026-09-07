@@ -517,6 +517,15 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         if (unitPtr->movementRemaining() <= 0 && unitPtr->state() != UnitState::Fortified) {
             continue;
         }
+        // SupplyLines.hpp has promised since it was written that a unit out of
+        // supply cannot heal. Nothing here consulted supply(), so the other two
+        // penalties bit -- -25% strength in Combat, -10 HP attrition in
+        // SupplyLines -- while a cut-off unit healed as if nothing were wrong,
+        // often out-healing the attrition. computeSupplyLines runs earlier this
+        // turn, so the flag is current.
+        if (!unitPtr->supply().isSupplied) {
+            continue;
+        }
 
         int32_t healAmount = 5; // Neutral territory base
 
