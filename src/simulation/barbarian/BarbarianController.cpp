@@ -16,6 +16,7 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/map/HexCoord.hpp"
+#include "aoc/simulation/city/CitySiege.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <array>
@@ -67,9 +68,9 @@ static aoc::game::Unit* findNearestTarget(const aoc::game::GameState& gameState,
     aoc::game::Unit* closest = nullptr;
     int32_t bestDist = range + 1;
 
-    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
-        if (player->id() == BARBARIAN_PLAYER) {
-            continue;
+    auto scan = [&](const aoc::game::Player* player) {
+        if (player == nullptr || player->id() == BARBARIAN_PLAYER) {
+            return;
         }
         for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
             int32_t dist = grid.distance(unit->position(), position);
@@ -78,6 +79,53 @@ static aoc::game::Unit* findNearestTarget(const aoc::game::GameState& gameState,
                 closest  = unit.get();
             }
         }
+    };
+
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        scan(player.get());
+    }
+    // players() is the major seats only, by contract. City-states were
+    // therefore invisible to raiders, who walked past them to reach a major
+    // civ's units.
+    for (const std::unique_ptr<aoc::game::Player>& cityState : gameState.cityStatePlayers()) {
+        scan(cityState.get());
+    }
+    return closest;
+}
+
+/// The closest non-barbarian city within `range`, or null.
+///
+/// Barbarians could not attack a city at all: the raid loop only ever looked
+/// for units, and neither resolveAttackOnCity nor pressIntoCity was named
+/// anywhere in this file. A camp beside an undefended town simply ignored it.
+static aoc::game::City* findNearestCityTarget(const aoc::game::GameState& gameState,
+                                              const aoc::map::HexGrid& grid,
+                                              hex::AxialCoord position, int32_t range,
+                                              int32_t& bestDistOut) {
+    aoc::game::City* closest = nullptr;
+    bestDistOut              = range + 1;
+
+    auto scan = [&](const aoc::game::Player* player) {
+        if (player == nullptr || player->id() == BARBARIAN_PLAYER) {
+            return;
+        }
+        for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
+            if (city == nullptr) {
+                continue;
+            }
+            const int32_t dist = grid.distance(city->location(), position);
+            if (dist <= range && dist < bestDistOut) {
+                bestDistOut = dist;
+                closest     = city.get();
+            }
+        }
+    };
+
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        scan(player.get());
+    }
+    for (const std::unique_ptr<aoc::game::Player>& cityState : gameState.cityStatePlayers()) {
+        scan(cityState.get());
     }
     return closest;
 }
@@ -140,7 +188,7 @@ static PlayerId campOverrunBy(const aoc::game::GameState& gameState, hex::AxialC
 }
 
 void BarbarianController::executeTurn(aoc::game::GameState& gameState,
-                                       const aoc::map::HexGrid& grid,
+                                       aoc::map::HexGrid& grid,
                                        aoc::Random& rng,
                                        TurnEventLog* eventLog) {
     ++this->m_turnCounter;
@@ -284,7 +332,7 @@ void BarbarianController::spawnUnitsFromEncampments(aoc::game::GameState& gameSt
 }
 
 void BarbarianController::moveBarbarianUnits(aoc::game::GameState& gameState,
-                                              const aoc::map::HexGrid& grid,
+                                              aoc::map::HexGrid& grid,
                                               aoc::Random& rng) {
     aoc::game::Player* barbPlayer = gameState.player(BARBARIAN_PLAYER);
     if (barbPlayer == nullptr) {
@@ -309,6 +357,47 @@ void BarbarianController::moveBarbarianUnits(aoc::game::GameState& gameState,
 
         // Look for a nearby non-barbarian unit to attack.
         aoc::game::Unit* target = findNearestTarget(gameState, grid, unit->position(), AGGRO_RANGE);
+        const int32_t unitDist =
+            (target != nullptr) ? grid.distance(unit->position(), target->position())
+                                : AGGRO_RANGE + 1;
+
+        // And for a city. A raider that ignored towns entirely was the whole
+        // of the barbarian threat model: camps spawned, wandered, and bounced
+        // off garrisons without ever menacing what the garrison was guarding.
+        int32_t cityDist          = AGGRO_RANGE + 1;
+        aoc::game::City* cityTarget =
+            findNearestCityTarget(gameState, grid, unit->position(), AGGRO_RANGE, cityDist);
+
+        // A defender in the field is the nearer threat on a tie: cutting it
+        // down first is how a raid gets to the walls at all.
+        if (cityTarget != nullptr && cityDist < unitDist) {
+            if (cityDist == 1) {
+                [[maybe_unused]] const CityAttackResult res = resolveAttackOnCity(
+                    gameState, rng, grid, *unit, *cityTarget, gameState.currentTurn());
+                continue;
+            }
+            // Close on the city.
+            const std::array<hex::AxialCoord, 6> cityNbrs = hex::neighbors(unit->position());
+            hex::AxialCoord towardCity                    = unit->position();
+            int32_t bestCityDist                          = cityDist;
+            for (const hex::AxialCoord& nbr : cityNbrs) {
+                if (!grid.isValid(nbr)) { continue; }
+                if (grid.movementCost(grid.toIndex(nbr)) == 0) { continue; }
+                const int32_t d = grid.distance(nbr, cityTarget->location());
+                if (d < bestCityDist) {
+                    bestCityDist = d;
+                    towardCity   = nbr;
+                }
+            }
+            if (!(towardCity == unit->position())) {
+                const int32_t moveCost = grid.movementCost(grid.toIndex(towardCity));
+                if (unit->movementRemaining() >= moveCost) {
+                    unit->setPosition(towardCity);
+                    unit->setMovementRemaining(unit->movementRemaining() - moveCost);
+                }
+            }
+            continue;
+        }
 
         if (target != nullptr && !target->isDead()) {
             int32_t dist = grid.distance(unit->position(), target->position());

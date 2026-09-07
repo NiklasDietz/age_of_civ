@@ -49,7 +49,10 @@ public:
      * @param rng        Deterministic PRNG for spawn and movement decisions.
      * @param eventLog   Optional: camp spawns and clearances are recorded here.
      */
-    void executeTurn(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid, aoc::Random& rng,
+    /// `grid` is mutable because a raid that takes a city rewrites its tile
+    /// footprint. Barbarians could not attack a city at all before 2026-09-07,
+    /// so a const grid sufficed.
+    void executeTurn(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, aoc::Random& rng,
                      TurnEventLog* eventLog = nullptr);
 
     /// Read-only access to active encampments (used by serialisation and combat).
@@ -76,7 +79,7 @@ private:
     void spawnUnitsFromEncampments(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid, aoc::Random& rng);
 
     /// Move barbarian units: patrol randomly or pursue nearby non-barbarian units.
-    void moveBarbarianUnits(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid, aoc::Random& rng);
+    void moveBarbarianUnits(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, aoc::Random& rng);
 
     /// Internal turn counter (incremented each call to executeTurn).
     int32_t m_turnCounter = 0;
