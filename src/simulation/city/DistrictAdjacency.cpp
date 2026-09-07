@@ -180,6 +180,10 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid, const Distri
         bonus.gold += static_cast<float>(terrain.coastalResources) * 2.0f;
         bonus.gold += static_cast<float>(adjDistricts) * 1.0f;
         bonus.gold += static_cast<float>(adjCityCenters) * 2.0f;
+        // A fishing harbour feeds its city, not just its treasury. AdjacencyBonus
+        // has always had a food column and no rule ever filled it, so the field
+        // was dead at both ends: nothing granted food and nothing read it.
+        bonus.food += static_cast<float>(terrain.coastalResources) * 1.0f;
         break;
 
     case DistrictType::HolySite:

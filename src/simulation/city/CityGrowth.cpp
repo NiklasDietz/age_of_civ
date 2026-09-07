@@ -245,6 +245,7 @@ void autoAssignWorkers(CityComponent& city, const aoc::map::HexGrid& grid,
 static float computeWorkedFood(const aoc::game::City& city,
                                const aoc::game::Player& player,
                                const aoc::map::HexGrid& grid,
+                               const DistrictIndex& districts,
                                bool hasFeudalismCivic,
                                float climateFoodMult = 1.0f) {
     float total = 0.0f;
@@ -268,6 +269,12 @@ static float computeWorkedFood(const aoc::game::City& city,
         }
         total += tileFood;
     }
+    // District adjacency. AdjacencyBonus has six columns and five of them
+    // reached city output -- production, gold, science, culture, faith. Food was
+    // summed by cityAdjacencyYields for nobody, so an adjacency that granted it
+    // fed no one.
+    total += cityAdjacencyYields(grid, districts, city).food;
+
     // Pollution food penalty: each waste tier deducts food units.
     // foodPenalty returns 0/1/2/3 based on wasteAccumulated.
     total -= static_cast<float>(city.pollution().foodPenalty());
@@ -280,6 +287,7 @@ static float computeWorkedFood(const aoc::game::City& city,
 static void processSingleCityGrowth(aoc::game::City& city,
                                      const aoc::game::Player& player,
                                      const aoc::map::HexGrid& grid,
+                                     const DistrictIndex& districts,
                                      bool hasFeudalismCivic,
                                      float cityHappiness,
                                      float climateFoodMult,
@@ -291,7 +299,8 @@ static void processSingleCityGrowth(aoc::game::City& city,
     // falls below 85% of consumption, rebalance in Food focus so existing
     // citizens can migrate off resources onto farms.
     {
-        float totalFoodPre = computeWorkedFood(city, player, grid, hasFeudalismCivic, climateFoodMult);
+        float totalFoodPre =
+            computeWorkedFood(city, player, grid, districts, hasFeudalismCivic, climateFoodMult);
         float consumption  = static_cast<float>(city.population()) * 2.0f;
         if (consumption > 0.0f && totalFoodPre < consumption * 0.85f) {
             city.autoAssignWorkers(grid, aoc::sim::WorkerFocus::Food, &player);
@@ -299,7 +308,8 @@ static void processSingleCityGrowth(aoc::game::City& city,
     }
 
     // Calculate food from worked tiles (post-reassignment)
-    float totalFood = computeWorkedFood(city, player, grid, hasFeudalismCivic, climateFoodMult);
+    float totalFood =
+        computeWorkedFood(city, player, grid, districts, hasFeudalismCivic, climateFoodMult);
 
     // Food consumption: 2 per citizen
     float consumption = static_cast<float>(city.population()) * 2.0f;
@@ -621,11 +631,15 @@ void processCityGrowth(aoc::game::Player& player, const aoc::map::HexGrid& grid,
     // Per player, not per city: this used to be recomputed inside the loop.
     const GovernmentModifiers gov = computeGovernmentModifiers(player.government());
 
+    // One index for the whole empire, as the science and culture passes do.
+    DistrictIndex districtIndex;
+    districtIndex.build(player);
+
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         // Happiness for celebration growth: read from CityHappinessComponent (synced from ECS).
         // Uses previous turn's happiness since happiness is computed after growth.
         float cityHappiness = city->happiness().happiness;
-        processSingleCityGrowth(*city, player, grid, hasFeudalismCivic,
+        processSingleCityGrowth(*city, player, grid, districtIndex, hasFeudalismCivic,
                                 cityHappiness, climateFoodMult, gov);
     }
 }
