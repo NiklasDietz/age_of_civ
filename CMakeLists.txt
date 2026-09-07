@@ -972,6 +972,7 @@ if(AOC_BUILD_TESTS)
         test_stockpile_bonuses
         test_plant_fuel
         test_war_reparations
+        test_robot_maintenance
         test_spaceport
         test_government_plaza_and_dam
         test_great_works

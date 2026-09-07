@@ -579,26 +579,11 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 checkNuclearMeltdown(gameState, grid, *cityPtr, turnHash);
             }
 
-            // Update robot automation directly on the city's owned components.
-            CityStockpileComponent& stockpile    = cityPtr->stockpile();
-            CityAutomationComponent& automation  = cityPtr->automation();
-            int32_t robotsAvailable = stockpile.getAmount(ROBOT_WORKERS_GOOD);
-            if (robotsAvailable <= 0) {
-                automation.robotWorkers = 0;
-            } else {
-                automation.robotWorkers = robotsAvailable;
-                ++automation.turnsSinceLastMaintenance;
-                if (automation.turnsSinceLastMaintenance >= ROBOT_MAINTENANCE_INTERVAL) {
-                    if (stockpile.consumeGoods(ROBOT_WORKERS_GOOD, 1)) {
-                        automation.turnsSinceLastMaintenance = 0;
-                        --automation.robotWorkers;
-                    } else {
-                        LOG_WARN("%s: consumeGoods failed for good %u despite prior "
-                                 "availability check", cityPtr->name().c_str(),
-                                 static_cast<unsigned>(ROBOT_WORKERS_GOOD));
-                    }
-                }
-            }
+            // Robot automation and its maintenance tick belong to
+            // updateCityAutomation (production/Automation.cpp), which
+            // TurnProcessor calls once a turn. This block was a second,
+            // identical copy, so turnsSinceLastMaintenance advanced twice a
+            // turn and robots wore out at twice their intended rate.
         }
     }
 
