@@ -513,8 +513,13 @@ void processProductionQueues(aoc::game::GameState& gameState, aoc::map::HexGrid&
             case ProductionItemType::Wonder: {
                 WonderId wonderId = static_cast<WonderId>(item.itemId);
                 // First-builder-wins: if another civ already built this
-                // wonder this turn (or earlier), abort and refund.
-                if (gameState.wonderTracker().isBuilt(wonderId)) {
+                // wonder this turn (or earlier), abort and refund. A national
+                // wonder is one per civ, so it never loses this race -- the
+                // per-civ AlreadyOwned check in wonderLockReason is its only
+                // limit. This second, separate read of the global tracker is
+                // what made a national wonder still race-lose at completion
+                // time even though the build gate had allowed it.
+                if (!wonderDef(wonderId).national && gameState.wonderTracker().isBuilt(wonderId)) {
                     // Refund a portion of production: convert to gold to
                     // soften the loss. 50% of wonder cost as gold.
                     const int32_t refund = static_cast<int32_t>(

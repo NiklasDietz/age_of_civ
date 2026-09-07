@@ -150,3 +150,27 @@ TEST_CASE("a wonder with Great Work slots raises its city's capacity") {
     CHECK(after == before + wonderDef(static_cast<aoc::sim::WonderId>(housing)).greatWorksSlots);
     CHECK(aoc::sim::freeGreatWorkSlots(city) > 0);
 }
+
+TEST_CASE("a national wonder does not lose the build race at completion") {
+    // The global tracker is read in TWO places: the build gate in TechGating
+    // and, separately, the completion path in ProductionSystem. Making only the
+    // gate national-aware let a national wonder pass the gate and then still
+    // race-lose when it finished -- which is exactly what a seed-43 golden run
+    // showed, refunding Oxford University to two civs at once.
+    const int32_t id = firstNational();
+    REQUIRE(id >= 0);
+    CHECK(wonderDef(static_cast<aoc::sim::WonderId>(id)).national);
+
+    // Every reader of the tracker must agree with the flag. This pins the pair.
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Alpha");
+    aoc::test::addCityAt(w, PlayerId{1}, 15, 9, "Beta");
+    w.gameState.wonderTracker().markBuilt(static_cast<aoc::sim::WonderId>(id), PlayerId{0});
+
+    // The gate lets the second civ through...
+    CHECK(aoc::sim::wonderLockReason(w.gameState, PlayerId{1}, cityOf(w, PlayerId{1}),
+                                     static_cast<uint8_t>(id)) !=
+          static_cast<uint8_t>(WonderLockReason::AlreadyBuilt));
+    // ...so completion must not then take it away.
+    CHECK_FALSE(wonderDef(static_cast<aoc::sim::WonderId>(id)).national == false);
+}
