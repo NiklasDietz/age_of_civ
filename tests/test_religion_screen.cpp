@@ -83,7 +83,17 @@ struct Fixture {
 TEST_CASE("the pantheon rows offer the free follower beliefs and found with the clicked one") {
     Fixture f;
     f.screen.open(f.ui);
-    CHECK(f.buttonsContaining("Found: ") == 3);    // four follower beliefs, one taken by P1
+    // One row per free follower belief, derived rather than hard-coded: the
+    // belief table grew from sixteen entries to forty and a literal count here
+    // failed for a reason that had nothing to do with the screen.
+    int32_t followerBeliefs = 0;
+    for (uint8_t i = 0; i < aoc::sim::BELIEF_COUNT; ++i) {
+        if (aoc::sim::allBeliefs()[i].type == aoc::sim::BeliefType::Follower) {
+            ++followerBeliefs;
+        }
+    }
+    REQUIRE(followerBeliefs >= 2);
+    CHECK(f.buttonsContaining("Found: ") == followerBeliefs - 1); // one taken by P1
     CHECK(f.buttonsContaining("Taken: ") == 1);
     const std::string sixth(aoc::sim::allBeliefs()[6].name);
     REQUIRE(f.clickButton("Found: " + sixth));
