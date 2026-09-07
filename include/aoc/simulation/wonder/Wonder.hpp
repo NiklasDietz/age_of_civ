@@ -55,6 +55,27 @@ struct WonderDef {
     WonderAdjacencyReq adjacency{};       ///< Spatial requirements
     WonderEffect     effect;
     std::string_view description;
+
+    /// A national wonder is one per CIV, not one per game: every civ may build
+    /// its own. GlobalWonderTracker applied one-per-game to all 24 wonders
+    /// because there was no flag to tell the two kinds apart, so a civ that
+    /// lost the race to a national project could never have one at all.
+    bool             national = false;
+
+    /// Strategic resource this wonder consumes to build, and how much.
+    /// INVALID id = none. WonderLockReason::NoResource existed as a UI string
+    /// that no code produced, because nothing here named a requirement.
+    ResourceId       requiredResource{};
+    int32_t          requiredResourceAmount = 0;
+
+    /// Great Work slots this wonder houses. greatWorkCapacity summed district
+    /// buildings only and never consulted city.wonders(), so a wonder famous
+    /// for housing art housed none.
+    uint8_t          greatWorksSlots = 0;
+
+    [[nodiscard]] constexpr bool needsResource() const {
+        return this->requiredResource.isValid() && this->requiredResourceAmount > 0;
+    }
 };
 
 /// Get all wonder definitions.

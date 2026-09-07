@@ -3,6 +3,7 @@
  * @brief World wonder definitions.
  */
 
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 
 #include <algorithm>
@@ -32,7 +33,8 @@ static const std::array<WonderDef, WONDER_COUNT> s_wonderDefs = {{
 
     { 3, "Great Library",   EraId{1}, 300, TechId{}, CivicId{}, WonderAdjacencyReq{},
       {1.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-      "+2 science, boost ancient/classical techs."},
+      "+2 science, boost ancient/classical techs.",
+      false, ResourceId{}, 0, 3},  // a library houses works
 
     { 4, "Petra",           EraId{1}, 280, TechId{}, CivicId{}, {.requiresDesert=true},
       {1.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f},
@@ -67,9 +69,13 @@ static const std::array<WonderDef, WONDER_COUNT> s_wonderDefs = {{
       "+10 culture, +2 tourism."},
 
     // Atomic era (EraId 6)
+    // National: every civ that reaches the era and holds the uranium may run
+    // its own bomb programme. As a one-per-game wonder, whichever civ got there
+    // first locked every other out of nuclear weapons permanently.
     {11, "Manhattan Project", EraId{6}, 700, TechId{}, CivicId{}, WonderAdjacencyReq{},
       {1.0f, 5.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-      "Enables nuclear weapons. +5 science."},
+      "Enables nuclear weapons. +5 science.",
+      true, ResourceId{aoc::sim::goods::URANIUM}, 5, 0},
 
     // --- Batch B wonders ---
 
@@ -94,7 +100,8 @@ static const std::array<WonderDef, WONDER_COUNT> s_wonderDefs = {{
     // Renaissance era (EraId 3)
     {16, "Taj Mahal",        EraId{3}, 450, TechId{}, CivicId{}, WonderAdjacencyReq{},
       {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-      "+1 era score for each golden age."},
+      "+1 era score for each golden age.",
+      false, ResourceId{}, 0, 2},  // a mausoleum of art
 
     {17, "Venetian Arsenal", EraId{3}, 420, TechId{}, CivicId{}, {.requiresCoast=true},
       {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
@@ -105,9 +112,12 @@ static const std::array<WonderDef, WONDER_COUNT> s_wonderDefs = {{
       {1.3f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
       "+30% production in this city."},
 
+    // National: a country's own great university, not a single building the
+    // whole world shares.
     {19, "Oxford University", EraId{4}, 480, TechId{}, CivicId{}, WonderAdjacencyReq{},
       {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
-      "+20% science in this city."},
+      "+20% science in this city.",
+      true, ResourceId{}, 0, 2},  // a university library houses works
 
     // Modern era (EraId 5)
     {20, "Statue of Liberty", EraId{5}, 580, TechId{}, CivicId{}, WonderAdjacencyReq{},

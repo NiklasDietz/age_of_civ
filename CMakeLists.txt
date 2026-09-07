@@ -1001,6 +1001,7 @@ if(AOC_BUILD_TESTS)
         test_ranged_modifiers
         test_goody_huts
         test_barbarian_city_raid
+        test_wonder_gates
         test_spaceport
         test_government_plaza_and_dam
         test_great_works

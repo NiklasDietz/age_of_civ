@@ -3,6 +3,7 @@
  * @brief Great Work placement and tallies. See GreatWorks.hpp.
  */
 
+#include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/culture/GreatWorks.hpp"
 
 #include "aoc/game/City.hpp"
@@ -25,6 +26,13 @@ int32_t greatWorkCapacity(const aoc::game::City& city) {
             if (b.value < BUILDING_DEFS.size()) {
                 total += static_cast<int32_t>(buildingDef(b).greatWorksSlots);
             }
+        }
+    }
+    // Wonders house works too. This summed district buildings only and never
+    // consulted city.wonders(), so a Great Library housed no books.
+    for (const WonderId w : city.wonders().wonders) {
+        if (w < WONDER_COUNT) {
+            total += static_cast<int32_t>(wonderDef(w).greatWorksSlots);
         }
     }
     return total;

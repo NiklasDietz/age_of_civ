@@ -352,14 +352,18 @@ uint8_t wonderLockReason(const aoc::game::GameState& gameState,
     if (wonderId >= WONDER_COUNT) {
         return static_cast<uint8_t>(WonderLockReason::AlreadyBuilt);
     }
-    if (gameState.wonderTracker().isBuilt(wonderId)) {
-        return static_cast<uint8_t>(WonderLockReason::AlreadyBuilt);
-    }
     const aoc::game::Player* gsPlayer = gameState.player(player);
     if (gsPlayer == nullptr) {
         return static_cast<uint8_t>(WonderLockReason::AlreadyBuilt);
     }
     const WonderDef& wdef = wonderDef(wonderId);
+    // One per game, unless the wonder is national -- then one per civ, and the
+    // already-owned check below is the only limit that applies. Without the
+    // flag every one of the 24 was global, so losing the race to a national
+    // project meant never having one.
+    if (!wdef.national && gameState.wonderTracker().isBuilt(wonderId)) {
+        return static_cast<uint8_t>(WonderLockReason::AlreadyBuilt);
+    }
 
     if (wdef.prerequisiteTech.isValid()
      && !gsPlayer->tech().hasResearched(wdef.prerequisiteTech)) {
@@ -379,6 +383,19 @@ uint8_t wonderLockReason(const aoc::game::GameState& gameState,
             if (it.type == ProductionItemType::Wonder && it.itemId == wonderId) {
                 return static_cast<uint8_t>(WonderLockReason::AlreadyOwned);
             }
+        }
+    }
+
+    // Strategic resource requirement. WonderLockReason::NoResource was a UI
+    // string no code produced, because no wonder named a requirement.
+    if (wdef.needsResource()) {
+        int32_t held = 0;
+        for (const std::unique_ptr<aoc::game::City>& c : gsPlayer->cities()) {
+            if (c == nullptr) { continue; }
+            held += c->stockpile().getAmount(wdef.requiredResource.value);
+        }
+        if (held < wdef.requiredResourceAmount) {
+            return static_cast<uint8_t>(WonderLockReason::NoResource);
         }
     }
 
