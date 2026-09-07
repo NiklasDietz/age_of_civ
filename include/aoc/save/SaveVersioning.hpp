@@ -103,6 +103,10 @@ namespace aoc::save {
  * five. Every v25 save becomes unloadable. */
 /* v27 (2026-09-06): the same arrays grew again to nine entries with Prophet,
  * Writer and Musician. Every v26 save becomes unloadable. */
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 27;
+/* v28 (2026-09-07): the GreatPeople section carries the world's shared great
+ * person roster after the per-player blocks: claimed count and pass mask per
+ * type. Without it a reloaded game re-offers figures another civ already holds
+ * and forgets every pass. Every v27 save becomes unloadable. */
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 28;
 
 } // namespace aoc::save

@@ -380,3 +380,96 @@ TEST_CASE("a person with a unique effect does not take its type's default path")
         CHECK(p.economy().treasury == goldBefore);     // and no gold did
     }
 }
+
+TEST_CASE("a historical figure belongs to whoever takes them first") {
+    // Recruitment used to be private per player: everyone walked the same list
+    // independently, so two civs could each hold their own Isaac Newton.
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Alpha");
+    aoc::test::addCityAt(w, PlayerId{1}, 15, 15, "Beta");
+
+    const auto recruitFor = [&w](PlayerId who) {
+        aoc::game::Player& p = *w.gameState.player(who);
+        p.greatPeople().points[static_cast<uint8_t>(GreatPersonType::Merchant)] =
+            p.greatPeople().threshold(GreatPersonType::Merchant) + 1.0f;
+        aoc::sim::checkGreatPeopleRecruitment(w.gameState, who);
+        for (const std::unique_ptr<aoc::game::Unit>& u : p.units()) {
+            if (u->typeId() == GREAT_PERSON && !u->greatPerson().isActivated) {
+                return u->greatPerson().namedId;
+            }
+        }
+        return static_cast<uint8_t>(255);
+    };
+
+    const uint8_t first  = recruitFor(PlayerId{0});
+    const uint8_t second = recruitFor(PlayerId{1});
+    CHECK(first != 255);
+    CHECK(second != 255);
+    CHECK(first != second); // the same person cannot serve two empires
+}
+
+TEST_CASE("passing on an offer is binding until somebody takes it") {
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Alpha");
+    aoc::game::Player& p = *w.gameState.player(PlayerId{0});
+
+    CHECK(aoc::sim::requestPassGreatPerson(w.gameState, PlayerId{0}, GreatPersonType::Merchant)
+          == aoc::ErrorCode::Ok);
+    CHECK(aoc::sim::requestPassGreatPerson(w.gameState, PlayerId{0}, GreatPersonType::Merchant)
+          != aoc::ErrorCode::Ok); // passing twice is not a thing
+
+    // Points past the threshold no longer produce a person for this civ.
+    p.greatPeople().points[static_cast<uint8_t>(GreatPersonType::Merchant)] =
+        p.greatPeople().threshold(GreatPersonType::Merchant) + 1.0f;
+    aoc::sim::checkGreatPeopleRecruitment(w.gameState, PlayerId{0});
+    CHECK(p.unitCount() == 0);
+
+    // Once a rival takes them, the pass is spent and the next offer is open.
+    w.gameState.greatPeopleRoster().advance(GreatPersonType::Merchant);
+    CHECK_FALSE(w.gameState.greatPeopleRoster().hasPassed(GreatPersonType::Merchant,
+                                                          PlayerId{0}));
+}
+
+TEST_CASE("patronage buys the offered person, in the right currency") {
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Alpha");
+    aoc::game::Player& p = *w.gameState.player(PlayerId{0});
+
+    SUBCASE("an empire that cannot pay does not get the person") {
+        p.setTreasury(0);
+        CHECK(aoc::sim::requestPatronage(w.gameState, w.grid, PlayerId{0},
+                                         GreatPersonType::Merchant)
+              == aoc::ErrorCode::InsufficientResources);
+        CHECK(p.unitCount() == 0);
+    }
+
+    SUBCASE("paying takes the gold and the person") {
+        const int64_t price = aoc::sim::patronageGoldCost(w.gameState, GreatPersonType::Merchant);
+        CHECK(price > 0);
+        p.setTreasury(price + 50);
+        p.monetary().treasury = price + 50;
+        const int32_t claimedBefore = w.gameState.greatPeopleRoster().claimed[
+            static_cast<std::size_t>(GreatPersonType::Merchant)];
+
+        CHECK(aoc::sim::requestPatronage(w.gameState, w.grid, PlayerId{0},
+                                         GreatPersonType::Merchant) == aoc::ErrorCode::Ok);
+        CHECK(p.unitCount() == 1);
+        CHECK(p.monetary().treasury == 50);
+        CHECK(w.gameState.greatPeopleRoster().claimed[
+                  static_cast<std::size_t>(GreatPersonType::Merchant)] == claimedBefore + 1);
+    }
+
+    SUBCASE("a prophet is bought with faith, not gold") {
+        const float price = aoc::sim::patronageFaithCost(w.gameState, GreatPersonType::Prophet);
+        CHECK(price > 0.0f);
+        p.monetary().treasury = 100000; // gold is no help here
+        CHECK(aoc::sim::requestPatronage(w.gameState, w.grid, PlayerId{0},
+                                         GreatPersonType::Prophet)
+              == aoc::ErrorCode::InsufficientResources);
+        p.faith().faith = price;
+        CHECK(aoc::sim::requestPatronage(w.gameState, w.grid, PlayerId{0},
+                                         GreatPersonType::Prophet) == aoc::ErrorCode::Ok);
+        CHECK(p.faith().faith == doctest::Approx(0.0f));
+        CHECK(p.monetary().treasury == 100000); // untouched
+    }
+}

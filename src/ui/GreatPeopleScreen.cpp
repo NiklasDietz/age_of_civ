@@ -217,6 +217,60 @@ void GreatPeopleScreen::addProgressRows(UIManager& ui, const aoc::game::Player& 
             why += "  (none yet)";
         }
         this->addLine(ui, std::move(why), true);
+
+        // Who the world is offering, and what it costs to take them now. The
+        // roster is shared, so this is a race: the figure named here goes to
+        // whoever reaches the threshold or pays first.
+        if (this->m_gameState != nullptr && !gp.exhausted[t]) {
+            const aoc::sim::GlobalGreatPeopleRoster& roster =
+                this->m_gameState->greatPeopleRoster();
+            const int32_t claimed = roster.claimed[t];
+            if (claimed < aoc::sim::MAX_GP_PER_TYPE) {
+                const aoc::sim::NamedGreatPersonDef& offered =
+                    aoc::sim::namedGreatPersonForCategory(
+                        aoc::sim::categoryForGreatPersonType(type), claimed);
+                const bool passed = roster.hasPassed(type, this->m_player);
+                std::string line = "    On offer: " + std::string(offered.name);
+                if (passed) {
+                    line += "  (you passed)";
+                } else if (type == aoc::sim::GreatPersonType::Prophet) {
+                    line += "  |  patronage " +
+                            wholeNumber(aoc::sim::patronageFaithCost(*this->m_gameState, type)) +
+                            " faith";
+                } else {
+                    line += "  |  patronage " +
+                            std::to_string(aoc::sim::patronageGoldCost(*this->m_gameState, type)) +
+                            " gold";
+                }
+                this->addLine(ui, std::move(line), passed);
+
+                if (!passed && this->m_onPatronage) {
+                    PatronageCallback act = this->m_onPatronage;
+                    const uint8_t typeIdx = t;
+                    ButtonData buy;
+                    buy.label        = "Patronise " + std::string(offered.name);
+                    buy.fontSize     = 10.0f;
+                    buy.cornerRadius = 3.0f;
+                    buy.normalColor  = tokens::BRONZE_BASE;
+                    buy.hoverColor   = tokens::BRONZE_LIGHT;
+                    buy.pressedColor = tokens::BRONZE_DARK;
+                    buy.onClick      = [act, typeIdx]() { act(typeIdx, true); };
+                    static_cast<void>(ui.createButton(this->m_list, {0.0f, 0.0f, ROW_W, 18.0f},
+                                                      std::move(buy)));
+
+                    ButtonData skip;
+                    skip.label        = "Pass";
+                    skip.fontSize     = 10.0f;
+                    skip.cornerRadius = 3.0f;
+                    skip.normalColor  = tokens::SURFACE_MAHOGANY;
+                    skip.hoverColor   = tokens::BRONZE_DARK;
+                    skip.pressedColor = tokens::BRONZE_DARK;
+                    skip.onClick      = [act, typeIdx]() { act(typeIdx, false); };
+                    static_cast<void>(ui.createButton(this->m_list, {0.0f, 0.0f, ROW_W, 18.0f},
+                                                      std::move(skip)));
+                }
+            }
+        }
     }
 }
 

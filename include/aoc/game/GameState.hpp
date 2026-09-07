@@ -34,6 +34,7 @@
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/climate/NaturalDisasters.hpp"
+#include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/simulation/diplomacy/Espionage.hpp"
@@ -242,6 +243,15 @@ public:
         return this->m_religionTracker;
     }
 
+    /// The world's shared offer of great people. One roster, so a historical
+    /// figure is something only one civ can hold.
+    [[nodiscard]] aoc::sim::GlobalGreatPeopleRoster& greatPeopleRoster() {
+        return this->m_greatPeopleRoster;
+    }
+    [[nodiscard]] const aoc::sim::GlobalGreatPeopleRoster& greatPeopleRoster() const {
+        return this->m_greatPeopleRoster;
+    }
+
     [[nodiscard]] aoc::sim::VisibilityEventBus& visibilityBus() { return this->m_visibilityBus; }
     [[nodiscard]] const aoc::sim::VisibilityEventBus& visibilityBus() const {
         return this->m_visibilityBus;
@@ -339,6 +349,7 @@ private:
     aoc::sim::GlobalWonderTracker m_wonderTracker;
     aoc::sim::WorldCongressComponent m_worldCongress;
     aoc::sim::GlobalReligionTracker m_religionTracker;
+    aoc::sim::GlobalGreatPeopleRoster m_greatPeopleRoster;
     aoc::sim::VisibilityEventBus m_visibilityBus;
 
     // Global collections

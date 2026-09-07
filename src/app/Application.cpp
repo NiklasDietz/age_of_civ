@@ -1916,6 +1916,29 @@ ErrorCode Application::initialize(const Config& config) {
                                              4.0f, 0.9f, 0.85f, 0.6f);
         });
 
+    // Take or decline the great person the world is offering. The screen shows
+    // the roster; the money and the new unit are ours to move.
+    this->m_greatPeopleScreen.setPatronageCallback(
+        [this](uint8_t typeIdx, bool patronise) {
+            if (typeIdx >= static_cast<uint8_t>(aoc::sim::GreatPersonType::Count)) { return; }
+            const auto type   = static_cast<aoc::sim::GreatPersonType>(typeIdx);
+            const PlayerId me = this->m_gameState.humanPlayerId();
+            const ErrorCode rc =
+                patronise ? aoc::sim::requestPatronage(this->m_gameState, this->m_hexGrid, me, type)
+                          : aoc::sim::requestPassGreatPerson(this->m_gameState, me, type);
+            if (rc != ErrorCode::Ok) {
+                this->m_notificationManager.push(
+                    std::string(patronise ? "Cannot patronise: " : "Cannot pass: ")
+                        + std::string(describeError(rc)),
+                    3.0f, 1.0f, 0.5f, 0.4f);
+                return;
+            }
+            this->m_notificationManager.push(patronise ? "A great person enters your service"
+                                                       : "You let them pass you by",
+                                             3.0f, 0.9f, 0.85f, 0.6f);
+            this->m_greatPeopleScreen.refresh(this->m_uiManager);
+        });
+
     // Raze or liberate a conquered city from its own detail screen. The screen
     // holds the grid read-only and a razed city stops existing, so the change
     // and the selection cleanup happen here.

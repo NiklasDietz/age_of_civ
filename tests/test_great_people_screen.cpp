@@ -170,3 +170,36 @@ TEST_CASE("the Activate button consumes the person through the shared request") 
     CHECK(f.labelsContaining("recruited 1 of 12") == 1);
     CHECK(f.labelsContaining("None yet.") == 1);
 }
+
+TEST_CASE("the screen shows who is on offer and can patronise or pass them") {
+    Fixture f;
+    uint8_t chosenType = 255;
+    bool chosePatronise = false;
+    f.screen.setPatronageCallback([&chosenType, &chosePatronise](uint8_t t, bool buy) {
+        chosenType     = t;
+        chosePatronise = buy;
+    });
+    f.screen.open(f.ui);
+
+    CHECK(f.labelsContaining("On offer:") >= 1);
+    CHECK(f.labelsContaining("patronage") >= 1);
+
+    REQUIRE(f.clickButton("Patronise"));
+    CHECK(chosenType != 255);
+    CHECK(chosePatronise);
+
+    REQUIRE(f.clickButton("Pass"));
+    CHECK_FALSE(chosePatronise);
+    f.screen.close(f.ui);
+}
+
+TEST_CASE("a type you passed on offers no buttons and says so") {
+    Fixture f;
+    f.screen.setPatronageCallback([](uint8_t, bool) {});
+    f.world.gameState.greatPeopleRoster().pass(aoc::sim::GreatPersonType::Scientist,
+                                               PlayerId{0});
+    f.screen.open(f.ui);
+
+    CHECK(f.labelsContaining("(you passed)") == 1);
+    f.screen.close(f.ui);
+}

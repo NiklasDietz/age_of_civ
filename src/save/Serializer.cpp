@@ -1006,6 +1006,18 @@ void writePlayerStateSection(WriteBuffer& out, const aoc::game::GameState& gameS
         section.writeI32(gp.pulseScienceTurns);
     }
 
+    // v28: the world's shared great person offer. Without it a reloaded game
+    // re-offers figures other civs already hold, and every pass is forgotten.
+    {
+        const aoc::sim::GlobalGreatPeopleRoster& roster = gameState.greatPeopleRoster();
+        for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
+            section.writeI32(roster.claimed[t]);
+        }
+        for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
+            section.writeU32(roster.passedMask[t]);
+        }
+    }
+
     // --- PlayerEurekaComponent ---
     // v8+: pending-boost bitfield follows the triggered bitfield per player.
     section.writeU32(playerCount);
@@ -2886,6 +2898,18 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                     player->greatPeople().extraTradeSlots    = xts;
                     player->greatPeople().pulseScienceAmount = psa;
                     player->greatPeople().pulseScienceTurns  = pst;
+                }
+            }
+
+            // v28: the world's shared great person offer, written after the
+            // per-player blocks above.
+            {
+                aoc::sim::GlobalGreatPeopleRoster& roster = gameState.greatPeopleRoster();
+                for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
+                    roster.claimed[t] = buf.readI32();
+                }
+                for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
+                    roster.passedMask[t] = buf.readU32();
                 }
             }
 

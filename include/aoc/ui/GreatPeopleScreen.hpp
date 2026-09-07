@@ -10,6 +10,7 @@
 #include "aoc/core/Types.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 namespace aoc::map { class HexGrid; }
@@ -33,6 +34,20 @@ public:
 
 private:
     void buildRows(UIManager& ui);
+public:
+    /// Take or decline the offered person of a type. The screen holds the game
+    /// state read-only for rendering, and both actions move money and spawn a
+    /// unit, so Application performs them and reports the outcome.
+    /// First argument is a `aoc::sim::GreatPersonType` index; second is true to
+    /// patronise, false to pass.
+    using PatronageCallback = std::function<void(uint8_t, bool)>;
+    void setPatronageCallback(PatronageCallback callback) {
+        this->m_onPatronage = std::move(callback);
+    }
+
+private:
+    PatronageCallback m_onPatronage;
+
     void addProgressRows(UIManager& ui, const aoc::game::Player& player);
     void addRecruitedRows(UIManager& ui, const aoc::game::Player& player);
     void addHeader(UIManager& ui, const std::string& text);

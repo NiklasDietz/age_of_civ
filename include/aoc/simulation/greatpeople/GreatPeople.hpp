@@ -104,6 +104,25 @@ inline constexpr float GP_AURA_STRENGTH = 5.0f;
 [[nodiscard]] ErrorCode requestRetireGreatPerson(aoc::game::GameState& gameState, PlayerId player,
                                                  hex::AxialCoord at);
 
+/// What it costs `player` to take the offered person of `type` now. Gold for
+/// everyone except the Prophet, whose currency is faith. Zero when there is
+/// nothing on offer.
+[[nodiscard]] int64_t patronageGoldCost(const aoc::game::GameState& gameState,
+                                        GreatPersonType type);
+[[nodiscard]] float patronageFaithCost(const aoc::game::GameState& gameState,
+                                       GreatPersonType type);
+
+/// Buy the offered person of `type` outright. Rejects a civ that has passed on
+/// this offer, a spent line, and an empire that cannot afford it.
+[[nodiscard]] ErrorCode requestPatronage(aoc::game::GameState& gameState,
+                                         aoc::map::HexGrid& grid, PlayerId player,
+                                         GreatPersonType type);
+
+/// Decline the offered person of `type`. Binding until somebody claims them,
+/// so it is a decision and not a free skip.
+[[nodiscard]] ErrorCode requestPassGreatPerson(aoc::game::GameState& gameState, PlayerId player,
+                                               GreatPersonType type);
+
 /// Gold a retirement pays.
 inline constexpr int64_t GP_RETIRE_GOLD = 150;
 
@@ -122,7 +141,65 @@ struct GreatPersonComponent {
     bool     isActivated = false;
 };
 
-/// Hard cap on Great Persons recruited per type. H3.9: without a cap, the
+/// The world's offer of great people, shared by every civ.
+///
+/// Recruitment used to be private to each player: everyone walked down the same
+/// fixed list independently, so two civs could each hold their own Isaac Newton
+/// and there was never anything to compete over. One roster makes a historical
+/// figure a thing only one civ can have.
+struct GlobalGreatPeopleRoster {
+    /// Per type, how many of its figures the world has handed out. The offer is
+    /// the next one along, so this doubles as an index into the type's line.
+    std::array<int32_t, static_cast<std::size_t>(GreatPersonType::Count)> claimed = {};
+
+    /// Per type, which players have passed on the CURRENT offer. A pass is
+    /// binding until that figure is taken by someone, which is what makes it a
+    /// decision rather than a free skip.
+    std::array<uint32_t, static_cast<std::size_t>(GreatPersonType::Count)> passedMask = {};
+
+    [[nodiscard]] bool hasPassed(GreatPersonType type, PlayerId player) const {
+        const auto t = static_cast<std::size_t>(type);
+        if (t >= this->passedMask.size() || player >= 32) { return false; }
+        return (this->passedMask[t] & (1u << player)) != 0u;
+    }
+
+    void pass(GreatPersonType type, PlayerId player) {
+        const auto t = static_cast<std::size_t>(type);
+        if (t >= this->passedMask.size() || player >= 32) { return; }
+        this->passedMask[t] |= (1u << player);
+    }
+
+    /// A figure has been taken: the offer moves on and every pass on the old
+    /// offer is spent with it.
+    void advance(GreatPersonType type) {
+        const auto t = static_cast<std::size_t>(type);
+        if (t >= this->claimed.size()) { return; }
+        ++this->claimed[t];
+        this->passedMask[t] = 0u;
+    }
+};
+
+/// Gold a civ pays to take the offered person now rather than wait. Scaled by
+/// how many of that type have already gone, so a latecomer pays more.
+inline constexpr int64_t PATRONAGE_BASE_GOLD = 300;
+inline constexpr int64_t PATRONAGE_GOLD_PER_CLAIMED = 120;
+
+/// Faith equivalent, for the Prophet (faith is its currency everywhere else).
+inline constexpr float PATRONAGE_BASE_FAITH = 200.0f;
+inline constexpr float PATRONAGE_FAITH_PER_CLAIMED = 80.0f;
+
+/// Eras a figure may lag THE WORLD before the offer moves past them, so an
+/// Ancient philosopher is not still on the table in the Atomic era.
+///
+/// Measured against the world's most advanced civ, not the civ doing the
+/// claiming. Gating on the claimant burned figures globally whenever the tech
+/// leader looked at the roster: on seed 42 that cut a game from 30 great
+/// people across 9 types to 13 across 6, because one civ's progress destroyed
+/// everyone else's offer. Three eras is generous on purpose; the gate exists
+/// to retire the genuinely archaic, not to ration.
+inline constexpr int32_t GP_ERA_LAG_LIMIT = 3;
+
+/// Hard cap on Great Persons recruited per type./// Hard cap on Great Persons recruited per type. H3.9: without a cap, the
 /// `60 + 40 * recruited` threshold grows linearly and a tall empire can still
 /// hit it forever, producing unbounded memory use at turn 300+.
 inline constexpr int32_t MAX_GP_PER_TYPE = 12;

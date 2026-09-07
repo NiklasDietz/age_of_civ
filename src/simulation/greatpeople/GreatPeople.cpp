@@ -216,6 +216,19 @@ void accumulateGreatPeoplePoints(aoc::game::GameState& gameState, PlayerId playe
 // Recruitment
 // ============================================================================
 
+/// Index into allGreatPersonDefs() of the `nth` figure of `type`, or -1 when
+/// that type's line is spent.
+[[nodiscard]] int32_t offeredDefId(GreatPersonType type, int32_t nth) {
+    const std::array<GreatPersonDef, GREAT_PERSON_COUNT>& defs = allGreatPersonDefs();
+    int32_t seen = 0;
+    for (uint8_t d = 0; d < GREAT_PERSON_COUNT; ++d) {
+        if (defs[d].type != type) { continue; }
+        if (seen == nth) { return static_cast<int32_t>(d); }
+        ++seen;
+    }
+    return -1;
+}
+
 void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId player) {
     aoc::game::Player* playerObj = gameState.player(player);
     if (playerObj == nullptr) {
@@ -245,24 +258,44 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
             continue;
         }
 
-        // Find the next available great person of this type.
-        int32_t defId = -1;
-        int32_t countForType = 0;
-        for (uint8_t d = 0; d < GREAT_PERSON_COUNT; ++d) {
-            if (defs[d].type == type) {
-                if (countForType == gpComp.recruited[typeIdx]) {
-                    defId = static_cast<int32_t>(d);
-                    break;
-                }
-                ++countForType;
-            }
+        // A civ that passed on the current offer cannot take it. The pass is
+        // spent when somebody else claims that figure.
+        GlobalGreatPeopleRoster& roster = gameState.greatPeopleRoster();
+        if (roster.hasPassed(type, player)) {
+            continue;
         }
+
+        // The offer is the world's next figure of this type, not this player's.
+        // Recruitment used to index by `gpComp.recruited[typeIdx]`, privately
+        // per player, so every civ walked the same list and two of them could
+        // each hold their own Isaac Newton.
+        // Era gate: the world stops offering a figure the age has left behind,
+        // so an Ancient philosopher is not still on the table in the Atomic era.
+        // Skipping forward costs the figure, which is the point: you missed them.
+        EraId nowEra{0};
+        for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+            if (other == nullptr) { continue; }
+            const EraId theirs = effectiveEraFromTech(*other);
+            if (theirs.value > nowEra.value) { nowEra = theirs; }
+        }
+        while (roster.claimed[typeIdx] < MAX_GP_PER_TYPE) {
+            const int32_t candidate = offeredDefId(type, roster.claimed[typeIdx]);
+            if (candidate < 0) { break; }
+            const NamedGreatPersonDef& who = namedGreatPersonForCategory(
+                categoryForGreatPersonType(type), roster.claimed[typeIdx]);
+            const int32_t lag = static_cast<int32_t>(nowEra.value)
+                                - static_cast<int32_t>(who.era.value);
+            if (lag <= GP_ERA_LAG_LIMIT) { break; }
+            roster.advance(type);
+        }
+
+        const int32_t defId = offeredDefId(type, roster.claimed[typeIdx]);
 
         // H3.8: roster exhausted or cap reached. Mark the type exhausted and
         // zero its point bucket so accumulation on later turns doesn't silently
         // drain into the void forever. threshold() now returns +inf for this
         // type so the recruitment branch never fires for it again.
-        if (defId < 0 || gpComp.recruited[typeIdx] >= MAX_GP_PER_TYPE) {
+        if (defId < 0 || roster.claimed[typeIdx] >= MAX_GP_PER_TYPE) {
             gpComp.exhausted[typeIdx] = true;
             gpComp.points[typeIdx] = 0.0f;
             continue;
@@ -279,7 +312,7 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
         // roster category; MAX_GP_PER_TYPE equals the per-category count, so the
         // twelve names of a category are used exactly once each.
         const NamedGreatPersonDef& named = namedGreatPersonForCategory(
-            categoryForGreatPersonType(type), gpComp.recruited[typeIdx]);
+            categoryForGreatPersonType(type), roster.claimed[typeIdx]);
         GreatPersonComponent& comp = gpUnit.greatPerson();
         comp.owner       = player;
         comp.defId       = defIdU;
@@ -300,6 +333,8 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
         // Reset points and increment recruited count
         gpComp.points[typeIdx]    -= thresh;
         gpComp.recruited[typeIdx] += 1;
+        // The world moves on, and every pass on the figure just taken is spent.
+        roster.advance(type);
         addEraScore(*playerObj, gameState.currentTurn(), 2,
                     "Recruited " + std::string(named.name));
 
@@ -648,6 +683,97 @@ ErrorCode requestRetireGreatPerson(aoc::game::GameState& gameState, PlayerId pla
     LOG_INFO("Player %u retired a great person for %lld gold", static_cast<unsigned>(player),
              static_cast<long long>(GP_RETIRE_GOLD));
     owner->removeUnit(unit);
+    return ErrorCode::Ok;
+}
+
+int64_t patronageGoldCost(const aoc::game::GameState& gameState, GreatPersonType type) {
+    const GlobalGreatPeopleRoster& roster = gameState.greatPeopleRoster();
+    const auto t = static_cast<std::size_t>(type);
+    if (t >= roster.claimed.size()) { return 0; }
+    if (offeredDefId(type, roster.claimed[t]) < 0) { return 0; }
+    return PATRONAGE_BASE_GOLD
+           + PATRONAGE_GOLD_PER_CLAIMED * static_cast<int64_t>(roster.claimed[t]);
+}
+
+float patronageFaithCost(const aoc::game::GameState& gameState, GreatPersonType type) {
+    const GlobalGreatPeopleRoster& roster = gameState.greatPeopleRoster();
+    const auto t = static_cast<std::size_t>(type);
+    if (t >= roster.claimed.size()) { return 0.0f; }
+    if (offeredDefId(type, roster.claimed[t]) < 0) { return 0.0f; }
+    return PATRONAGE_BASE_FAITH
+           + PATRONAGE_FAITH_PER_CLAIMED * static_cast<float>(roster.claimed[t]);
+}
+
+ErrorCode requestPatronage(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
+                           PlayerId player, GreatPersonType type) {
+    static_cast<void>(grid);
+    aoc::game::Player* owner = gameState.player(player);
+    if (owner == nullptr || type >= GreatPersonType::Count) {
+        return ErrorCode::InvalidArgument;
+    }
+    GlobalGreatPeopleRoster& roster = gameState.greatPeopleRoster();
+    const auto t = static_cast<std::size_t>(type);
+    if (roster.hasPassed(type, player)) {
+        return ErrorCode::InvalidState; // you already declined this one
+    }
+    const int32_t defId = offeredDefId(type, roster.claimed[t]);
+    if (defId < 0 || roster.claimed[t] >= MAX_GP_PER_TYPE) {
+        return ErrorCode::InvalidState; // nobody left of this kind
+    }
+
+    // The Prophet is bought with faith; faith is its currency everywhere else
+    // in the game, and gold-buying a prophet would read wrong.
+    const bool withFaith = (type == GreatPersonType::Prophet);
+    if (withFaith) {
+        const float price = patronageFaithCost(gameState, type);
+        if (owner->faith().faith < price) { return ErrorCode::InsufficientResources; }
+        owner->faith().faith -= price;
+    } else {
+        const int64_t price = patronageGoldCost(gameState, type);
+        if (owner->treasury() < price) { return ErrorCode::InsufficientResources; }
+        owner->monetary().treasury -= price;
+    }
+
+    // Spawn them where the civ's first city stands, as recruitment does.
+    hex::AxialCoord spawnPos{0, 0};
+    for (const std::unique_ptr<aoc::game::City>& city : owner->cities()) {
+        if (city != nullptr) { spawnPos = city->location(); break; }
+    }
+    aoc::game::Unit& gpUnit = owner->addUnit(UnitTypeId{102}, spawnPos);
+    const NamedGreatPersonDef& named = namedGreatPersonForCategory(
+        categoryForGreatPersonType(type), roster.claimed[t]);
+    GreatPersonComponent& comp = gpUnit.greatPerson();
+    comp.owner       = player;
+    comp.defId       = static_cast<uint8_t>(defId);
+    comp.namedId     = named.id;
+    comp.position    = spawnPos;
+    comp.isActivated = false;
+
+    owner->greatPeople().recruited[t] += 1;
+    owner->greatPeople().points[t] = 0.0f;
+    roster.advance(type);
+
+    LOG_INFO("Player %u patronised %.*s", static_cast<unsigned>(player),
+             static_cast<int>(named.name.size()), named.name.data());
+    return ErrorCode::Ok;
+}
+
+ErrorCode requestPassGreatPerson(aoc::game::GameState& gameState, PlayerId player,
+                                 GreatPersonType type) {
+    if (gameState.player(player) == nullptr || type >= GreatPersonType::Count) {
+        return ErrorCode::InvalidArgument;
+    }
+    GlobalGreatPeopleRoster& roster = gameState.greatPeopleRoster();
+    const auto t = static_cast<std::size_t>(type);
+    if (offeredDefId(type, roster.claimed[t]) < 0) {
+        return ErrorCode::InvalidState;
+    }
+    if (roster.hasPassed(type, player)) {
+        return ErrorCode::InvalidState;
+    }
+    roster.pass(type, player);
+    LOG_INFO("Player %u passed on the offered great person of type %u",
+             static_cast<unsigned>(player), static_cast<unsigned>(t));
     return ErrorCode::Ok;
 }
 
