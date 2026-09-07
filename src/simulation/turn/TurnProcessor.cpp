@@ -174,8 +174,7 @@ namespace aoc::sim {
 /// Hex distance from `location` to the nearest city of any seat (majors and
 /// city-states), or a large value when the map has no city yet.
 static int32_t nearestCityDistance(const aoc::game::GameState& gameState,
-                                   const aoc::map::HexGrid& grid,
-                                   aoc::hex::AxialCoord location) {
+                                   const aoc::map::HexGrid& grid, aoc::hex::AxialCoord location) {
     int32_t best = std::numeric_limits<int32_t>::max();
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
         for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
@@ -202,13 +201,9 @@ bool cityFoundingBlocked(const aoc::game::GameState& gameState, const aoc::map::
     return nearestCityDistance(gameState, grid, location) < MIN_CITY_DISTANCE;
 }
 
-aoc::game::City* foundCity(aoc::game::GameState& gameState,
-                            aoc::map::HexGrid& grid,
-                            PlayerId owner,
-                            aoc::hex::AxialCoord location,
-                            const std::string& name,
-                            bool isOriginalCapital,
-                            int32_t startingPop) {
+aoc::game::City* foundCity(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, PlayerId owner,
+                           aoc::hex::AxialCoord location, const std::string& name,
+                           bool isOriginalCapital, int32_t startingPop) {
     aoc::game::Player* gsPlayer = gameState.player(owner);
     assert(gsPlayer != nullptr && "foundCity: player not found in GameState");
 
@@ -223,10 +218,12 @@ aoc::game::City* foundCity(aoc::game::GameState& gameState,
 
         bool relocated = false;
         for (const aoc::hex::AxialCoord& alt : candidates) {
-            if (!grid.isValid(alt)) { continue; }
+            if (!grid.isValid(alt)) {
+                continue;
+            }
             const int32_t altIdx = grid.toIndex(alt);
-            if (aoc::map::isWater(grid.terrain(altIdx))
-                || aoc::map::isImpassable(grid.terrain(altIdx))) {
+            if (aoc::map::isWater(grid.terrain(altIdx)) ||
+                aoc::map::isImpassable(grid.terrain(altIdx))) {
                 continue;
             }
             if (nearestCityDistance(gameState, grid, alt) < MIN_CITY_DISTANCE) {
@@ -234,8 +231,8 @@ aoc::game::City* foundCity(aoc::game::GameState& gameState,
             }
             location  = alt;
             relocated = true;
-            LOG_INFO("foundCity: relocated from too-close position to (%d,%d)",
-                     location.q, location.r);
+            LOG_INFO("foundCity: relocated from too-close position to (%d,%d)", location.q,
+                     location.r);
             break;
         }
         if (!relocated) {
@@ -245,9 +242,9 @@ aoc::game::City* foundCity(aoc::game::GameState& gameState,
             // production/purchase paths stop wasting cycles until the
             // map state changes (war outcome, new tech, etc.).
             aoc::sim::ai::AIBlackboard& aiBb = gsPlayer->blackboard();
-            aiBb.expansionExhausted = true;
-            aiBb.expansionExhaustedTurn = gameState.currentTurn();
-            aiBb.expansionOpportunity = 0.0f;
+            aiBb.expansionExhausted          = true;
+            aiBb.expansionExhaustedTurn      = gameState.currentTurn();
+            aiBb.expansionOpportunity        = 0.0f;
             // No valid location honors the spacing rule: do not found at the
             // original, too-close location.
             return nullptr;
@@ -290,8 +287,10 @@ aoc::game::City* foundCity(aoc::game::GameState& gameState,
     std::vector<TileScore> tileScores;
     tileScores.reserve(6);
     for (int32_t n = 0; n < 6; ++n) {
-        if (!grid.isValid(neighbors[static_cast<std::size_t>(n)])) { continue; }
-        int32_t idx = grid.toIndex(neighbors[static_cast<std::size_t>(n)]);
+        if (!grid.isValid(neighbors[static_cast<std::size_t>(n)])) {
+            continue;
+        }
+        int32_t idx                    = grid.toIndex(neighbors[static_cast<std::size_t>(n)]);
         aoc::map::TerrainType nTerrain = grid.terrain(idx);
         if (aoc::map::isWater(nTerrain)) {
             continue;
@@ -300,46 +299,46 @@ aoc::game::City* foundCity(aoc::game::GameState& gameState,
         // metal we allow citizens to work them (resource extraction only; terrain
         // yields remain zero). Everything else impassable is still skipped.
         if (aoc::map::isImpassable(nTerrain)) {
-            const ResourceId mRes = grid.resource(idx);
-            const bool workableMountain = (nTerrain == aoc::map::TerrainType::Mountain
-                                           && mRes.isValid()
-                                           && aoc::sim::isMountainMetal(mRes.value));
+            const ResourceId mRes       = grid.resource(idx);
+            const bool workableMountain = (nTerrain == aoc::map::TerrainType::Mountain &&
+                                           mRes.isValid() && aoc::sim::isMountainMetal(mRes.value));
             if (!workableMountain) {
                 continue;
             }
         }
-        float score = 0.0f;
+        float score               = 0.0f;
         aoc::map::TileYield yield = grid.tileYield(idx);
         score += static_cast<float>(yield.food) * 2.0f;
         score += static_cast<float>(yield.production) * 1.5f;
         score += static_cast<float>(yield.gold) * 1.0f;
         if (grid.resource(idx).isValid()) {
-            score += 5.0f;  // Strong preference for resource tiles
+            score += 5.0f; // Strong preference for resource tiles
             // Minting ores get an extra bonus so the city immediately starts
             // producing coins once the Mint is built.  Without this, high-food
             // tiles (cattle) always win and copper ore is never worked until pop≥4.
             const uint16_t resId = grid.resource(idx).value;
-            if (resId == aoc::sim::goods::COPPER_ORE
-                || resId == aoc::sim::goods::SILVER_ORE) {
+            if (resId == aoc::sim::goods::COPPER_ORE || resId == aoc::sim::goods::SILVER_ORE) {
                 score += 8.0f;
             }
             // Mountain metal tiles have zero terrain yield; give them a boost
             // so the city actually puts a worker there.
-            if (grid.terrain(idx) == aoc::map::TerrainType::Mountain
-                && aoc::sim::isMountainMetal(resId)) {
+            if (grid.terrain(idx) == aoc::map::TerrainType::Mountain &&
+                aoc::sim::isMountainMetal(resId)) {
                 score += 6.0f;
             }
         }
         tileScores.push_back({n, score});
     }
     std::sort(tileScores.begin(), tileScores.end(),
-        [](const TileScore& a, const TileScore& b) { return a.score > b.score; });
+              [](const TileScore& a, const TileScore& b) { return a.score > b.score; });
 
     // Assign workers up to population count (center tile is free)
     const int32_t maxWorkers = startingPop;
-    int32_t assigned = 0;
+    int32_t assigned         = 0;
     for (const TileScore& ts : tileScores) {
-        if (assigned >= maxWorkers) { break; }
+        if (assigned >= maxWorkers) {
+            break;
+        }
         city.workedTiles().push_back(neighbors[static_cast<std::size_t>(ts.index)]);
         ++assigned;
     }
@@ -362,15 +361,14 @@ aoc::game::City* foundCity(aoc::game::GameState& gameState,
         }
     }
 
-    LOG_INFO("City founded: %s by player %u at (%d,%d)",
-             name.c_str(), static_cast<unsigned>(owner),
+    LOG_INFO("City founded: %s by player %u at (%d,%d)", name.c_str(), static_cast<unsigned>(owner),
              location.q, location.r);
 
     {
         VisibilityEvent ev{};
-        ev.type = VisibilityEventType::CityFounded;
+        ev.type     = VisibilityEventType::CityFounded;
         ev.location = location;
-        ev.actor = owner;
+        ev.actor    = owner;
         gameState.visibilityBus().emit(ev);
     }
 
@@ -407,7 +405,7 @@ std::string getNextCityName(const aoc::game::GameState& gameState, PlayerId play
 void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     assert(turnContext.gameState != nullptr && "GameState is required for turn processing");
 
-    aoc::map::HexGrid& grid = *turnContext.grid;
+    aoc::map::HexGrid& grid     = *turnContext.grid;
     aoc::game::Player* gsPlayer = turnContext.gameState->player(player);
     assert(gsPlayer != nullptr && "processPlayerTurn: invalid player id");
 
@@ -425,32 +423,46 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
 
         // Check our units against all foreign cities
         for (const std::unique_ptr<aoc::game::Unit>& ownUnit : gsPlayer->units()) {
-            if (metAnotherCiv) { break; }
-            for (const std::unique_ptr<aoc::game::Player>& other : turnContext.gameState->players()) {
-                if (other->id() == player) { continue; }
+            if (metAnotherCiv) {
+                break;
+            }
+            for (const std::unique_ptr<aoc::game::Player>& other :
+                 turnContext.gameState->players()) {
+                if (other->id() == player) {
+                    continue;
+                }
                 for (const std::unique_ptr<aoc::game::City>& foreignCity : other->cities()) {
                     if (grid.distance(ownUnit->position(), foreignCity->location()) <= 4) {
                         metAnotherCiv = true;
                         break;
                     }
                 }
-                if (metAnotherCiv) { break; }
+                if (metAnotherCiv) {
+                    break;
+                }
             }
         }
 
         // Check our cities against all foreign units
         if (!metAnotherCiv) {
             for (const std::unique_ptr<aoc::game::City>& ownCity : gsPlayer->cities()) {
-                if (metAnotherCiv) { break; }
-                for (const std::unique_ptr<aoc::game::Player>& other : turnContext.gameState->players()) {
-                    if (other->id() == player) { continue; }
+                if (metAnotherCiv) {
+                    break;
+                }
+                for (const std::unique_ptr<aoc::game::Player>& other :
+                     turnContext.gameState->players()) {
+                    if (other->id() == player) {
+                        continue;
+                    }
                     for (const std::unique_ptr<aoc::game::Unit>& foreignUnit : other->units()) {
                         if (grid.distance(foreignUnit->position(), ownCity->location()) <= 4) {
                             metAnotherCiv = true;
                             break;
                         }
                     }
-                    if (metAnotherCiv) { break; }
+                    if (metAnotherCiv) {
+                        break;
+                    }
                 }
             }
         }
@@ -496,12 +508,17 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     //   Fortified:          +5 HP bonus
     //   Embarked/Zero Move:  0 HP (no healing)
     for (const std::unique_ptr<aoc::game::Unit>& unitPtr : gsPlayer->units()) {
-        if (unitPtr->hitPoints() >= unitPtr->typeDef().maxHitPoints) { continue; }
-        if (unitPtr->state() == UnitState::Embarked) { continue; }
-        if (unitPtr->movementRemaining() <= 0
-            && unitPtr->state() != UnitState::Fortified) { continue; }
+        if (unitPtr->hitPoints() >= unitPtr->typeDef().maxHitPoints) {
+            continue;
+        }
+        if (unitPtr->state() == UnitState::Embarked) {
+            continue;
+        }
+        if (unitPtr->movementRemaining() <= 0 && unitPtr->state() != UnitState::Fortified) {
+            continue;
+        }
 
-        int32_t healAmount = 5;  // Neutral territory base
+        int32_t healAmount = 5; // Neutral territory base
 
         // Check if near own city (friendly territory)
         bool nearOwnCity = false;
@@ -518,9 +535,9 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
             // 10 HP in own territory and 5 HP in neutral/hostile. The prior
             // fallthrough handed out 10 HP unconditionally, so deep-strike
             // units and ships in open ocean healed at own-territory rates.
-            const int32_t unitTile = grid.toIndex(unitPtr->position());
+            const int32_t unitTile   = grid.toIndex(unitPtr->position());
             const PlayerId tileOwner = grid.owner(unitTile);
-            healAmount = (tileOwner == player) ? 10 : 5;
+            healAmount               = (tileOwner == player) ? 10 : 5;
         }
 
         // Fortification bonus
@@ -530,9 +547,8 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         // Medic / Survivalism / Elite promotions (unread until 2026-09-05).
         healAmount += unitPtr->experience().totalHealingBonus();
 
-        const int32_t newHP = std::min(
-            unitPtr->hitPoints() + healAmount,
-            unitPtr->typeDef().maxHitPoints);
+        const int32_t newHP =
+            std::min(unitPtr->hitPoints() + healAmount, unitPtr->typeDef().maxHitPoints);
         unitPtr->setHitPoints(newHP);
     }
 
@@ -573,7 +589,9 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     // the reveal tech is long past.
     if ((turnContext.currentTurn % 10) == 0) {
         for (const std::unique_ptr<aoc::game::City>& cityPtr : gsPlayer->cities()) {
-            if (cityPtr == nullptr) { continue; }
+            if (cityPtr == nullptr) {
+                continue;
+            }
             cityPtr->autoAssignWorkers(grid, aoc::sim::WorkerFocus::Balanced, gsPlayer);
         }
     }
@@ -598,23 +616,27 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     // production-race edge.
     if (!gsPlayer->isHuman() && gsPlayer->faith().faith > 200.0f) {
         aoc::game::City* bestCity = nullptr;
-        float bestRemaining = 0.0f;
+        float bestRemaining       = 0.0f;
         for (const std::unique_ptr<aoc::game::City>& c : gsPlayer->cities()) {
             const ProductionQueueComponent& q = c->production();
-            if (q.queue.empty()) { continue; }
-            if (q.queue.front().type != ProductionItemType::Building) { continue; }
-            if (q.lastFaithRushTurn
-                == static_cast<int32_t>(turnContext.currentTurn)) { continue; }
+            if (q.queue.empty()) {
+                continue;
+            }
+            if (q.queue.front().type != ProductionItemType::Building) {
+                continue;
+            }
+            if (q.lastFaithRushTurn == static_cast<int32_t>(turnContext.currentTurn)) {
+                continue;
+            }
             const float rem = q.queue.front().totalCost - q.queue.front().progress;
             if (rem > bestRemaining) {
                 bestRemaining = rem;
-                bestCity = c.get();
+                bestCity      = c.get();
             }
         }
         if (bestCity != nullptr) {
             [[maybe_unused]] ErrorCode rc = rushBuildingWithFaith(
-                *gsPlayer, *bestCity,
-                static_cast<int32_t>(turnContext.currentTurn));
+                *gsPlayer, *bestCity, static_cast<int32_t>(turnContext.currentTurn));
         }
     }
 
@@ -630,32 +652,33 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
 
         // Alliance yield modifiers (Research/Cultural/Religious/Economic).
         if (turnContext.diplomacy != nullptr) {
-            const aoc::sim::AllianceYieldModifiers all =
-                aoc::sim::computeAllianceYieldModifiers(
-                    *turnContext.diplomacy, player,
-                    static_cast<uint8_t>(turnContext.gameState->playerCount()));
+            const aoc::sim::AllianceYieldModifiers all = aoc::sim::computeAllianceYieldModifiers(
+                *turnContext.diplomacy, player,
+                static_cast<uint8_t>(turnContext.gameState->playerCount()));
             science *= all.scienceMult;
             culture *= all.cultureMult;
             if (all.faithMult != 1.0f) {
-                gsPlayer->faith().faith *= all.faithMult;  // applied as an instant boost
+                gsPlayer->faith().faith *= all.faithMult; // applied as an instant boost
             }
         }
 
         // Science funding cost: 0.2 gold per science point
         constexpr float SCIENCE_FUNDING_COST = 0.2f;
-        const CurrencyAmount fundingCost = static_cast<CurrencyAmount>(science * SCIENCE_FUNDING_COST);
+        const CurrencyAmount fundingCost =
+            static_cast<CurrencyAmount>(science * SCIENCE_FUNDING_COST);
         if (fundingCost > 0) {
             if (gsPlayer->treasury() >= fundingCost) {
                 gsPlayer->addGold(-fundingCost);
             } else {
                 // Can't fully fund: research at reduced efficiency (min 50%)
-                const float affordableFraction = (gsPlayer->treasury() > 0)
-                    ? static_cast<float>(gsPlayer->treasury()) / static_cast<float>(fundingCost)
-                    : 0.0f;
+                const float affordableFraction =
+                    (gsPlayer->treasury() > 0)
+                        ? static_cast<float>(gsPlayer->treasury()) / static_cast<float>(fundingCost)
+                        : 0.0f;
                 const float efficiency = 0.5f + affordableFraction * 0.5f;
                 science *= efficiency;
                 if (gsPlayer->treasury() > 0) {
-                    gsPlayer->addGold(-gsPlayer->treasury());  // Spend what we can
+                    gsPlayer->addGold(-gsPlayer->treasury()); // Spend what we can
                 }
             }
         }
@@ -666,13 +689,21 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         //   Research Computers tech → produce Computer goods → research faster.
         {
             bool hasComputers = false;
-            bool hasGlass = false;
+            bool hasGlass     = false;
             for (const std::unique_ptr<aoc::game::City>& cityPtr : gsPlayer->cities()) {
-                if (cityPtr->stockpile().getAmount(77) > 0) { hasComputers = true; } // Computers
-                if (cityPtr->stockpile().getAmount(76) > 0) { hasGlass = true; }     // Glass
+                if (cityPtr->stockpile().getAmount(goods::COMPUTERS_GOOD) > 0) {
+                    hasComputers = true;
+                }
+                if (cityPtr->stockpile().getAmount(goods::GLASS) > 0) {
+                    hasGlass = true;
+                }
             }
-            if (hasComputers) { science *= 1.15f; }
-            if (hasGlass) { science *= 1.05f; }
+            if (hasComputers) {
+                science *= 1.15f;
+            }
+            if (hasGlass) {
+                science *= 1.05f;
+            }
         }
 
         // Catch-up bonus: players well behind the tech leader get a science
@@ -687,18 +718,27 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         // would change the catch-up multiplier. Left as-is to preserve behavior;
         // a correct fix needs an incrementally-maintained researched-count.
         {
-            int32_t myTechs = 0;
+            int32_t myTechs  = 0;
             int32_t maxTechs = 0;
             for (uint16_t ti = 0; ti < techCount(); ++ti) {
-                if (gsPlayer->tech().hasResearched(TechId{ti})) { ++myTechs; }
+                if (gsPlayer->tech().hasResearched(TechId{ti})) {
+                    ++myTechs;
+                }
             }
-            for (const std::unique_ptr<aoc::game::Player>& otherPtr : turnContext.gameState->players()) {
-                if (otherPtr == nullptr) { continue; }
+            for (const std::unique_ptr<aoc::game::Player>& otherPtr :
+                 turnContext.gameState->players()) {
+                if (otherPtr == nullptr) {
+                    continue;
+                }
                 int32_t ot = 0;
                 for (uint16_t ti = 0; ti < techCount(); ++ti) {
-                    if (otherPtr->tech().hasResearched(TechId{ti})) { ++ot; }
+                    if (otherPtr->tech().hasResearched(TechId{ti})) {
+                        ++ot;
+                    }
                 }
-                if (ot > maxTechs) { maxTechs = ot; }
+                if (ot > maxTechs) {
+                    maxTechs = ot;
+                }
             }
             const int32_t gap = maxTechs - myTechs;
             if (gap >= 2) {
@@ -714,8 +754,8 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
 
         // WP-B1: Lunar Colony project — flat +20 science/turn empire-wide
         // ("low-gravity physics" research bonus).
-        if (gsPlayer->spaceRace().completed[static_cast<int32_t>(
-                aoc::sim::SpaceProjectId::LunarColony)]) {
+        if (gsPlayer->spaceRace()
+                .completed[static_cast<int32_t>(aoc::sim::SpaceProjectId::LunarColony)]) {
             science += 20.0f;
         }
 
@@ -740,14 +780,19 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         // science for that tech by +10% per such partner (capped +30%).
         // Models tacit knowledge transfer through regular exchange.
         if (gsPlayer->tech().currentResearch.isValid()) {
-            const TechId cur = gsPlayer->tech().currentResearch;
+            const TechId cur       = gsPlayer->tech().currentResearch;
             int32_t sharedPartners = 0;
-            for (const aoc::sim::TradeAgreementDef& agr
-                 : gsPlayer->tradeAgreements().agreements) {
-                if (!agr.isActive) { continue; }
-                if (agr.type != aoc::sim::TradeAgreementType::BilateralDeal) { continue; }
+            for (const aoc::sim::TradeAgreementDef& agr : gsPlayer->tradeAgreements().agreements) {
+                if (!agr.isActive) {
+                    continue;
+                }
+                if (agr.type != aoc::sim::TradeAgreementType::BilateralDeal) {
+                    continue;
+                }
                 for (const PlayerId m : agr.members) {
-                    if (m == player) { continue; }
+                    if (m == player) {
+                        continue;
+                    }
                     const aoc::game::Player* other = turnContext.gameState->player(m);
                     if (other != nullptr && other->tech().hasResearched(cur)) {
                         ++sharedPartners;
@@ -796,8 +841,8 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         // calls completeResearch() on completion, which clears currentResearch.
         // Without capturing first, the just-completed civic id is unrecoverable.
         const CivicId civicBeforeAdvance = gsPlayer->civics().currentResearch;
-        if (advanceCivicResearch(gsPlayer->civics(), culture, &gsPlayer->government())
-            && civicBeforeAdvance.isValid()) {
+        if (advanceCivicResearch(gsPlayer->civics(), culture, &gsPlayer->government()) &&
+            civicBeforeAdvance.isValid()) {
             applyCivicEffect(*turnContext.gameState, player,
                              static_cast<uint8_t>(civicBeforeAdvance.value));
             gsPlayer->envoys().grant(aoc::sim::ENVOYS_PER_CIVIC);
@@ -810,19 +855,24 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
 
     // AI auto-upgrade: every 8 turns scan units, upgrade any obsolete
     // unit when player has the tech and gold. Skip human player.
-    if (player != turnContext.humanPlayer
-        && (turnContext.currentTurn % 8) == 0) {
+    if (player != turnContext.humanPlayer && (turnContext.currentTurn % 8) == 0) {
         for (const std::unique_ptr<aoc::game::Unit>& u : gsPlayer->units()) {
-            if (u == nullptr) { continue; }
+            if (u == nullptr) {
+                continue;
+            }
             std::vector<aoc::sim::UnitUpgradeDef> upgrades =
                 aoc::sim::getAvailableUpgrades(u->typeId());
             for (const aoc::sim::UnitUpgradeDef& up : upgrades) {
-                if (!gsPlayer->tech().hasResearched(up.requiredTech)) { continue; }
+                if (!gsPlayer->tech().hasResearched(up.requiredTech)) {
+                    continue;
+                }
                 const int32_t cost = aoc::sim::upgradeCost(u->typeId(), up.to);
-                if (gsPlayer->monetary().treasury < cost) { continue; }
+                if (gsPlayer->monetary().treasury < cost) {
+                    continue;
+                }
                 [[maybe_unused]] bool ok =
                     aoc::sim::upgradeUnit(*turnContext.gameState, *u, up.to, player);
-                break;  // one upgrade per unit per cycle
+                break; // one upgrade per unit per cycle
             }
         }
     }
@@ -867,7 +917,7 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
 
 void processGlobalSystems(TurnContext& turnContext) {
     aoc::game::GameState& gameState = *turnContext.gameState;
-    aoc::map::HexGrid& grid = *turnContext.grid;
+    aoc::map::HexGrid& grid         = *turnContext.grid;
 
     // Religious spread (global, affects all cities)
     // Decay first, then holy cities renew, then the faiths spread. Ordering
@@ -890,9 +940,13 @@ void processGlobalSystems(TurnContext& turnContext) {
         const auto dominantReligionCities = [](const aoc::game::Player& p) {
             std::unordered_map<ReligionId, int32_t> counts;
             for (const std::unique_ptr<aoc::game::City>& c : p.cities()) {
-                if (c == nullptr) { continue; }
+                if (c == nullptr) {
+                    continue;
+                }
                 const ReligionId dom = c->religion().dominantReligion();
-                if (dom != NO_RELIGION) { ++counts[dom]; }
+                if (dom != NO_RELIGION) {
+                    ++counts[dom];
+                }
             }
             return counts;
         };
@@ -911,34 +965,42 @@ void processGlobalSystems(TurnContext& turnContext) {
         std::vector<ReligionCounts> perPlayerCounts;
         perPlayerCounts.reserve(players.size());
         for (const std::unique_ptr<aoc::game::Player>& p : players) {
-            perPlayerCounts.push_back(p != nullptr ? dominantReligionCities(*p)
-                                                   : ReligionCounts{});
+            perPlayerCounts.push_back(p != nullptr ? dominantReligionCities(*p) : ReligionCounts{});
         }
 
         for (std::size_t ai = 0; ai < players.size(); ++ai) {
             const std::unique_ptr<aoc::game::Player>& a = players[ai];
-            if (a == nullptr) { continue; }
+            if (a == nullptr) {
+                continue;
+            }
             const ReligionCounts& aCounts = perPlayerCounts[ai];
-            if (aCounts.empty()) { continue; }
+            if (aCounts.empty()) {
+                continue;
+            }
             // aCounts is an unordered_map, so break count ties by lowest
             // ReligionId to keep the dominant-religion pick order-independent.
-            const ReligionId aTop =
-                aoc::core::argMaxByValueLowestKey(aCounts, NO_RELIGION).first;
-            if (aTop == NO_RELIGION) { continue; }
+            const ReligionId aTop = aoc::core::argMaxByValueLowestKey(aCounts, NO_RELIGION).first;
+            if (aTop == NO_RELIGION) {
+                continue;
+            }
 
             for (std::size_t bi = 0; bi < players.size(); ++bi) {
                 const std::unique_ptr<aoc::game::Player>& b = players[bi];
-                if (b == nullptr || b->id() == a->id()) { continue; }
-                const ReligionCounts& bCounts = perPlayerCounts[bi];
+                if (b == nullptr || b->id() == a->id()) {
+                    continue;
+                }
+                const ReligionCounts& bCounts           = perPlayerCounts[bi];
                 const ReligionCounts::const_iterator it = bCounts.find(aTop);
-                if (it == bCounts.end()) { continue; }
+                if (it == bCounts.end()) {
+                    continue;
+                }
                 // Shared religion modifier, scaled by overlap.  +2..+8 range
                 // per 8-turn tick, decays in 30 turns so shifts are felt.
-                const int32_t shared = it->second;
+                const int32_t shared    = it->second;
                 const int32_t magnitude = std::min(8, 2 + shared / 2);
                 RelationModifier mod{};
-                mod.reason = "Shared dominant religion";
-                mod.amount = magnitude;
+                mod.reason         = "Shared dominant religion";
+                mod.amount         = magnitude;
                 mod.turnsRemaining = 30;
                 turnContext.diplomacy->addModifier(a->id(), b->id(), mod);
             }
@@ -950,18 +1012,28 @@ void processGlobalSystems(TurnContext& turnContext) {
     // (+15 like, -20 dislike, decaying over 30 turns).
     if (turnContext.diplomacy != nullptr && (turnContext.currentTurn % 12) == 0) {
         for (const std::unique_ptr<aoc::game::Player>& a : gameState.players()) {
-            if (a == nullptr) { continue; }
+            if (a == nullptr) {
+                continue;
+            }
             const PlayerId aid = a->id();
-            if (aid >= aoc::sim::CITY_STATE_PLAYER_BASE) { continue; }
+            if (aid >= aoc::sim::CITY_STATE_PLAYER_BASE) {
+                continue;
+            }
             for (const std::unique_ptr<aoc::game::Player>& b : gameState.players()) {
-                if (b == nullptr || b->id() == aid) { continue; }
+                if (b == nullptr || b->id() == aid) {
+                    continue;
+                }
                 const PlayerId bid = b->id();
-                if (bid >= aoc::sim::CITY_STATE_PLAYER_BASE) { continue; }
+                if (bid >= aoc::sim::CITY_STATE_PLAYER_BASE) {
+                    continue;
+                }
                 const int32_t agendaMod = aoc::sim::evaluateAgenda(gameState, aid, bid);
-                if (agendaMod == 0) { continue; }
+                if (agendaMod == 0) {
+                    continue;
+                }
                 RelationModifier mod{};
-                mod.reason = (agendaMod > 0) ? "Agenda agreement" : "Agenda violation";
-                mod.amount = agendaMod;
+                mod.reason         = (agendaMod > 0) ? "Agenda agreement" : "Agenda violation";
+                mod.amount         = agendaMod;
                 mod.turnsRemaining = 30;
                 turnContext.diplomacy->addModifier(aid, bid, mod);
             }
@@ -1007,8 +1079,7 @@ void processGlobalSystems(TurnContext& turnContext) {
     processAICommodityHoarding(gameState, turnContext.economy->market());
 
     // AI-to-AI bilateral commodity barter (non-human civs only).
-    processAICommodityExchange(gameState, turnContext.economy->market(),
-                               turnContext.diplomacy);
+    processAICommodityExchange(gameState, turnContext.economy->market(), turnContext.diplomacy);
 
     // Futures contract settlement
     settleFutures(gameState, turnContext.economy->market());
@@ -1019,7 +1090,8 @@ void processGlobalSystems(TurnContext& turnContext) {
     // Natural disasters and climate
     {
         const float globalTemp = gameState.climate().globalTemperature;
-        processNaturalDisasters(gameState, grid, static_cast<int32_t>(turnContext.currentTurn), globalTemp);
+        processNaturalDisasters(gameState, grid, static_cast<int32_t>(turnContext.currentTurn),
+                                globalTemp);
 
         GlobalClimateComponent& climate = gameState.climate();
 
@@ -1033,16 +1105,18 @@ void processGlobalSystems(TurnContext& turnContext) {
 
         // Industrial pollution CO2
         climate.addCO2(static_cast<float>(totalIndustrialCO2(gameState)));
-        aoc::Random climateRng = turnContext.rng->fork();
+        aoc::Random climateRng  = turnContext.rng->fork();
         const int32_t seaBefore = climate.seaLevelRise;
         climate.processTurn(grid, climateRng);
         if (climate.seaLevelRise > seaBefore) {
             for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
-                if (p == nullptr) { continue; }
+                if (p == nullptr) {
+                    continue;
+                }
                 aoc::sim::event::GameNotification n;
-                n.category       = aoc::sim::event::NotificationCategory::Disaster;
-                n.title          = "Sea level rising";
-                n.body           = std::to_string(climate.seaLevelRise) + " coast tiles have flooded";
+                n.category = aoc::sim::event::NotificationCategory::Disaster;
+                n.title    = "Sea level rising";
+                n.body     = std::to_string(climate.seaLevelRise) + " coast tiles have flooded";
                 n.relevantPlayer = p->id();
                 n.priority       = 6;
                 aoc::sim::event::pushNotification(n);
@@ -1051,27 +1125,32 @@ void processGlobalSystems(TurnContext& turnContext) {
 
         // Climate thresholds push narrative events into the per-player queue.
         // The per-event cooldown (WORLD_EVENT_COOLDOWN_TURNS) prevents spam.
-        const bool floodThreshold = climate.seaLevelRise >= 5;
+        const bool floodThreshold   = climate.seaLevelRise >= 5;
         const bool droughtThreshold = climate.globalTemperature >= 2.0f;
         if (floodThreshold || droughtThreshold) {
             const int32_t currentTurn = gameState.currentTurn();
             for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
                 PlayerEventComponent& events = p->events();
-                if (events.pendingEvent != static_cast<WorldEventId>(255)) { continue; }
-                if (floodThreshold
-                    && currentTurn - events.lastFiredTurn[static_cast<uint8_t>(WorldEventId::MigrantWave)]
-                        >= WORLD_EVENT_COOLDOWN_TURNS) {
-                    events.pendingEvent = WorldEventId::MigrantWave;
-                    events.pendingChoice = -1;
-                    events.lastFiredTurn[static_cast<uint8_t>(WorldEventId::MigrantWave)] = currentTurn;
+                if (events.pendingEvent != static_cast<WorldEventId>(255)) {
                     continue;
                 }
-                if (droughtThreshold
-                    && currentTurn - events.lastFiredTurn[static_cast<uint8_t>(WorldEventId::FamineWarning)]
-                        >= WORLD_EVENT_COOLDOWN_TURNS) {
-                    events.pendingEvent = WorldEventId::FamineWarning;
+                if (floodThreshold &&
+                    currentTurn -
+                            events.lastFiredTurn[static_cast<uint8_t>(WorldEventId::MigrantWave)] >=
+                        WORLD_EVENT_COOLDOWN_TURNS) {
+                    events.pendingEvent  = WorldEventId::MigrantWave;
                     events.pendingChoice = -1;
-                    events.lastFiredTurn[static_cast<uint8_t>(WorldEventId::FamineWarning)] = currentTurn;
+                    events.lastFiredTurn[static_cast<uint8_t>(WorldEventId::MigrantWave)] =
+                        currentTurn;
+                    continue;
+                }
+                if (droughtThreshold && currentTurn - events.lastFiredTurn[static_cast<uint8_t>(
+                                                          WorldEventId::FamineWarning)] >=
+                                            WORLD_EVENT_COOLDOWN_TURNS) {
+                    events.pendingEvent  = WorldEventId::FamineWarning;
+                    events.pendingChoice = -1;
+                    events.lastFiredTurn[static_cast<uint8_t>(WorldEventId::FamineWarning)] =
+                        currentTurn;
                 }
             }
         }
@@ -1088,8 +1167,7 @@ void processGlobalSystems(TurnContext& turnContext) {
         // per-city heap allocation nor a per-city full clear is needed
         // (the old code allocated a tileCount-byte vector per city per
         // turn). Stamp 0 means "never visited"; the counter starts at 1.
-        std::vector<uint32_t> visitedStamp(
-            static_cast<std::size_t>(grid.tileCount()), 0);
+        std::vector<uint32_t> visitedStamp(static_cast<std::size_t>(grid.tileCount()), 0);
         uint32_t bfsStamp = 0;
 
         for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
@@ -1105,16 +1183,23 @@ void processGlobalSystems(TurnContext& turnContext) {
                 // Helper: tile index touches fresh water (river edge, or
                 // any of the 6 neighbours is water/mountain).
                 const auto touchesWater = [&](int32_t idx) -> bool {
-                    if (grid.riverEdges(idx) != 0) { return true; }
-                    const aoc::hex::AxialCoord c = grid.toAxial(idx);
-                    const std::array<aoc::hex::AxialCoord, 6> nbrs =
-                        aoc::hex::neighbors(c);
+                    if (grid.riverEdges(idx) != 0) {
+                        return true;
+                    }
+                    const aoc::hex::AxialCoord c                   = grid.toAxial(idx);
+                    const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(c);
                     for (const aoc::hex::AxialCoord& n : nbrs) {
-                        if (!grid.isValid(n)) { continue; }
-                        const int32_t ni = grid.toIndex(n);
+                        if (!grid.isValid(n)) {
+                            continue;
+                        }
+                        const int32_t ni              = grid.toIndex(n);
                         const aoc::map::TerrainType t = grid.terrain(ni);
-                        if (aoc::map::isWater(t)) { return true; }
-                        if (t == aoc::map::TerrainType::Mountain) { return true; }
+                        if (aoc::map::isWater(t)) {
+                            return true;
+                        }
+                        if (t == aoc::map::TerrainType::Mountain) {
+                            return true;
+                        }
                     }
                     return false;
                 };
@@ -1123,23 +1208,31 @@ void processGlobalSystems(TurnContext& turnContext) {
                 queue.reserve(64);
                 queue.push_back(startIdx);
                 visitedStamp[static_cast<std::size_t>(startIdx)] = bfsStamp;
-                bool connected = false;
+                bool connected                                   = false;
                 if (touchesWater(startIdx)) {
                     connected = true;
                 }
                 for (std::size_t qi = 0; qi < queue.size() && !connected; ++qi) {
-                    const int32_t cur = queue[qi];
-                    const aoc::hex::AxialCoord c = grid.toAxial(cur);
-                    const std::array<aoc::hex::AxialCoord, 6> nbrs =
-                        aoc::hex::neighbors(c);
+                    const int32_t cur                              = queue[qi];
+                    const aoc::hex::AxialCoord c                   = grid.toAxial(cur);
+                    const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(c);
                     for (const aoc::hex::AxialCoord& n : nbrs) {
-                        if (!grid.isValid(n)) { continue; }
+                        if (!grid.isValid(n)) {
+                            continue;
+                        }
                         const int32_t ni = grid.toIndex(n);
-                        if (visitedStamp[static_cast<std::size_t>(ni)] == bfsStamp) { continue; }
+                        if (visitedStamp[static_cast<std::size_t>(ni)] == bfsStamp) {
+                            continue;
+                        }
                         // BFS only walks across aqueduct-bearing tiles.
-                        if (!grid.hasAqueduct(ni)) { continue; }
+                        if (!grid.hasAqueduct(ni)) {
+                            continue;
+                        }
                         visitedStamp[static_cast<std::size_t>(ni)] = bfsStamp;
-                        if (touchesWater(ni)) { connected = true; break; }
+                        if (touchesWater(ni)) {
+                            connected = true;
+                            break;
+                        }
                         queue.push_back(ni);
                     }
                 }
@@ -1182,7 +1275,9 @@ void processGlobalSystems(TurnContext& turnContext) {
     // so pending requests enqueued during expiration this turn are handled next
     // turn, giving UI a tick to show the expiration notification first.
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
         processAutoRenewTradeRoutes(gameState, grid, turnContext.economy->market(),
                                     turnContext.diplomacy, playerPtr->id());
     }
@@ -1204,8 +1299,7 @@ void processGlobalSystems(TurnContext& turnContext) {
 
     // Standing routes: auto-spawn Trader units along active agreements.
     // Depends on processTradeAgreements bumping turnsActive first.
-    processStandingRoutes(gameState, grid, turnContext.economy->market(),
-                          turnContext.diplomacy);
+    processStandingRoutes(gameState, grid, turnContext.economy->market(), turnContext.diplomacy);
 
     // Diplomatic deals: enforce terms (reparations, DMZ, arms limits, non-aggression)
     if (turnContext.dealTracker != nullptr && turnContext.diplomacy != nullptr) {
@@ -1234,8 +1328,7 @@ void processGlobalSystems(TurnContext& turnContext) {
     // production ticks still see lastDeliveredEnergy=0 until this fires,
     // which is the intended "one-turn lag" on new contracts.
     if (turnContext.diplomacy != nullptr) {
-        processElectricityAgreements(gameState, *turnContext.diplomacy,
-                                     gameState.currentTurn());
+        processElectricityAgreements(gameState, *turnContext.diplomacy, gameState.currentTurn());
     }
 
     // Supply chain health: check import dependencies
@@ -1297,10 +1390,10 @@ void processTurn(TurnContext& turnContext) {
     // The atWar matrix is indexed by the opponent's slot, so its width must
     // cover every player slot the engine can produce.
     struct PlayerPre {
-        int32_t techs = 0;
-        int32_t cities = 0;
-        int32_t units = 0;
-        int32_t military = 0;
+        int32_t techs           = 0;
+        int32_t cities          = 0;
+        int32_t units           = 0;
+        int32_t military        = 0;
         bool atWar[MAX_PLAYERS] = {};
     };
     static_assert(sizeof(PlayerPre::atWar) / sizeof(PlayerPre::atWar[0]) == MAX_PLAYERS,
@@ -1312,34 +1405,38 @@ void processTurn(TurnContext& turnContext) {
     // bound the war-state snapshot/diff to MAX_PLAYERS (atWarCount, below).
     // assert() catches the contract violation in debug; the clamp keeps
     // release builds memory-safe.
-    assert(turnContext.allPlayers.size() <= MAX_PLAYERS
-           && "playerCount exceeds MAX_PLAYERS; war-state diff would overflow atWar");
+    assert(turnContext.allPlayers.size() <= MAX_PLAYERS &&
+           "playerCount exceeds MAX_PLAYERS; war-state diff would overflow atWar");
     if (turnContext.allPlayers.size() > MAX_PLAYERS) {
         LOG_WARN("processTurn: playerCount %zu exceeds MAX_PLAYERS %u; "
                  "war-state event diff clamped to first %u players",
-                 turnContext.allPlayers.size(),
-                 static_cast<unsigned>(MAX_PLAYERS),
+                 turnContext.allPlayers.size(), static_cast<unsigned>(MAX_PLAYERS),
                  static_cast<unsigned>(MAX_PLAYERS));
     }
     std::vector<PlayerPre> preState;
     preState.resize(turnContext.allPlayers.size());
-    const std::size_t atWarCount = std::min<std::size_t>(
-        turnContext.allPlayers.size(), MAX_PLAYERS);
+    const std::size_t atWarCount =
+        std::min<std::size_t>(turnContext.allPlayers.size(), MAX_PLAYERS);
     for (std::size_t i = 0; i < turnContext.allPlayers.size(); ++i) {
         const aoc::game::Player* p = turnContext.gameState->player(turnContext.allPlayers[i]);
-        if (p == nullptr) { continue; }
-        preState[i].techs = static_cast<int32_t>(std::count(p->tech().completedTechs.begin(), p->tech().completedTechs.end(), true));
+        if (p == nullptr) {
+            continue;
+        }
+        preState[i].techs = static_cast<int32_t>(
+            std::count(p->tech().completedTechs.begin(), p->tech().completedTechs.end(), true));
         // cityCount() (raw vector size): this snapshot is diffed against
         // post-turn vector size to detect *founding* events. A secession
         // doesn't move the vector, so raw size is the right counter here.
-        preState[i].cities = p->cityCount();
-        preState[i].units = static_cast<int32_t>(p->units().size());
+        preState[i].cities   = p->cityCount();
+        preState[i].units    = static_cast<int32_t>(p->units().size());
         preState[i].military = p->militaryUnitCount();
         if (turnContext.diplomacy != nullptr && i < atWarCount) {
             for (std::size_t j = 0; j < atWarCount; ++j) {
                 if (i != j) {
-                    preState[i].atWar[j] = turnContext.diplomacy->relation(
-                        turnContext.allPlayers[i], turnContext.allPlayers[j]).isAtWar;
+                    preState[i].atWar[j] =
+                        turnContext.diplomacy
+                            ->relation(turnContext.allPlayers[i], turnContext.allPlayers[j])
+                            .isAtWar;
                 }
             }
         }
@@ -1354,22 +1451,30 @@ void processTurn(TurnContext& turnContext) {
     // 1. AI decisions. WP-H: skip players the user has taken over
     // (isHuman == true). The user controls those slots manually.
     for (ai::AIController* ai : turnContext.aiControllers) {
-        if (ai == nullptr) { continue; }
-        const PlayerId pid = ai->player();
+        if (ai == nullptr) {
+            continue;
+        }
+        const PlayerId pid                = ai->player();
         const aoc::game::Player* gsPlayer = turnContext.gameState->player(pid);
-        if (gsPlayer != nullptr && gsPlayer->isHuman()) { continue; }
+        if (gsPlayer != nullptr && gsPlayer->isHuman()) {
+            continue;
+        }
         aoc::Random aiRng = turnContext.rng->fork();
         ai->executeTurn(*turnContext.gameState, *turnContext.grid, turnContext.fogOfWar,
-                       *turnContext.diplomacy, turnContext.economy->market(), aiRng,
-                       turnContext.dealTracker);
+                        *turnContext.diplomacy, turnContext.economy->market(), aiRng,
+                        turnContext.dealTracker);
     }
 
     // Robot-worker slot assignment runs before production so bonus recipe
     // slots take effect on the same turn they are stockpiled.
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : turnContext.gameState->players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-            if (cityPtr == nullptr) { continue; }
+            if (cityPtr == nullptr) {
+                continue;
+            }
             updateCityAutomation(*cityPtr);
         }
     }
@@ -1403,22 +1508,25 @@ void processTurn(TurnContext& turnContext) {
     // Detect and record events by diffing post-turn state
     if (eventLog != nullptr) {
         for (std::size_t i = 0; i < turnContext.allPlayers.size(); ++i) {
-            const PlayerId pid = turnContext.allPlayers[i];
+            const PlayerId pid         = turnContext.allPlayers[i];
             const aoc::game::Player* p = turnContext.gameState->player(pid);
-            if (p == nullptr) { continue; }
+            if (p == nullptr) {
+                continue;
+            }
 
-            const int32_t newTechs = static_cast<int32_t>(std::count(p->tech().completedTechs.begin(), p->tech().completedTechs.end(), true));
+            const int32_t newTechs = static_cast<int32_t>(
+                std::count(p->tech().completedTechs.begin(), p->tech().completedTechs.end(), true));
             if (newTechs > preState[i].techs) {
-                eventLog->record(TurnEventType::TechResearched, pid,
-                                 INVALID_PLAYER, newTechs, 0, "Tech completed");
+                eventLog->record(TurnEventType::TechResearched, pid, INVALID_PLAYER, newTechs, 0,
+                                 "Tech completed");
             }
 
             // Diff partner: must match the cityCount() above so the
             // delta detects "founded a new city".
             const int32_t newCities = p->cityCount();
             if (newCities > preState[i].cities) {
-                eventLog->record(TurnEventType::CityFounded, pid,
-                                 INVALID_PLAYER, newCities, 0, "New city");
+                eventLog->record(TurnEventType::CityFounded, pid, INVALID_PLAYER, newCities, 0,
+                                 "New city");
             }
 
             const int32_t newUnits = static_cast<int32_t>(p->units().size());
@@ -1430,38 +1538,41 @@ void processTurn(TurnContext& turnContext) {
                 // appends to the tail, so the last `spawned` entries are the
                 // new ones (assuming mid-turn removals have already settled).
                 const int32_t spawned = newUnits - preState[i].units;
-                const size_t total = p->units().size();
+                const size_t total    = p->units().size();
                 for (int32_t u = 0; u < spawned; ++u) {
                     const size_t idx = total - static_cast<size_t>(spawned - u);
-                    if (idx >= total) { continue; }
+                    if (idx >= total) {
+                        continue;
+                    }
                     const aoc::game::Unit* unit = p->units()[idx].get();
-                    const int32_t typeVal = (unit != nullptr)
-                        ? static_cast<int32_t>(unit->typeId().value) : 0;
-                    eventLog->record(TurnEventType::UnitProduced, pid,
-                                     INVALID_PLAYER, typeVal, 0,
+                    const int32_t typeVal =
+                        (unit != nullptr) ? static_cast<int32_t>(unit->typeId().value) : 0;
+                    eventLog->record(TurnEventType::UnitProduced, pid, INVALID_PLAYER, typeVal, 0,
                                      "Unit produced");
                 }
             }
 
             const int32_t newMil = p->militaryUnitCount();
             if (newMil < preState[i].military) {
-                eventLog->record(TurnEventType::UnitKilled, pid,
-                                 INVALID_PLAYER, preState[i].military - newMil, 0,
-                                 "Unit lost");
+                eventLog->record(TurnEventType::UnitKilled, pid, INVALID_PLAYER,
+                                 preState[i].military - newMil, 0, "Unit lost");
             }
 
             // War state changes (atWar[] is only populated for the first
             // atWarCount = min(allPlayers, MAX_PLAYERS) slots).
             if (turnContext.diplomacy != nullptr && i < atWarCount) {
                 for (std::size_t j = 0; j < atWarCount; ++j) {
-                    if (i == j) { continue; }
-                    const bool nowAtWar = turnContext.diplomacy->relation(pid, turnContext.allPlayers[j]).isAtWar;
+                    if (i == j) {
+                        continue;
+                    }
+                    const bool nowAtWar =
+                        turnContext.diplomacy->relation(pid, turnContext.allPlayers[j]).isAtWar;
                     if (nowAtWar && !preState[i].atWar[j]) {
-                        eventLog->record(TurnEventType::WarDeclared, pid,
-                                         turnContext.allPlayers[j], 0, 0, "War declared");
+                        eventLog->record(TurnEventType::WarDeclared, pid, turnContext.allPlayers[j],
+                                         0, 0, "War declared");
                     } else if (!nowAtWar && preState[i].atWar[j]) {
-                        eventLog->record(TurnEventType::PeaceMade, pid,
-                                         turnContext.allPlayers[j], 0, 0, "Peace made");
+                        eventLog->record(TurnEventType::PeaceMade, pid, turnContext.allPlayers[j],
+                                         0, 0, "Peace made");
                     }
                 }
             }
@@ -1495,16 +1606,15 @@ void processTurn(TurnContext& turnContext) {
     if (turnContext.rng != nullptr) {
         aoc::Random congressRng = turnContext.rng->fork();
         processWorldCongress(*turnContext.gameState,
-                              static_cast<TurnNumber>(turnContext.currentTurn), congressRng,
-                              turnContext.diplomacy);
+                             static_cast<TurnNumber>(turnContext.currentTurn), congressRng,
+                             turnContext.diplomacy);
     }
 
     // City-state diplomacy: meet-check, passive envoy accrual, suzerain
     // recompute, levy expiry, bully cooldown. Server-authoritative.
     if (turnContext.grid != nullptr) {
-        processCityStateDiplomacy(*turnContext.gameState,
-                                   *turnContext.grid,
-                                   static_cast<int32_t>(turnContext.currentTurn));
+        processCityStateDiplomacy(*turnContext.gameState, *turnContext.grid,
+                                  static_cast<int32_t>(turnContext.currentTurn));
     }
 
     // City-state AI: defend-only production (no settlers/wonders/districts).
@@ -1518,10 +1628,12 @@ void processTurn(TurnContext& turnContext) {
     // Tourism per-player + cultural victory probe.
     if (turnContext.grid != nullptr) {
         for (const std::unique_ptr<aoc::game::Player>& playerPtr :
-                 turnContext.gameState->players()) {
-            if (playerPtr == nullptr) { continue; }
-            computeTourism(*turnContext.gameState, playerPtr->id(),
-                           *turnContext.grid, turnContext.diplomacy);
+             turnContext.gameState->players()) {
+            if (playerPtr == nullptr) {
+                continue;
+            }
+            computeTourism(*turnContext.gameState, playerPtr->id(), *turnContext.grid,
+                           turnContext.diplomacy);
         }
         const PlayerId culturalWinner = checkCulturalVictory(*turnContext.gameState);
         if (culturalWinner != INVALID_PLAYER) {
@@ -1537,38 +1649,40 @@ void processTurn(TurnContext& turnContext) {
     // to the state they produced.
     if (turnContext.decisionLog != nullptr && turnContext.decisionLog->active()) {
         for (std::size_t i = 0; i < turnContext.allPlayers.size(); ++i) {
-            const PlayerId pid = turnContext.allPlayers[i];
+            const PlayerId pid         = turnContext.allPlayers[i];
             const aoc::game::Player* p = turnContext.gameState->player(pid);
-            if (p == nullptr) { continue; }
+            if (p == nullptr) {
+                continue;
+            }
 
             aoc::core::TurnSummary s{};
-            s.era = static_cast<uint8_t>(effectiveEraFromTech(*p).value);
-            s.cityCount = static_cast<uint16_t>(p->ownedCityCount());
-            s.unitCount = static_cast<uint16_t>(p->units().size());
-            s.treasury = static_cast<int64_t>(p->treasury());
-            s.science = computePlayerScience(*p, *turnContext.grid);
-            s.culture = computePlayerCulture(*p, *turnContext.grid);
-            s.faith = p->faith().faith;
-            s.techsResearched = static_cast<uint16_t>(std::count(
-                p->tech().completedTechs.begin(), p->tech().completedTechs.end(), true));
+            s.era             = static_cast<uint8_t>(effectiveEraFromTech(*p).value);
+            s.cityCount       = static_cast<uint16_t>(p->ownedCityCount());
+            s.unitCount       = static_cast<uint16_t>(p->units().size());
+            s.treasury        = static_cast<int64_t>(p->treasury());
+            s.science         = computePlayerScience(*p, *turnContext.grid);
+            s.culture         = computePlayerCulture(*p, *turnContext.grid);
+            s.faith           = p->faith().faith;
+            s.techsResearched = static_cast<uint16_t>(
+                std::count(p->tech().completedTechs.begin(), p->tech().completedTechs.end(), true));
             s.grievanceCount = static_cast<uint16_t>(p->grievances().grievances.size());
 
             uint8_t wars = 0;
             if (turnContext.diplomacy != nullptr) {
                 for (std::size_t j = 0; j < turnContext.allPlayers.size(); ++j) {
-                    if (i == j) { continue; }
+                    if (i == j) {
+                        continue;
+                    }
                     if (turnContext.diplomacy->relation(pid, turnContext.allPlayers[j]).isAtWar) {
                         ++wars;
                     }
                 }
             }
-            s.warCount = wars;
+            s.warCount        = wars;
             s.victoryTypeLead = 0; // Reserved: front-running victory type id.
 
-            turnContext.decisionLog->logTurnSummary(
-                static_cast<uint16_t>(turnContext.currentTurn),
-                static_cast<uint8_t>(pid),
-                s);
+            turnContext.decisionLog->logTurnSummary(static_cast<uint16_t>(turnContext.currentTurn),
+                                                    static_cast<uint8_t>(pid), s);
         }
     }
 
@@ -1577,11 +1691,8 @@ void processTurn(TurnContext& turnContext) {
     // FitnessEvaluator) observe the same post-turn state instead of racing
     // against inter-turn state mutations.
     turnContext.lastVictoryResult = checkVictoryConditions(
-        *turnContext.gameState,
-        turnContext.currentTurn,
-        turnContext.maxTurns,
-        turnContext.victoryTypeMask,
-        turnContext.diplomacy);
+        *turnContext.gameState, turnContext.currentTurn, turnContext.maxTurns,
+        turnContext.victoryTypeMask, turnContext.diplomacy);
 
     ++turnContext.currentTurn;
 }

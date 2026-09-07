@@ -969,6 +969,7 @@ if(AOC_BUILD_TESTS)
         test_attack_request
         test_amenity_buildings
         test_neighborhood_housing
+        test_stockpile_bonuses
         test_spaceport
         test_government_plaza_and_dam
         test_great_works

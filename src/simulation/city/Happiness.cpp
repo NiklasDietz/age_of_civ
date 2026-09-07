@@ -26,22 +26,19 @@
 
 namespace aoc::sim {
 
-void computeCityHappiness(aoc::game::Player& player,
-                          const GlobalReligionTracker* tracker) {
+void computeCityHappiness(aoc::game::Player& player, const GlobalReligionTracker* tracker) {
     // War weariness penalty
-    float warWearinessPenalty = warWearinessHappinessPenalty(
-        player.warWeariness().weariness);
+    float warWearinessPenalty = warWearinessHappinessPenalty(player.warWeariness().weariness);
 
     // Inflation and tax penalties from monetary state
     float inflationPenalty = inflationHappinessPenalty(player.monetary().inflationRate);
-    float taxPenalty = -taxHappinessModifier(player.monetary().taxRate);
+    float taxPenalty       = -taxHappinessModifier(player.monetary().taxRate);
 
     // Gather unique luxury resource types across ALL player cities (deduplication).
     constexpr uint16_t RAW_LUXURY_IDS[] = {
-        goods::WINE, goods::SPICES, goods::SILK, goods::IVORY, goods::GEMS,
-        goods::DYES, goods::FURS, goods::INCENSE, goods::SUGAR,
-        goods::PEARLS, goods::TEA, goods::COFFEE, goods::TOBACCO
-    };
+        goods::WINE, goods::SPICES, goods::SILK,    goods::IVORY, goods::GEMS,
+        goods::DYES, goods::FURS,   goods::INCENSE, goods::SUGAR, goods::PEARLS,
+        goods::TEA,  goods::COFFEE, goods::TOBACCO};
     int32_t uniqueLuxuryCount = 0;
     // Monopoly bonus: holding >=3 units of any single luxury (across the
     // whole empire) grants +1 extra unique-luxury-equivalent per type.
@@ -54,7 +51,9 @@ void computeCityHappiness(aoc::game::Player& player,
         }
         if (totalStock > 0) {
             ++uniqueLuxuryCount;
-            if (totalStock >= 3) { ++monopolyBonusCount; }
+            if (totalStock >= 3) {
+                ++monopolyBonusCount;
+            }
         }
     }
     uniqueLuxuryCount += monopolyBonusCount;
@@ -64,10 +63,9 @@ void computeCityHappiness(aoc::game::Player& player,
     // Each unique luxury provides +1 amenity to each city, up to 4 cities per luxury.
     float luxuryAmenityPerCity = 0.0f;
     if (playerCityCount > 0) {
-        float totalPool = static_cast<float>(uniqueLuxuryCount) * 4.0f;
-        luxuryAmenityPerCity = std::min(
-            static_cast<float>(uniqueLuxuryCount),
-            totalPool / static_cast<float>(playerCityCount));
+        float totalPool      = static_cast<float>(uniqueLuxuryCount) * 4.0f;
+        luxuryAmenityPerCity = std::min(static_cast<float>(uniqueLuxuryCount),
+                                        totalPool / static_cast<float>(playerCityCount));
     }
 
     // Government data for empire size penalty and military unhappiness
@@ -77,7 +75,9 @@ void computeCityHappiness(aoc::game::Player& player,
     int32_t unitsAway = 0;
     if (gdef.militaryUnhappyFactor > 0.0f) {
         for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
-            if (!unit->isMilitary()) { continue; }
+            if (!unit->isMilitary()) {
+                continue;
+            }
             bool inCity = false;
             for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
                 if (city->location() == unit->position()) {
@@ -85,18 +85,20 @@ void computeCityHappiness(aoc::game::Player& player,
                     break;
                 }
             }
-            if (!inCity) { ++unitsAway; }
+            if (!inCity) {
+                ++unitsAway;
+            }
         }
     }
     float militaryUnhappyPerCity = 0.0f;
     if (playerCityCount > 0 && gdef.militaryUnhappyFactor > 0.0f) {
-        float totalMilUnhappy = static_cast<float>(unitsAway) * gdef.militaryUnhappyFactor;
+        float totalMilUnhappy  = static_cast<float>(unitsAway) * gdef.militaryUnhappyFactor;
         militaryUnhappyPerCity = totalMilUnhappy / static_cast<float>(playerCityCount);
     }
 
     // Empire size penalty
     int32_t excessCities = playerCityCount - gdef.empireSizeThreshold;
-    float empirePenalty = (excessCities > 0) ? static_cast<float>(excessCities) * 0.5f : 0.0f;
+    float empirePenalty  = (excessCities > 0) ? static_cast<float>(excessCities) * 0.5f : 0.0f;
 
     // Process each city
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
@@ -121,16 +123,19 @@ void computeCityHappiness(aoc::game::Player& player,
             // auto required: lambda type is unnameable
             auto goodsHappiness = [&stockpile](uint16_t goodId, float baseBonus) -> float {
                 const int32_t amount = stockpile.getAmount(goodId);
-                if (amount <= 0) { return 0.0f; }
+                if (amount <= 0) {
+                    return 0.0f;
+                }
                 // sqrt scaling: 1 unit = baseBonus, 4 units = 2x, 9 units = 3x, capped at 4x
-                return std::min(baseBonus * std::sqrt(static_cast<float>(amount)), baseBonus * 4.0f);
+                return std::min(baseBonus * std::sqrt(static_cast<float>(amount)),
+                                baseBonus * 4.0f);
             };
             happiness.amenities += goodsHappiness(goods::CONSUMER_GOODS, 0.5f);
             happiness.amenities += goodsHappiness(goods::CLOTHING, 0.7f);
             happiness.amenities += goodsHappiness(goods::ADV_CONSUMER_GOODS, 1.0f);
             happiness.amenities += goodsHappiness(goods::PROCESSED_FOOD, 0.3f);
-            // Electronics (ID 75) represent modern quality of life
-            happiness.amenities += goodsHappiness(75, 0.8f);
+            // Electronics raise modern quality of life
+            happiness.amenities += goodsHappiness(goods::ELECTRONICS, 0.8f);
         }
 
         // Specialist entertainers: +2 amenity each
@@ -151,21 +156,23 @@ void computeCityHappiness(aoc::game::Player& player,
         const CityWondersComponent& cityWonders = city->wonders();
         for (const WonderId wid : cityWonders.wonders) {
             const WonderDef& wdef = wonderDef(wid);
-            happiness.amenities += wdef.effect.amenityBonus
-                                 * wonderEraDecayFactor(wdef, player.era().currentEra);
+            happiness.amenities +=
+                wdef.effect.amenityBonus * wonderEraDecayFactor(wdef, player.era().currentEra);
         }
 
         // A7 Colosseum (id 2) unique effect: radiates +2 amenities to every
         // same-owner city within 6 hexes of the Colosseum host. Applied
         // additively on top of the host's own amenityBonus.
         for (const std::unique_ptr<aoc::game::City>& host : player.cities()) {
-            if (host.get() == city.get()) { continue; }
+            if (host.get() == city.get()) {
+                continue;
+            }
             if (!host->wonders().hasWonder(static_cast<aoc::sim::WonderId>(2))) {
                 continue;
             }
             if (aoc::hex::distance(city->location(), host->location()) <= 6) {
                 const WonderDef& wdef = wonderDef(static_cast<aoc::sim::WonderId>(2));
-                const float decay = wonderEraDecayFactor(wdef, player.era().currentEra);
+                const float decay     = wonderEraDecayFactor(wdef, player.era().currentEra);
                 happiness.amenities += 2.0f * decay;
                 break;
             }
@@ -173,7 +180,7 @@ void computeCityHappiness(aoc::game::Player& player,
 
         // Religion follower belief amenity bonus
         const CityReligionComponent& cityReligion = city->religion();
-        const ReligionId dominant = cityReligion.dominantReligion();
+        const ReligionId dominant                 = cityReligion.dominantReligion();
         if (dominant != NO_RELIGION && tracker != nullptr) {
             if (dominant < tracker->religionsFoundedCount) {
                 const ReligionDef& faith = tracker->religions[dominant];
@@ -200,8 +207,8 @@ void computeCityHappiness(aoc::game::Player& player,
         if (happiness.disasterUnhappiness < 0.05f) {
             happiness.disasterUnhappiness = 0.0f;
         }
-        happiness.modifiers = -inflationPenalty - taxPenalty + warWearinessPenalty
-                            - happiness.disasterUnhappiness;
+        happiness.modifiers =
+            -inflationPenalty - taxPenalty + warWearinessPenalty - happiness.disasterUnhappiness;
 
         // Pollution amenity penalty
         happiness.amenities -= static_cast<float>(city->pollution().amenityPenalty());
