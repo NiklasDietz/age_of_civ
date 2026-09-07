@@ -12,6 +12,10 @@
 #include "support/World.hpp"
 
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
+
+#include <algorithm>
+#include <array>
+#include <vector>
 #include "aoc/simulation/religion/Religion.hpp"
 
 using aoc::PlayerId;
@@ -188,11 +192,15 @@ TEST_CASE("a second Prophet cannot found a second religion, so it leaves its fai
     REQUIRE(first != aoc::sim::NO_RELIGION);
     const float faithAfterFirst = p.faith().faith;
 
-    REQUIRE(recruitOf(w, GreatPersonType::Prophet) != nullptr);
+    aoc::game::Unit* second = recruitOf(w, GreatPersonType::Prophet);
+    REQUIRE(second != nullptr);
+    // Each prophet carries its own amount of faith, so read the one we got.
+    const float secondFaith =
+        aoc::sim::allGreatPersonDefs()[second->greatPerson().defId].faith;
     CHECK(aoc::sim::requestGreatPersonActivation(w.gameState, w.grid, PlayerId{0}, {5, 5})
           == aoc::ErrorCode::Ok);
     CHECK(p.faith().foundedReligion == first);              // still the same one
-    CHECK(p.faith().faith == doctest::Approx(faithAfterFirst + aoc::sim::PROPHET_FAITH));
+    CHECK(p.faith().faith == doctest::Approx(faithAfterFirst + secondFaith));
 }
 
 TEST_CASE("a Writer and a Musician push the civics along when no slot is free") {
@@ -225,4 +233,52 @@ TEST_CASE("the roster now covers nine types and every one of them can be recruit
             person->greatPerson().isActivated = true; // park it, recruit the next
         }
     }
+}
+
+TEST_CASE("two great people of the same type do not do the same thing") {
+    // Every person of a type used to run the same hard-coded numbers, so Marco
+    // Polo and Mansa Musa both handed over exactly 200 gold and the ability
+    // text promising otherwise was decoration.
+    const std::array<aoc::sim::GreatPersonDef, aoc::sim::GREAT_PERSON_COUNT>& defs =
+        aoc::sim::allGreatPersonDefs();
+
+    const auto spread = [&defs](GreatPersonType type, auto pick) {
+        std::vector<double> seen;
+        for (const aoc::sim::GreatPersonDef& d : defs) {
+            if (d.type == type) { seen.push_back(static_cast<double>(pick(d))); }
+        }
+        REQUIRE(seen.size() >= 2u);
+        const auto lo = std::min_element(seen.begin(), seen.end());
+        const auto hi = std::max_element(seen.begin(), seen.end());
+        return *hi - *lo;
+    };
+
+    CHECK(spread(GreatPersonType::Merchant, [](const auto& d) { return d.gold; }) > 0.0);
+    CHECK(spread(GreatPersonType::Engineer, [](const auto& d) { return d.production; }) > 0.0);
+    CHECK(spread(GreatPersonType::Prophet, [](const auto& d) { return d.faith; }) > 0.0);
+    CHECK(spread(GreatPersonType::Scientist,
+                 [](const auto& d) { return d.researchFraction; }) > 0.0);
+}
+
+TEST_CASE("a merchant hands over its own gold, not a fixed amount") {
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Home");
+    aoc::game::Player& p = *w.gameState.players()[0];
+
+    int64_t previousGain = -1;
+    bool sawDifferentGain = false;
+    for (int32_t n = 0; n < 3; ++n) {
+        aoc::game::Unit* merchant = recruitOf(w, GreatPersonType::Merchant);
+        if (merchant == nullptr) { break; }
+        const int64_t expected =
+            aoc::sim::allGreatPersonDefs()[merchant->greatPerson().defId].gold;
+        const int64_t before = p.economy().treasury;
+        REQUIRE(aoc::sim::requestGreatPersonActivation(w.gameState, w.grid, PlayerId{0}, {5, 5})
+                == aoc::ErrorCode::Ok);
+        const int64_t gained = p.economy().treasury - before;
+        CHECK(gained == expected);            // its own amount, from its own row
+        if (previousGain >= 0 && gained != previousGain) { sawDifferentGain = true; }
+        previousGain = gained;
+    }
+    CHECK(sawDifferentGain); // and the amounts really do differ between people
 }

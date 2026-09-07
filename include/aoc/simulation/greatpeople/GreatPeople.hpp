@@ -37,6 +37,27 @@ struct GreatPersonDef {
     std::string_view name;
     GreatPersonType  type;
     std::string_view abilityDescription;
+
+    /// How big this person's effect is. Every person of a type used to run the
+    /// same hard-coded numbers, so Marco Polo and Mansa Musa both handed over
+    /// exactly 200 gold and the ability text promising otherwise was decoration.
+    /// The field a person uses depends on its type; the rest stay at their
+    /// defaults and are ignored.
+    ///
+    ///  Scientist: `researchFraction` of the current tech, or a
+    ///             `pulseAmount`-per-turn pulse for `pulseTurns` in a city with
+    ///             a science building.
+    ///  Engineer:  `production` hammers into the nearest city's queue.
+    ///  Merchant:  `gold` into the treasury.
+    ///  Prophet:   `faith` into the pool.
+    ///  General / Admiral: heal, no magnitude of their own yet.
+    ///  Artist / Writer / Musician: place a work, no magnitude of their own yet.
+    float   researchFraction = 0.5f;   ///< Share of the current tech's cost.
+    float   pulseAmount      = 8.0f;   ///< Science per turn during a pulse.
+    int32_t pulseTurns       = 20;     ///< Length of that pulse.
+    float   production       = 100.0f; ///< Hammers into the nearest city.
+    int64_t gold             = 200;    ///< Gold into the treasury.
+    float   faith            = 300.0f; ///< Faith into the pool.
 };
 
 /// Total number of great person definitions.
@@ -63,10 +84,6 @@ inline constexpr float GP_AURA_STRENGTH = 5.0f;
 /// lump of gold and era score instead of its one-shot ability.
 [[nodiscard]] ErrorCode requestRetireGreatPerson(aoc::game::GameState& gameState, PlayerId player,
                                                  hex::AxialCoord at);
-
-/// Faith a Great Prophet brings. Comfortably above RELIGION_FAITH_COST so the
-/// prophet can pay for the religion it founds out of what it carries.
-inline constexpr float PROPHET_FAITH = 300.0f;
 
 /// Gold a retirement pays.
 inline constexpr int64_t GP_RETIRE_GOLD = 150;

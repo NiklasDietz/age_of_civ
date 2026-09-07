@@ -34,15 +34,15 @@ namespace aoc::sim {
 
 static const std::array<GreatPersonDef, GREAT_PERSON_COUNT> s_greatPersonDefs = {{
     // Scientists (0-3)
-    { 0, "Archimedes",      GreatPersonType::Scientist, "Eureka! +50% research progress on current tech."},
-    { 1, "Euclid",          GreatPersonType::Scientist, "The Elements: +50% research progress on current tech."},
-    { 2, "Isaac Newton",    GreatPersonType::Scientist, "Principia: +50% research progress on current tech."},
-    { 3, "Galileo Galilei", GreatPersonType::Scientist, "Telescope: +50% research progress on current tech."},
+    { 0, "Archimedes",      GreatPersonType::Scientist, "Eureka! +40% research on the current tech.",            .researchFraction = 0.40f},
+    { 1, "Euclid",          GreatPersonType::Scientist, "The Elements: +50% research on the current tech.",      .researchFraction = 0.50f},
+    { 2, "Isaac Newton",    GreatPersonType::Scientist, "Principia: +70% research on the current tech.",         .researchFraction = 0.70f},
+    { 3, "Galileo Galilei", GreatPersonType::Scientist, "Telescope: a long, gentle pulse of science.",           .researchFraction = 0.30f, .pulseAmount = 6.0f, .pulseTurns = 30},
 
     // Engineers (4-6)
-    { 4, "Leonardo da Vinci", GreatPersonType::Engineer, "Renaissance Man: +100 production to nearest city."},
-    { 5, "James Watt",        GreatPersonType::Engineer, "Steam Power: +100 production to nearest city."},
-    { 6, "Nikola Tesla",      GreatPersonType::Engineer, "Alternating Current: +100 production to nearest city."},
+    { 4, "Leonardo da Vinci", GreatPersonType::Engineer, "Renaissance Man: +150 production to the nearest city.", .production = 150.0f},
+    { 5, "James Watt",        GreatPersonType::Engineer, "Steam Power: +100 production to the nearest city.",     .production = 100.0f},
+    { 6, "Nikola Tesla",      GreatPersonType::Engineer, "Alternating Current: +120 production to the nearest city.", .production = 120.0f},
 
     // Generals (7-9)
     { 7, "Sun Tzu",   GreatPersonType::General, "Art of War: heal all units within 2 hexes to full."},
@@ -56,10 +56,10 @@ static const std::array<GreatPersonDef, GREAT_PERSON_COUNT> s_greatPersonDefs = 
     {13, "Rembrandt",            GreatPersonType::Artist, "Night Watch: culture bomb (claim tiles within 2 hexes)."},
 
     // Merchants (14-17)
-    {14, "Marco Polo",          GreatPersonType::Merchant, "Silk Road: +200 gold to treasury."},
-    {15, "Adam Smith",          GreatPersonType::Merchant, "Wealth of Nations: +200 gold to treasury."},
-    {16, "John D. Rockefeller", GreatPersonType::Merchant, "Standard Oil: +200 gold to treasury."},
-    {17, "Mansa Musa",          GreatPersonType::Merchant, "Pilgrimage: +200 gold to treasury."},
+    {14, "Marco Polo",          GreatPersonType::Merchant, "Silk Road: +250 gold to the treasury.",        .gold = 250},
+    {15, "Adam Smith",          GreatPersonType::Merchant, "Wealth of Nations: +200 gold to the treasury.", .gold = 200},
+    {16, "John D. Rockefeller", GreatPersonType::Merchant, "Standard Oil: +300 gold to the treasury.",      .gold = 300},
+    {17, "Mansa Musa",          GreatPersonType::Merchant, "Pilgrimage: +400 gold to the treasury.",        .gold = 400},
 
     // Admirals (18-20)
     {18, "Themistocles",  GreatPersonType::Admiral, "Salamis: heal all ships within 2 hexes to full."},
@@ -67,9 +67,9 @@ static const std::array<GreatPersonDef, GREAT_PERSON_COUNT> s_greatPersonDefs = 
     {20, "Yi Sun-sin",    GreatPersonType::Admiral, "Turtle Ship: heal all ships within 2 hexes to full."},
 
     // Prophets (21-23)
-    {21, "Siddhartha Gautama", GreatPersonType::Prophet, "Enlightenment: +300 faith, founds a religion."},
-    {22, "Confucius",          GreatPersonType::Prophet, "Analects: +300 faith, founds a religion."},
-    {23, "Zoroaster",          GreatPersonType::Prophet, "Avesta: +300 faith, founds a religion."},
+    {21, "Siddhartha Gautama", GreatPersonType::Prophet, "Enlightenment: +350 faith.", .faith = 350.0f},
+    {22, "Confucius",          GreatPersonType::Prophet, "Analects: +300 faith.",      .faith = 300.0f},
+    {23, "Zoroaster",          GreatPersonType::Prophet, "Avesta: +250 faith.",        .faith = 250.0f},
 
     // Writers (24-26)
     {24, "Homer",              GreatPersonType::Writer, "Iliad: a Great Work of Writing."},
@@ -363,13 +363,15 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                  || nearestCity->districts().hasBuilding(BuildingId{7}));
             if (hasLab) {
                 PlayerGreatPeopleComponent& gpComp = playerObj->greatPeople();
-                gpComp.pulseScienceAmount = 8.0f;
-                gpComp.pulseScienceTurns  = 20;
-                LOG_INFO("Scientist: 20-turn +8 science pulse (Research Lab synergy)");
+                gpComp.pulseScienceAmount = def.pulseAmount;
+                gpComp.pulseScienceTurns  = def.pulseTurns;
+                LOG_INFO("Scientist: %d-turn +%.0f science pulse (science-building synergy)",
+                         def.pulseTurns, static_cast<double>(def.pulseAmount));
             } else {
                 PlayerTechComponent& tech = playerObj->tech();
                 if (tech.currentResearch.isValid()) {
-                    const float bonus = effectiveResearchCost(tech, tech.currentResearch) * 0.5f;
+                    const float bonus =
+                        effectiveResearchCost(tech, tech.currentResearch) * def.researchFraction;
                     tech.researchProgress += bonus;
                     LOG_INFO("Scientist added %.0f research progress",
                              static_cast<double>(bonus));
@@ -396,7 +398,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
             }
             if (nearestCity != nullptr) {
                 if (!nearestCity->production().isEmpty()) {
-                    nearestCity->production().queue.front().progress += 100.0f;
+                    nearestCity->production().queue.front().progress += def.production;
                 }
                 if (!nearestCity->districts().hasDistrict(DistrictType::Industrial)) {
                     CityDistrictsComponent::PlacedDistrict newDistrict;
@@ -406,7 +408,8 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                     LOG_INFO("Engineer placed free Industrial district in %s",
                              nearestCity->name().c_str());
                 }
-                LOG_INFO("Engineer added 100 production to city queue");
+                LOG_INFO("Engineer added %.0f production to city queue",
+                         static_cast<double>(def.production));
             }
             break;
         }
@@ -476,7 +479,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
             // the religion itself. When there is nothing left to found -- the
             // civ already has a religion, or the world has run out of them --
             // the faith is the whole gift.
-            playerObj->faith().faith += PROPHET_FAITH;
+            playerObj->faith().faith += def.faith;
             if (!playerObj->faith().hasPantheon) {
                 static_cast<void>(foundPantheonFor(gameState, gp.owner));
             }
@@ -486,7 +489,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                          static_cast<unsigned>(gp.owner));
             } else {
                 LOG_INFO("Prophet: +%.0f faith, nothing left to found",
-                         static_cast<double>(PROPHET_FAITH));
+                         static_cast<double>(def.faith));
             }
             break;
         }
@@ -522,12 +525,12 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
         }
 
         case GreatPersonType::Merchant: {
-            // WP-A3: +200 gold AND permanent +1 trade route slot.
-            playerObj->economy().treasury += 200;
+            // WP-A3: gold (per person, see GreatPersonDef) AND a permanent trade slot.
+            playerObj->economy().treasury += def.gold;
             PlayerGreatPeopleComponent& gpComp = playerObj->greatPeople();
             gpComp.extraTradeSlots += 1;
-            LOG_INFO("Merchant: +200 gold + 1 permanent trade slot (total %d)",
-                     gpComp.extraTradeSlots);
+            LOG_INFO("Merchant: +%lld gold + 1 permanent trade slot (total %d)",
+                     static_cast<long long>(def.gold), gpComp.extraTradeSlots);
             break;
         }
 
