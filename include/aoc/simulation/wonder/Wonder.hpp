@@ -4,6 +4,7 @@
 /// @brief World wonder definitions and tracking.
 
 #include "aoc/core/Types.hpp"
+#include "aoc/simulation/greatpeople/GreatPeople.hpp"
 
 #include <array>
 #include <cstdint>
@@ -58,6 +59,20 @@ struct WonderDef {
 
 /// Get all wonder definitions.
 [[nodiscard]] const std::array<WonderDef, WONDER_COUNT>& allWonderDefs();
+
+/// The kind of great person a wonder attracts. Wonders sat outside the great
+/// person economy entirely: a city could hold the Great Library and Oxford
+/// University and contribute nothing toward a Scientist, because points came
+/// from districts alone. The mapping follows what each wonder is FOR, so the
+/// Colossus and the Venetian Arsenal draw Admirals and Broadway draws
+/// Musicians.
+[[nodiscard]] GreatPersonType greatPersonForWonder(WonderId id);
+
+/// Great person points a finished wonder contributes each turn. Higher than a
+/// district's 1-2 because a wonder is one-of-a-kind and far dearer, but small
+/// enough that districts remain the backbone of the economy: recruitment costs
+/// 60 + 40 per person already taken of that type.
+inline constexpr float WONDER_GREAT_PERSON_POINTS = 3.0f;
 
 /// Look up a single wonder definition by ID.
 [[nodiscard]] const WonderDef& wonderDef(WonderId id);

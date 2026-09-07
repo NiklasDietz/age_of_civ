@@ -129,6 +129,44 @@ static const std::array<WonderDef, WONDER_COUNT> s_wonderDefs = {{
       "+10% science all cities."},
 }};
 
+// One row per wonder, in id order, saying which kind of great person it draws.
+// A table rather than a switch in the accumulator, so a new wonder is one line
+// here beside its definition instead of an edit in another subsystem.
+static constexpr std::array<GreatPersonType, WONDER_COUNT> WONDER_GREAT_PERSON = {{
+    GreatPersonType::Engineer,   //  0 Pyramids: the archetypal feat of building
+    GreatPersonType::Prophet,    //  1 Stonehenge
+    GreatPersonType::Artist,     //  2 Colosseum
+    GreatPersonType::Writer,     //  3 Great Library
+    GreatPersonType::Merchant,   //  4 Petra
+    GreatPersonType::Admiral,    //  5 Colossus
+    GreatPersonType::General,    //  6 Great Wall
+    GreatPersonType::Merchant,   //  7 Machu Picchu
+    GreatPersonType::Merchant,   //  8 Forbidden City
+    GreatPersonType::Merchant,   //  9 Big Ben
+    GreatPersonType::Engineer,   // 10 Eiffel Tower
+    GreatPersonType::Scientist,  // 11 Manhattan Project
+    GreatPersonType::Engineer,   // 12 Hanging Gardens
+    GreatPersonType::Prophet,    // 13 Oracle
+    GreatPersonType::General,    // 14 Alhambra
+    GreatPersonType::Artist,     // 15 Chichen Itza
+    GreatPersonType::Artist,     // 16 Taj Mahal
+    GreatPersonType::Admiral,    // 17 Venetian Arsenal
+    GreatPersonType::Engineer,   // 18 Ruhr Valley
+    GreatPersonType::Scientist,  // 19 Oxford University
+    GreatPersonType::Writer,     // 20 Statue of Liberty
+    GreatPersonType::Musician,   // 21 Broadway
+    GreatPersonType::Musician,   // 22 Sydney Opera House
+    GreatPersonType::Scientist,  // 23 International Space Station
+}};
+
+GreatPersonType greatPersonForWonder(WonderId id) {
+    const std::size_t idx = static_cast<std::size_t>(id);
+    if (idx >= WONDER_GREAT_PERSON.size()) {
+        return GreatPersonType::Engineer;
+    }
+    return WONDER_GREAT_PERSON[idx];
+}
+
 const std::array<WonderDef, WONDER_COUNT>& allWonderDefs() {
     return s_wonderDefs;
 }

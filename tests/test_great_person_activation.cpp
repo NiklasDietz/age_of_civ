@@ -12,6 +12,7 @@
 #include "support/World.hpp"
 
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
+#include "aoc/simulation/wonder/Wonder.hpp"
 
 #include <algorithm>
 #include <array>
@@ -281,4 +282,39 @@ TEST_CASE("a merchant hands over its own gold, not a fixed amount") {
         previousGain = gained;
     }
     CHECK(sawDifferentGain); // and the amounts really do differ between people
+}
+
+TEST_CASE("a wonder draws its own kind of great person, and only that kind") {
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::game::City& home = aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Home");
+    aoc::game::Player& p = *w.gameState.players()[0];
+
+    // Oxford University is a place of learning, not a shipyard.
+    constexpr aoc::sim::WonderId OXFORD{19};
+    REQUIRE(aoc::sim::greatPersonForWonder(OXFORD) == GreatPersonType::Scientist);
+    home.wonders().wonders.push_back(OXFORD);
+
+    const auto pointsFor = [&p](GreatPersonType t) {
+        return p.greatPeople().points[static_cast<std::size_t>(t)];
+    };
+    const float sciBefore = pointsFor(GreatPersonType::Scientist);
+    const float admBefore = pointsFor(GreatPersonType::Admiral);
+
+    aoc::sim::accumulateGreatPeoplePoints(w.gameState, PlayerId{0});
+
+    CHECK(pointsFor(GreatPersonType::Scientist)
+          == doctest::Approx(sciBefore + aoc::sim::WONDER_GREAT_PERSON_POINTS));
+    CHECK(pointsFor(GreatPersonType::Admiral) == doctest::Approx(admBefore));
+}
+
+TEST_CASE("the wonder roster draws more than one kind of great person") {
+    // A mapping that sent every wonder to the same type would pass the case
+    // above and still be useless.
+    std::vector<GreatPersonType> drawn;
+    for (uint8_t id = 0; id < aoc::sim::WONDER_COUNT; ++id) {
+        drawn.push_back(aoc::sim::greatPersonForWonder(static_cast<aoc::sim::WonderId>(id)));
+    }
+    std::sort(drawn.begin(), drawn.end());
+    drawn.erase(std::unique(drawn.begin(), drawn.end()), drawn.end());
+    CHECK(drawn.size() >= 6u);
 }

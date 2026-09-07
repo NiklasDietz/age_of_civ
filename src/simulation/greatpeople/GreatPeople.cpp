@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
+#include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/culture/GreatWorks.hpp"
 #include "aoc/simulation/greatpeople/GreatPeopleExpanded.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -102,6 +103,14 @@ void accumulateGreatPeoplePoints(aoc::game::GameState& gameState, PlayerId playe
     for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
         if (cityPtr == nullptr) {
             continue;
+        }
+
+        // Wonders draw great people too. Until 2026-09-07 they did not: points
+        // came from districts alone, so a city holding the Great Library and
+        // Oxford University contributed nothing toward a Scientist.
+        for (const WonderId built : cityPtr->wonders().wonders) {
+            const GreatPersonType drawn = greatPersonForWonder(built);
+            gpComp.points[static_cast<std::size_t>(drawn)] += WONDER_GREAT_PERSON_POINTS;
         }
 
         const CityDistrictsComponent& districts = cityPtr->districts();
