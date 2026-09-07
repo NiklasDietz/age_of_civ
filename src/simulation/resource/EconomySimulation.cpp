@@ -361,85 +361,13 @@ void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
                 }
             }
 
-            // C43: during an oil shock, oil-burning buildings fall back to
-            // coal at 1.5x consumption if coal is available. Without this,
-            // the peak-oil flag was a tag with no mechanical effect — civs
-            // simply stopped powering oil plants and carried on.
-            //
-            // C42: when the local stockpile lacks fuel, fall back to any
-            // sibling city in the same empire. Before this, each city's
-            // buildings stalled the moment its own stockpile ran dry even
-            // if the neighbouring city was sitting on surplus -- in effect
-            // the empire was strip-mined city-by-city without any internal
-            // logistics. The fallback models intra-empire transport.
-            const bool inShock = playerPtr->energy().inOilShock;
-            for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
-                for (BuildingId bid : district.buildings) {
-                    const BuildingDef& bdef = buildingDef(bid);
-                    if (!bdef.needsFuel()) { continue; }
-
-                    const int32_t needed = bdef.ongoingFuelPerTurn;
-                    const int32_t local  = stockpile.getAmount(bdef.ongoingFuelGoodId);
-                    if (local >= needed) {
-                        if (!stockpile.consumeGoods(bdef.ongoingFuelGoodId, needed)) {
-                            LOG_WARN("%s: consumeGoods failed for good %u despite "
-                                     "prior availability check", cityPtr->name().c_str(),
-                                     static_cast<unsigned>(bdef.ongoingFuelGoodId));
-                        }
-                        continue;
-                    }
-
-                    // Check empire-wide pool across sibling cities before
-                    // consuming anything. All-or-nothing semantics keep the
-                    // existing "stalled = no fuel burned" contract intact.
-                    int32_t sibling = 0;
-                    for (const std::unique_ptr<aoc::game::City>& donorPtr : playerPtr->cities()) {
-                        if (donorPtr == nullptr || donorPtr.get() == cityPtr.get()) {
-                            continue;
-                        }
-                        sibling += donorPtr->stockpile().getAmount(bdef.ongoingFuelGoodId);
-                    }
-                    if (local + sibling >= needed) {
-                        if (local > 0
-                            && !stockpile.consumeGoods(bdef.ongoingFuelGoodId, local)) {
-                            LOG_WARN("%s: consumeGoods failed for good %u despite "
-                                     "prior availability check", cityPtr->name().c_str(),
-                                     static_cast<unsigned>(bdef.ongoingFuelGoodId));
-                        }
-                        int32_t remaining = needed - local;
-                        for (const std::unique_ptr<aoc::game::City>& donorPtr : playerPtr->cities()) {
-                            if (remaining <= 0) { break; }
-                            if (donorPtr == nullptr || donorPtr.get() == cityPtr.get()) {
-                                continue;
-                            }
-                            CityStockpileComponent& donorStock = donorPtr->stockpile();
-                            const int32_t donorAvail =
-                                donorStock.getAmount(bdef.ongoingFuelGoodId);
-                            if (donorAvail <= 0) { continue; }
-                            const int32_t take = std::min(donorAvail, remaining);
-                            if (donorStock.consumeGoods(bdef.ongoingFuelGoodId, take)) {
-                                remaining -= take;
-                            } else {
-                                LOG_WARN("%s: consumeGoods failed for good %u despite "
-                                         "prior availability check", donorPtr->name().c_str(),
-                                         static_cast<unsigned>(bdef.ongoingFuelGoodId));
-                            }
-                        }
-                        continue;
-                    }
-
-                    // True shortage: apply the oil-shock coal substitute.
-                    if (inShock && bdef.ongoingFuelGoodId == goods::OIL) {
-                        const int32_t coalNeeded = (needed * 3 + 1) / 2;
-                        if (stockpile.getAmount(goods::COAL) >= coalNeeded
-                            && !stockpile.consumeGoods(goods::COAL, coalNeeded)) {
-                            LOG_WARN("%s: consumeGoods failed for good %u despite "
-                                     "prior availability check", cityPtr->name().c_str(),
-                                     static_cast<unsigned>(goods::COAL));
-                        }
-                    }
-                }
-            }
+            // Plant fuel is charged by the power grid (PowerGrid.cpp), which is
+            // the path that gates energy output. It used to be charged here as
+            // well, so every plant needed twice its listed fuel to run at all
+            // (three times for the Coal Plant, whose two tables disagreed on the
+            // amount). The sibling-city pooling and the oil-shock coal substitute
+            // moved to `secureFuel` there along with the charge; the ongoingFuel
+            // columns stay as data, which `computePlayerNeeds` still reads.
         }
     }
 }
