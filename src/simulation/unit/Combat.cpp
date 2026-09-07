@@ -12,6 +12,7 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/game/City.hpp"
+#include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/CombatExtensions.hpp"
 #include "aoc/simulation/unit/SupplyLines.hpp"
@@ -33,15 +34,15 @@ float terrainDefenseModifier(const aoc::map::HexGrid& grid, aoc::hex::AxialCoord
     if (!grid.isValid(position)) {
         return 1.0f;
     }
-    int32_t index = grid.toIndex(position);
+    int32_t index                 = grid.toIndex(position);
     aoc::map::FeatureType feature = grid.feature(index);
 
     float modifier = 1.0f;
     if (feature == aoc::map::FeatureType::Hills) {
-        modifier += 0.3f;    // +30% defense on hills
+        modifier += 0.3f; // +30% defense on hills
     }
     if (feature == aoc::map::FeatureType::Forest) {
-        modifier += 0.25f;   // +25% in forest
+        modifier += 0.25f; // +25% in forest
     }
     if (feature == aoc::map::FeatureType::Jungle) {
         modifier += 0.25f;
@@ -65,11 +66,10 @@ void capBarbarianExperience(const aoc::game::Unit& attacker, const aoc::game::Un
 } // namespace
 
 int32_t countAdjacentFriendlies(const aoc::game::GameState& gameState,
-                                 aoc::hex::AxialCoord position,
-                                 PlayerId friendlyPlayer,
-                                 const aoc::game::Unit* exclude) {
+                                aoc::hex::AxialCoord position, PlayerId friendlyPlayer,
+                                const aoc::game::Unit* exclude) {
     std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(position);
-    int32_t count = 0;
+    int32_t count                            = 0;
 
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
         if (player->id() != friendlyPlayer) {
@@ -92,13 +92,13 @@ int32_t countAdjacentFriendlies(const aoc::game::GameState& gameState,
 
 float classMatchupModifier(UnitClass attackerClass, UnitClass defenderClass) {
     // AntiCavalry (spears/pikes/AT guns) vs Cavalry/Armor: +50%
-    if (attackerClass == UnitClass::AntiCavalry
-        && (defenderClass == UnitClass::Cavalry || defenderClass == UnitClass::Armor)) {
+    if (attackerClass == UnitClass::AntiCavalry &&
+        (defenderClass == UnitClass::Cavalry || defenderClass == UnitClass::Armor)) {
         return 1.50f;
     }
     // Cavalry vs Ranged/Artillery: +33% (fast flankers overwhelm slow shooters)
-    if (attackerClass == UnitClass::Cavalry
-        && (defenderClass == UnitClass::Ranged || defenderClass == UnitClass::Artillery)) {
+    if (attackerClass == UnitClass::Cavalry &&
+        (defenderClass == UnitClass::Ranged || defenderClass == UnitClass::Artillery)) {
         return 1.33f;
     }
     // Ranged vs Melee: +25% (kiting advantage)
@@ -106,8 +106,8 @@ float classMatchupModifier(UnitClass attackerClass, UnitClass defenderClass) {
         return 1.25f;
     }
     // Armor vs Melee/AntiCavalry: +25% (mechanised advantage over infantry)
-    if (attackerClass == UnitClass::Armor
-        && (defenderClass == UnitClass::Melee || defenderClass == UnitClass::AntiCavalry)) {
+    if (attackerClass == UnitClass::Armor &&
+        (defenderClass == UnitClass::Melee || defenderClass == UnitClass::AntiCavalry)) {
         return 1.25f;
     }
     // Artillery vs Armor: +33% (indirect fire vs slow heavy targets)
@@ -115,13 +115,13 @@ float classMatchupModifier(UnitClass attackerClass, UnitClass defenderClass) {
         return 1.33f;
     }
     // Air vs ground (excluding AntiCavalry which doubles as AA): +25%
-    if (attackerClass == UnitClass::Air && defenderClass != UnitClass::AntiCavalry
-        && defenderClass != UnitClass::Air && defenderClass != UnitClass::Helicopter) {
+    if (attackerClass == UnitClass::Air && defenderClass != UnitClass::AntiCavalry &&
+        defenderClass != UnitClass::Air && defenderClass != UnitClass::Helicopter) {
         return 1.25f;
     }
     // AntiCavalry vs Air/Helicopter: +50% (AA role in modern era)
-    if (attackerClass == UnitClass::AntiCavalry
-        && (defenderClass == UnitClass::Air || defenderClass == UnitClass::Helicopter)) {
+    if (attackerClass == UnitClass::AntiCavalry &&
+        (defenderClass == UnitClass::Air || defenderClass == UnitClass::Helicopter)) {
         return 1.50f;
     }
     // Helicopter vs Artillery: +33% (gunships hunt artillery)
@@ -140,9 +140,9 @@ int32_t computeCombatDamage(float attackStrength, float defenseStrength, aoc::Ra
     const float atk = std::clamp(attackStrength, 0.01f, 1000.0f);
     const float def = std::clamp(defenseStrength, 0.01f, 1000.0f);
 
-    const float ratio = atk / def;
+    const float ratio        = atk / def;
     const float randomFactor = 0.8f + rng.nextFloat() * 0.4f;
-    const float baseDamage = 30.0f * ratio * randomFactor;
+    const float baseDamage   = 30.0f * ratio * randomFactor;
 
     return std::clamp(static_cast<int32_t>(baseDamage), 0, 100);
 }
@@ -159,8 +159,7 @@ namespace {
 /// and barbarian units are found too. Until 2026-09-05 this scanned only the
 /// major players, and a killed barbarian was never removed: the corpse stayed
 /// on the map and every further attack on it paid the 25-gold clearance bonus.
-aoc::game::Player* findOwningPlayer(aoc::game::GameState& gameState,
-                                    const aoc::game::Unit* unit) {
+aoc::game::Player* findOwningPlayer(aoc::game::GameState& gameState, const aoc::game::Unit* unit) {
     if (unit == nullptr) {
         return nullptr;
     }
@@ -178,11 +177,9 @@ aoc::game::Player* findOwningPlayer(aoc::game::GameState& gameState,
 
 } // anonymous namespace
 
-CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
-                                 aoc::Random& rng,
-                                 const aoc::map::HexGrid& grid,
-                                 aoc::game::Unit& attacker,
-                                 aoc::game::Unit& defender) {
+CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rng,
+                                const aoc::map::HexGrid& grid, aoc::game::Unit& attacker,
+                                aoc::game::Unit& defender) {
     // Embarked defenders: melee attacks are rejected outright. Embarkation
     // cuts strength 50% and stacks with health + terrain penalties, letting
     // the defense strength collapse toward the insta-kill shortcut. Embarked
@@ -253,21 +250,27 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     aoc::hex::AxialCoord defenderTile = defender.position();
     if (result.defenderKilled && !result.attackerKilled) {
         attacker.setPosition(defenderTile);
-        attacker.setMovementRemaining(0);  // Melee attack ends movement
+        attacker.setMovementRemaining(0); // Melee attack ends movement
     }
 
     // Snapshot info before units are removed (removeUnit frees memory).
-    PlayerId attackerOwner = attacker.owner();
-    PlayerId defenderOwner = defender.owner();
+    PlayerId attackerOwner               = attacker.owner();
+    PlayerId defenderOwner               = defender.owner();
     const int32_t defenderProductionCost = defender.typeDef().productionCost;
-    const std::string_view defenderName = defender.typeDef().name;
+    const std::string_view defenderName  = defender.typeDef().name;
 
     // Snapshot Courier cargo if the defender is an undelivered domestic courier.
     // Cargo is lost; attacker loots half basePrice * quantity as plunder gold.
     const bool defenderIsCourier = (defender.typeId().value == 32);
-    const uint16_t defenderCargoGoodId   = defenderIsCourier ? defender.courier().goodId   : uint16_t{0};
-    const int32_t  defenderCargoQuantity = (defenderIsCourier && !defender.courier().delivered)
-                                            ? defender.courier().quantity : 0;
+    // The Trader line (Trader 30, Caravan 31, and any later row of the class)
+    // carries goods and coin in TraderComponent rather than the Courier's
+    // single-good component, so it is detected by class, not by id.
+    const bool defenderIsTrader =
+        (defender.typeDef().unitClass == UnitClass::Trader);
+    const uint16_t defenderCargoGoodId =
+        defenderIsCourier ? defender.courier().goodId : uint16_t{0};
+    const int32_t defenderCargoQuantity =
+        (defenderIsCourier && !defender.courier().delivered) ? defender.courier().quantity : 0;
 
     // WP8 — unified deferred-removal list. All raw Unit* derefs above this
     // block must be done with live pointers; removeUnit() invalidates the
@@ -276,7 +279,7 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     // pass so no in-loop deref races a sibling removal.
     struct PendingKill {
         aoc::game::Player* owner;
-        aoc::game::Unit*   unit;
+        aoc::game::Unit* unit;
     };
     std::vector<PendingKill> pendingKills;
 
@@ -293,7 +296,8 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
                     break;
                 }
             }
-            bool tileHasFort = (grid.improvement(grid.toIndex(defenderTile)) == aoc::map::ImprovementType::Fort);
+            bool tileHasFort =
+                (grid.improvement(grid.toIndex(defenderTile)) == aoc::map::ImprovementType::Fort);
 
             if (!tileHasCity && !tileHasFort) {
                 // Collect pointers to stack units before any removal to avoid
@@ -304,9 +308,15 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
                 // stack-kill would double-punish the defender.
                 int32_t stackCount = 0;
                 for (const std::unique_ptr<aoc::game::Unit>& u : defPlayer->units()) {
-                    if (u.get() == &defender) { continue; }
-                    if (u->position() != defenderTile) { continue; }
-                    if (u->formationLevel() != aoc::sim::FormationLevel::Single) { continue; }
+                    if (u.get() == &defender) {
+                        continue;
+                    }
+                    if (u->position() != defenderTile) {
+                        continue;
+                    }
+                    if (u->formationLevel() != aoc::sim::FormationLevel::Single) {
+                        continue;
+                    }
                     pendingKills.push_back({defPlayer, u.get()});
                     ++stackCount;
                 }
@@ -348,17 +358,32 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
             if (plunderGold > 0) {
                 atkPlayer->addGold(plunderGold);
                 LOG_INFO("Player %u pillaged %lld gold from destroying %.*s",
-                         static_cast<unsigned>(attackerOwner),
-                         static_cast<long long>(plunderGold),
-                         static_cast<int>(defenderName.size()),
-                         defenderName.data());
+                         static_cast<unsigned>(attackerOwner), static_cast<long long>(plunderGold),
+                         static_cast<int>(defenderName.size()), defenderName.data());
+            }
+
+            // Trader cargo loot. The Trader line (UnitClass::Trader) carries
+            // real goods and coin in its TraderComponent, and until 2026-09-07
+            // combat looted only the domestic Courier below, so killing a laden
+            // international Trader silently voided both. lootTraderCargo does
+            // the transfer without removing the unit -- the deferred pass at the
+            // end of this function owns that, and a second removal here would
+            // free it twice.
+            if (defenderIsTrader) {
+                const CurrencyAmount looted =
+                    aoc::sim::lootTraderCargo(gameState, defender, attackerOwner);
+                if (looted > 0) {
+                    LOG_INFO("Player %u looted trader cargo worth %lld from destroying %.*s",
+                             static_cast<unsigned>(attackerOwner), static_cast<long long>(looted),
+                             static_cast<int>(defenderName.size()), defenderName.data());
+                }
             }
 
             // Courier cargo loot: half basePrice * quantity of lost cargo.
             // Runtime bounds check: goodDef() only asserts in debug, so guard
             // here to avoid OOB on a corrupt/out-of-range cargo good id in release.
-            if (defenderIsCourier && defenderCargoQuantity > 0
-                && defenderCargoGoodId < aoc::sim::goods::GOOD_COUNT) {
+            if (defenderIsCourier && defenderCargoQuantity > 0 &&
+                defenderCargoGoodId < aoc::sim::goods::GOOD_COUNT) {
                 const aoc::sim::GoodDef& gd = aoc::sim::goodDef(defenderCargoGoodId);
                 const CurrencyAmount cargoGold =
                     static_cast<CurrencyAmount>((gd.basePrice * defenderCargoQuantity) / 2);
@@ -366,62 +391,60 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
                     atkPlayer->addGold(cargoGold);
                     LOG_INFO("Player %u looted courier cargo: good %u x%d for %lld gold",
                              static_cast<unsigned>(attackerOwner),
-                             static_cast<unsigned>(defenderCargoGoodId),
-                             defenderCargoQuantity,
+                             static_cast<unsigned>(defenderCargoGoodId), defenderCargoQuantity,
                              static_cast<long long>(cargoGold));
                 }
             }
 
             // Bonus pillage gold if the tile has improvements or resources.
             // Represents looting infrastructure — like Civ 6's pillaging.
-            const int32_t tileIdx = grid.toIndex(defenderTile);
-            const aoc::ResourceId tileRes = grid.resource(tileIdx);
+            const int32_t tileIdx                   = grid.toIndex(defenderTile);
+            const aoc::ResourceId tileRes           = grid.resource(tileIdx);
             const aoc::map::ImprovementType tileImp = grid.improvement(tileIdx);
             if (tileRes.isValid() || tileImp != aoc::map::ImprovementType::None) {
                 constexpr CurrencyAmount TILE_PILLAGE_BONUS = 15;
                 atkPlayer->addGold(TILE_PILLAGE_BONUS);
                 LOG_INFO("Player %u pillaged tile improvements at (%d,%d) for %lld gold",
-                         static_cast<unsigned>(attackerOwner),
-                         defenderTile.q, defenderTile.r,
+                         static_cast<unsigned>(attackerOwner), defenderTile.q, defenderTile.r,
                          static_cast<long long>(TILE_PILLAGE_BONUS));
             }
             // Resource loot: dump 5 units of the tile's resource into
             // attacker's nearest city stockpile (closest to defenderTile).
             if (tileRes.isValid()) {
                 aoc::game::City* nearestCity = nullptr;
-                int32_t bestDist = std::numeric_limits<int32_t>::max();
+                int32_t bestDist             = std::numeric_limits<int32_t>::max();
                 for (const std::unique_ptr<aoc::game::City>& cityPtr : atkPlayer->cities()) {
-                    if (cityPtr == nullptr) { continue; }
+                    if (cityPtr == nullptr) {
+                        continue;
+                    }
                     const int32_t d = grid.distance(defenderTile, cityPtr->location());
-                    if (d < bestDist) { bestDist = d; nearestCity = cityPtr.get(); }
+                    if (d < bestDist) {
+                        bestDist    = d;
+                        nearestCity = cityPtr.get();
+                    }
                 }
                 if (nearestCity != nullptr) {
                     constexpr int32_t LOOTED_UNITS = 5;
                     nearestCity->stockpile().addGoods(tileRes.value, LOOTED_UNITS);
                     LOG_INFO("Player %u looted %d units of good %u to %s",
                              static_cast<unsigned>(attackerOwner), LOOTED_UNITS,
-                             static_cast<unsigned>(tileRes.value),
-                             nearestCity->name().c_str());
+                             static_cast<unsigned>(tileRes.value), nearestCity->name().c_str());
                 }
             }
 
             // Conditional civ bonus: scienceOnUnitKill (Macedon),
             // faithOnUnitKill (Aztec). Bypassed against Barbarians above.
-            const aoc::sim::CivAbilityModifiers& m =
-                aoc::sim::civDef(atkPlayer->civId()).modifiers;
+            const aoc::sim::CivAbilityModifiers& m = aoc::sim::civDef(atkPlayer->civId()).modifiers;
             if (m.scienceOnUnitKill > 0) {
-                atkPlayer->tech().researchProgress +=
-                    static_cast<float>(m.scienceOnUnitKill);
+                atkPlayer->tech().researchProgress += static_cast<float>(m.scienceOnUnitKill);
             }
             if (m.faithOnUnitKill > 0) {
-                atkPlayer->faith().faith +=
-                    static_cast<float>(m.faithOnUnitKill);
+                atkPlayer->faith().faith += static_cast<float>(m.faithOnUnitKill);
             }
         }
     }
 
-    LOG_INFO("Atk took %d dmg, Def took %d dmg%s%s",
-             result.attackerDamage, result.defenderDamage,
+    LOG_INFO("Atk took %d dmg, Def took %d dmg%s%s", result.attackerDamage, result.defenderDamage,
              result.attackerKilled ? " (attacker killed)" : "",
              result.defenderKilled ? " (defender killed)" : "");
 
@@ -437,11 +460,9 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     return result;
 }
 
-CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
-                                  aoc::Random& rng,
-                                  const aoc::map::HexGrid& grid,
-                                  aoc::game::Unit& attacker,
-                                  aoc::game::Unit& defender) {
+CombatResult resolveRangedCombat(aoc::game::GameState& gameState, aoc::Random& rng,
+                                 const aoc::map::HexGrid& grid, aoc::game::Unit& attacker,
+                                 aoc::game::Unit& defender) {
     const CombatStrengths strengths =
         computeCombatStrengths(gameState, grid, attacker, defender, true);
     const float atkStrength = strengths.attack;
@@ -480,7 +501,7 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
     // all Unit derefs are complete.
     struct PendingKill {
         aoc::game::Player* owner;
-        aoc::game::Unit*   unit;
+        aoc::game::Unit* unit;
     };
     std::vector<PendingKill> pendingKills;
     if (result.defenderKilled) {
@@ -499,10 +520,8 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
     return result;
 }
 
-CombatPreview previewCombat(const aoc::game::GameState& gameState,
-                             const aoc::map::HexGrid& grid,
-                             const aoc::game::Unit& attacker,
-                             const aoc::game::Unit& defender) {
+CombatPreview previewCombat(const aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                            const aoc::game::Unit& attacker, const aoc::game::Unit& defender) {
     const bool isRanged = (attacker.typeDef().rangedStrength > 0);
     const CombatStrengths strengths =
         computeCombatStrengths(gameState, grid, attacker, defender, isRanged);
@@ -515,8 +534,8 @@ CombatPreview previewCombat(const aoc::game::GameState& gameState,
     if (defStrength < 0.01f) {
         preview.expectedDefenderDamage = 100;
     } else {
-        float ratio = atkStrength / defStrength;
-        float baseDamage = 30.0f * ratio * 1.0f;
+        float ratio                    = atkStrength / defStrength;
+        float baseDamage               = 30.0f * ratio * 1.0f;
         preview.expectedDefenderDamage = std::clamp(static_cast<int32_t>(baseDamage), 0, 100);
     }
     if (!isRanged) {
@@ -530,9 +549,9 @@ CombatPreview previewCombat(const aoc::game::GameState& gameState,
         if (atkStrength < 0.01f) {
             preview.expectedAttackerDamage = 100;
         } else {
-            float counterRatio = defStrength / atkStrength;
+            float counterRatio  = defStrength / atkStrength;
             float counterDamage = 30.0f * counterRatio * 1.0f;
-            int32_t rawCounter = std::clamp(static_cast<int32_t>(counterDamage), 0, 100);
+            int32_t rawCounter  = std::clamp(static_cast<int32_t>(counterDamage), 0, 100);
             // Attacker takes 80% of counter-damage (aggressor advantage)
             preview.expectedAttackerDamage = rawCounter * 8 / 10;
         }
@@ -581,7 +600,9 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
 
         // WP-P2: starvation derate.
         auto rngStarveMult = [](int32_t turns) -> float {
-            if (turns <= 0) { return 1.0f; }
+            if (turns <= 0) {
+                return 1.0f;
+            }
             return std::max(0.5f, 1.0f - 0.1f * static_cast<float>(turns));
         };
         atkStrength *= rngStarveMult(attacker.turnsStarving());
@@ -613,8 +634,10 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
         atkStrength += static_cast<float>(attacker.experience().totalCombatBonus());
         defStrength += static_cast<float>(defender.experience().totalCombatBonus());
 
-        float atkHealthMod = static_cast<float>(attacker.hitPoints()) / static_cast<float>(atkDef.maxHitPoints);
-        float defHealthMod = static_cast<float>(defender.hitPoints()) / static_cast<float>(defDef.maxHitPoints);
+        float atkHealthMod =
+            static_cast<float>(attacker.hitPoints()) / static_cast<float>(atkDef.maxHitPoints);
+        float defHealthMod =
+            static_cast<float>(defender.hitPoints()) / static_cast<float>(defDef.maxHitPoints);
         atkStrength *= atkHealthMod;
         defStrength *= defHealthMod;
 
@@ -645,8 +668,8 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
         }
 
         // Flanking bonus: matches melee rules (capped at 3 adjacent).
-        int32_t flanking = std::min(3,
-            countAdjacentFriendlies(gameState, defender.position(), attacker.owner(), &attacker));
+        int32_t flanking = std::min(3, countAdjacentFriendlies(gameState, defender.position(),
+                                                               attacker.owner(), &attacker));
         atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
 
         // Class matchup bonus applied symmetrically to both sides.
@@ -678,7 +701,9 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
 
         // WP-P2: starvation derate. -10% per consecutive starving turn, floor 50%.
         auto starveMult = [](int32_t turns) -> float {
-            if (turns <= 0) { return 1.0f; }
+            if (turns <= 0) {
+                return 1.0f;
+            }
             const float mult = 1.0f - 0.1f * static_cast<float>(turns);
             return std::max(0.5f, mult);
         };
@@ -720,24 +745,22 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
                 const aoc::sim::CivAbilityModifiers& m =
                     aoc::sim::civDef(atkPlayer->civId()).modifiers;
                 atkStrength += m.combatStrengthBonus;
-                atkStrength += aoc::sim::computeGovernmentModifiers(
-                    atkPlayer->government()).combatStrengthBonus;
+                atkStrength += aoc::sim::computeGovernmentModifiers(atkPlayer->government())
+                                   .combatStrengthBonus;
                 // Conditional combat bonuses keyed off attacker tile / context.
                 const int32_t atkIdx = grid.toIndex(attacker.position());
-                if (m.combatBonusOwnTerritory > 0
-                 && grid.owner(atkIdx) == attacker.owner()) {
+                if (m.combatBonusOwnTerritory > 0 && grid.owner(atkIdx) == attacker.owner()) {
                     atkStrength += static_cast<float>(m.combatBonusOwnTerritory);
                 }
-                if (m.combatBonusInForest > 0
-                 && grid.feature(atkIdx) == aoc::map::FeatureType::Forest) {
+                if (m.combatBonusInForest > 0 &&
+                    grid.feature(atkIdx) == aoc::map::FeatureType::Forest) {
                     atkStrength += static_cast<float>(m.combatBonusInForest);
                 }
                 if (m.combatBonusVsDifferentReligion > 0 && defPlayer != nullptr) {
                     const ReligionId atkR = atkPlayer->faith().foundedReligion;
                     const ReligionId defR = defPlayer->faith().foundedReligion;
-                    if (atkR != aoc::sim::NO_RELIGION
-                     && defR != aoc::sim::NO_RELIGION
-                     && atkR != defR) {
+                    if (atkR != aoc::sim::NO_RELIGION && defR != aoc::sim::NO_RELIGION &&
+                        atkR != defR) {
                         atkStrength += static_cast<float>(m.combatBonusVsDifferentReligion);
                     }
                 }
@@ -746,15 +769,14 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
                 const aoc::sim::CivAbilityModifiers& m =
                     aoc::sim::civDef(defPlayer->civId()).modifiers;
                 defStrength += m.combatStrengthBonus;
-                defStrength += aoc::sim::computeGovernmentModifiers(
-                    defPlayer->government()).combatStrengthBonus;
+                defStrength += aoc::sim::computeGovernmentModifiers(defPlayer->government())
+                                   .combatStrengthBonus;
                 const int32_t defIdx = grid.toIndex(defender.position());
-                if (m.combatBonusOwnTerritory > 0
-                 && grid.owner(defIdx) == defender.owner()) {
+                if (m.combatBonusOwnTerritory > 0 && grid.owner(defIdx) == defender.owner()) {
                     defStrength += static_cast<float>(m.combatBonusOwnTerritory);
                 }
-                if (m.combatBonusInForest > 0
-                 && grid.feature(defIdx) == aoc::map::FeatureType::Forest) {
+                if (m.combatBonusInForest > 0 &&
+                    grid.feature(defIdx) == aoc::map::FeatureType::Forest) {
                     defStrength += static_cast<float>(m.combatBonusInForest);
                 }
             }
@@ -774,8 +796,10 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
         }
 
         // Health modifier: damaged units fight worse
-        float atkHealthMod = static_cast<float>(attacker.hitPoints()) / static_cast<float>(atkDef.maxHitPoints);
-        float defHealthMod = static_cast<float>(defender.hitPoints()) / static_cast<float>(defDef.maxHitPoints);
+        float atkHealthMod =
+            static_cast<float>(attacker.hitPoints()) / static_cast<float>(atkDef.maxHitPoints);
+        float defHealthMod =
+            static_cast<float>(defender.hitPoints()) / static_cast<float>(defDef.maxHitPoints);
         atkStrength *= atkHealthMod;
         defStrength *= defHealthMod;
 
@@ -811,8 +835,8 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
         // adjacent (max +30%). Without the cap, a 3-unit Army surrounding a
         // single defender produces 1.6x strength plus reduced counter-damage,
         // snowballing into near-zero-loss kills every turn.
-        int32_t flanking = std::min(3,
-            countAdjacentFriendlies(gameState, defender.position(), attacker.owner(), &attacker));
+        int32_t flanking = std::min(3, countAdjacentFriendlies(gameState, defender.position(),
+                                                               attacker.owner(), &attacker));
         atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
 
         // Class matchup bonus (rock-paper-scissors)
@@ -838,30 +862,30 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
     return CombatStrengths{atkStrength, defStrength};
 }
 
-CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
-                                 aoc::Random& rng,
-                                 const aoc::map::HexGrid& grid,
-                                 EntityId attackerEntity,
-                                 EntityId defenderEntity) {
+CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rng,
+                                const aoc::map::HexGrid& grid, EntityId attackerEntity,
+                                EntityId defenderEntity) {
     aoc::game::Unit* attacker = findUnitByEntity(gameState, attackerEntity);
     aoc::game::Unit* defender = findUnitByEntity(gameState, defenderEntity);
-    if (attacker == nullptr || defender == nullptr) { return {}; }
+    if (attacker == nullptr || defender == nullptr) {
+        return {};
+    }
     return resolveMeleeCombat(gameState, rng, grid, *attacker, *defender);
 }
 
-CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
-                                  aoc::Random& rng,
-                                  const aoc::map::HexGrid& grid,
-                                  EntityId attackerEntity,
-                                  EntityId defenderEntity) {
+CombatResult resolveRangedCombat(aoc::game::GameState& gameState, aoc::Random& rng,
+                                 const aoc::map::HexGrid& grid, EntityId attackerEntity,
+                                 EntityId defenderEntity) {
     aoc::game::Unit* attacker = findUnitByEntity(gameState, attackerEntity);
     aoc::game::Unit* defender = findUnitByEntity(gameState, defenderEntity);
-    if (attacker == nullptr || defender == nullptr) { return {}; }
+    if (attacker == nullptr || defender == nullptr) {
+        return {};
+    }
     return resolveRangedCombat(gameState, rng, grid, *attacker, *defender);
 }
 
 static const aoc::game::Unit* findConstUnitByEntity(const aoc::game::GameState& gameState,
-                                                     EntityId entity) {
+                                                    EntityId entity) {
     uint32_t remaining = entity.index;
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         const std::vector<std::unique_ptr<aoc::game::Unit>>& units = playerPtr->units();
@@ -874,13 +898,13 @@ static const aoc::game::Unit* findConstUnitByEntity(const aoc::game::GameState& 
     return nullptr;
 }
 
-CombatPreview previewCombat(const aoc::game::GameState& gameState,
-                             const aoc::map::HexGrid& grid,
-                             EntityId attackerEntity,
-                             EntityId defenderEntity) {
+CombatPreview previewCombat(const aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                            EntityId attackerEntity, EntityId defenderEntity) {
     const aoc::game::Unit* attacker = findConstUnitByEntity(gameState, attackerEntity);
     const aoc::game::Unit* defender = findConstUnitByEntity(gameState, defenderEntity);
-    if (attacker == nullptr || defender == nullptr) { return {}; }
+    if (attacker == nullptr || defender == nullptr) {
+        return {};
+    }
     return previewCombat(gameState, grid, *attacker, *defender);
 }
 

@@ -991,6 +991,7 @@ if(AOC_BUILD_TESTS)
         test_robot_maintenance
         test_builder_retire
         test_supply_healing
+        test_trader_pillage
         test_spaceport
         test_government_plaza_and_dam
         test_great_works

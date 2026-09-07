@@ -1484,13 +1484,10 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     }
 }
 
-CurrencyAmount pillageTrader(aoc::game::GameState& gameState,
-                              EntityId traderEntity,
-                              PlayerId pillager) {
-    aoc::game::Unit* traderUnit = findTraderByEntityId(gameState, traderEntity);
-    if (traderUnit == nullptr) {
-        return 0;
-    }
+CurrencyAmount lootTraderCargo(aoc::game::GameState& gameState,
+                               aoc::game::Unit& traderUnitRef,
+                               PlayerId pillager) {
+    aoc::game::Unit* traderUnit = &traderUnitRef;
 
     // WP-O: pillaged trader can't pick up. Release the seller's reservation.
     releasePickupReservation(gameState, traderUnit->trader());
@@ -1533,12 +1530,21 @@ CurrencyAmount pillageTrader(aoc::game::GameState& gameState,
                               trader.routeType);
     }
 
+    return totalValue;
+}
+
+CurrencyAmount pillageTrader(aoc::game::GameState& gameState, EntityId traderEntity,
+                             PlayerId pillager) {
+    aoc::game::Unit* traderUnit = findTraderByEntityId(gameState, traderEntity);
+    if (traderUnit == nullptr) {
+        return 0;
+    }
+    const CurrencyAmount looted = lootTraderCargo(gameState, *traderUnit, pillager);
     aoc::game::Player* traderOwner = gameState.player(traderUnit->owner());
     if (traderOwner != nullptr) {
         traderOwner->removeUnit(traderUnit);
     }
-
-    return totalValue;
+    return looted;
 }
 
 void processLogisticsUnits(aoc::game::GameState& gameState,

@@ -42,34 +42,44 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::game { class GameState; class Unit; class City; class Player; }
-namespace aoc::map { class HexGrid; }
-namespace aoc::sim { class Market; class DiplomacyManager; }
+namespace aoc::game {
+class GameState;
+class Unit;
+class City;
+class Player;
+} // namespace aoc::game
+namespace aoc::map {
+class HexGrid;
+}
+namespace aoc::sim {
+class Market;
+class DiplomacyManager;
+} // namespace aoc::sim
 
 namespace aoc::sim {
 
 /// Cargo being carried by a Trader unit.
 struct TradeCargo {
     uint16_t goodId = 0;
-    int32_t  amount = 0;
+    int32_t amount  = 0;
 };
 
 /// How a trade route travels between cities.
 enum class TradeRouteType : uint8_t {
-    Land,   ///< Walks overland, uses roads/railways. Wagon = worst capacity;
-            ///< rail-majority path = train tier (large capacity).
-    Sea,    ///< Sails between coastal cities (both need Harbor). Largest
-            ///< capacity (8 slots). Profit comes from volume, not bonuses.
-    Air,    ///< Flies between cities with Airports. Lowest capacity but
-            ///< fastest (8 tiles/turn). Profit comes from trip frequency.
+    Land, ///< Walks overland, uses roads/railways. Wagon = worst capacity;
+          ///< rail-majority path = train tier (large capacity).
+    Sea,  ///< Sails between coastal cities (both need Harbor). Largest
+          ///< capacity (8 slots). Profit comes from volume, not bonuses.
+    Air,  ///< Flies between cities with Airports. Lowest capacity but
+          ///< fastest (8 tiles/turn). Profit comes from trip frequency.
 };
 
 /// State of an active trade route (attached to the Trader entity).
 struct TraderComponent {
-    PlayerId     owner = INVALID_PLAYER;
+    PlayerId owner = INVALID_PLAYER;
     aoc::hex::AxialCoord originCityLocation{};
     aoc::hex::AxialCoord destCityLocation{};
-    PlayerId     destOwner = INVALID_PLAYER;  ///< Owner of destination city
+    PlayerId destOwner = INVALID_PLAYER; ///< Owner of destination city
 
     /// How this route travels.
     TradeRouteType routeType = TradeRouteType::Land;
@@ -89,7 +99,7 @@ struct TraderComponent {
 
     /// Planned path from current position to next destination.
     std::vector<aoc::hex::AxialCoord> path;
-    int32_t pathIndex = 0;  ///< Current position along path
+    int32_t pathIndex = 0; ///< Current position along path
 
     /// Whether the Trader is heading to destination (outbound) or returning.
     bool isReturning = false;
@@ -101,7 +111,7 @@ struct TraderComponent {
     int32_t turnsActive = 0;
 
     /// Maximum round trips before the Trader expires (like Builder charges).
-    int32_t maxTrips = -1;  ///< -1 = permanent (route persists until trader killed)
+    int32_t maxTrips = -1; ///< -1 = permanent (route persists until trader killed)
 
     /// Gold earned this turn from trade.
     CurrencyAmount goldEarnedThisTurn = 0;
@@ -119,11 +129,11 @@ struct TraderComponent {
     /// reversal. Drained per tile travelled. 0 for wagon (Land pre-rail).
     /// goodId 0 = no fuel needed.
     uint16_t fuelGoodId = 0;
-    int32_t  fuelOnBoard = 0;
-    float    fuelPerTile = 0.0f;
+    int32_t fuelOnBoard = 0;
+    float fuelPerTile   = 0.0f;
     /// Consecutive turns the trader has stalled with empty fuel. After
     /// 20 idle turns the route is auto-abandoned.
-    int32_t  idleTurnsNoFuel = 0;
+    int32_t idleTurnsNoFuel = 0;
 
     /// Cumulative science/culture spread bonus.
     float scienceSpread = 0.0f;
@@ -137,10 +147,13 @@ struct TraderComponent {
     /// `onRail` flag is computed once at load time from path coverage.
     [[nodiscard]] int32_t maxCargoSlots(bool onRail = false) const {
         switch (this->routeType) {
-            case TradeRouteType::Sea: return 8;
-            case TradeRouteType::Air: return 3;
-            case TradeRouteType::Land:
-            default: return onRail ? 6 : 2;
+        case TradeRouteType::Sea:
+            return 8;
+        case TradeRouteType::Air:
+            return 3;
+        case TradeRouteType::Land:
+        default:
+            return onRail ? 6 : 2;
         }
     }
 
@@ -148,7 +161,7 @@ struct TraderComponent {
     /// takes its cut. Metal coins (CommodityMoney) chew into the bay; paper
     /// and electronic money are effectively free. Always leaves >= 1 slot.
     [[nodiscard]] int32_t effectiveCargoSlots(MonetarySystemType system,
-                                                bool onRail = false) const {
+                                              bool onRail = false) const {
         const int32_t raw    = this->maxCargoSlots(onRail);
         const int32_t weight = moneyWeightSlots(system);
         return std::max(1, raw - weight);
@@ -161,22 +174,26 @@ struct TraderComponent {
     [[nodiscard]] int32_t movementSpeed(bool onRoad, bool onRailway,
                                         bool onPipeline = false) const {
         switch (this->routeType) {
-            case TradeRouteType::Air:
-                return 8;
-            case TradeRouteType::Sea:
-                return 5;
-            case TradeRouteType::Land:
-            default: {
-                int32_t base = 2;
-                int32_t speed = base;
-                if (onRailway)      { speed = base + 4; }
-                else if (onRoad)    { speed = base + 2; }
-                if (onPipeline)     { speed *= 2; }
-                return speed;
+        case TradeRouteType::Air:
+            return 8;
+        case TradeRouteType::Sea:
+            return 5;
+        case TradeRouteType::Land:
+        default: {
+            int32_t base  = 2;
+            int32_t speed = base;
+            if (onRailway) {
+                speed = base + 4;
+            } else if (onRoad) {
+                speed = base + 2;
             }
+            if (onPipeline) {
+                speed *= 2;
+            }
+            return speed;
+        }
         }
     }
-
 };
 
 // ============================================================================
@@ -196,16 +213,14 @@ struct TraderComponent {
  * @return Ok if route established.
  */
 [[nodiscard]] ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
-                                             aoc::map::HexGrid& grid,
-                                             const Market& market,
-                                             const DiplomacyManager* diplomacy,
-                                             aoc::game::Unit& traderUnit,
-                                             aoc::game::City& destCity);
+                                            aoc::map::HexGrid& grid, const Market& market,
+                                            const DiplomacyManager* diplomacy,
+                                            aoc::game::Unit& traderUnit, aoc::game::City& destCity);
 
 /// Civ-wide trade slot pool (monetary tier + Markets/Banks/Stock Exchanges
 /// + Trading Posts + Merchant GP slots + great-people bonuses).
 [[nodiscard]] int32_t computeTotalTradeSlots(const aoc::game::Player& player,
-                                              const aoc::map::HexGrid& grid);
+                                             const aoc::map::HexGrid& grid);
 
 /**
  * @brief Process all active trade routes for one turn.
@@ -214,8 +229,7 @@ struct TraderComponent {
  * Collects tolls when traders traverse foreign territory (soft border system).
  */
 void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
-                         const Market& market,
-                         DiplomacyManager* diplomacy);
+                        const Market& market, DiplomacyManager* diplomacy);
 
 /**
  * @brief Pillage a Trader unit (called when enemy attacks it).
@@ -228,15 +242,33 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
  * @param pillager      The player doing the pillaging.
  * @return Gold value of captured cargo.
  */
-CurrencyAmount pillageTrader(aoc::game::GameState& gameState,
-                              EntityId traderEntity,
-                              PlayerId pillager);
+CurrencyAmount pillageTrader(aoc::game::GameState& gameState, EntityId traderEntity,
+                             PlayerId pillager);
+
+/**
+ * @brief Loot a Trader's cargo without destroying it.
+ *
+ * The same transfer as `pillageTrader`, minus the removal: cargo goes to the
+ * pillager's first city, carried coin to their treasury, the seller's pickup
+ * reservation is released, and an auto-renew request is queued if the route had
+ * one. The caller is left owning the unit's fate.
+ *
+ * This exists for the combat kill path, which removes its dead through one
+ * deferred pass at the end of `resolveCombat` -- letting the loot step remove
+ * the trader too would free it twice. Until 2026-09-07 combat looted only the
+ * domestic Courier, so killing a laden international Trader silently voided its
+ * cargo and its carried gold.
+ *
+ * @return Gold value of the captured cargo, coin included.
+ */
+CurrencyAmount lootTraderCargo(aoc::game::GameState& gameState, aoc::game::Unit& traderUnit,
+                               PlayerId pillager);
 
 /**
  * @brief Count active trade routes for a player.
  */
 [[nodiscard]] int32_t countActiveTradeRoutes(const aoc::game::GameState& gameState,
-                                              PlayerId player);
+                                             PlayerId player);
 
 /**
  * @brief WP-S2: drive Logistics units' supply cycle for one turn.
@@ -249,15 +281,14 @@ CurrencyAmount pillageTrader(aoc::game::GameState& gameState,
  *   - UnloadingAtDepot: dump cargo into encampment buffer, set state EnRouteToCity.
  *   - EnRouteToCity: walk back to home city, return to idle.
  */
-void processLogisticsUnits(aoc::game::GameState& gameState,
-                            aoc::map::HexGrid& grid);
+void processLogisticsUnits(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
 
 /// Preview information for a potential trade route (no side effects).
 struct TradeRouteEstimate {
-    int32_t        distanceTiles  = 0;   ///< Path length in tiles.
-    int32_t        roundTripTurns = 0;   ///< Estimated turns for one round trip.
-    CurrencyAmount estimatedGoldPerTrip = 0;  ///< Rough gold income per round trip.
-    TradeRouteType routeType = TradeRouteType::Land;
+    int32_t distanceTiles               = 0; ///< Path length in tiles.
+    int32_t roundTripTurns              = 0; ///< Estimated turns for one round trip.
+    CurrencyAmount estimatedGoldPerTrip = 0; ///< Rough gold income per round trip.
+    TradeRouteType routeType            = TradeRouteType::Land;
 };
 
 /**
@@ -267,11 +298,10 @@ struct TradeRouteEstimate {
  * market price differentials between origin and destination stockpiles.
  * Used by the UI to show previews before the player confirms.
  */
-[[nodiscard]] TradeRouteEstimate estimateTradeRouteIncome(
-    const aoc::game::GameState& gameState,
-    const aoc::map::HexGrid& grid,
-    const Market& market,
-    const aoc::game::Unit& traderUnit,
-    const aoc::game::City& destCity);
+[[nodiscard]] TradeRouteEstimate estimateTradeRouteIncome(const aoc::game::GameState& gameState,
+                                                          const aoc::map::HexGrid& grid,
+                                                          const Market& market,
+                                                          const aoc::game::Unit& traderUnit,
+                                                          const aoc::game::City& destCity);
 
 } // namespace aoc::sim
