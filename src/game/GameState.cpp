@@ -4,6 +4,8 @@
  */
 
 #include "aoc/game/GameState.hpp"
+
+#include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
@@ -87,6 +89,13 @@ City* GameState::transferCity(aoc::hex::AxialCoord at, PlayerId newOwner) {
         city->setOwner(newOwner);
         return city;
     }
+    // Trade routes to or from this city are now void. A trader's destOwner is a
+    // snapshot from when the route was established, but the arrival path reads
+    // the city's live owner, so without this the losing side's trader kept
+    // walking here and unloaded into the conqueror's stockpile. Every ownership
+    // change -- conquest, loyalty revolt, secession, liberation -- comes through
+    // this function, so it is the one place that needs to know.
+    aoc::sim::cancelRoutesToCity(*this, at, newOwner);
     Player* destination = this->player(newOwner);
     if (destination == nullptr) {
         // A free city has no seat: leave the object where it is and record

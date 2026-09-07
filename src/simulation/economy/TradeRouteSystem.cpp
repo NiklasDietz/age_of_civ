@@ -1533,6 +1533,73 @@ CurrencyAmount lootTraderCargo(aoc::game::GameState& gameState,
     return totalValue;
 }
 
+int32_t cancelRoutesToCity(aoc::game::GameState& gameState, aoc::hex::AxialCoord at,
+                           PlayerId newOwner) {
+    int32_t cancelled = 0;
+    // Collect first, act after: removeUnit frees the unique_ptr storage and
+    // would invalidate the iteration.
+    struct Doomed {
+        aoc::game::Player* owner;
+        aoc::game::Unit* unit;
+    };
+    std::vector<Doomed> toRemove;
+
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) {
+            continue;
+        }
+        for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerPtr->units()) {
+            if (unitPtr == nullptr || unitPtr->typeDef().unitClass != UnitClass::Trader) {
+                continue;
+            }
+            TraderComponent& trader = unitPtr->trader();
+            const bool destTaken    = (trader.destCityLocation == at);
+            const bool originTaken  = (trader.originCityLocation == at);
+            if (!destTaken && !originTaken) {
+                continue;
+            }
+            // The new owner's own traders now run an internal route. Leave them.
+            if (trader.owner == newOwner) {
+                continue;
+            }
+            // Already ended by an earlier change of hands: heading home with no
+            // renewal left to stop. Skipping keeps the count honest when a city
+            // is taken twice.
+            if (destTaken && trader.isReturning && !unitPtr->autoRenewRoute) {
+                continue;
+            }
+
+            releasePickupReservation(gameState, trader);
+            // A route to a city someone else now holds must not renew itself
+            // against the old partner.
+            unitPtr->autoRenewRoute = false;
+            trader.destOwner        = newOwner;
+            ++cancelled;
+
+            if (originTaken) {
+                // Its home is gone: there is nowhere to carry the cargo back to.
+                toRemove.push_back({playerPtr.get(), unitPtr.get()});
+                continue;
+            }
+            // Outbound to a city that just fell: turn around and carry the cargo
+            // home rather than handing it to the conqueror.
+            if (!trader.isReturning) {
+                trader.isReturning = true;
+                std::reverse(trader.path.begin(), trader.path.end());
+                trader.pathIndex = 0;
+            }
+        }
+    }
+
+    for (const Doomed& d : toRemove) {
+        d.owner->removeUnit(d.unit);
+    }
+    if (cancelled > 0) {
+        LOG_INFO("City (%d,%d) changed hands: %d trade route(s) ended", at.q, at.r, cancelled);
+    }
+    return cancelled;
+}
+
 CurrencyAmount pillageTrader(aoc::game::GameState& gameState, EntityId traderEntity,
                              PlayerId pillager) {
     aoc::game::Unit* traderUnit = findTraderByEntityId(gameState, traderEntity);

@@ -265,6 +265,31 @@ CurrencyAmount lootTraderCargo(aoc::game::GameState& gameState, aoc::game::Unit&
                                PlayerId pillager);
 
 /**
+ * @brief End trade routes that ran to or from a city which just changed hands.
+ *
+ * A route's `destOwner` is a snapshot taken when the route was established,
+ * while the arrival path reads the destination city's LIVE owner. Nothing
+ * reconciled the two, and no route-cancellation existed anywhere in the repo,
+ * so after a conquest the losing side's trader kept walking to the same tile
+ * and unloaded its cargo into the conqueror's stockpile -- paying the enemy,
+ * at the at-war rate of 20 percent, for the privilege.
+ *
+ * A trader still outbound turns around and carries its cargo home; one whose
+ * own origin city was the one taken has nowhere to return to and is removed.
+ * Traders belonging to the new owner are left alone: their route is now
+ * internal, which is legitimate.
+ *
+ * Called from `GameState::transferCity`, the single chokepoint every ownership
+ * change goes through -- conquest, loyalty revolt, secession and liberation.
+ *
+ * @param at        The city that changed hands.
+ * @param newOwner  Who holds it now.
+ * @return Number of routes ended.
+ */
+int32_t cancelRoutesToCity(aoc::game::GameState& gameState, aoc::hex::AxialCoord at,
+                           PlayerId newOwner);
+
+/**
  * @brief Count active trade routes for a player.
  */
 [[nodiscard]] int32_t countActiveTradeRoutes(const aoc::game::GameState& gameState,
