@@ -386,8 +386,9 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
                     positions.push_back(unitPtr->position());
                 }
                 for (const aoc::hex::AxialCoord& pos : positions) {
-                    (void)aoc::sim::checkAndClaimGoodyHut(
-                        goodyHuts, gameState, *gsp, pos, rng);
+                    // GA runs are headless: no fog layer, so nothing to reveal.
+                    (void)aoc::sim::checkAndClaimGoodyHut(goodyHuts, gameState, *gsp, pos, rng,
+                                                          grid, nullptr);
                 }
             }
         }

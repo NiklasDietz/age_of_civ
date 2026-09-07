@@ -40,9 +40,27 @@ TEST_CASE("every upgrade path ends at a real unit") {
             CHECK(aoc::sim::unitTypeDef(up.to).id == up.to);
         }
     }
+    // The Spearman line. This used to pin the immediate successor as Pike and
+    // Shot, which was the answer of a second UPGRADE_PATHS table that has since
+    // been deleted in favour of UNIT_TYPE_DEFS. The unit table routes the same
+    // line through the Pikeman first, so pinning one hop pinned the poorer of
+    // two tables. Assert the chain instead: it still gets there.
     const std::vector<aoc::sim::UnitUpgradeDef> spear = aoc::sim::getAvailableUpgrades(UnitTypeId{9});
     REQUIRE(spear.size() == 1);
-    CHECK(spear[0].to == UnitTypeId{46}); // Pike and Shot
+    UnitTypeId walk    = UnitTypeId{9};
+    bool reachesPikeAndShot = false;
+    for (int32_t step = 0; step < aoc::sim::UNIT_TYPE_COUNT; ++step) {
+        const UnitTypeId next = aoc::sim::unitTypeDef(walk).upgradesTo;
+        if (!next.isValid()) {
+            break;
+        }
+        if (next == UnitTypeId{46}) {
+            reachesPikeAndShot = true;
+            break;
+        }
+        walk = next;
+    }
+    CHECK(reachesPikeAndShot);
 }
 
 TEST_CASE("a city-state fields the strongest defender of the world's era") {

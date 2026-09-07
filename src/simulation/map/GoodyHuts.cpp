@@ -13,6 +13,8 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
+#include "aoc/map/FogOfWar.hpp"
+#include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -76,7 +78,9 @@ GoodyHutReward checkAndClaimGoodyHut(GoodyHutState& state,
                                       [[maybe_unused]] aoc::game::GameState& gameState,
                                       aoc::game::Player& player,
                                       aoc::hex::AxialCoord unitPosition,
-                                      aoc::Random& rng) {
+                                      aoc::Random& rng,
+                                      const aoc::map::HexGrid& grid,
+                                      aoc::map::FogOfWar* fogOfWar) {
     if (!state.hasHut(unitPosition)) {
         return GoodyHutReward::Count;  // No hut here
     }
@@ -129,10 +133,24 @@ GoodyHutReward checkAndClaimGoodyHut(GoodyHutState& state,
         }
 
         case GoodyHutReward::Culture: {
-            // Add culture progress (use a flat boost since civic advancement is simpler)
-            player.addGold(80);  // Fallback: gold as culture proxy
-            LOG_INFO("Goody hut: P%u found oral traditions (+80 gold/culture)",
-                     static_cast<unsigned>(player.id()));
+            // The reward is documented as Oral Tradition and paid 80 gold. A
+            // culture reward that hands out gold is not a culture reward, and
+            // a civ with no gold sink got nothing it wanted.
+            const float culture = static_cast<float>(GOODY_REWARD_DEFS[
+                static_cast<std::size_t>(GoodyHutReward::Culture)].weight) * 2.0f;
+            if (player.civics().currentResearch.isValid()) {
+                [[maybe_unused]] const bool completed =
+                    advanceCivicResearch(player.civics(), culture, &player.government());
+                LOG_INFO("Goody hut: P%u found oral traditions (+%.0f culture)",
+                         static_cast<unsigned>(player.id()), static_cast<double>(culture));
+            } else {
+                // advanceCivicResearch drops culture when nothing is being
+                // researched, and a reward that can silently amount to nothing
+                // is the bug this case was fixing. Pay the old gold instead.
+                player.addGold(80);
+                LOG_INFO("Goody hut: P%u found oral traditions, no civic in progress (+80 gold)",
+                         static_cast<unsigned>(player.id()));
+            }
             break;
         }
 
@@ -157,9 +175,25 @@ GoodyHutReward checkAndClaimGoodyHut(GoodyHutState& state,
         }
 
         case GoodyHutReward::MapReveal: {
-            // Reveal is handled by fog-of-war system; for headless sim, just log
-            LOG_INFO("Goody hut: P%u found ancient map (reveal 5-tile radius)",
-                     static_cast<unsigned>(player.id()));
+            // This was a log line and nothing else -- a ten-in-a-hundred roll
+            // that gave literally nothing. The fog layer is optional because
+            // headless runs have none; there the map is already open, so
+            // logging is the honest outcome rather than a silent miss.
+            int32_t revealed = 0;
+            if (fogOfWar != nullptr) {
+                std::vector<aoc::hex::AxialCoord> area;
+                aoc::hex::spiral(unitPosition, GOODY_MAP_REVEAL_RADIUS,
+                                 std::back_inserter(area));
+                area.push_back(unitPosition);
+                for (const aoc::hex::AxialCoord& tile : area) {
+                    if (!grid.isValid(tile)) { continue; }
+                    fogOfWar->setVisibility(player.id(), grid.toIndex(tile),
+                                            aoc::map::TileVisibility::Revealed);
+                    ++revealed;
+                }
+            }
+            LOG_INFO("Goody hut: P%u found ancient map (%d tiles revealed)",
+                     static_cast<unsigned>(player.id()), revealed);
             break;
         }
 

@@ -700,8 +700,9 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                     positions.push_back(unitPtr->position());
                 }
                 for (const aoc::hex::AxialCoord& pos : positions) {
+                    // No fog layer in a headless run, so nothing to reveal.
                     aoc::sim::GoodyHutReward reward = aoc::sim::checkAndClaimGoodyHut(
-                        goodyHuts, gameState, *gsp, pos, rng);
+                        goodyHuts, gameState, *gsp, pos, rng, grid, nullptr);
                     if (reward != aoc::sim::GoodyHutReward::Count) {
                         eventLog.record(aoc::sim::TurnEventType::CityFounded,
                                         static_cast<aoc::PlayerId>(p),

@@ -2461,8 +2461,9 @@ void Application::spectatorAdvanceTurn() {
                     positions.push_back(unitPtr->position());
                 }
                 for (const aoc::hex::AxialCoord& pos : positions) {
-                    aoc::sim::checkAndClaimGoodyHut(this->m_goodyHuts, this->m_gameState, *gsp, pos,
-                                                    this->m_gameRng);
+                    aoc::sim::checkAndClaimGoodyHut(this->m_goodyHuts, this->m_gameState, *gsp,
+                                                    pos, this->m_gameRng, this->m_hexGrid,
+                                                    &this->m_fogOfWar);
                 }
             }
         }
@@ -7237,7 +7238,8 @@ void Application::handleEndTurn() {
                 }
                 for (const aoc::hex::AxialCoord& pos : positions) {
                     aoc::sim::GoodyHutReward r = aoc::sim::checkAndClaimGoodyHut(
-                        this->m_goodyHuts, this->m_gameState, *gsp, pos, this->m_gameRng);
+                        this->m_goodyHuts, this->m_gameState, *gsp, pos, this->m_gameRng,
+                        this->m_hexGrid, &this->m_fogOfWar);
                     if (r != aoc::sim::GoodyHutReward::Count && p == 0) {
                         this->m_notificationManager.push("Ancient ruin explored!", 4.0f, 0.8f, 0.8f,
                                                          0.3f);

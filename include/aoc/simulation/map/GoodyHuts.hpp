@@ -29,7 +29,10 @@
 #include <vector>
 
 namespace aoc::game { class GameState; class Player; }
-namespace aoc::map { class HexGrid; }
+namespace aoc::map {
+class HexGrid;
+class FogOfWar;
+} // namespace aoc::map
 
 namespace aoc::sim {
 
@@ -97,16 +100,26 @@ void placeGoodyHuts(GoodyHutState& state, const aoc::map::HexGrid& grid,
                      const std::vector<aoc::hex::AxialCoord>& startPositions,
                      aoc::Random& rng);
 
+/// How far the Ancient Map reward reveals, in tiles.
+inline constexpr int32_t GOODY_MAP_REVEAL_RADIUS = 5;
+
 /**
  * @brief Check if a unit has entered a goody hut tile. If so, grant reward.
  *
  * Called after any unit movement. Returns the reward type granted, or Count if
  * no hut was found at the unit's position.
+ *
+ * `grid` and `fogOfWar` serve the Ancient Map reward, which until 2026-09-07
+ * was a log line with no reveal behind it -- a ten-in-a-hundred roll that gave
+ * literally nothing. `fogOfWar` is null in headless runs, which have no fog and
+ * therefore nothing to reveal.
  */
 GoodyHutReward checkAndClaimGoodyHut(GoodyHutState& state,
                                       aoc::game::GameState& gameState,
                                       aoc::game::Player& player,
                                       aoc::hex::AxialCoord unitPosition,
-                                      aoc::Random& rng);
+                                      aoc::Random& rng,
+                                      const aoc::map::HexGrid& grid,
+                                      aoc::map::FogOfWar* fogOfWar = nullptr);
 
 } // namespace aoc::sim
