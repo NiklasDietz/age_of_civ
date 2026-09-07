@@ -5,6 +5,8 @@
  */
 
 #include "aoc/simulation/unit/AttackRequest.hpp"
+
+#include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
@@ -61,6 +63,13 @@ ErrorCode requestAttack(aoc::game::GameState& gameState, aoc::Random& rng, aoc::
     aoc::game::Unit* attacker = owner->unitAt(from);
     if (attacker == nullptr || !grid.isValid(to)) {
         return ErrorCode::InvalidArgument;
+    }
+    // Religious units argue rather than fight, but they do contest each other.
+    // This guard used to reject them outright, which is why an Apostle's combat
+    // strength sat in the unit table unusable and two faiths could walk through
+    // one another.
+    if (attacker->typeDef().unitClass == UnitClass::Religious) {
+        return requestTheologicalCombat(gameState, rng, grid, player, from, to);
     }
     if (!attacker->isMilitary()) {
         return ErrorCode::InvalidUnitAction;

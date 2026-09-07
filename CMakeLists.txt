@@ -962,6 +962,7 @@ if(AOC_BUILD_TESTS)
         test_great_person_activation
         test_eureka_coverage
         test_belief_effects
+        test_theological_combat
         test_civ_route_bonuses
         test_world_congress
         test_air_sorties

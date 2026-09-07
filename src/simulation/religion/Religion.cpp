@@ -16,8 +16,10 @@
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Unit.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
@@ -821,6 +823,111 @@ void processFounderBeliefs(aoc::game::GameState& gameState) {
             founder->tech().researchProgress += belief.sciencePerFollowerCity * cities;
         }
     }
+}
+
+float theologicalStrength(const aoc::game::Unit& unit) {
+    const UnitTypeDef& def = unit.typeDef();
+    if (def.unitClass != UnitClass::Religious) {
+        return 0.0f;
+    }
+    // The Apostle is the one built to argue: it is the only religious unit with
+    // a combat strength in the table. A Missionary carries the word and cannot
+    // defend it; an Inquisitor is formidable at home and poor abroad, which is
+    // what the halving below expresses.
+    const float base = static_cast<float>(def.combatStrength);
+    if (base <= 0.0f) {
+        return 4.0f; // a Missionary is not defenceless, only feeble
+    }
+    return base;
+}
+
+ErrorCode requestTheologicalCombat(aoc::game::GameState& gameState, aoc::Random& rng,
+                                   const aoc::map::HexGrid& grid, PlayerId player,
+                                   hex::AxialCoord from, hex::AxialCoord to) {
+    aoc::game::Player* owner = gameState.player(player);
+    if (owner == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+    aoc::game::Unit* attacker = owner->unitAt(from);
+    if (attacker == nullptr || !grid.isValid(to)) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (attacker->typeDef().unitClass != UnitClass::Religious) {
+        return ErrorCode::InvalidUnitAction;
+    }
+    if (grid.distance(from, to) != 1) {
+        return ErrorCode::InvalidUnitAction;
+    }
+    if (attacker->movementRemaining() <= 0) {
+        return ErrorCode::InvalidState;
+    }
+
+    // Find the defender: any other player's religious unit on the target tile.
+    aoc::game::Player* defenderOwner = nullptr;
+    aoc::game::Unit*   defender      = nullptr;
+    for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+        if (other == nullptr || other->id() == player) { continue; }
+        aoc::game::Unit* candidate = other->unitAt(to);
+        if (candidate != nullptr
+            && candidate->typeDef().unitClass == UnitClass::Religious) {
+            defenderOwner = other.get();
+            defender      = candidate;
+            break;
+        }
+    }
+    if (defender == nullptr || defenderOwner == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    // Two units of the same faith have nothing to argue about.
+    if (attacker->spreadingReligion == defender->spreadingReligion) {
+        return ErrorCode::InvalidState;
+    }
+
+    // Strength scaled by how much conviction each has left, the same shape unit
+    // combat uses, plus a roll so a weaker apostle is not simply doomed.
+    const auto conviction = [](const aoc::game::Unit& u) {
+        return static_cast<float>(u.hitPoints())
+               / static_cast<float>(std::max(1, u.typeDef().maxHitPoints));
+    };
+    const float atk = theologicalStrength(*attacker) * conviction(*attacker)
+                      * (0.8f + rng.nextFloat() * 0.4f);
+    const float def_ = theologicalStrength(*defender) * conviction(*defender)
+                       * (0.8f + rng.nextFloat() * 0.4f);
+
+    attacker->setMovementRemaining(0);
+
+    const bool attackerWins = atk >= def_;
+    aoc::game::Unit* winner  = attackerWins ? attacker : defender;
+    aoc::game::Unit* loser   = attackerWins ? defender : attacker;
+    aoc::game::Player* loserOwner = attackerWins ? defenderOwner : owner;
+    const ReligionId winningFaith = winner->spreadingReligion;
+    const hex::AxialCoord where   = attackerWins ? to : from;
+
+    // The winner is not unscathed: a contested conversion costs conviction.
+    winner->setHitPoints(std::max(1, winner->hitPoints() - 30));
+
+    LOG_INFO("Theological combat at (%d,%d): player %u prevails", where.q, where.r,
+             static_cast<unsigned>(attackerWins ? player : defenderOwner->id()));
+    loserOwner->removeUnit(loser);
+
+    // The argument is won where people live, so the nearest city hears it.
+    if (winningFaith != NO_RELIGION) {
+        aoc::game::City* nearest = nullptr;
+        int32_t bestDist = std::numeric_limits<int32_t>::max();
+        for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+            if (p == nullptr) { continue; }
+            for (const std::unique_ptr<aoc::game::City>& c : p->cities()) {
+                if (c == nullptr) { continue; }
+                const int32_t d = grid.distance(where, c->location());
+                if (d < bestDist) { bestDist = d; nearest = c.get(); }
+            }
+        }
+        if (nearest != nullptr) {
+            nearest->religion().addPressure(winningFaith, THEOLOGICAL_WIN_PRESSURE);
+        }
+    }
+    return ErrorCode::Ok;
 }
 
 } // namespace aoc::sim

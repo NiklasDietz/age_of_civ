@@ -7,6 +7,7 @@
 
 #include "aoc/core/Types.hpp"
 #include "aoc/core/ErrorCodes.hpp"
+#include "aoc/core/Random.hpp"
 #include "aoc/map/HexCoord.hpp"
 
 #include <array>
@@ -16,6 +17,7 @@
 #include <vector>
 
 namespace aoc::game { class GameState; }
+namespace aoc::game { class Unit; }
 namespace aoc::game { class Player; class GameState; class City; }
 namespace aoc::map { class HexGrid; }
 
@@ -255,6 +257,26 @@ bool foundPantheonFor(aoc::game::GameState& gameState, PlayerId player);
 /// `BeliefDef` unread until 2026-09-07, so choosing a founder belief changed
 /// only the text on the religion screen.
 void processFounderBeliefs(aoc::game::GameState& gameState);
+
+/// One religious unit contests another. Apostles fight, Missionaries and
+/// Inquisitors can be fought; nobody else is involved. The loser is removed and
+/// the winner's faith gains ground in the nearest city, which is the whole
+/// point: theology is fought over cities, not over open ground.
+///
+/// Religious units were barred from combat entirely -- `requestAttack` requires
+/// a military attacker -- so the Apostle's combat and ranged strength sat in the
+/// unit table unusable and two faiths could walk through each other.
+[[nodiscard]] ErrorCode requestTheologicalCombat(aoc::game::GameState& gameState,
+                                                 aoc::Random& rng,
+                                                 const aoc::map::HexGrid& grid, PlayerId player,
+                                                 hex::AxialCoord from, hex::AxialCoord to);
+
+/// Strength a religious unit brings to a theological contest. An Apostle is
+/// built for it; a Missionary is not and an Inquisitor only defends its own.
+[[nodiscard]] float theologicalStrength(const aoc::game::Unit& unit);
+
+/// Pressure the winner's faith gains in the nearest city.
+inline constexpr float THEOLOGICAL_WIN_PRESSURE = 30.0f;
 
 /// Fade every religion's grip a little, then let each holy city renew its own.
 /// Run once per turn, before the spread pass.
