@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
+#include "aoc/simulation/tech/EurekaBoost.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/culture/GreatWorks.hpp"
 #include "aoc/simulation/greatpeople/GreatPeopleExpanded.hpp"
@@ -35,7 +36,7 @@ namespace aoc::sim {
 
 static const std::array<GreatPersonDef, GREAT_PERSON_COUNT> s_greatPersonDefs = {{
     // Scientists (0-3)
-    { 0, "Archimedes",      GreatPersonType::Scientist, "Eureka! +40% research on the current tech.",            .researchFraction = 0.40f},
+    { 0, "Archimedes",      GreatPersonType::Scientist, "Eureka! banks a discovery toward whatever is being researched.",            .researchFraction = 0.40f, .effect = GreatPersonEffect::Eureka},
     { 1, "Euclid",          GreatPersonType::Scientist, "The Elements: +50% research on the current tech.",      .researchFraction = 0.50f},
     { 2, "Isaac Newton",    GreatPersonType::Scientist, "Principia: +70% research on the current tech.",         .researchFraction = 0.70f},
     { 3, "Galileo Galilei", GreatPersonType::Scientist, "Telescope: a long, gentle pulse of science.",           .researchFraction = 0.30f, .pulseAmount = 6.0f, .pulseTurns = 30},
@@ -46,7 +47,7 @@ static const std::array<GreatPersonDef, GREAT_PERSON_COUNT> s_greatPersonDefs = 
     { 6, "Nikola Tesla",      GreatPersonType::Engineer, "Alternating Current: +120 production to the nearest city.", .production = 120.0f},
 
     // Generals (7-9)
-    { 7, "Sun Tzu",   GreatPersonType::General, "Art of War: heal all units within 2 hexes to full."},
+    { 7, "Sun Tzu",   GreatPersonType::General, "Art of War: veteran experience to every unit within 2 hexes.", .effect = GreatPersonEffect::TrainTroops, .experience = 40},
     { 8, "Napoleon",  GreatPersonType::General, "Grande Armee: heal all units within 2 hexes to full."},
     { 9, "Patton",    GreatPersonType::General, "Blitzkrieg: heal all units within 2 hexes to full."},
 
@@ -60,7 +61,7 @@ static const std::array<GreatPersonDef, GREAT_PERSON_COUNT> s_greatPersonDefs = 
     {14, "Marco Polo",          GreatPersonType::Merchant, "Silk Road: +250 gold to the treasury.",        .gold = 250},
     {15, "Adam Smith",          GreatPersonType::Merchant, "Wealth of Nations: +200 gold to the treasury.", .gold = 200},
     {16, "John D. Rockefeller", GreatPersonType::Merchant, "Standard Oil: +300 gold to the treasury.",      .gold = 300},
-    {17, "Mansa Musa",          GreatPersonType::Merchant, "Pilgrimage: +400 gold to the treasury.",        .gold = 400},
+    {17, "Mansa Musa",          GreatPersonType::Merchant, "Pilgrimage: faith rather than gold.",        .gold = 400, .faith = 250.0f, .effect = GreatPersonEffect::Pilgrimage},
 
     // Admirals (18-20)
     {18, "Themistocles",  GreatPersonType::Admiral, "Salamis: heal all ships within 2 hexes to full."},
@@ -344,6 +345,52 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
 
     aoc::game::Player* playerObj = gameState.player(gp.owner);
     if (playerObj == nullptr) {
+        return;
+    }
+
+    // A few named figures do something of a different KIND from the rest of
+    // their type. These run instead of the type's behaviour, not alongside it.
+    if (def.effect != GreatPersonEffect::TypeDefault) {
+        switch (def.effect) {
+            case GreatPersonEffect::Eureka: {
+                // Bank every boost attached to what this civ is researching.
+                // A banked boost is consumed when that research starts, so the
+                // gift is never wasted on a tech already finished.
+                PlayerEurekaComponent& boosts = playerObj->eureka();
+                const TechId researching      = playerObj->tech().currentResearch;
+                int32_t banked                = 0;
+                for (const EurekaBoostDef& boost : getEurekaBoosts()) {
+                    if (!researching.isValid() || boost.techId != researching) { continue; }
+                    if (boosts.hasTriggered(boost.boostIndex)) { continue; }
+                    boosts.markPending(boost.boostIndex);
+                    ++banked;
+                }
+                LOG_INFO("Eureka: banked %d discoveries for player %u", banked,
+                         static_cast<unsigned>(gp.owner));
+                break;
+            }
+            case GreatPersonEffect::TrainTroops: {
+                // Experience, not healing: a general who trains rather than mends.
+                int32_t taught = 0;
+                for (const std::unique_ptr<aoc::game::Unit>& unit : playerObj->units()) {
+                    if (unit == nullptr || !unit->isMilitary()) { continue; }
+                    if (grid.distance(unit->position(), gp.position) > GP_AURA_RADIUS) { continue; }
+                    unit->experience().addExperience(def.experience);
+                    ++taught;
+                }
+                LOG_INFO("Art of War: %d units gained %d experience", taught, def.experience);
+                break;
+            }
+            case GreatPersonEffect::Pilgrimage: {
+                playerObj->faith().faith += def.faith;
+                LOG_INFO("Pilgrimage: +%.0f faith", static_cast<double>(def.faith));
+                break;
+            }
+            case GreatPersonEffect::TypeDefault:
+                break;
+        }
+        gp.isActivated = true;
+        playerObj->removeUnit(&gpUnit);
         return;
     }
 

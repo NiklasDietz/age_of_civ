@@ -32,6 +32,19 @@ enum class GreatPersonType : uint8_t {
     Count
 };
 
+/// What a named great person does when activated. `TypeDefault` runs the
+/// behaviour shared by everyone of that type; the others replace it entirely.
+/// The plan's second stage for great people: after magnitudes were made
+/// per-person, a few figures needed an effect of a different KIND, not merely
+/// a different size. Each of these reuses machinery the game already has
+/// rather than inventing a system.
+enum class GreatPersonEffect : uint8_t {
+    TypeDefault = 0, ///< The type's shared behaviour.
+    Eureka,          ///< Bank eureka boosts for whatever is being researched.
+    TrainTroops,     ///< Experience to nearby friendly units instead of healing.
+    Pilgrimage,      ///< Faith instead of gold.
+};
+
 struct GreatPersonDef {
     uint8_t          id;
     std::string_view name;
@@ -58,6 +71,12 @@ struct GreatPersonDef {
     float   production       = 100.0f; ///< Hammers into the nearest city.
     int64_t gold             = 200;    ///< Gold into the treasury.
     float   faith            = 300.0f; ///< Faith into the pool.
+
+    /// Which behaviour runs. Most people take their type's default.
+    GreatPersonEffect effect = GreatPersonEffect::TypeDefault;
+
+    /// Experience handed to each nearby unit by `TrainTroops`.
+    int32_t experience = 30;
 };
 
 /// Total number of great person definitions.

@@ -39,6 +39,35 @@ aoc::game::Unit* recruitGeneral(aoc::test::World& w) {
     return nullptr;
 }
 
+
+aoc::game::Unit* recruitOf(aoc::test::World& w, GreatPersonType type) {
+    aoc::game::Player& p = *w.gameState.players()[0];
+    p.greatPeople().points[static_cast<uint8_t>(type)] = p.greatPeople().threshold(type) + 1.0f;
+    aoc::sim::checkGreatPeopleRecruitment(w.gameState, PlayerId{0});
+    for (const std::unique_ptr<aoc::game::Unit>& u : p.units()) {
+        if (u->typeId() == GREAT_PERSON && !u->greatPerson().isActivated) { return u.get(); }
+    }
+    return nullptr;
+}
+
+/// Recruit people of `type` until one with `wanted` turns up, removing the
+/// others outright. Parking them by flag is not enough: great people all spawn
+/// on the capital tile, so a parked one still occupies the tile the activation
+/// request looks at.
+aoc::game::Unit* recruitWithEffect(aoc::test::World& w, GreatPersonType type,
+                                   aoc::sim::GreatPersonEffect wanted) {
+    aoc::game::Player& p = *w.gameState.players()[0];
+    for (int32_t attempt = 0; attempt < 6; ++attempt) {
+        aoc::game::Unit* candidate = recruitOf(w, type);
+        if (candidate == nullptr) { return nullptr; }
+        if (aoc::sim::allGreatPersonDefs()[candidate->greatPerson().defId].effect == wanted) {
+            return candidate;
+        }
+        p.removeUnit(candidate);
+    }
+    return nullptr;
+}
+
 } // namespace
 
 TEST_CASE("rejects an unknown player, an empty tile, and a unit that is not a Great Person") {
@@ -69,7 +98,9 @@ TEST_CASE("a General heals nearby units where it stands and is consumed") {
     aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Home");
     aoc::game::Unit& wounded = aoc::test::addUnitAt(w, PlayerId{0}, WARRIOR, 6, 5);
     wounded.setHitPoints(40);
-    aoc::game::Unit* general = recruitGeneral(w);
+    // Sun Tzu trains rather than heals, so ask for one that still heals.
+    aoc::game::Unit* general =
+        recruitWithEffect(w, GreatPersonType::General, aoc::sim::GreatPersonEffect::TypeDefault);
     REQUIRE(general != nullptr);
     // Simulate the person having walked: the recorded spawn position is stale.
     general->greatPerson().position = {0, 0};
@@ -153,17 +184,8 @@ TEST_CASE("retiring a great person pays gold and era score and takes it off the 
 namespace {
 
 /// Recruit one person of `type` for player 0 and return its unit.
-aoc::game::Unit* recruitOf(aoc::test::World& w, GreatPersonType type) {
-    aoc::game::Player& p = *w.gameState.players()[0];
-    p.greatPeople().points[static_cast<uint8_t>(type)] = p.greatPeople().threshold(type) + 1.0f;
-    aoc::sim::checkGreatPeopleRecruitment(w.gameState, PlayerId{0});
-    for (const std::unique_ptr<aoc::game::Unit>& u : p.units()) {
-        if (u->typeId() == GREAT_PERSON && !u->greatPerson().isActivated) { return u.get(); }
-    }
-    return nullptr;
-}
-
 } // namespace
+
 
 TEST_CASE("a Prophet founds a religion for a civ that has none") {
     aoc::test::World w = aoc::test::makeWorld(2);
@@ -317,4 +339,44 @@ TEST_CASE("the wonder roster draws more than one kind of great person") {
     std::sort(drawn.begin(), drawn.end());
     drawn.erase(std::unique(drawn.begin(), drawn.end()), drawn.end());
     CHECK(drawn.size() >= 6u);
+}
+
+TEST_CASE("a person with a unique effect does not take its type's default path") {
+    SUBCASE("Sun Tzu trains the troops instead of healing them") {
+        aoc::test::World w = aoc::test::makeWorld(2);
+        aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Home");
+        aoc::game::Unit& soldier = aoc::test::addUnitAt(w, PlayerId{0}, WARRIOR, 6, 5);
+        soldier.setHitPoints(40); // wounded: the General's default would heal this
+
+        aoc::game::Player& p = *w.gameState.players()[0];
+        aoc::game::Unit* general = recruitWithEffect(
+            w, GreatPersonType::General, aoc::sim::GreatPersonEffect::TrainTroops);
+        REQUIRE(general != nullptr);
+        const int32_t xpBefore = soldier.experience().experience;
+
+        REQUIRE(aoc::sim::requestGreatPersonActivation(
+                    w.gameState, w.grid, PlayerId{0}, general->position()) == aoc::ErrorCode::Ok);
+
+        CHECK(soldier.experience().experience > xpBefore); // trained
+        CHECK(soldier.hitPoints() == 40);                  // and pointedly not healed
+        static_cast<void>(p);
+    }
+
+    SUBCASE("Mansa Musa brings faith where other merchants bring gold") {
+        aoc::test::World w = aoc::test::makeWorld(2);
+        aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Home");
+        aoc::game::Player& p = *w.gameState.players()[0];
+
+        aoc::game::Unit* pilgrim = recruitWithEffect(
+            w, GreatPersonType::Merchant, aoc::sim::GreatPersonEffect::Pilgrimage);
+        REQUIRE(pilgrim != nullptr);
+        const int64_t goldBefore  = p.economy().treasury;
+        const float   faithBefore = p.faith().faith;
+
+        REQUIRE(aoc::sim::requestGreatPersonActivation(
+                    w.gameState, w.grid, PlayerId{0}, pilgrim->position()) == aoc::ErrorCode::Ok);
+
+        CHECK(p.faith().faith > faithBefore);          // faith arrived
+        CHECK(p.economy().treasury == goldBefore);     // and no gold did
+    }
 }
