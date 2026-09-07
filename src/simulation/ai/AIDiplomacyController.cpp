@@ -37,12 +37,9 @@
 
 namespace aoc::sim::ai {
 
-void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
-                                            aoc::map::HexGrid& grid,
-                                            DiplomacyManager& diplomacy,
-                                            const Market& market,
-                                            aoc::Random& rng,
-                                            GlobalDealTracker* dealTracker) {
+void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
+                                           DiplomacyManager& diplomacy, const Market& market,
+                                           aoc::Random& rng, GlobalDealTracker* dealTracker) {
     // Use the project-wide MAX_PLAYERS (= 20) instead of a local 16 — see
     // include/aoc/core/Types.hpp. The previous local cap silently dropped
     // players 16-19's military counts, which produced stack-buffer-out-of
@@ -62,8 +59,8 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
     // behavior (reads the same zero-initialised slot for in-range ids).
     assert(this->m_player < MAX_PLAYERS && "m_player out of MAX_PLAYERS range");
     const int32_t ourMilitary = (this->m_player < MAX_PLAYERS)
-        ? militaryCounts[static_cast<std::size_t>(this->m_player)]
-        : 0;
+                                    ? militaryCounts[static_cast<std::size_t>(this->m_player)]
+                                    : 0;
     const uint8_t playerCount = diplomacy.playerCount();
 
     // Leader personality drives war/peace thresholds.
@@ -76,12 +73,16 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
     const LeaderBehavior& beh = personality.behavior;
 
     for (uint8_t other = 0; other < playerCount; ++other) {
-        if (other == this->m_player) { continue; }
+        if (other == this->m_player) {
+            continue;
+        }
 
         PairwiseRelation& rel = diplomacy.relation(this->m_player, other);
 
         // Cannot interact with players we haven't met yet
-        if (!rel.hasMet) { continue; }
+        if (!rel.hasMet) {
+            continue;
+        }
 
         const int32_t theirMilitary = militaryCounts[static_cast<std::size_t>(other)];
         const int32_t relationScore = rel.totalScore();
@@ -89,9 +90,9 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
         if (rel.isAtWar) {
             // Peace threshold: leaders with high peaceAcceptanceThreshold accept
             // peace readily; grudge-holding leaders fight on even when outmatched.
-            const float peaceMilRatio = (ourMilitary > 0)
-                ? static_cast<float>(theirMilitary) / static_cast<float>(ourMilitary)
-                : 10.0f;
+            const float peaceMilRatio = (ourMilitary > 0) ? static_cast<float>(theirMilitary) /
+                                                                static_cast<float>(ourMilitary)
+                                                          : 10.0f;
             // Gandhi (peace=0.2, grudge=0.2) sues for peace at ratio ~1.3
             // Montezuma (peace=0.8, grudge=0.9) fights until ratio 2.5+
             // Base bumped 1.0 -> 1.5 so wars last long enough for nuke-tech
@@ -99,37 +100,41 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             // secession, attrition, and spy missions under-trigger.
             const float peaceThreshold = 1.5f + beh.grudgeHolding - beh.peaceAcceptanceThreshold;
             const aoc::game::Player* otherSeat = gameState.player(other);
-            if (peaceMilRatio > std::max(peaceThreshold, 0.8f) && otherSeat != nullptr && otherSeat->isHuman()
-                && dealTracker != nullptr) {
+            if (peaceMilRatio > std::max(peaceThreshold, 0.8f) && otherSeat != nullptr &&
+                otherSeat->isHuman() && dealTracker != nullptr) {
                 // A human decides from the inbox (2.10c); the offer repeats after it expires.
                 if (aiOfferPeace(gameState, grid, *dealTracker, diplomacy, this->m_player, other,
                                  gameState.currentTurn())) {
-                    LOG_INFO("AI %u offered peace to the human player %u", static_cast<unsigned>(this->m_player),
-                             static_cast<unsigned>(other));
+                    LOG_INFO("AI %u offered peace to the human player %u",
+                             static_cast<unsigned>(this->m_player), static_cast<unsigned>(other));
                 }
             } else if (peaceMilRatio > std::max(peaceThreshold, 0.8f)) {
                 // War reparations: the weaker side (proposing peace) pays 10% of
                 // their treasury to the stronger side. This makes war economically
                 // meaningful — winning wars pays for the military investment.
-                aoc::game::Player* loser = gameState.player(this->m_player);
+                aoc::game::Player* loser  = gameState.player(this->m_player);
                 aoc::game::Player* winner = gameState.player(other);
                 if (loser != nullptr && winner != nullptr && loser->treasury() > 0) {
-                    const CurrencyAmount reparations = std::max(
-                        static_cast<CurrencyAmount>(1),
-                        loser->treasury() / 10);
+                    // Pay what can actually be paid, the way the deal path does
+                    // at DealTerms.cpp. The enclosing `treasury() > 0` already
+                    // makes the debit safe, but the clamp states the invariant
+                    // where the transfer is rather than leaving it to arithmetic
+                    // two lines up: a treasury must not be driven negative,
+                    // because the loan and crisis maths downstream read it.
+                    const CurrencyAmount owed =
+                        std::max(static_cast<CurrencyAmount>(1), loser->treasury() / 10);
+                    const CurrencyAmount reparations =
+                        std::min<CurrencyAmount>(owed, loser->treasury());
                     loser->addGold(-reparations);
                     winner->addGold(reparations);
                     LOG_INFO("AI %u paid %lld gold in war reparations to player %u",
                              static_cast<unsigned>(this->m_player),
-                             static_cast<long long>(reparations),
-                             static_cast<unsigned>(other));
+                             static_cast<long long>(reparations), static_cast<unsigned>(other));
                 }
                 diplomacy.makePeace(this->m_player, other);
                 LOG_INFO("AI %u Proposed peace with player %u (ratio %.2f > threshold %.2f)",
-                         static_cast<unsigned>(this->m_player),
-                         static_cast<unsigned>(other),
-                         static_cast<double>(peaceMilRatio),
-                         static_cast<double>(peaceThreshold));
+                         static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
+                         static_cast<double>(peaceMilRatio), static_cast<double>(peaceThreshold));
             }
         } else {
             const bool easyAI = (this->m_difficulty == aoc::ui::AIDifficulty::Easy);
@@ -144,26 +149,28 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             // Montezuma (1.7): needs 1.5/sqrt(1.7)=1.15:1 -- at slight advantage.
             // Frederick (1.5): needs 1.5/sqrt(1.5)=1.22:1.
             const float baseMilRatio = hardAI ? 1.15f : 1.3f;
-            const float milRatioThreshold = std::max(1.1f,
-                baseMilRatio / std::sqrt(std::max(beh.militaryAggression, 0.1f)));
+            const float milRatioThreshold =
+                std::max(1.1f, baseMilRatio / std::sqrt(std::max(beh.militaryAggression, 0.1f)));
             // Relation threshold: aggressive leaders tolerate worse relations less.
             // Gandhi needs relations below -100; Montezuma triggers at -30.
             const int32_t baseRelThreshold = hardAI ? -5 : -15;
-            const int32_t relationThreshold = static_cast<int32_t>(
-                static_cast<float>(baseRelThreshold)
-                / std::sqrt(std::max(beh.militaryAggression, 0.1f)));
+            const int32_t relationThreshold =
+                static_cast<int32_t>(static_cast<float>(baseRelThreshold) /
+                                     std::sqrt(std::max(beh.militaryAggression, 0.1f)));
             // War chance per turn: tuned down so 1000-turn games don't see
             // ~140 declarations. Montezuma: 2 * 1.7 = 3.4 (~34%/elig turn);
             // Gandhi still ~0.
             const int32_t baseWarChance = hardAI ? 3 : 2;
-            const int32_t warChanceThreshold = static_cast<int32_t>(
-                static_cast<float>(baseWarChance) * beh.militaryAggression);
+            const int32_t warChanceThreshold =
+                static_cast<int32_t>(static_cast<float>(baseWarChance) * beh.militaryAggression);
 
             // Peace cooldown: cannot re-declare war within 40 turns of a peace
             // treaty. Was 15 — too short for 1000-turn games (allowed up to
             // ~66 wars between same pair).
             constexpr int32_t WAR_COOLDOWN_TURNS = 40;
-            if (rel.turnsSincePeace < WAR_COOLDOWN_TURNS) { continue; }
+            if (rel.turnsSincePeace < WAR_COOLDOWN_TURNS) {
+                continue;
+            }
 
             // Periphery gate: refuse wars against civs beyond our projection
             // range. Low-peripheryTolerance leaders (isolationists) restrict
@@ -172,11 +179,13 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             //
             // Range scales 10..30 hexes by gene (baseline 20 at 1.0).
             {
-                const int32_t maxWarRange = static_cast<int32_t>(std::clamp(
-                    20.0f * beh.peripheryTolerance, 10.0f, 30.0f));
+                const int32_t maxWarRange =
+                    static_cast<int32_t>(std::clamp(20.0f * beh.peripheryTolerance, 10.0f, 30.0f));
                 const aoc::game::Player* ourPlayerPtr   = gameState.player(this->m_player);
                 const aoc::game::Player* theirPlayerPtr = gameState.player(other);
-                if (ourPlayerPtr == nullptr || theirPlayerPtr == nullptr) { continue; }
+                if (ourPlayerPtr == nullptr || theirPlayerPtr == nullptr) {
+                    continue;
+                }
                 if (ourPlayerPtr->cities().empty() || theirPlayerPtr->cities().empty()) {
                     continue;
                 }
@@ -188,14 +197,17 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                 // real behaviour risk. Deferred per WP-10 scope.
                 int32_t closestCityDist = std::numeric_limits<int32_t>::max();
                 for (const std::unique_ptr<aoc::game::City>& ourCity : ourPlayerPtr->cities()) {
-                    for (const std::unique_ptr<aoc::game::City>& theirCity : theirPlayerPtr->cities()) {
-                        const int32_t d = aoc::hex::distance(
-                            ourCity->location(), theirCity->location());
-                        if (d < closestCityDist) { closestCityDist = d; }
+                    for (const std::unique_ptr<aoc::game::City>& theirCity :
+                         theirPlayerPtr->cities()) {
+                        const int32_t d =
+                            aoc::hex::distance(ourCity->location(), theirCity->location());
+                        if (d < closestCityDist) {
+                            closestCityDist = d;
+                        }
                     }
                 }
                 if (closestCityDist > maxWarRange) {
-                    continue;  // Too far -- would overextend supply + yield nothing.
+                    continue; // Too far -- would overextend supply + yield nothing.
                 }
             }
 
@@ -212,18 +224,16 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                 // pseudo-RNG that the GA harness could not reproduce
                 // across hosts (audit 2026-05-10 #WP11.3).
                 const int32_t warChance = rng.nextInt(0, 99);
-                if (warChance < warChanceThreshold
-                    && rel.friendshipUntilTurn <= gameState.currentTurn()) {
+                if (warChance < warChanceThreshold &&
+                    rel.friendshipUntilTurn <= gameState.currentTurn()) {
                     diplomacy.declareWar(this->m_player, other,
                                          diplomacy.holdsCasusBelli(this->m_player, other)
                                              ? aoc::sim::CasusBelliType::FormalWar
                                              : aoc::sim::CasusBelliType::SurpriseWar,
-                                         nullptr, &gameState,
-                                         gameState.currentTurn());
+                                         nullptr, &gameState, gameState.currentTurn());
                     LOG_INFO("AI %u Declared war on player %u (military %d vs %d, "
                              "relations %d, aggression %.2f)",
-                             static_cast<unsigned>(this->m_player),
-                             static_cast<unsigned>(other),
+                             static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
                              ourMilitary, theirMilitary, relationScore,
                              static_cast<double>(beh.militaryAggression));
                 }
@@ -235,8 +245,8 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             if (beh.militaryAggression < 0.5f) {
                 // Peaceful leaders skip opportunistic wars entirely.
             } else {
-                const float oppoRatioThreshold = std::max(1.3f,
-                    2.0f / std::sqrt(beh.militaryAggression));
+                const float oppoRatioThreshold =
+                    std::max(1.3f, 2.0f / std::sqrt(beh.militaryAggression));
                 const int32_t oppoMinUnits = 3;
                 if (!easyAI && !rel.isAtWar && ourMilitary >= oppoMinUnits &&
                     static_cast<float>(ourMilitary) >=
@@ -246,38 +256,38 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                     // reproduce identical event logs across runs and hosts.
                     const int32_t warChance = rng.nextInt(0, 99);
                     const int32_t threshold = hardAI ? 3 : 2;
-                    if (warChance < threshold && rel.friendshipUntilTurn <= gameState.currentTurn()) {
+                    if (warChance < threshold &&
+                        rel.friendshipUntilTurn <= gameState.currentTurn()) {
                         diplomacy.declareWar(this->m_player, other,
-                                             aoc::sim::CasusBelliType::SurpriseWar,
-                                             nullptr, &gameState,
-                                             gameState.currentTurn());
-                        LOG_INFO("AI %u Declared opportunistic war on player %u "
-                                 "(%.1f:1 advantage: %d vs %d, aggression %.2f)",
-                                 static_cast<unsigned>(this->m_player),
-                                 static_cast<unsigned>(other),
-                                 static_cast<double>(
-                                     static_cast<float>(ourMilitary) /
-                                     static_cast<float>(std::max(1, theirMilitary))),
-                                 ourMilitary, theirMilitary,
-                                 static_cast<double>(beh.militaryAggression));
+                                             aoc::sim::CasusBelliType::SurpriseWar, nullptr,
+                                             &gameState, gameState.currentTurn());
+                        LOG_INFO(
+                            "AI %u Declared opportunistic war on player %u "
+                            "(%.1f:1 advantage: %d vs %d, aggression %.2f)",
+                            static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
+                            static_cast<double>(static_cast<float>(ourMilitary) /
+                                                static_cast<float>(std::max(1, theirMilitary))),
+                            ourMilitary, theirMilitary,
+                            static_cast<double>(beh.militaryAggression));
                     }
                 }
             }
 
             if (!rel.hasOpenBorders && relationScore > 10) {
                 if (dealTracker != nullptr) {
-                    // The other side consents by its own stance (2.10c); a human sees the offer in the inbox.
-                    if (aiOfferOpenBorders(gameState, grid, *dealTracker, diplomacy, this->m_player, other,
-                                           gameState.currentTurn())) {
+                    // The other side consents by its own stance (2.10c); a human sees the offer in
+                    // the inbox.
+                    if (aiOfferOpenBorders(gameState, grid, *dealTracker, diplomacy, this->m_player,
+                                           other, gameState.currentTurn())) {
                         LOG_INFO("AI %u offered open borders to player %u (relations %d)",
-                                 static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
-                                 relationScore);
+                                 static_cast<unsigned>(this->m_player),
+                                 static_cast<unsigned>(other), relationScore);
                     }
                 } else {
                     diplomacy.grantOpenBorders(this->m_player, other);
                     LOG_INFO("AI %u Opened borders with player %u (relations %d)",
-                             static_cast<unsigned>(this->m_player),
-                             static_cast<unsigned>(other), relationScore);
+                             static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
+                             relationScore);
                 }
             }
 
@@ -287,19 +297,18 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             // Common gate: alliance desire / diplomatic openness above 0.5.
             // Per-type gate: matching focus > 0.5 so a warmonger doesn't chase
             // a cultural alliance and a zealot doesn't chase a research one.
-            const bool openToAlliance =
-                beh.allianceDesire > 0.5f && beh.diplomaticOpenness > 0.5f;
+            const bool openToAlliance = beh.allianceDesire > 0.5f && beh.diplomaticOpenness > 0.5f;
 
-            if (openToAlliance && !rel.hasEconomicAlliance && relationScore > 20
-                && beh.economicFocus > 0.5f) {
+            if (openToAlliance && !rel.hasEconomicAlliance && relationScore > 20 &&
+                beh.economicFocus > 0.5f) {
                 int32_t complementaryGoods = 0;
-                const uint16_t totalGoods = market.goodsCount();
+                const uint16_t totalGoods  = market.goodsCount();
                 for (uint16_t g = 0; g < totalGoods; ++g) {
                     const int32_t currentPrice = market.price(g);
-                    const int32_t basePrice = goodDef(g).basePrice;
+                    const int32_t basePrice    = goodDef(g).basePrice;
                     if (basePrice > 0) {
-                        const float priceRatio = static_cast<float>(currentPrice) /
-                                                 static_cast<float>(basePrice);
+                        const float priceRatio =
+                            static_cast<float>(currentPrice) / static_cast<float>(basePrice);
                         if (priceRatio > 1.3f || priceRatio < 0.7f) {
                             ++complementaryGoods;
                         }
@@ -312,40 +321,35 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                         LOG_INFO("AI %u Formed economic alliance with player %u "
                                  "(relations %d, %d complementary goods)",
                                  static_cast<unsigned>(this->m_player),
-                                 static_cast<unsigned>(other),
-                                 relationScore, complementaryGoods);
+                                 static_cast<unsigned>(other), relationScore, complementaryGoods);
                     }
                 }
             }
 
             // H6.4: research agreement — science-focused leaders at warm relations.
-            if (openToAlliance && !rel.hasResearchAgreement && relationScore > 25
-                && beh.scienceFocus > 0.8f) {
-                const aoc::ErrorCode ec = diplomacy.formResearchAgreement(
-                    this->m_player, other, gameState.currentTurn());
+            if (openToAlliance && !rel.hasResearchAgreement && relationScore > 25 &&
+                beh.scienceFocus > 0.8f) {
+                const aoc::ErrorCode ec =
+                    diplomacy.formResearchAgreement(this->m_player, other, gameState.currentTurn());
                 if (ec == aoc::ErrorCode::Ok) {
                     LOG_INFO("AI %u Formed research agreement with player %u "
                              "(relations %d, scienceFocus %.2f)",
-                             static_cast<unsigned>(this->m_player),
-                             static_cast<unsigned>(other),
-                             relationScore,
-                             static_cast<double>(beh.scienceFocus));
+                             static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
+                             relationScore, static_cast<double>(beh.scienceFocus));
                 }
             }
 
             // H6.4: military alliance — requires aggressive or defensive profile
             // AND strong trust. Warmongers seek allies; peaceniks don't.
-            if (openToAlliance && !rel.hasMilitaryAlliance && relationScore > 35
-                && beh.militaryAggression > 0.8f) {
-                const aoc::ErrorCode ec = diplomacy.formMilitaryAlliance(
-                    this->m_player, other, gameState.currentTurn());
+            if (openToAlliance && !rel.hasMilitaryAlliance && relationScore > 35 &&
+                beh.militaryAggression > 0.8f) {
+                const aoc::ErrorCode ec =
+                    diplomacy.formMilitaryAlliance(this->m_player, other, gameState.currentTurn());
                 if (ec == aoc::ErrorCode::Ok) {
                     LOG_INFO("AI %u Formed military alliance with player %u "
                              "(relations %d, aggression %.2f)",
-                             static_cast<unsigned>(this->m_player),
-                             static_cast<unsigned>(other),
-                             relationScore,
-                             static_cast<double>(beh.militaryAggression));
+                             static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
+                             relationScore, static_cast<double>(beh.militaryAggression));
                 }
             }
 
@@ -355,50 +359,43 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             // gate (< 0.4) complements the militaryAggression > 0.8 path
             // above, so warmongers and peaceniks pick different alliance
             // types instead of competing for the same slot.
-            if (openToAlliance && !rel.hasDefensiveAlliance
-                && !rel.hasMilitaryAlliance && relationScore > 30
-                && beh.militaryAggression < 0.4f
-                && beh.diplomaticOpenness > 0.7f) {
-                const aoc::ErrorCode ec = diplomacy.formDefensiveAlliance(
-                    this->m_player, other, gameState.currentTurn());
+            if (openToAlliance && !rel.hasDefensiveAlliance && !rel.hasMilitaryAlliance &&
+                relationScore > 30 && beh.militaryAggression < 0.4f &&
+                beh.diplomaticOpenness > 0.7f) {
+                const aoc::ErrorCode ec =
+                    diplomacy.formDefensiveAlliance(this->m_player, other, gameState.currentTurn());
                 if (ec == aoc::ErrorCode::Ok) {
                     LOG_INFO("AI %u Formed defensive alliance with player %u "
                              "(relations %d, aggression %.2f, openness %.2f)",
-                             static_cast<unsigned>(this->m_player),
-                             static_cast<unsigned>(other),
-                             relationScore,
-                             static_cast<double>(beh.militaryAggression),
+                             static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
+                             relationScore, static_cast<double>(beh.militaryAggression),
                              static_cast<double>(beh.diplomaticOpenness));
                 }
             }
 
             // H6.4: cultural alliance — culture-focused leaders.
-            if (openToAlliance && !rel.hasCulturalAlliance && relationScore > 25
-                && beh.cultureFocus > 0.8f) {
-                const aoc::ErrorCode ec = diplomacy.formCulturalAlliance(
-                    this->m_player, other, gameState.currentTurn());
+            if (openToAlliance && !rel.hasCulturalAlliance && relationScore > 25 &&
+                beh.cultureFocus > 0.8f) {
+                const aoc::ErrorCode ec =
+                    diplomacy.formCulturalAlliance(this->m_player, other, gameState.currentTurn());
                 if (ec == aoc::ErrorCode::Ok) {
                     LOG_INFO("AI %u Formed cultural alliance with player %u "
                              "(relations %d, cultureFocus %.2f)",
-                             static_cast<unsigned>(this->m_player),
-                             static_cast<unsigned>(other),
-                             relationScore,
-                             static_cast<double>(beh.cultureFocus));
+                             static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
+                             relationScore, static_cast<double>(beh.cultureFocus));
                 }
             }
 
             // H6.4: religious alliance — religious-zealot leaders only.
-            if (openToAlliance && !rel.hasReligiousAlliance && relationScore > 25
-                && beh.religiousZeal > 0.8f) {
-                const aoc::ErrorCode ec = diplomacy.formReligiousAlliance(
-                    this->m_player, other, gameState.currentTurn());
+            if (openToAlliance && !rel.hasReligiousAlliance && relationScore > 25 &&
+                beh.religiousZeal > 0.8f) {
+                const aoc::ErrorCode ec =
+                    diplomacy.formReligiousAlliance(this->m_player, other, gameState.currentTurn());
                 if (ec == aoc::ErrorCode::Ok) {
                     LOG_INFO("AI %u Formed religious alliance with player %u "
                              "(relations %d, religiousZeal %.2f)",
-                             static_cast<unsigned>(this->m_player),
-                             static_cast<unsigned>(other),
-                             relationScore,
-                             static_cast<double>(beh.religiousZeal));
+                             static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
+                             relationScore, static_cast<double>(beh.religiousZeal));
                 }
             }
 
@@ -411,21 +408,30 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             // loop, so every AI reconsiders each turn.
             if (relationScore > 15) {
                 aoc::game::Player* selfPlayer = gameState.player(this->m_player);
-                bool alreadyPaired = false;
+                bool alreadyPaired            = false;
                 if (selfPlayer != nullptr) {
                     for (const aoc::sim::TradeAgreementDef& agr :
                          selfPlayer->tradeAgreements().agreements) {
-                        if (!agr.isActive) { continue; }
-                        if (agr.type != aoc::sim::TradeAgreementType::BilateralDeal) { continue; }
-                        for (PlayerId m : agr.members) {
-                            if (m == other) { alreadyPaired = true; break; }
+                        if (!agr.isActive) {
+                            continue;
                         }
-                        if (alreadyPaired) { break; }
+                        if (agr.type != aoc::sim::TradeAgreementType::BilateralDeal) {
+                            continue;
+                        }
+                        for (PlayerId m : agr.members) {
+                            if (m == other) {
+                                alreadyPaired = true;
+                                break;
+                            }
+                        }
+                        if (alreadyPaired) {
+                            break;
+                        }
                     }
                 }
                 if (!alreadyPaired) {
-                    const ErrorCode rc = aoc::sim::proposeBilateralDeal(
-                        gameState, this->m_player, other);
+                    const ErrorCode rc =
+                        aoc::sim::proposeBilateralDeal(gameState, this->m_player, other);
                     if (rc == ErrorCode::Ok) {
                         LOG_INFO("AI %u proposed bilateral trade deal with player %u "
                                  "(relations %d)",
@@ -442,36 +448,35 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             // processIOUPayments turn tick amortises the loan with interest,
             // which is Civ 6's "gold per turn" mechanic.
             {
-                aoc::game::Player* selfPlayer = gameState.player(this->m_player);
+                aoc::game::Player* selfPlayer    = gameState.player(this->m_player);
                 aoc::game::Player* partnerPlayer = gameState.player(other);
-                if (selfPlayer != nullptr && partnerPlayer != nullptr
-                    && relationScore > 10) {
-                    const CurrencyAmount myTreas = selfPlayer->treasury();
+                if (selfPlayer != nullptr && partnerPlayer != nullptr && relationScore > 10) {
+                    const CurrencyAmount myTreas    = selfPlayer->treasury();
                     const CurrencyAmount theirTreas = partnerPlayer->treasury();
                     // Do not stack too many loans with the same partner.
                     int32_t existingWithPartner = 0;
                     for (const aoc::sim::IOUContract& c : selfPlayer->ious().loansGiven) {
-                        if (c.debtor == other && c.remaining > 0) { ++existingWithPartner; }
+                        if (c.debtor == other && c.remaining > 0) {
+                            ++existingWithPartner;
+                        }
                     }
                     // Treasury scale in-sim is ~0-2000 most of the game.
                     // Flush: at least 4x the partner's shortfall and > 300 floor.
-                    const bool flush = myTreas > 300 && myTreas > theirTreas * 4;
+                    const bool flush        = myTreas > 300 && myTreas > theirTreas * 4;
                     const bool partnerBroke = theirTreas < 50;
                     if (flush && partnerBroke && existingWithPartner < 2) {
                         // Lend up to 25% of our treasury, capped at 500.
                         // 8% per-turn interest, 15-turn term.
-                        const CurrencyAmount principal = std::min(
-                            myTreas / 4,
-                            static_cast<CurrencyAmount>(500));
+                        const CurrencyAmount principal =
+                            std::min(myTreas / 4, static_cast<CurrencyAmount>(500));
                         if (principal > 50) {
-                            ErrorCode rc = aoc::sim::createIOU(
-                                gameState, this->m_player, other,
-                                principal, 0.08f, 15);
+                            ErrorCode rc = aoc::sim::createIOU(gameState, this->m_player, other,
+                                                               principal, 0.08f, 15);
                             if (rc == ErrorCode::Ok) {
-                                LOG_INFO("AI %u offered loan to player %u: %d gold @ 8%% for 15 turns (relation %d)",
+                                LOG_INFO("AI %u offered loan to player %u: %d gold @ 8%% for 15 "
+                                         "turns (relation %d)",
                                          static_cast<unsigned>(this->m_player),
-                                         static_cast<unsigned>(other),
-                                         static_cast<int>(principal),
+                                         static_cast<unsigned>(other), static_cast<int>(principal),
                                          relationScore);
                             }
                         }
@@ -486,7 +491,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             // here's the transfer; pay me X gold." Fires every ~30 turns per
             // pair. Requires warm relations and a willing buyer.
             if (dealTracker != nullptr && relationScore > 15) {
-                const int32_t curTurn = gameState.currentTurn();
+                const int32_t curTurn  = gameState.currentTurn();
                 const int32_t saleTick = curTurn + this->m_player * 7 + other * 11;
                 if (saleTick % 25 == 0) {
                     aoc::game::Player* seller = gameState.player(this->m_player);
@@ -494,16 +499,16 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                     // Empire trimming: 5+ cities OR broke with 3+ cities.
                     const std::size_t numCities = seller != nullptr ? seller->cities().size() : 0;
                     const CurrencyAmount sellerGold = seller != nullptr ? seller->treasury() : 0;
-                    const bool surplus = numCities >= 5;
-                    const bool broke   = numCities >= 3 && sellerGold < 100;
+                    const bool surplus              = numCities >= 5;
+                    const bool broke                = numCities >= 3 && sellerGold < 100;
                     if (seller != nullptr && buyer != nullptr && (surplus || broke)) {
                         // Pick the smallest city (cheapest to part with).
                         aoc::game::City* victim = nullptr;
-                        int32_t smallestPop = INT32_MAX;
+                        int32_t smallestPop     = INT32_MAX;
                         for (const std::unique_ptr<aoc::game::City>& c : seller->cities()) {
                             if (c->population() < smallestPop) {
                                 smallestPop = c->population();
-                                victim = c.get();
+                                victim      = c.get();
                             }
                         }
                         const int32_t price = 200 + smallestPop * 50;
@@ -511,19 +516,19 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                             const aoc::hex::AxialCoord loc = victim->location();
 
                             DiplomaticDeal deal{};
-                            deal.playerA = this->m_player;
-                            deal.playerB = other;
+                            deal.playerA        = this->m_player;
+                            deal.playerB        = other;
                             deal.turnsRemaining = 0;
 
                             DealTerm cede{};
-                            cede.type = DealTermType::CedeCity;
+                            cede.type       = DealTermType::CedeCity;
                             cede.fromPlayer = this->m_player;
                             cede.toPlayer   = other;
                             cede.tileCoord  = loc;
                             deal.terms.push_back(cede);
 
                             DealTerm payment{};
-                            payment.type = DealTermType::GoldLump;
+                            payment.type       = DealTermType::GoldLump;
                             payment.fromPlayer = other;
                             payment.toPlayer   = this->m_player;
                             payment.goldLump   = price;
@@ -539,15 +544,13 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                             const std::size_t dealIdx = dealTracker->activeDeals.size();
                             ErrorCode rcP = aoc::sim::proposeDeal(gameState, *dealTracker, deal);
                             if (rcP == ErrorCode::Ok) {
-                                ErrorCode rcA = aoc::sim::acceptDeal(
-                                    gameState, grid, *dealTracker,
-                                    static_cast<int32_t>(dealIdx));
+                                ErrorCode rcA = aoc::sim::acceptDeal(gameState, grid, *dealTracker,
+                                                                     static_cast<int32_t>(dealIdx));
                                 if (rcA == ErrorCode::Ok) {
-                                    LOG_INFO("AI %u sold city %s to player %u for %d gold (relation %d)",
-                                             static_cast<unsigned>(this->m_player),
-                                             victimName.c_str(),
-                                             static_cast<unsigned>(other),
-                                             price, relationScore);
+                                    LOG_INFO(
+                                        "AI %u sold city %s to player %u for %d gold (relation %d)",
+                                        static_cast<unsigned>(this->m_player), victimName.c_str(),
+                                        static_cast<unsigned>(other), price, relationScore);
                                 }
                             }
                         }
@@ -561,49 +564,52 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             // Transfer one of our hexes that is adjacent to a neighbour's
             // territory. Small price, ~every 20 turns per pair.
             if (dealTracker != nullptr && relationScore > 15) {
-                const int32_t curTurn = gameState.currentTurn();
+                const int32_t curTurn  = gameState.currentTurn();
                 const int32_t tileTick = curTurn + this->m_player * 3 + other * 5;
                 if (tileTick % 60 == 0) {
                     aoc::game::Player* seller = gameState.player(this->m_player);
                     aoc::game::Player* buyer  = gameState.player(other);
                     // Only sell if seller is short on gold: avoids border thrash
                     // where both sides keep re-buying from each other.
-                    if (seller != nullptr && buyer != nullptr
-                        && seller->treasury() < 300
-                        && buyer->treasury() > 150) {
+                    if (seller != nullptr && buyer != nullptr && seller->treasury() < 300 &&
+                        buyer->treasury() > 150) {
                         // Scan grid for a self-owned tile adjacent to `other`.
                         const int32_t tileCount = grid.tileCount();
                         aoc::hex::AxialCoord foundTile{0, 0};
                         bool have = false;
                         for (int32_t idx = 0; idx < tileCount && !have; ++idx) {
-                            if (grid.owner(idx) != this->m_player) { continue; }
-                            const aoc::hex::AxialCoord c = grid.toAxial(idx);
+                            if (grid.owner(idx) != this->m_player) {
+                                continue;
+                            }
+                            const aoc::hex::AxialCoord c                   = grid.toAxial(idx);
                             const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(c);
                             for (const aoc::hex::AxialCoord& n : nbrs) {
                                 const int32_t nIdx = grid.toIndex(n);
-                                if (nIdx < 0 || nIdx >= tileCount) { continue; }
+                                if (nIdx < 0 || nIdx >= tileCount) {
+                                    continue;
+                                }
                                 if (grid.owner(nIdx) == other) {
                                     foundTile = c;
-                                    have = true;
+                                    have      = true;
                                     break;
                                 }
                             }
                         }
                         if (have) {
                             DiplomaticDeal deal{};
-                            deal.playerA = this->m_player;
-                            deal.playerB = other;
+                            deal.playerA        = this->m_player;
+                            deal.playerB        = other;
                             deal.turnsRemaining = 0;
 
                             DealTerm cede{};
-                            cede.type = DealTermType::CedeTile;
+                            cede.type       = DealTermType::CedeTile;
                             cede.fromPlayer = this->m_player;
                             cede.toPlayer   = other;
                             cede.tileCoord  = foundTile;
                             deal.terms.push_back(cede);
 
                             DealTerm payment{};
-                            payment.type = DealTermType::GoldLump;
+                            payment.type       = DealTermType::GoldLump;
                             payment.fromPlayer = other;
                             payment.toPlayer   = this->m_player;
                             payment.goldLump   = 100;
@@ -612,14 +618,13 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                             const std::size_t dealIdx = dealTracker->activeDeals.size();
                             ErrorCode rcP = aoc::sim::proposeDeal(gameState, *dealTracker, deal);
                             if (rcP == ErrorCode::Ok) {
-                                ErrorCode rcA = aoc::sim::acceptDeal(
-                                    gameState, grid, *dealTracker,
-                                    static_cast<int32_t>(dealIdx));
+                                ErrorCode rcA = aoc::sim::acceptDeal(gameState, grid, *dealTracker,
+                                                                     static_cast<int32_t>(dealIdx));
                                 if (rcA == ErrorCode::Ok) {
-                                    LOG_INFO("AI %u ceded tile (%d,%d) to player %u for 100 gold (relation %d)",
-                                             static_cast<unsigned>(this->m_player),
-                                             foundTile.q, foundTile.r,
-                                             static_cast<unsigned>(other),
+                                    LOG_INFO("AI %u ceded tile (%d,%d) to player %u for 100 gold "
+                                             "(relation %d)",
+                                             static_cast<unsigned>(this->m_player), foundTile.q,
+                                             foundTile.r, static_cast<unsigned>(other),
                                              relationScore);
                                 }
                             }
@@ -652,42 +657,40 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
 
                 // Power ratio modulates tolerance: if violator is 2x+ stronger,
                 // double tolerance. Small nations endure what they must.
-                const float powerRatio = (ourMilitary > 0)
-                    ? static_cast<float>(theirMilitary) / static_cast<float>(ourMilitary)
-                    : 10.0f;
+                const float powerRatio = (ourMilitary > 0) ? static_cast<float>(theirMilitary) /
+                                                                 static_cast<float>(ourMilitary)
+                                                           : 10.0f;
                 if (powerRatio > 2.0f) {
                     baseTolerance *= 2;
                 }
 
                 const int32_t violationTurns = violatorRel.turnsWithViolation;
 
-                if (violationTurns > baseTolerance && violatorRel.casusBelliGranted()
-                    && violatorRel.friendshipUntilTurn <= gameState.currentTurn()) {
+                if (violationTurns > baseTolerance && violatorRel.casusBelliGranted() &&
+                    violatorRel.friendshipUntilTurn <= gameState.currentTurn()) {
                     // Beyond tolerance and casus belli granted: declare war
                     // (if not already at war and we have military capability)
                     if (ourMilitary > 0 && beh.militaryAggression > 0.3f) {
                         diplomacy.declareWar(this->m_player, other,
-                                             aoc::sim::CasusBelliType::FormalWar,
-                                             nullptr, &gameState,
-                                             gameState.currentTurn());
+                                             aoc::sim::CasusBelliType::FormalWar, nullptr,
+                                             &gameState, gameState.currentTurn());
                         LOG_INFO("AI %u Declared war on Player %u for border violation "
                                  "(%d turns, tolerance %d, aggression %.2f)",
                                  static_cast<unsigned>(this->m_player),
-                                 static_cast<unsigned>(other),
-                                 violationTurns, baseTolerance,
+                                 static_cast<unsigned>(other), violationTurns, baseTolerance,
                                  static_cast<double>(beh.militaryAggression));
                     }
                 } else if (violationTurns > baseTolerance / 2) {
                     // Past half-tolerance: add relation penalty
                     diplomacy.addModifier(this->m_player, other,
-                        {"Troops in our territory", -5, 10});
+                                          {"Troops in our territory", -5, 10});
                 }
 
                 // Set higher toll rates against violators
                 aoc::game::Player* ourPlayer = gameState.player(this->m_player);
                 if (ourPlayer != nullptr) {
                     float violatorToll = 0.25f + beh.militaryAggression * 0.10f;
-                    violatorToll = std::min(violatorToll, 0.50f);
+                    violatorToll       = std::min(violatorToll, 0.50f);
                     ourPlayer->tariffs().perPlayerTollRates[other] = violatorToll;
                 }
             }
@@ -706,23 +709,30 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                 aoc::game::Player* selfP = gameState.player(this->m_player);
                 if (selfP != nullptr) {
                     const uint16_t totalGoods = market.goodsCount();
-                    uint16_t targetGood = 0xFFFF;
-                    float    bestRatio  = 0.0f;
+                    uint16_t targetGood       = 0xFFFF;
+                    float bestRatio           = 0.0f;
                     for (uint16_t g = 0; g < totalGoods; ++g) {
-                        if (diplomacy.hasResourceEmbargo(this->m_player, other, g)) { continue; }
+                        if (diplomacy.hasResourceEmbargo(this->m_player, other, g)) {
+                            continue;
+                        }
                         // We-hold check: at least one of our cities has
                         // a non-trivial stockpile of this good (proxy
                         // for "we could deny it to them").
                         bool weHold = false;
                         for (const std::unique_ptr<aoc::game::City>& c : selfP->cities()) {
                             if (c != nullptr && c->stockpile().getAmount(g) >= 10) {
-                                weHold = true; break;
+                                weHold = true;
+                                break;
                             }
                         }
-                        if (!weHold) { continue; }
+                        if (!weHold) {
+                            continue;
+                        }
                         const int32_t currentPrice = market.price(g);
                         const int32_t basePrice    = goodDef(g).basePrice;
-                        if (basePrice <= 0) { continue; }
+                        if (basePrice <= 0) {
+                            continue;
+                        }
                         const float ratio =
                             static_cast<float>(currentPrice) / static_cast<float>(basePrice);
                         // Keep looking: the point is the good they are MOST
@@ -736,10 +746,10 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                     }
                     if (targetGood != 0xFFFF) {
                         diplomacy.setResourceEmbargo(this->m_player, other, targetGood, true);
-                        LOG_INFO("AI %u imposed resource embargo on player %u (good %u, relation %d)",
-                                 static_cast<unsigned>(this->m_player),
-                                 static_cast<unsigned>(other),
-                                 static_cast<unsigned>(targetGood), relationScore);
+                        LOG_INFO(
+                            "AI %u imposed resource embargo on player %u (good %u, relation %d)",
+                            static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
+                            static_cast<unsigned>(targetGood), relationScore);
                     }
                 }
 
@@ -755,8 +765,8 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                         if (bc == ErrorCode::Ok) {
                             LOG_INFO("AI %u dumped %lld bond debt of player %u (relation %d)",
                                      static_cast<unsigned>(this->m_player),
-                                     static_cast<long long>(held),
-                                     static_cast<unsigned>(other), relationScore);
+                                     static_cast<long long>(held), static_cast<unsigned>(other),
+                                     relationScore);
                         }
                     }
                 }
@@ -769,19 +779,19 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                 aoc::game::Player* ourPlayer = gameState.player(this->m_player);
                 if (ourPlayer != nullptr && violatorRel.unitsInTerritory == 0) {
                     const int32_t repScore = rel.reputationScore();
-                    float tollRate = 0.10f;  // Neutral default
+                    float tollRate         = 0.10f; // Neutral default
                     if (relationScore > 10) {
-                        tollRate = 0.05f;    // Friendly
+                        tollRate = 0.05f; // Friendly
                     }
                     if (relationScore > 40 || rel.hasDefensiveAlliance) {
-                        tollRate = 0.0f;     // Allied
+                        tollRate = 0.0f; // Allied
                     }
                     if (relationScore < -10) {
-                        tollRate = 0.20f;    // Unfriendly
+                        tollRate = 0.20f; // Unfriendly
                     }
                     if (relationScore < -40) {
                         tollRate = 0.35f + beh.militaryAggression * 0.05f;
-                        tollRate = std::min(tollRate, 0.50f);  // Hostile
+                        tollRate = std::min(tollRate, 0.50f); // Hostile
                     }
                     // Reputation modulates: untrustworthy players pay more
                     if (repScore < -20) {
@@ -797,8 +807,8 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                     if (theirPlayer != nullptr) {
                         std::unordered_map<PlayerId, float>::const_iterator mirrorIt =
                             theirPlayer->tariffs().perPlayerTollRates.find(this->m_player);
-                        if (mirrorIt != theirPlayer->tariffs().perPlayerTollRates.end()
-                            && mirrorIt->second > tollRate + 0.05f) {
+                        if (mirrorIt != theirPlayer->tariffs().perPlayerTollRates.end() &&
+                            mirrorIt->second > tollRate + 0.05f) {
                             tollRate = std::min(0.50f, mirrorIt->second + 0.02f);
                         }
                     }
@@ -809,16 +819,16 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                     // allies get discounts, hostiles pay maximum.
                     float canalToll = 0.20f + beh.economicFocus * 0.05f;
                     if (relationScore > 10) {
-                        canalToll = 0.10f;   // Friendly discount
+                        canalToll = 0.10f; // Friendly discount
                     }
                     if (relationScore > 40 || rel.hasDefensiveAlliance) {
-                        canalToll = 0.05f;   // Allied: near-free access
+                        canalToll = 0.05f; // Allied: near-free access
                     }
                     if (relationScore < -10) {
                         canalToll = 0.30f + beh.economicFocus * 0.05f;
                     }
                     if (relationScore < -40) {
-                        canalToll = 0.45f;   // Hostile: near-maximum
+                        canalToll = 0.45f; // Hostile: near-maximum
                     }
                     canalToll = std::min(canalToll, 0.50f);
                     ourPlayer->tariffs().perPlayerCanalTollRates[other] = canalToll;
@@ -836,51 +846,71 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
     // to one attempt every ~50 turns per AI.
     {
         const aoc::game::Player* me = gameState.player(this->m_player);
-        const bool openTrader =
-            beh.economicFocus > 0.6f && beh.diplomaticOpenness > 0.5f;
-        const int32_t ftzTick =
-            gameState.currentTurn() + static_cast<int32_t>(this->m_player) * 11;
+        const bool openTrader       = beh.economicFocus > 0.6f && beh.diplomaticOpenness > 0.5f;
+        const int32_t ftzTick = gameState.currentTurn() + static_cast<int32_t>(this->m_player) * 11;
         if (me != nullptr && openTrader && (ftzTick % 50 == 0)) {
             std::vector<PlayerId> members;
             members.push_back(this->m_player);
             for (uint8_t other = 0; other < playerCount; ++other) {
-                if (other == this->m_player) { continue; }
+                if (other == this->m_player) {
+                    continue;
+                }
                 const aoc::game::Player* o = gameState.player(other);
-                if (o == nullptr) { continue; }
-                if (o->victoryTracker().isEliminated) { continue; }
+                if (o == nullptr) {
+                    continue;
+                }
+                if (o->victoryTracker().isEliminated) {
+                    continue;
+                }
                 const PairwiseRelation& r = diplomacy.relation(this->m_player, other);
-                if (!r.hasMet || r.isAtWar) { continue; }
-                if (r.totalScore() < 15) { continue; }
+                if (!r.hasMet || r.isAtWar) {
+                    continue;
+                }
+                if (r.totalScore() < 15) {
+                    continue;
+                }
                 // Skip if already in any FTZ/customs with us.
                 bool alreadyInBloc = false;
                 for (const aoc::sim::TradeAgreementDef& agr : me->tradeAgreements().agreements) {
-                    if (!agr.isActive) { continue; }
-                    if (agr.type == aoc::sim::TradeAgreementType::BilateralDeal) { continue; }
-                    for (PlayerId mem : agr.members) {
-                        if (mem == other) { alreadyInBloc = true; break; }
+                    if (!agr.isActive) {
+                        continue;
                     }
-                    if (alreadyInBloc) { break; }
+                    if (agr.type == aoc::sim::TradeAgreementType::BilateralDeal) {
+                        continue;
+                    }
+                    for (PlayerId mem : agr.members) {
+                        if (mem == other) {
+                            alreadyInBloc = true;
+                            break;
+                        }
+                    }
+                    if (alreadyInBloc) {
+                        break;
+                    }
                 }
-                if (alreadyInBloc) { continue; }
+                if (alreadyInBloc) {
+                    continue;
+                }
                 members.push_back(other);
-                if (members.size() >= 4) { break; }  // Keep blocs tractable.
+                if (members.size() >= 4) {
+                    break;
+                } // Keep blocs tractable.
             }
             if (members.size() >= 3) {
-                ErrorCode ec = ErrorCode::InvalidArgument;
+                ErrorCode ec     = ErrorCode::InvalidArgument;
                 const char* kind = "FTZ";
                 // Protectionist + high-aggression personalities prefer a
                 // customs union (projects power via common tariff).
                 // Everyone else forms a softer FTZ.
                 if (beh.militaryAggression > 0.8f) {
-                    ec = aoc::sim::formCustomsUnion(gameState, members, 0.15f);
+                    ec   = aoc::sim::formCustomsUnion(gameState, members, 0.15f);
                     kind = "Customs Union";
                 } else {
                     ec = aoc::sim::createFreeTradeZone(gameState, members);
                 }
                 if (ec == ErrorCode::Ok) {
                     LOG_INFO("AI %u formed %s with %zu members (economicFocus %.2f)",
-                             static_cast<unsigned>(this->m_player), kind,
-                             members.size(),
+                             static_cast<unsigned>(this->m_player), kind, members.size(),
                              static_cast<double>(beh.economicFocus));
                 }
             }
@@ -897,22 +927,25 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
     // ~25 turns per AI to avoid hammering the agreement list.
     {
         const aoc::game::Player* me = gameState.player(this->m_player);
-        const int32_t elecTick =
-            gameState.currentTurn() + static_cast<int32_t>(this->m_player) * 3;
-        const bool industrial = (me != nullptr && aoc::sim::effectiveEraFromTech(*me).value >= 4);
+        const int32_t elecTick = gameState.currentTurn() + static_cast<int32_t>(this->m_player) * 3;
+        const bool industrial  = (me != nullptr && aoc::sim::effectiveEraFromTech(*me).value >= 4);
         if (industrial && (elecTick % 25 == 0)) {
             // Crude per-player energy balance — supply = sum of
             // power-plant building outputs regardless of fuel gating (the
             // tick on processElectricityAgreements uses lastDelivered so
             // this over-estimates at worst, which is fine for gating).
-            auto energyBalance = [&](const aoc::game::Player* p) -> std::pair<int32_t,int32_t> {
+            auto energyBalance = [&](const aoc::game::Player* p) -> std::pair<int32_t, int32_t> {
                 int32_t sup = 0;
                 int32_t dem = 0;
-                if (p == nullptr) { return {0, 0}; }
+                if (p == nullptr) {
+                    return {0, 0};
+                }
                 for (const std::unique_ptr<aoc::game::City>& c : p->cities()) {
-                    if (c == nullptr) { continue; }
-                    for (const CityDistrictsComponent::PlacedDistrict& d
-                             : c->districts().districts) {
+                    if (c == nullptr) {
+                        continue;
+                    }
+                    for (const CityDistrictsComponent::PlacedDistrict& d :
+                         c->districts().districts) {
                         for (BuildingId bid : d.buildings) {
                             dem += buildingEnergyDemand(bid);
                             for (const PowerPlantDef& pd : POWER_PLANT_DEFS) {
@@ -927,32 +960,45 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                 return {sup, dem};
             };
 
-            auto [mySup, myDem] = energyBalance(me);
+            auto [mySup, myDem]     = energyBalance(me);
             const int32_t myDeficit = myDem - mySup;
             if (myDeficit > 0) {
                 // Find best seller candidate: largest positive surplus,
                 // met, not at war, no existing agreement in this direction.
                 PlayerId bestSeller = INVALID_PLAYER;
-                int32_t  bestSurplus = 0;
+                int32_t bestSurplus = 0;
                 for (uint8_t other = 0; other < playerCount; ++other) {
-                    if (other == this->m_player) { continue; }
+                    if (other == this->m_player) {
+                        continue;
+                    }
                     const aoc::game::Player* o = gameState.player(other);
-                    if (o == nullptr) { continue; }
-                    if (o->victoryTracker().isEliminated) { continue; }
+                    if (o == nullptr) {
+                        continue;
+                    }
+                    if (o->victoryTracker().isEliminated) {
+                        continue;
+                    }
                     const PairwiseRelation& r = diplomacy.relation(this->m_player, other);
-                    if (!r.hasMet || r.isAtWar) { continue; }
-                    if (r.totalScore() < 0) { continue; }  // Hostile sellers refuse
+                    if (!r.hasMet || r.isAtWar) {
+                        continue;
+                    }
+                    if (r.totalScore() < 0) {
+                        continue;
+                    } // Hostile sellers refuse
 
                     bool duplicateDir = false;
-                    for (const aoc::sim::ElectricityAgreementComponent& a
-                             : gameState.electricityAgreements()) {
+                    for (const aoc::sim::ElectricityAgreementComponent& a :
+                         gameState.electricityAgreements()) {
                         if (a.isActive && a.buyer == this->m_player && a.seller == other) {
-                            duplicateDir = true; break;
+                            duplicateDir = true;
+                            break;
                         }
                     }
-                    if (duplicateDir) { continue; }
+                    if (duplicateDir) {
+                        continue;
+                    }
 
-                    auto [oSup, oDem] = energyBalance(o);
+                    auto [oSup, oDem]     = energyBalance(o);
                     const int32_t surplus = oSup - oDem;
                     if (surplus > bestSurplus) {
                         bestSurplus = surplus;
@@ -964,18 +1010,18 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                     // Cover the deficit but no more than the seller's
                     // surplus. Gold: 2 gold per MW per turn — MVP price
                     // anchor; market tuning can come later.
-                    const int32_t mw = std::min(myDeficit, bestSurplus);
+                    const int32_t mw          = std::min(myDeficit, bestSurplus);
                     const int32_t goldPerTurn = std::max(1, mw * 2);
                     const int32_t duration    = 30;
-                    const aoc::ErrorCode ec = aoc::sim::proposeElectricityImport(
-                        gameState, this->m_player, bestSeller,
-                        mw, goldPerTurn, gameState.currentTurn(), duration);
+                    const aoc::ErrorCode ec   = aoc::sim::proposeElectricityImport(
+                        gameState, this->m_player, bestSeller, mw, goldPerTurn,
+                        gameState.currentTurn(), duration);
                     if (ec == aoc::ErrorCode::Ok) {
                         LOG_INFO("AI %u bought %d MW electricity from player %u "
                                  "(deficit %d, surplus %d, %d gold/turn, %d turns)",
-                                 static_cast<unsigned>(this->m_player),
-                                 mw, static_cast<unsigned>(bestSeller),
-                                 myDeficit, bestSurplus, goldPerTurn, duration);
+                                 static_cast<unsigned>(this->m_player), mw,
+                                 static_cast<unsigned>(bestSeller), myDeficit, bestSurplus,
+                                 goldPerTurn, duration);
                     }
                 }
             }
@@ -988,33 +1034,35 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
         const aoc::game::Player* me = gameState.player(this->m_player);
         if (me != nullptr) {
             const CurrencyAmount treasury = me->treasury();
-            bool atWar = false;
+            bool atWar                    = false;
             for (uint8_t other = 0; other < playerCount; ++other) {
-                if (other == this->m_player) { continue; }
+                if (other == this->m_player) {
+                    continue;
+                }
                 if (diplomacy.relation(this->m_player, other).isAtWar) {
-                    atWar = true; break;
+                    atWar = true;
+                    break;
                 }
             }
             auto& cityStates = gameState.cityStates();
             aiSpendEnvoys(gameState, this->m_player);
             for (std::size_t i = 0; i < cityStates.size(); ++i) {
                 CityStateComponent& cs = cityStates[i];
-                if (!cs.hasMet(this->m_player)) { continue; }
+                if (!cs.hasMet(this->m_player)) {
+                    continue;
+                }
 
                 // Bully: only if we have no envoys stake and low treasury.
-                const bool weAreSuzerain = (cs.suzerain == this->m_player);
-                const bool hasOtherSuzerain =
-                    (cs.suzerain != INVALID_PLAYER && !weAreSuzerain);
-                const bool lowTreasury = (treasury < 100);
-                const bool aggressive  = (beh.militaryAggression > 1.2f);
-                if (!weAreSuzerain && !hasOtherSuzerain &&
-                    lowTreasury && aggressive) {
+                const bool weAreSuzerain    = (cs.suzerain == this->m_player);
+                const bool hasOtherSuzerain = (cs.suzerain != INVALID_PLAYER && !weAreSuzerain);
+                const bool lowTreasury      = (treasury < 100);
+                const bool aggressive       = (beh.militaryAggression > 1.2f);
+                if (!weAreSuzerain && !hasOtherSuzerain && lowTreasury && aggressive) {
                     (void)bullyCityState(gameState, this->m_player, i);
                 }
 
                 // Levy: suzerain at war with full treasury.
-                if (weAreSuzerain && atWar && treasury > 300 &&
-                    cs.levyPlayer == INVALID_PLAYER) {
+                if (weAreSuzerain && atWar && treasury > 300 && cs.levyPlayer == INVALID_PLAYER) {
                     (void)levyCityStateMilitary(gameState, this->m_player, i);
                 }
             }
