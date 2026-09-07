@@ -642,6 +642,15 @@ void applyCivGovernmentAndAura(const aoc::game::GameState& gameState,
 
 } // namespace
 
+float eraAdvantageModifier(UnitEra own, UnitEra other) {
+    const int32_t steps = static_cast<int32_t>(own) - static_cast<int32_t>(other);
+    if (steps <= 0) {
+        return 1.0f; // equal or behind: no edge, and no penalty either
+    }
+    const float raw = static_cast<float>(steps) * ERA_ADVANTAGE_PER_STEP;
+    return 1.0f + std::min(raw, ERA_ADVANTAGE_MAX);
+}
+
 CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
                                        const aoc::map::HexGrid& grid,
                                        const aoc::game::Unit& attacker,
@@ -694,6 +703,11 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
 
         // Civ ability, government and great-person aura (symmetric with melee).
         applyCivGovernmentAndAura(gameState, grid, attacker, defender, atkStrength, defStrength);
+
+        // Era advantage. Only the side that is ahead gets an edge, so the two
+        // modifiers never work against each other twice for one gap.
+        atkStrength *= eraAdvantageModifier(attacker.typeDef().era, defender.typeDef().era);
+        defStrength *= eraAdvantageModifier(defender.typeDef().era, attacker.typeDef().era);
 
 
         float atkHealthMod =
@@ -800,6 +814,11 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
         }
 
         applyCivGovernmentAndAura(gameState, grid, attacker, defender, atkStrength, defStrength);
+
+        // Era advantage. Only the side that is ahead gets an edge, so the two
+        // modifiers never work against each other twice for one gap.
+        atkStrength *= eraAdvantageModifier(attacker.typeDef().era, defender.typeDef().era);
+        defStrength *= eraAdvantageModifier(defender.typeDef().era, attacker.typeDef().era);
 
         // Embarked units fight at 50% strength
         if (attacker.state() == aoc::sim::UnitState::Embarked) {

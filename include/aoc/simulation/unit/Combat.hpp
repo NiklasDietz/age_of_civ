@@ -109,6 +109,23 @@ struct CombatPreview {
 /// terrain, river, elevation, flanking, class matchup, fortification, war
 /// weariness). resolveMeleeCombat, resolveRangedCombat and previewCombat all
 /// use it, so the preview cannot drift from the resolution again (2026-09-05).
+/// Strength edge per era a unit is ahead of the one it fights, capped.
+///
+/// MECHANICS.md has described an era-difference modifier since it was written,
+/// and `UnitEra` was read nowhere in Combat.cpp or CombatExtensions.cpp: era
+/// affected only maintenance and food. A Warrior and a Mech Infantry met on the
+/// strength table alone.
+///
+/// Capped because the table already rises steeply with era; without a cap the
+/// two effects compound into an instant kill across a wide era gap.
+inline constexpr float ERA_ADVANTAGE_PER_STEP = 0.06f;
+inline constexpr float ERA_ADVANTAGE_MAX      = 0.30f;
+
+/// Multiplier for a unit of `own` era fighting one of `other` era.
+/// 1.0 when equal or behind; the loser gets no penalty, the leader gets the
+/// edge, so the two sides' modifiers never multiply against each other twice.
+[[nodiscard]] float eraAdvantageModifier(UnitEra own, UnitEra other);
+
 struct CombatStrengths {
     float attack;
     float defense;
