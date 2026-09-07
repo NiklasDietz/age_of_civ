@@ -4,7 +4,7 @@ Based on the user's questions about economic realism.
 
 ## The Core Problem
 
-The economy has incredibly deep systems (46 recipes, 5 monetary stages, supply chains,
+The economy has incredibly deep systems (76 recipes, 5 monetary stages, supply chains,
 inflation, bonds, forex) but the connections between them are weak. Goods pile up in
 stockpiles with no real purpose. Money is abstracted as "+gold per building" which
 contradicts the commodity money system. The result: a sophisticated economic engine
@@ -44,18 +44,18 @@ create gold coins — it creates goods that are sold for coins. The gold should 
 
 Currently goods pile up because demand is too low. Increase demand:
 - **Building effectiveness**: Factories without tools/fuel operate at 50% efficiency.
-  Already partially implemented via ongoingFuel, but tool dependency is missing.
+  Implemented. Tools are modelled: a chain without them runs at 60% output.
+  (This said tool dependency was missing.)
 - **Population happiness from goods**: Consumer goods should directly boost happiness.
   Having Clothing, Processed Food, Electronics = happier citizens = more growth + tax.
 - **Science from goods**: Certain goods (Paper, Glass, Computers) boost research speed.
   A civ with computers researches Information-era techs 25% faster.
 
-### Fix 3: Science should cost money
+### Fix 3: Science should cost money — DONE
 
-Research is currently free — you just accumulate science points. In reality, research
-costs money (labs, equipment, scientists' salaries). Adding a gold-per-science-point
-cost means rich nations research faster, but it's an investment because new techs
-unlock better recipes and buildings.
+Research is funded: `TurnProcessor` charges 0.2 gold per science point each turn, and
+a player who cannot pay researches at reduced efficiency, floored at 50%. This section
+described it as an open problem long after it shipped.
 
 ### Fix 4: Fiat money should be trust-based and impactful
 

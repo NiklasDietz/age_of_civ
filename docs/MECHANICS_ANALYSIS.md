@@ -8,7 +8,10 @@ Based on research across Civ 6, Old World, Humankind, and FreeCiv.
 
 **Partially Implemented:** Golden/Dark Ages (era scores exist but limited), Tourism/Culture Victory (borders expand but no tourism mechanic).
 
-**Missing:** Governors, Zone of Control.
+**Missing:** (was "Governors, Zone of Control" — both are implemented.
+Governors ship as titles from civics; zone of control lives in
+`game/ZoneOfControl.cpp` and, since 2026-09-07, binds city-states and
+barbarians as well as the major seats.)
 
 ---
 

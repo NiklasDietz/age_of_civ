@@ -51,7 +51,7 @@ subject to change as GA-evolved personalities drift balance.
 - **Governor** (`simulation/city/Governor.hpp`): auto-queue by focus mode
   (food / prod / gold / science / balanced).
 - **Walls & bombardment** (`simulation/city/CityBombardment.cpp`): tiered
-  walls (Ancient / Medieval / Renaissance), wall HP + auto-repair, ranged
+  walls (Ancient / Medieval / Renaissance / Steel), wall HP + auto-repair, ranged
   attack vs weakest unit in range. **Encampment district** also bombards
   independently — strength 22 (+10 with Barracks), range 2 (+1 with
   Barracks).
@@ -105,15 +105,19 @@ subject to change as GA-evolved personalities drift balance.
 - **Culture output** (`simulation/city/CityScience.cpp`): tile yield +
   pop + capital bonus + **Theatre buildings' cultureBonus** + civ
   multiplier + economic stability.
-- **Tourism** (`simulation/culture/Tourism.hpp`): tourism-per-turn from
-  Great Works + wonders + national parks (currently stubbed — header
-  only).
+- **Tourism** (`simulation/culture/Tourism.cpp`): tourism-per-turn from
+  Great Works + wonders + national parks. Implemented — `computeTourism`
+  runs per player per turn. (This said "currently stubbed — header only"
+  long after it shipped.)
 
 ## Units
 
-- **Unit types** (`simulation/unit/UnitTypes.hpp`): ~100+ ids covering
-  eras Ancient→Modern. Classes: Melee, Ranged, Cavalry, Armor,
-  Artillery, Air, Naval, Civilian, Builder, Spy, Diplomat.
+- **Unit types** (`simulation/unit/UnitTypes.hpp`): 78 ids covering eras
+  Ancient→Information. Classes: Melee, Ranged, AntiCavalry, Cavalry,
+  Armor, Artillery, Air, Helicopter, Naval, Civilian, Settler, Scout,
+  Religious, Trader, Logistics. (This said "~100+" and listed Builder,
+  Spy and Diplomat as classes — all three are `Civilian` — while omitting
+  seven that do exist.)
 - **Movement** (`simulation/unit/Movement.cpp`): terrain-costed move, ZoC,
   embarkation, transport.
 - **Combat** (`simulation/unit/Combat.cpp`,
@@ -168,7 +172,8 @@ subject to change as GA-evolved personalities drift balance.
 
 - **Religion system** (`simulation/religion/Religion.hpp`): faith
   accumulation → found religion → spread to neighboring cities.
-- **Theological combat** (`religion/TheologicalCombat.cpp`): competing
+- **Theological combat** (`religion/Religion.cpp`, `requestTheologicalCombat`):
+  competing
   religions contest cities; apostles / missionaries.
 - **Era-gated science-vs-devotion curve**: monastic bonus early,
   secularization penalty late.

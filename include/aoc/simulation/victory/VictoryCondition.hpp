@@ -32,10 +32,15 @@
  *   - Debt spiral: sovereign default + hyperinflation simultaneously
  *
  * Game end trigger:
- *   - A player completes the "Global Integration Project" (sustained high
- *     CSI across all categories for 10 turns), OR
  *   - Turn limit reached (configurable, default 500), OR
- *   - All but one player eliminated.
+ *   - All but one player eliminated, OR
+ *   - One of the VictoryType conditions below is met.
+ *
+ * This block also promised a "Global Integration Project" ending -- sustained
+ * high CSI across all categories for ten turns. No such victory exists: there
+ * is no Integration in VictoryType and no check for one anywhere. Two GA genes
+ * tuned its threshold and duration until 2026-09-07, when they were removed.
+ * Building it is a design decision, not a missing wire.
  */
 
 #include "aoc/core/Types.hpp"
