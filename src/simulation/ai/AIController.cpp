@@ -1754,13 +1754,38 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             // and bankrupted every AI (measured 2026-09-05, seed 42).
             const int32_t desiredMilitary = ownedCityCount * targets.desiredMilitaryPerCity + 2;
             if (!bestMilitaryId.isValid() || unitCounts.military >= desiredMilitary) {
-                constexpr std::array<CityProjectType, 4> PROJECT_ORDER = {
-                    CityProjectType::IndustrialSurge, CityProjectType::CampusResearch,
-                    CityProjectType::CommercialInvestment, CityProjectType::BreadAndCircuses};
-                for (CityProjectType project : PROJECT_ORDER) {
-                    if (requestQueueProject(gameState, this->m_player, city.location(), project)
+                // Raising a production building the city already runs beats a
+                // generic project: capacity() gates how many recipes it can
+                // turn out per turn, and every building sat at level 1 until
+                // 2026-09-07 because nothing could upgrade one. Deepest tier
+                // first -- those are the throughput bottlenecks.
+                bool queuedUpgrade = false;
+                constexpr std::array<BuildingId, 8> UPGRADE_ORDER = {
+                    BuildingId{5},  // Industrial Complex
+                    BuildingId{11}, // Semiconductor Fab
+                    BuildingId{12}, // Research Lab
+                    BuildingId{3},  // Factory
+                    BuildingId{4},  // Electronics Plant
+                    BuildingId{2},  // Refinery
+                    BuildingId{1},  // Workshop
+                    BuildingId{0},  // Forge
+                };
+                for (BuildingId bid : UPGRADE_ORDER) {
+                    if (requestUpgradeBuilding(gameState, this->m_player, city.location(), bid)
                         == ErrorCode::Ok) {
+                        queuedUpgrade = true;
                         break;
+                    }
+                }
+                if (!queuedUpgrade) {
+                    constexpr std::array<CityProjectType, 4> PROJECT_ORDER = {
+                        CityProjectType::IndustrialSurge, CityProjectType::CampusResearch,
+                        CityProjectType::CommercialInvestment, CityProjectType::BreadAndCircuses};
+                    for (CityProjectType project : PROJECT_ORDER) {
+                        if (requestQueueProject(gameState, this->m_player, city.location(), project)
+                            == ErrorCode::Ok) {
+                            break;
+                        }
                     }
                 }
                 ++cityIndex;
@@ -1826,7 +1851,9 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             auto mapKind = [](ProductionItemType t) {
                 switch (t) {
                     case ProductionItemType::Unit:     return aoc::core::ProductionItemKind::Unit;
-                    case ProductionItemType::Building: return aoc::core::ProductionItemKind::Building;
+                    case ProductionItemType::Building:
+                    case ProductionItemType::BuildingUpgrade:
+                        return aoc::core::ProductionItemKind::Building;
                     case ProductionItemType::Project:  // logged as a district-tier build
                     case ProductionItemType::District: return aoc::core::ProductionItemKind::District;
                     case ProductionItemType::Wonder:   return aoc::core::ProductionItemKind::Wonder;

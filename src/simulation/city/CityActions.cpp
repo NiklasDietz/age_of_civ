@@ -212,6 +212,41 @@ ErrorCode requestQueueProject(aoc::game::GameState& gameState, PlayerId player,
     return ErrorCode::Ok;
 }
 
+bool buildingUpgradeAvailable(const aoc::game::City& city, BuildingId building) {
+    if (!city.hasBuilding(building)) {
+        return false;
+    }
+    return city.buildingLevels().getLevel(building) < MAX_BUILDING_LEVEL;
+}
+
+ErrorCode requestUpgradeBuilding(aoc::game::GameState& gameState, PlayerId player,
+                                 hex::AxialCoord cityAt, BuildingId building) {
+    aoc::game::City* city = ownedCity(gameState, player, cityAt, nullptr);
+    if (city == nullptr || !buildingUpgradeAvailable(*city, building)) {
+        return ErrorCode::InvalidArgument;
+    }
+    // One upgrade of a given building in the queue at a time: two would spend
+    // twice for one level, since the second finds it already raised.
+    for (const ProductionQueueItem& queued : city->production().queue) {
+        if (queued.type == ProductionItemType::BuildingUpgrade && queued.itemId == building.value) {
+            return ErrorCode::InvalidState;
+        }
+    }
+    const int32_t cost = city->buildingLevels().upgradeCost(building);
+    if (cost <= 0) {
+        return ErrorCode::InvalidArgument;
+    }
+    const int32_t nextLevel = city->buildingLevels().getLevel(building) + 1;
+    ProductionQueueItem item{};
+    item.type      = ProductionItemType::BuildingUpgrade;
+    item.itemId    = building.value;
+    item.name      = std::string(buildingDef(building).name) + " Lv" + std::to_string(nextLevel);
+    item.totalCost = static_cast<float>(cost) * GamePace::instance().costMultiplier;
+    item.progress  = 0.0f;
+    city->production().queue.push_back(std::move(item));
+    return ErrorCode::Ok;
+}
+
 std::string_view amenityTierName(float happiness) {
     if (happiness >= 3.0f)  { return "Ecstatic"; }
     if (happiness >= 1.0f)  { return "Happy"; }

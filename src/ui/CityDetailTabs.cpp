@@ -698,6 +698,7 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
                 btn.pressedColor = tokens::BRONZE_DARK;
                 break;
             case aoc::sim::ProductionItemType::Building:
+            case aoc::sim::ProductionItemType::BuildingUpgrade:
                 btn.normalColor  = tokens::BRONZE_BASE;
                 btn.hoverColor   = tokens::BRONZE_LIGHT;
                 btn.pressedColor = tokens::BRONZE_DARK;

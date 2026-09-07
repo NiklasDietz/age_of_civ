@@ -39,6 +39,14 @@ enum class ProductionItemType : uint8_t {
     District,
     Wonder,
     Project,   ///< A repeatable city project (CityProjectType in itemId); 2026-09-05
+    /// Raise an already-built building one throughput level (BuildingId in
+    /// itemId); 2026-09-07. CityBuildingLevelsComponent, CAPACITY_TABLE columns
+    /// 2 and 3, UPGRADE_COST_TABLE and the Encyclopedia's "Lv1/Lv2/Lv3" text all
+    /// existed and were saved, but nothing ever called upgrade(), so every
+    /// building in every game sat at level 1 and two thirds of that table was
+    /// unreachable. Serialised as the enum's byte like any other type, so this
+    /// needs no save-version bump.
+    BuildingUpgrade,
 };
 
 struct ProductionQueueItem {

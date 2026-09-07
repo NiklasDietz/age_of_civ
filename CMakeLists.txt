@@ -993,6 +993,7 @@ if(AOC_BUILD_TESTS)
         test_supply_healing
         test_trader_pillage
         test_route_cancellation
+        test_building_upgrade
         test_spaceport
         test_government_plaza_and_dam
         test_great_works

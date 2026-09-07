@@ -74,6 +74,23 @@ namespace aoc::sim {
 /// True when `city` holds the district `project` needs.
 [[nodiscard]] bool cityProjectAvailable(const aoc::game::City& city, CityProjectType project);
 
+/// Queue an upgrade that raises an already-built building one throughput level.
+///
+/// The city must actually have the building, and the building must be below
+/// MAX_BUILDING_LEVEL. Cost comes from UPGRADE_COST_TABLE via
+/// `CityBuildingLevelsComponent::upgradeCost`, so it rises with each level and
+/// with the building's tier.
+///
+/// Levels were designed, saved, and advertised in the Encyclopedia as
+/// "Lv1/Lv2/Lv3" long before anything could raise one: nothing called
+/// `upgrade()`, so every building in every game sat at level 1 and two thirds
+/// of CAPACITY_TABLE was unreachable. This is the way in.
+[[nodiscard]] ErrorCode requestUpgradeBuilding(aoc::game::GameState& gameState, PlayerId player,
+                                               hex::AxialCoord cityAt, BuildingId building);
+
+/// True when `city` has `building` and it is below the level cap.
+[[nodiscard]] bool buildingUpgradeAvailable(const aoc::game::City& city, BuildingId building);
+
 /// The WorkerFocus the tile scorer uses for a CityFocus.
 [[nodiscard]] WorkerFocus workerFocusFor(CityFocus focus);
 

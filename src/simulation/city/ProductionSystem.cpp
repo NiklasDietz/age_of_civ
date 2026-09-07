@@ -471,6 +471,22 @@ void processProductionQueues(aoc::game::GameState& gameState, aoc::map::HexGrid&
                 completeCityProject(gameState, *city, static_cast<CityProjectType>(item.itemId));
                 break;
             }
+            case ProductionItemType::BuildingUpgrade: {
+                const BuildingId bid{item.itemId};
+                const ErrorCode rc = city->buildingLevels().upgrade(bid);
+                if (rc == ErrorCode::Ok) {
+                    LOG_INFO("Upgraded %.*s to level %d in %s",
+                             static_cast<int>(item.name.size()), item.name.c_str(),
+                             city->buildingLevels().getLevel(bid), city->name().c_str());
+                } else {
+                    // Already at the cap. The queue entry still pops; the
+                    // production is spent, which is the same deal the player
+                    // took when they queued it.
+                    LOG_WARN("%s: upgrade of building %u refused, already at max level",
+                             city->name().c_str(), static_cast<unsigned>(item.itemId));
+                }
+                break;
+            }
             case ProductionItemType::District: {
                 const DistrictType districtType = static_cast<DistrictType>(item.itemId);
                 // The human's choice, while it is still legal: a rival may

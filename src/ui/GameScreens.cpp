@@ -188,8 +188,10 @@ const char* buildableIconKey(const aoc::sim::BuildableItem& item) {
         // Item id is the UnitTypeId.value packed into uint16.
         return unitClassIconKey(aoc::sim::unitTypeDef(UnitTypeId{item.id}).unitClass);
     }
-    case PT::Building: {
-        // For buildings, requiredDistrict drives the silhouette.
+    case PT::Building:
+    case PT::BuildingUpgrade: {
+        // For buildings, requiredDistrict drives the silhouette. An upgrade
+        // shows the same building it raises.
         const aoc::sim::BuildingDef& def = aoc::sim::buildingDef(BuildingId{item.id});
         switch (def.requiredDistrict) {
         case aoc::sim::DistrictType::CityCenter:
@@ -227,6 +229,7 @@ Color buildableAccent(aoc::sim::ProductionItemType t) {
     case PT::Unit:
         return tokens::DIPLO_HOSTILE;
     case PT::Building:
+    case PT::BuildingUpgrade:
         return tokens::RES_PRODUCTION;
     case PT::Wonder:
         return tokens::RES_GOLD;
@@ -244,6 +247,8 @@ const char* buildableTypeLabel(aoc::sim::ProductionItemType t) {
         return "Unit";
     case PT::Building:
         return "Building";
+    case PT::BuildingUpgrade:
+        return "Upgrade";
     case PT::Wonder:
         return "Wonder";
     case PT::Project:
