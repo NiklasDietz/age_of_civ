@@ -61,8 +61,48 @@ inline constexpr float MOUNTAIN_THRESHOLD_M = 4000.0f;
 ///     happens to reproduce Earth's ~10 % mountain share does so only because
 ///     the two errors cancel.
 /// A ratio to the planet's own median is invariant to both. It is NOT a
-/// percentile quota: the mountain FRACTION still varies freely per seed (it is
-/// measured at 6.8-22.0 % of land), so it can still be gated on.
+/// percentile quota: the mountain FRACTION still varies freely per seed, so it
+/// can still be gated on.
+///
+/// MEASURED BROKEN 2026-09-08, and NOT fixable by changing this number.
+///
+/// The crust-scale defect quoted above has since been FIXED: median continental
+/// crust now measures 37.5-40.1 km across seeds 42/7/1234, Earth-scale, where it
+/// was 15.6-18.2 km when this ratio was chosen. The ratio was never re-derived,
+/// so median x 2.0 puts the cutoff at 75-80 km while crust is hard-clamped at
+/// 70 km (PlatePhysics::maxCrustThicknessKm). The mask is not mis-tuned, it is
+/// MATHEMATICALLY EMPTY: 0.00 % mountains on seeds 42, 7, 1234 and 99, against
+/// the 7-12 % of land that docs/concepts/ targets.
+///
+/// Re-deriving the ratio DOES NOT WORK, which is the part worth recording.
+/// The cutoff is `median x ratio` against a FIXED clamp, and the median varies
+/// per seed, so the criterion's viability flips between seeds:
+///
+///     seed   median   x1.8 cutoff   peak p90   mountains
+///     42     37.5     67.5          68.8       8.0 % of land
+///     7      40.1     72.2          68.4       0 %  (cutoff over the clamp)
+///     1234   38.9     70.02         70.0       0 %  (cutoff over the clamp)
+///
+/// Any ratio at or above 70/37.5 ~ 1.87 empties the mask on some seeds; below
+/// that it over-selects on others, because the peak distribution is
+/// CLAMP-SATURATED -- p95 through p100 read exactly 70.0 on every seed measured,
+/// so at least 5 % of continental tiles sit on the ceiling and the top of the
+/// distribution carries no information to threshold against. Tuning this number
+/// to fit one seed would be calibrating against the clamp, which is the same
+/// mistake the 4000 m criterion made against freeboard.
+///
+/// Two real fixes, both outside this constant:
+///   1. Stop the thickening from saturating the clamp (the calibration memory's
+///      open defect #2, plan finding 1.4: fabricated thickness with no mass
+///      debit from the shortened neighbour). This is the causal fix.
+///   2. Or move the criterion off the clamp entirely -- local relief already
+///      works for Hills (HILL_RELIEF_M_PER_100KM, projection-correct, 19-38 %
+///      across seeds) and non-mountain land relief runs p90=555, p95=921
+///      m/100km, so a relief-based mountain tier is measurable today. It would
+///      trade a geologically causal criterion for a topographic one.
+/// Left at 2.0 deliberately: it is the committed baseline, and every value in
+/// reach is equally broken, so changing it would move worldgen output for no
+/// gain.
 inline constexpr float MOUNTAIN_CRUST_RATIO = 2.0f;
 
 struct SphereField {

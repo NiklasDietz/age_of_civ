@@ -133,20 +133,43 @@ Four seeds (42, 7, 1234, 99), default 140x90 Lambert, via `aoc_mapgen
 | Plates total | ~15 | 7, 9, 9, 13 | LOW |
 | Ocean / land | 60/40 | ~63/37 (seed 42) | close |
 
-**The mountain miss is a definition conflict, not a tuning drift.** The lever
-this file names, `MOUNTAIN_OROGENY_THRESHOLD` (0.20 on an orogeny scale), no
-longer exists. Mountains are now decided upstream in the world-frame elevation
-pass and merely relabelled in `ClimateBiome.cpp:466`, gated on
-`SphereField.hpp`'s `MOUNTAIN_THRESHOLD_M = 4000.0f` — a tile is Mountain only
-if its peak sample stands 4000 m above sea level. On Earth roughly 1 % of land
-clears 4000 m; `plate_tectonics.md` §10 defines mountain as **above 1 km**
-(~24 % of land) and its §14 target of ~10 % corresponds to something nearer a
-2 km gate. A 4000 m gate and a 7-12 % target cannot both be right, and the
-measurement says the gate wins: no tile on any of the four seeds clears it.
+**The mountain miss is an empty mask, not a definition conflict.** Corrected
+2026-09-08 after measuring with `AOC_DUMP_OROGENY=1`; an earlier version of this
+note blamed a 4000 m elevation gate, which was read off a STALE COMMENT. That
+criterion was replaced long ago and `MOUNTAIN_THRESHOLD_M` now survives only in
+comments -- no code reads it. `MOUNTAIN_OROGENY_THRESHOLD`, which this file
+still names as the lever, does not exist either.
 
-Fixing this belongs to the worldgen rebuild program, not to a doc pass: moving
-`MOUNTAIN_THRESHOLD_M` re-bases every hypsometry gate and the committed
-baselines under `tools/mapgen_baselines/`.
+The live criterion is `SphereField.hpp`'s `MOUNTAIN_CRUST_RATIO`: a tile is
+Mountain where its peak crustal thickness reaches that multiple of the planet's
+own median continental crust, with a `continentalFraction >= 0.5` gate. It
+measures crustal thickening, which is what an orogen actually is.
+
+It produces nothing because the ratio was never re-derived after a DIFFERENT
+defect was fixed. Median continental crust is now 37.5-40.1 km across seeds
+(Earth-scale); it was 15.6-18.2 km when the ratio was chosen. So median x 2.0
+puts the cutoff at 75-80 km while crust is hard-clamped at 70 km
+(`PlatePhysics::maxCrustThicknessKm`). The cutoff sits above the ceiling.
+
+Re-deriving the ratio does not fix it, which is the useful part:
+
+| seed | median | x1.8 cutoff | peak p90 | mountains |
+|------|--------|-------------|----------|-----------|
+| 42   | 37.5   | 67.5        | 68.8     | 8.0 % of land |
+| 7    | 40.1   | 72.2        | 68.4     | 0 % (cutoff over the clamp) |
+| 1234 | 38.9   | 70.02       | 70.0     | 0 % (cutoff over the clamp) |
+
+The cutoff is `median x ratio` against a fixed clamp, and the median varies per
+seed, so viability flips between seeds. Above ~1.87 the mask empties on some
+seeds; below it over-selects on others. The peak distribution is
+**clamp-saturated** -- p95 through p100 read exactly 70.0 on every seed measured
+-- so the top of the distribution carries nothing to threshold against.
+
+Two real fixes, both outside the constant: stop the thickening saturating the
+clamp (the causal one), or move the criterion off the clamp, e.g. onto the local
+relief instrument that already works for Hills. Left alone here on purpose:
+every value in reach is equally broken, so changing it would move worldgen
+output for no gain.
 
 **These named levers are GONE from the code** and the checklist below is stale
 wherever it cites them: `MOUNTAIN_OROGENY_THRESHOLD`, `STRESS_GATE`,
