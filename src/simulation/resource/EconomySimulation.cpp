@@ -227,6 +227,28 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
         static const bool dumpEconomy = std::getenv("AOC_DUMP_ECONOMY") != nullptr;
         if (!dumpEconomy) { return; }
 
+        {
+            static const char* const kSkipNames[] = {"strike",     "workerSlots", "tech",
+                                                     "building",   "preference",  "buildingBatches",
+                                                     "inputs"};
+            std::fprintf(stderr, "[econskip] t=%d cumulative:", gameState.currentTurn());
+            for (std::size_t r = 0; r < static_cast<std::size_t>(SkipReason::Count); ++r) {
+                std::fprintf(stderr, " %s=%lld", kSkipNames[r],
+                             static_cast<long long>(this->m_recipeSkips[r]));
+            }
+            std::fprintf(stderr, "\n");
+            // The fair denominator: how many city-turns hit the labour cap at
+            // all, rather than how many (recipe, city, turn) evaluations it
+            // rejected.
+            const double pct = (this->m_cityTurns > 0)
+                                   ? 100.0 * static_cast<double>(this->m_cityTurnsSlotBound) /
+                                         static_cast<double>(this->m_cityTurns)
+                                   : 0.0;
+            std::fprintf(stderr, "[econskip] cityTurns=%lld slotBound=%lld (%.1f%%)\n",
+                         static_cast<long long>(this->m_cityTurns),
+                         static_cast<long long>(this->m_cityTurnsSlotBound), pct);
+        }
+
         for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
             if (playerPtr == nullptr) { continue; }
             const PlayerEconomyComponent& econ = playerPtr->economy();
@@ -704,6 +726,10 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
     struct CityProductionState {
         int32_t totalRecipesExecuted = 0;
         std::unordered_map<uint16_t, int32_t> buildingBatchesUsed;
+        // Diagnostic latches so a city-turn is counted once, not once per
+        // recipe -- see m_cityTurns in the header for why that matters.
+        bool countedCityTurn  = false;
+        bool countedSlotBound = false;
     };
     std::unordered_map<aoc::game::City*, CityProductionState> cityState;
 
@@ -759,7 +785,12 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 aoc::game::City* city = cityPtr.get();
                 CityProductionState& state = cityState[city];
 
+                if (!state.countedCityTurn) {
+                    state.countedCityTurn = true;
+                    ++this->m_cityTurns;
+                }
                 if (city->strike().isOnStrike) {
+                    ++this->m_recipeSkips[static_cast<std::size_t>(SkipReason::Strike)];
                     continue;
                 }
 
@@ -809,17 +840,24 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 // Each recipe consumes workerSlots (1 for basic, 2-3 for advanced).
                 // A city can only run recipes whose total slots fit within capacity.
                 if (state.totalRecipesExecuted + recipe->workerSlots > maxSlots) {
+                    ++this->m_recipeSkips[static_cast<std::size_t>(SkipReason::WorkerSlots)];
+                    if (!state.countedSlotBound) {
+                        state.countedSlotBound = true;
+                        ++this->m_cityTurnsSlotBound;
+                    }
                     continue;
                 }
 
                 // Tech gate: skip recipe if the player hasn't researched the required tech
                 if (recipe->requiredTech.isValid()
                     && !playerPtr->tech().hasResearched(recipe->requiredTech)) {
+                    ++this->m_recipeSkips[static_cast<std::size_t>(SkipReason::Tech)];
                     continue;
                 }
 
                 const CityDistrictsComponent& districts = city->districts();
                 if (!districts.hasBuilding(recipe->requiredBuilding)) {
+                    ++this->m_recipeSkips[static_cast<std::size_t>(SkipReason::Building)];
                     continue;
                 }
 
@@ -835,6 +873,7 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                     const uint16_t pref = this->recipePreference(
                         city->owner(), locHash, recipe->requiredBuilding.value);
                     if (pref != 0xFFFFu && pref != recipe->recipeId) {
+                        ++this->m_recipeSkips[static_cast<std::size_t>(SkipReason::Preference)];
                         continue;
                     }
                 }
@@ -844,6 +883,7 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 int32_t buildingLevel = levels.getLevel(recipe->requiredBuilding);
                 int32_t buildingUsed  = state.buildingBatchesUsed[recipe->requiredBuilding.value];
                 if (buildingUsed >= buildingCap) {
+                    ++this->m_recipeSkips[static_cast<std::size_t>(SkipReason::BuildingBatches)];
                     continue;
                 }
 
@@ -857,6 +897,7 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                     }
                 }
                 if (!hasAllInputs) {
+                    ++this->m_recipeSkips[static_cast<std::size_t>(SkipReason::Inputs)];
                     continue;
                 }
 

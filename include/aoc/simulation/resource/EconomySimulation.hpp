@@ -101,6 +101,40 @@ private:
     /// function-local static array that leaked counts across games in the
     /// same process (ml/headless runs). Written each time a recipe fires in
     /// `executeProduction`. Size covers all currently-defined recipes.
+    /// Why recipes did not run, counted per reason and reported by
+    /// AOC_DUMP_ECONOMY. The ledger established that inputs are NOT the
+    /// constraint -- coal ran a surplus of 1602 while the civ reported 987
+    /// units of unmet coal need -- so the question became which gate a recipe
+    /// with its inputs present actually fails. Guessing at that is what the
+    /// reverted Tools change did.
+    enum class SkipReason : std::size_t {
+        Strike = 0,      ///< city on strike
+        WorkerSlots,     ///< labour pool exhausted for the turn
+        Tech,            ///< required tech not researched
+        Building,        ///< required building not present in the city
+        Preference,      ///< a per-building recipe override chose another
+        BuildingBatches, ///< building already ran its batch capacity
+        Inputs,          ///< inputs not present IN THIS CITY's stockpile
+        Count
+    };
+    std::array<int64_t, static_cast<std::size_t>(SkipReason::Count)> m_recipeSkips = {};
+
+    /// City-turns counted once each, not per recipe.
+    ///
+    /// The per-reason counts above are inflated by the loop's shape: a city that
+    /// fills its labour budget then skips EVERY remaining recipe with
+    /// WorkerSlots, and a city lacking a building skips every recipe needing it.
+    /// So those totals rank evaluations, not constraints. These two count one
+    /// city-turn once, which is the honest denominator for "how often was
+    /// labour the thing that stopped this city".
+    int64_t m_cityTurns        = 0;
+    int64_t m_cityTurnsSlotBound = 0;
+
+    [[nodiscard]] const std::array<int64_t, static_cast<std::size_t>(SkipReason::Count)>&
+    recipeSkips() const {
+        return this->m_recipeSkips;
+    }
+
     static constexpr std::size_t MAX_RECIPES = 128;
     std::array<int32_t, MAX_RECIPES> m_recipeFireCount = {};
 
