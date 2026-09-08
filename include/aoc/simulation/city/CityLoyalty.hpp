@@ -42,6 +42,14 @@ namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
 
+/// Cap on religion's per-turn loyalty contribution, either direction.
+///
+/// Religion is meant to tilt the balance, not settle it. Without a bound, a
+/// devout city could out-weigh the distance, amenity and captured-city
+/// pressures put together, and an empire could hold anything at any range
+/// simply by converting it.
+inline constexpr float RELIGION_LOYALTY_LIMIT = 6.0f;
+
 /// Loyalty status tiers (determines yield penalty and UI icon).
 enum class LoyaltyStatus : uint8_t {
     Loyal,      ///< 76-100: Full yields, green icon
@@ -98,7 +106,10 @@ struct CityLoyaltyComponent {
     float happinessEffect     = 0.0f;  ///< -2 per unhappiness point
     float ageEffect           = 0.0f;  ///< +/-5 from Golden/Dark Age
     float capturedPenalty     = 0.0f;  ///< -3 if recently captured
-    float devotionBonus       = 0.0f;  ///< Religion stabilisation bonus (eras 0-2 only)
+    /// Religion's pull on this city's loyalty: positive when it shares its
+    /// owner's faith, negative when it follows a rival's. Bounded by
+    /// RELIGION_LOYALTY_LIMIT so faith tilts the balance without settling it.
+    float devotionBonus       = 0.0f;
 
     int32_t unrestTurns       = 0;     ///< Consecutive turns with loyalty < 25
 

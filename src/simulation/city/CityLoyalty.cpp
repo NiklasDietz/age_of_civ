@@ -187,12 +187,25 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             loyalty.capturedPenalty = -8.0f;
         }
 
-        // Devotion loyalty bonus: religion stabilises large empires in the
-        // early eras.  Coefficient becomes zero at Renaissance+, at which
-        // point the state -- not the church -- has to do the stabilising.
+        // Religion's hold on the city, for or against its owner.
+        //
+        // This was faith-agnostic: net devotion times an era coefficient, with
+        // no regard for WHOSE religion the city actually follows. A city
+        // devoutly following a rival's faith propped up its owner's loyalty
+        // exactly as much as one following the owner's own. The alignment term
+        // supplies the sign, so a shared faith holds a city and a rival's
+        // church pulls it away.
+        //
+        // Bounded on purpose. Religion should tilt the balance, not settle it:
+        // the distance, amenity and captured-city pressures already in this sum
+        // must still decide the outcome, or an empire could hold anything at
+        // any range by converting it.
         if (devotionLoyaltyCoef > 0.0f) {
             const float netDevotion = computeCityNetDevotion(*city);
-            loyalty.devotionBonus   = netDevotion * devotionLoyaltyCoef;
+            const float alignment   = religionLoyaltyAlignment(*city, *gsPlayer);
+            const float raw         = netDevotion * devotionLoyaltyCoef * alignment;
+            loyalty.devotionBonus =
+                std::clamp(raw, -RELIGION_LOYALTY_LIMIT, RELIGION_LOYALTY_LIMIT);
         }
 
         // Era decay on foreign pressure + communication-building floor.

@@ -779,9 +779,26 @@ float religionScienceCoefficient(EraId era, int32_t techsResearchedRenaissancePl
 
 float religionLoyaltyCoefficient(EraId era) {
     // Ancient through Medieval: religion is the state-stabilising force.
-    // Renaissance onward: secular institutions replace it, so Devotion no
-    // longer props up loyalty.
-    return (era.value <= 2) ? 0.30f : 0.0f;
+    // Renaissance onward: secular institutions take over, so its grip weakens
+    // -- but it does not vanish. This returned exactly 0.0f from era 3, which
+    // switched religion's hold on an empire off at the very point empires grow
+    // large enough to need holding, and left the whole devotion-to-loyalty
+    // path inert for most of a long game.
+    return (era.value <= 2) ? 0.30f : 0.12f;
+}
+
+float religionLoyaltyAlignment(const aoc::game::City& city, const aoc::game::Player& owner) {
+    const ReligionId cityFaith = city.religion().dominantReligion();
+    if (cityFaith == NO_RELIGION) {
+        return 0.0f; // nothing to pull either way
+    }
+    const ReligionId ownerFaith = owner.faith().foundedReligion;
+    if (ownerFaith != NO_RELIGION && cityFaith == ownerFaith) {
+        return 1.0f; // shared faith holds the city
+    }
+    // Someone else's church. If the owner has no religion of their own this is
+    // still a rival institution with the citizens' allegiance.
+    return -1.0f;
 }
 
 void processHolyCityAndDecay(aoc::game::GameState& gameState) {

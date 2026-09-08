@@ -346,7 +346,23 @@ inline constexpr float APOSTLE_FAITH_COST = 250.0f;
 /// techsResearchedRenaissancePlus counts completed techs of era >= 3.
 [[nodiscard]] float religionScienceCoefficient(EraId era, int32_t techsResearchedRenaissancePlus);
 
-/// Per-net-devotion loyalty bonus at the given era.  Positive early, zero late.
+/// Per-net-devotion loyalty bonus at the given era.
+///
+/// Positive throughout, strongest early. It used to fall to exactly zero from
+/// the Renaissance on, which switched religion's hold on an empire off at
+/// precisely the point empires get large enough to need holding. Secular
+/// institutions taking over is a reason for the effect to WEAKEN, not vanish.
 [[nodiscard]] float religionLoyaltyCoefficient(EraId era);
+
+/// How a city's faith pulls on its loyalty to `owner`, per point of net
+/// devotion: +1 when the city follows the owner's own religion, -1 when it
+/// follows a rival's, 0 when it follows none.
+///
+/// The devotion loyalty bonus was faith-AGNOSTIC: a city devoutly following a
+/// rival's religion propped up its occupier's loyalty exactly as much as one
+/// following its owner's. A rival's church in your city is a liability, not an
+/// asset, and this is the sign that says so.
+[[nodiscard]] float religionLoyaltyAlignment(const aoc::game::City& city,
+                                             const aoc::game::Player& owner);
 
 } // namespace aoc::sim
