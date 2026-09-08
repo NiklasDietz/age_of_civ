@@ -1005,6 +1005,7 @@ if(AOC_BUILD_TESTS)
         test_era_combat
         test_alliance_payloads
         test_embargo_direction
+        test_monopoly_pricing
         test_spaceport
         test_government_plaza_and_dam
         test_great_works

@@ -3,6 +3,10 @@
  * @brief Resource monopoly detection and cartel pricing.
  */
 
+#include "aoc/simulation/event/GameNotifications.hpp"
+
+#include <algorithm>
+#include <string>
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -95,21 +99,39 @@ void detectMonopolies(aoc::game::GameState& gameState, const aoc::map::HexGrid& 
         if (share >= 0.60f) {
             info.isActive   = true;
             info.monopolist = topPlayer;
+            // The share sets the CEILING, not the price. Charging is a choice.
             if (share >= 0.80f) {
-                info.priceMultiplier = 3.0f;
+                info.maxPriceMultiplier = 3.0f;
             } else if (share >= 0.70f) {
-                info.priceMultiplier = 2.0f;
+                info.maxPriceMultiplier = 2.0f;
             } else {
-                info.priceMultiplier = 1.5f;
+                info.maxPriceMultiplier = 1.5f;
             }
+            // A markup already chosen cannot exceed a ceiling that has fallen.
+            info.priceMultiplier = std::min(info.priceMultiplier, info.maxPriceMultiplier);
 
             if (!wasActive) {
-                LOG_INFO("MONOPOLY: player %u controls %.0f%% of %.*s supply (price: %.1fx)",
+                LOG_INFO("MONOPOLY: player %u controls %.0f%% of %.*s supply (may charge up to %.1fx)",
                          static_cast<unsigned>(topPlayer),
                          static_cast<double>(share) * 100.0,
                          static_cast<int>(goodDef(TRACKED[g]).name.size()),
                          goodDef(TRACKED[g]).name.data(),
-                         static_cast<double>(info.priceMultiplier));
+                         static_cast<double>(info.maxPriceMultiplier));
+                // Tell the holder. Realising you have a monopoly should not
+                // depend on reading the market screen closely enough to spot it.
+                aoc::sim::event::GameNotification note{};
+                note.category = aoc::sim::event::NotificationCategory::Economy;
+                note.title    = "Monopoly gained";
+                note.body     = "You control " +
+                                std::to_string(static_cast<int32_t>(share * 100.0f)) +
+                                "% of the world's " +
+                                std::string(goodDef(TRACKED[g]).name) +
+                                ". You may charge buyers up to " +
+                                std::to_string(static_cast<int32_t>(info.maxPriceMultiplier * 100.0f)) +
+                                "% of the market price.";
+                note.relevantPlayer = topPlayer;
+                note.priority       = 2;
+                aoc::sim::event::pushNotification(note);
             }
         } else {
             if (wasActive) {
@@ -117,9 +139,10 @@ void detectMonopolies(aoc::game::GameState& gameState, const aoc::map::HexGrid& 
                          static_cast<int>(goodDef(TRACKED[g]).name.size()),
                          goodDef(TRACKED[g]).name.data());
             }
-            info.isActive        = false;
-            info.monopolist      = INVALID_PLAYER;
-            info.priceMultiplier = 1.0f;
+            info.isActive           = false;
+            info.monopolist         = INVALID_PLAYER;
+            info.priceMultiplier    = 1.0f;
+            info.maxPriceMultiplier = 1.0f;
         }
     }
 }
@@ -134,6 +157,27 @@ void applyMonopolyIncome(aoc::game::GameState& gameState) {
             playerPtr->monetary().treasury += income;
         }
     }
+}
+
+ErrorCode requestSetMonopolyPrice(GlobalMonopolyComponent& monopolies, PlayerId player,
+                                  uint16_t goodId, float multiplier) {
+    for (int32_t i = 0; i < monopolies.trackedCount; ++i) {
+        MonopolyInfo& info = monopolies.monopolies[i];
+        if (info.goodId != goodId) {
+            continue;
+        }
+        if (!info.isActive || info.monopolist != player) {
+            return ErrorCode::InvalidArgument; // not yours to price
+        }
+        info.priceMultiplier = std::clamp(multiplier, 1.0f, info.maxPriceMultiplier);
+        LOG_INFO("Player %u set its %.*s markup to %.2fx (ceiling %.2fx)",
+                 static_cast<unsigned>(player),
+                 static_cast<int>(goodDef(goodId).name.size()), goodDef(goodId).name.data(),
+                 static_cast<double>(info.priceMultiplier),
+                 static_cast<double>(info.maxPriceMultiplier));
+        return ErrorCode::Ok;
+    }
+    return ErrorCode::InvalidArgument;
 }
 
 } // namespace aoc::sim

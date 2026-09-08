@@ -18,6 +18,7 @@
  *   - Anti-monopoly coalitions form (embargo the monopolist)
  */
 
+#include "aoc/core/ErrorCodes.hpp"
 #include "aoc/core/Types.hpp"
 
 #include <cstdint>
@@ -32,7 +33,21 @@ struct MonopolyInfo {
     uint16_t goodId = 0;
     PlayerId monopolist = INVALID_PLAYER;  ///< INVALID if no monopoly
     float controlShare = 0.0f;             ///< Fraction of global supply (0.0-1.0)
-    float priceMultiplier = 1.0f;          ///< How much above market price (1.0-3.0)
+
+    /// The markup the monopolist has CHOSEN to charge. 1.0 = not exploiting.
+    ///
+    /// Detection is the game's job; charging for it is the player's. This used
+    /// to be set automatically from controlShare, so a monopoly gouged on its
+    /// holder's behalf whether or not they had noticed they had one -- and
+    /// buyerPriceMultiplier, the field that would have made it bite, had no
+    /// readers at all, so it did not even gouge. Now the game notices and says
+    /// so; the player decides whether to squeeze.
+    float priceMultiplier = 1.0f;
+
+    /// The ceiling `controlShare` entitles them to: 1.5x at 60%, 2x at 70%,
+    /// 3x at 80%. A request to charge more than this is clamped.
+    float maxPriceMultiplier = 1.0f;
+
     bool isActive = false;
 };
 
@@ -70,6 +85,16 @@ struct GlobalMonopolyComponent {
         return 1.0f;
     }
 };
+
+/// Set the markup a monopolist charges for `goodId`, clamped to
+/// [1.0, maxPriceMultiplier]. Fails unless `player` actually holds an active
+/// monopoly on that good.
+///
+/// A validated request rather than a UI-only control, so the REST and MCP
+/// surfaces and the AI reach the same decision the human does.
+[[nodiscard]] ErrorCode requestSetMonopolyPrice(GlobalMonopolyComponent& monopolies,
+                                                PlayerId player, uint16_t goodId,
+                                                float multiplier);
 
 /**
  * @brief Scan all resource tiles and stockpiles to detect monopolies.

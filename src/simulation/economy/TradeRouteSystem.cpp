@@ -9,6 +9,7 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
+#include "aoc/simulation/economy/MonopolyPricing.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -1200,6 +1201,12 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 // Gold = 20% of market value per unit traded
                 int32_t price = market.marketData(c.goodId).currentPrice;
                 if (price <= 0) { price = 1; }
+                // A monopolist's chosen markup falls on the buyer.
+                // buyerPriceMultiplier had no readers anywhere, so holding a
+                // monopoly changed nothing about what anyone paid.
+                const float gouge =
+                    gameState.monopoly().buyerPriceMultiplier(c.goodId, cityOwner);
+                price = static_cast<int32_t>(static_cast<float>(price) * gouge);
                 goldEarned += static_cast<CurrencyAmount>(c.amount)
                             * static_cast<CurrencyAmount>(price) / 5;
             }
