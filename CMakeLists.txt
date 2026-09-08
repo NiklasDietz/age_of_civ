@@ -1034,6 +1034,7 @@ if(AOC_BUILD_TESTS)
         test_city_states
         test_ai_war_cadence
         test_revolt_is_not_conquest
+        test_crust_mass_conservation
         test_diplomacy_actions
         test_injury_grievances
         test_resource_curse_is_emergent
