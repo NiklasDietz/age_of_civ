@@ -361,8 +361,8 @@ void runDrainageLivestock(HexGrid& grid, bool cylindrical,
     grid.setRiverDischarge(std::move(rivDisc));
     grid.setDrainageBasinArea(std::move(drainA));
     grid.setWatershedId(std::move(wsId));
-    for (int32_t k = 0; k < 6; ++k) {
-        grid.setLivestockSuit(k, std::move(livestockS[k]));
+    for (std::size_t k = 0; k < 6u; ++k) {
+        grid.setLivestockSuit(static_cast<int32_t>(k), std::move(livestockS[k]));
     }
     grid.setFaultTrace(std::move(fault));
     grid.setReefTerrace(std::move(reefTr));

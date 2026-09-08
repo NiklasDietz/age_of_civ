@@ -199,7 +199,7 @@ Resolution selectResolutionForProposer(const aoc::game::Player& proposer,
     for (uint8_t i = 0; i < order.size(); ++i) { order[i] = i; }
     for (int32_t i = static_cast<int32_t>(order.size()) - 1; i > 0; --i) {
         const int32_t j = rng.nextInt(0, i);
-        std::swap(order[i], order[j]);
+        std::swap(order[static_cast<std::size_t>(i)], order[static_cast<std::size_t>(j)]);
     }
 
     for (uint8_t idx : order) {

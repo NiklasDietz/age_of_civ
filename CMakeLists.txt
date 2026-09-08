@@ -547,8 +547,14 @@ target_compile_definitions(aoc_lib PRIVATE CPPHTTPLIB_THREAD_POOL_COUNT=4)
 target_include_directories(aoc_lib
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+# SYSTEM: vendored headers are not ours to fix, and their warnings drowned
+# ours. stb_image_write.h alone emitted 59 -Wsign-conversion lines and
+# doctest.h's <ciso646> include 116 more (one per test TU) -- 175 of 269 lines
+# in the whole-tree census, which is how a real -Wformat-insufficient-args in
+# the balance GA went unread for as long as it did.
+target_include_directories(aoc_lib SYSTEM PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 
 # Precompiled header: only ubiquitous, stable standard-library headers
@@ -720,6 +726,14 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         -Wnon-virtual-dtor -Woverloaded-virtual
         -Wnull-dereference -Wdouble-promotion
         -Wformat=2
+        # A printf format that outnumbers its arguments is undefined behaviour,
+        # not a style question, and -Wformat=2 already reports it. It reported
+        # the balance GA reading past the end of its varargs on every build for
+        # as long as that bug existed, and was never read. An error cannot be
+        # scrolled past.
+        -Werror=format
+        -Werror=format-insufficient-args
+        -Werror=format-security
         -pipe
         $<$<CONFIG:Release>:-O3>
         $<$<CONFIG:RelWithDebInfo>:-O3>
@@ -886,6 +900,8 @@ endforeach()
 add_executable(aoc_font_bake src/tools/FontBake.cpp)
 target_include_directories(aoc_font_bake PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_include_directories(aoc_font_bake SYSTEM PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 
@@ -925,7 +941,7 @@ add_executable(aoc_mapgen
     src/debug/DebugServer.cpp
 )
 target_link_libraries(aoc_mapgen PRIVATE aoc_lib)
-target_include_directories(aoc_mapgen PRIVATE third_party)
+target_include_directories(aoc_mapgen SYSTEM PRIVATE third_party)
 # Match aoc_lib: cpp-httplib pool size — see comment above on aoc_lib.
 target_compile_definitions(aoc_mapgen PRIVATE CPPHTTPLIB_THREAD_POOL_COUNT=4)
 
@@ -1075,7 +1091,16 @@ if(AOC_BUILD_TESTS)
         target_link_libraries(${aoc_test} PRIVATE aoc_lib)
         # doctest: header-only; CHECK() stays live under -DNDEBUG, unlike
         # assert(), so release-preset test runs actually assert.
-        target_include_directories(${aoc_test} PRIVATE third_party/doctest tests)
+        target_include_directories(${aoc_test} PRIVATE tests)
+        target_include_directories(${aoc_test} SYSTEM PRIVATE third_party/doctest)
+        # doctest includes <ciso646> under clang purely to sniff for
+        # _LIBCPP_VERSION, and libstdc++ 16 answers with a #warning that the
+        # header is not standard since C++20. That is 116 lines -- one per test
+        # TU -- for a question we do not need answered, and clang shows an
+        # explicit #warning even from a SYSTEM header. No project code uses
+        # #warning, so silencing the directive class on test targets only costs
+        # nothing.
+        target_compile_options(${aoc_test} PRIVATE "-Wno-#warnings")
         add_test(NAME ${aoc_test} COMMAND ${aoc_test})
         set_tests_properties(${aoc_test} PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")
     endforeach()
@@ -1095,7 +1120,9 @@ if(AOC_BUILD_TESTS)
         foreach(aoc_test ${AOC_EVOLVE_TESTS})
             add_executable(${aoc_test} tests/${aoc_test}.cpp)
             target_link_libraries(${aoc_test} PRIVATE aoc_evolve_lib)
-            target_include_directories(${aoc_test} PRIVATE third_party/doctest tests)
+            target_include_directories(${aoc_test} PRIVATE tests)
+            target_include_directories(${aoc_test} SYSTEM PRIVATE third_party/doctest)
+            target_compile_options(${aoc_test} PRIVATE "-Wno-#warnings")
             add_test(NAME ${aoc_test} COMMAND ${aoc_test}
                      WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
             set_tests_properties(${aoc_test} PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")

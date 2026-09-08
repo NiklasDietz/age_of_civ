@@ -144,7 +144,7 @@ void runKoppenStructures(const HexGrid& grid, bool cylindrical,
                     g += 40;
                 }
                 g += static_cast<int32_t>(
-                    (i * 1103515245u + 12345u) % 50u) - 25;
+                    (static_cast<uint32_t>(i) * 1103515245u + 12345u) % 50u) - 25;
                 out.oreG[static_cast<std::size_t>(i)] =
                     static_cast<uint8_t>(std::clamp(g, 30, 255));
             }
@@ -349,12 +349,12 @@ void runKoppenStructures(const HexGrid& grid, bool cylindrical,
                 if (i < static_cast<int32_t>(orogeny.size())
                     && orogeny[static_cast<std::size_t>(i)] > 0.005f
                     && orogeny[static_cast<std::size_t>(i)] < 0.06f) {
-                    if (((i * 2654435761u) >> 16) % 64u == 0) {
+                    if (((static_cast<uint32_t>(i) * 2654435761u) >> 16) % 64u == 0) {
                         out.subV[static_cast<std::size_t>(i)] = 1;
                     }
                 } else if (i < static_cast<int32_t>(orogeny.size())
                     && orogeny[static_cast<std::size_t>(i)] < -0.04f) {
-                    if (((i * 2654435761u) >> 16) % 96u == 0) {
+                    if (((static_cast<uint32_t>(i) * 2654435761u) >> 16) % 96u == 0) {
                         out.subV[static_cast<std::size_t>(i)] = 2;
                     }
                 }

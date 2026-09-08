@@ -36,18 +36,18 @@ namespace aoc::sim {
 
 static const std::array<GreatPersonDef, GREAT_PERSON_COUNT> s_greatPersonDefs = {{
     // Scientists (0-3)
-    { 0, "Archimedes",      GreatPersonType::Scientist, "Eureka! banks a discovery toward whatever is being researched.",            .researchFraction = 0.40f, .effect = GreatPersonEffect::Eureka},
-    { 1, "Euclid",          GreatPersonType::Scientist, "The Elements: +50% research on the current tech.",      .researchFraction = 0.50f},
-    { 2, "Isaac Newton",    GreatPersonType::Scientist, "Principia: +70% research on the current tech.",         .researchFraction = 0.70f},
-    { 3, "Galileo Galilei", GreatPersonType::Scientist, "Telescope: a long, gentle pulse of science.",           .researchFraction = 0.30f, .pulseAmount = 6.0f, .pulseTurns = 30},
+    { .id = 0, .name = "Archimedes",      .type = GreatPersonType::Scientist, .abilityDescription = "Eureka! banks a discovery toward whatever is being researched.",            .researchFraction = 0.40f, .effect = GreatPersonEffect::Eureka},
+    { .id = 1, .name = "Euclid",          .type = GreatPersonType::Scientist, .abilityDescription = "The Elements: +50% research on the current tech.",      .researchFraction = 0.50f},
+    { .id = 2, .name = "Isaac Newton",    .type = GreatPersonType::Scientist, .abilityDescription = "Principia: +70% research on the current tech.",         .researchFraction = 0.70f},
+    { .id = 3, .name = "Galileo Galilei", .type = GreatPersonType::Scientist, .abilityDescription = "Telescope: a long, gentle pulse of science.",           .researchFraction = 0.30f, .pulseAmount = 6.0f, .pulseTurns = 30},
 
     // Engineers (4-6)
-    { 4, "Leonardo da Vinci", GreatPersonType::Engineer, "Renaissance Man: +150 production to the nearest city.", .production = 150.0f},
-    { 5, "James Watt",        GreatPersonType::Engineer, "Steam Power: +100 production to the nearest city.",     .production = 100.0f},
-    { 6, "Nikola Tesla",      GreatPersonType::Engineer, "Alternating Current: +120 production to the nearest city.", .production = 120.0f},
+    { .id = 4, .name = "Leonardo da Vinci", .type = GreatPersonType::Engineer, .abilityDescription = "Renaissance Man: +150 production to the nearest city.", .production = 150.0f},
+    { .id = 5, .name = "James Watt",        .type = GreatPersonType::Engineer, .abilityDescription = "Steam Power: +100 production to the nearest city.",     .production = 100.0f},
+    { .id = 6, .name = "Nikola Tesla",      .type = GreatPersonType::Engineer, .abilityDescription = "Alternating Current: +120 production to the nearest city.", .production = 120.0f},
 
     // Generals (7-9)
-    { 7, "Sun Tzu",   GreatPersonType::General, "Art of War: veteran experience to every unit within 2 hexes.", .effect = GreatPersonEffect::TrainTroops, .experience = 40},
+    { .id = 7, .name = "Sun Tzu",   .type = GreatPersonType::General, .abilityDescription = "Art of War: veteran experience to every unit within 2 hexes.", .effect = GreatPersonEffect::TrainTroops, .experience = 40},
     { 8, "Napoleon",  GreatPersonType::General, "Grande Armee: heal all units within 2 hexes to full."},
     { 9, "Patton",    GreatPersonType::General, "Blitzkrieg: heal all units within 2 hexes to full."},
 
@@ -58,10 +58,10 @@ static const std::array<GreatPersonDef, GREAT_PERSON_COUNT> s_greatPersonDefs = 
     {13, "Rembrandt",            GreatPersonType::Artist, "Night Watch: culture bomb (claim tiles within 2 hexes)."},
 
     // Merchants (14-17)
-    {14, "Marco Polo",          GreatPersonType::Merchant, "Silk Road: +250 gold to the treasury.",        .gold = 250},
-    {15, "Adam Smith",          GreatPersonType::Merchant, "Wealth of Nations: +200 gold to the treasury.", .gold = 200},
-    {16, "John D. Rockefeller", GreatPersonType::Merchant, "Standard Oil: +300 gold to the treasury.",      .gold = 300},
-    {17, "Mansa Musa",          GreatPersonType::Merchant, "Pilgrimage: faith rather than gold.",        .gold = 400, .faith = 250.0f, .effect = GreatPersonEffect::Pilgrimage},
+    { .id = 14, .name = "Marco Polo",          .type = GreatPersonType::Merchant, .abilityDescription = "Silk Road: +250 gold to the treasury.",        .gold = 250},
+    { .id = 15, .name = "Adam Smith",          .type = GreatPersonType::Merchant, .abilityDescription = "Wealth of Nations: +200 gold to the treasury.", .gold = 200},
+    { .id = 16, .name = "John D. Rockefeller", .type = GreatPersonType::Merchant, .abilityDescription = "Standard Oil: +300 gold to the treasury.",      .gold = 300},
+    { .id = 17, .name = "Mansa Musa",          .type = GreatPersonType::Merchant, .abilityDescription = "Pilgrimage: faith rather than gold.",        .gold = 400, .faith = 250.0f, .effect = GreatPersonEffect::Pilgrimage},
 
     // Admirals (18-20)
     {18, "Themistocles",  GreatPersonType::Admiral, "Salamis: heal all ships within 2 hexes to full."},
@@ -69,9 +69,9 @@ static const std::array<GreatPersonDef, GREAT_PERSON_COUNT> s_greatPersonDefs = 
     {20, "Yi Sun-sin",    GreatPersonType::Admiral, "Turtle Ship: heal all ships within 2 hexes to full."},
 
     // Prophets (21-23)
-    {21, "Siddhartha Gautama", GreatPersonType::Prophet, "Enlightenment: +350 faith.", .faith = 350.0f},
-    {22, "Confucius",          GreatPersonType::Prophet, "Analects: +300 faith.",      .faith = 300.0f},
-    {23, "Zoroaster",          GreatPersonType::Prophet, "Avesta: +250 faith.",        .faith = 250.0f},
+    { .id = 21, .name = "Siddhartha Gautama", .type = GreatPersonType::Prophet, .abilityDescription = "Enlightenment: +350 faith.", .faith = 350.0f},
+    { .id = 22, .name = "Confucius",          .type = GreatPersonType::Prophet, .abilityDescription = "Analects: +300 faith.",      .faith = 300.0f},
+    { .id = 23, .name = "Zoroaster",          .type = GreatPersonType::Prophet, .abilityDescription = "Avesta: +250 faith.",        .faith = 250.0f},
 
     // Writers (24-26)
     {24, "Homer",              GreatPersonType::Writer, "Iliad: a Great Work of Writing."},
@@ -245,8 +245,6 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
             break;
         }
     }
-
-    const std::array<GreatPersonDef, GREAT_PERSON_COUNT>& defs = allGreatPersonDefs();
 
     for (uint8_t typeIdx = 0;
          typeIdx < static_cast<uint8_t>(GreatPersonType::Count);

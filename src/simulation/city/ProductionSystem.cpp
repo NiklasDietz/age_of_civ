@@ -131,7 +131,7 @@ static bool cityIsPowered(const aoc::game::Player& player, const aoc::game::City
 
 static float computeCityProductionGS(const aoc::game::Player& player, const aoc::game::City& city,
                                      const aoc::map::HexGrid& grid,
-                                     const aoc::game::GameState& gameState,
+                                     [[maybe_unused]] const aoc::game::GameState& gameState,
                                      const GovernmentModifiers& govMods) {
     // Sum production from worked tiles
     float totalProduction          = 0.0f;

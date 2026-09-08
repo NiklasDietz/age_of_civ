@@ -479,7 +479,7 @@ PlayerId pickQuestTarget(const aoc::game::GameState& gs,
 }
 
 bool questCompleted(const aoc::game::GameState& gs,
-                     const CityStateComponent& cs,
+                     [[maybe_unused]] const CityStateComponent& cs,
                      std::size_t csIndex,
                      const CityStateQuest& q) {
     const aoc::game::Player* p = gs.player(q.assignedTo);

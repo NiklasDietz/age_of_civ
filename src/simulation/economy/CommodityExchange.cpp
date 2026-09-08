@@ -179,13 +179,18 @@ void processAICommodityExchange(aoc::game::GameState& gameState,
             const int32_t offerPrice   = std::max(1, market.price(static_cast<uint16_t>(offerGood)));
             const int32_t requestPrice = std::max(1, market.price(static_cast<uint16_t>(requestGood)));
 
+            // Both ids are gated non-negative above, so index once as unsigned
+            // rather than converting at each of the six subscripts below.
+            const std::size_t offerIdx   = static_cast<std::size_t>(offerGood);
+            const std::size_t requestIdx = static_cast<std::size_t>(requestGood);
+
             int32_t offerAmount = std::clamp(
-                fromSnap.stockpile[offerGood] / 4, 1, kMaxTradeAmount);
+                fromSnap.stockpile[offerIdx] / 4, 1, kMaxTradeAmount);
             int32_t requestAmount = std::clamp(
                 (offerAmount * offerPrice) / requestPrice, 1, kMaxTradeAmount);
 
-            if (requestAmount > toSnap.stockpile[requestGood] / 2) {
-                requestAmount = toSnap.stockpile[requestGood] / 2;
+            if (requestAmount > toSnap.stockpile[requestIdx] / 2) {
+                requestAmount = toSnap.stockpile[requestIdx] / 2;
             }
             if (requestAmount < 1 || offerAmount < 1) { continue; }
 
@@ -194,10 +199,10 @@ void processAICommodityExchange(aoc::game::GameState& gameState,
                 static_cast<uint16_t>(offerGood),   offerAmount,
                 static_cast<uint16_t>(requestGood), requestAmount);
             if (rc == ErrorCode::Ok) {
-                fromSnap.stockpile[offerGood]    -= offerAmount;
-                toSnap.stockpile[offerGood]      += offerAmount;
-                toSnap.stockpile[requestGood]    -= requestAmount;
-                fromSnap.stockpile[requestGood]  += requestAmount;
+                fromSnap.stockpile[offerIdx]    -= offerAmount;
+                toSnap.stockpile[offerIdx]      += offerAmount;
+                toSnap.stockpile[requestIdx]    -= requestAmount;
+                fromSnap.stockpile[requestIdx]  += requestAmount;
                 break;  // one trade per initiator per turn
             }
         }

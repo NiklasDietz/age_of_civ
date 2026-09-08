@@ -58,7 +58,11 @@ public:
 
 private:
     PlayerId              m_player;
-    aoc::ui::AIDifficulty m_difficulty;
+    /// Stored but NOT consulted anywhere in this controller: difficulty has no
+    /// effect on its decisions. AIMilitaryController and AIResearchPlanner do
+    /// read theirs (`hardMode`). Left in place because the constructor is part
+    /// of the AI controller contract; wiring it up is a behaviour change.
+    [[maybe_unused]] aoc::ui::AIDifficulty m_difficulty;
 
     /// Number of consecutive turns each settler has remained at the same
     /// position without founding a city, keyed by tile coordinate.

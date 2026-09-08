@@ -1321,7 +1321,7 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
                     playerCap->clearTileCity(captureTileIdx);
                     LOG_INFO("Tile %d -> [auto]", captureTileIdx);
                 } else {
-                    const aoc::hex::AxialCoord loc = cities[nextIdx]->location();
+                    const aoc::hex::AxialCoord loc = cities[static_cast<std::size_t>(nextIdx)]->location();
                     playerCap->setTileCity(captureTileIdx, loc);
                     LOG_INFO("Tile %d -> city at (%d,%d)", captureTileIdx, loc.q, loc.r);
                 }

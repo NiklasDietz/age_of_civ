@@ -389,8 +389,8 @@ void runStreamRiparian(HexGrid& grid, bool cylindrical,
     grid.setDamSite(std::move(damS));
     grid.setRiparian(std::move(ripa));
     grid.setAquiferRecharge(std::move(aqRecharge));
-    for (int32_t k = 0; k < 8; ++k) {
-        grid.setCropSuitability(k, std::move(crops[k]));
+    for (std::size_t k = 0; k < 8u; ++k) {
+        grid.setCropSuitability(static_cast<int32_t>(k), std::move(crops[k]));
     }
     grid.setPastureScore(std::move(past));
     grid.setForestryYield(std::move(forY));

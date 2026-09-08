@@ -810,8 +810,10 @@ int32_t applyWilsonRifting(SphereField& field, std::vector<Plate>& plates, uint3
         constexpr double SEAM_WIGGLE_SIN        = 0.18;
         constexpr float SEAM_WIGGLE_FREQ        = 2.5f;
         constexpr int32_t SEAM_WIGGLE_OCTAVES   = 3;
-        constexpr float SEAM_WIGGLE_LACUNARITY  = 2.7f;
-        constexpr float SEAM_WIGGLE_PERSISTENCE = 0.5f;
+        constexpr float  SEAM_WIGGLE_LACUNARITY  = 2.7f;
+        // wAmp accumulates in double; keep its decay factor double so the
+        // multiply does not promote on every octave.
+        constexpr double SEAM_WIGGLE_PERSISTENCE = 0.5;
         // Conjugate passive margins by McKenzie (1978) stretching.
         //
         // Before this the seam was a STEP: fresh 7 km oceanic crust inside
@@ -2495,9 +2497,9 @@ void assignTerraneDrift(std::vector<Terrane>& terranes, float totalMy) {
             const int32_t i = cell % LON;
             const LatLon p  = SphereField::cellCenter(i, j);
             const Vec3 v    = latLonToVec3(p);
-            cx += v.x;
-            cy += v.y;
-            cz += v.z;
+            cx += static_cast<double>(v.x);
+            cy += static_cast<double>(v.y);
+            cz += static_cast<double>(v.z);
         }
     }
     const double clen = std::sqrt(cx * cx + cy * cy + cz * cz);
@@ -2511,9 +2513,9 @@ void assignTerraneDrift(std::vector<Terrane>& terranes, float totalMy) {
         double px = 0.0, py = 0.0, pz = 0.0;
         for (const int32_t cell : t.bodyCells) {
             const Vec3 v = latLonToVec3(SphereField::cellCenter(cell % LON, cell / LON));
-            px += v.x;
-            py += v.y;
-            pz += v.z;
+            px += static_cast<double>(v.x);
+            py += static_cast<double>(v.y);
+            pz += static_cast<double>(v.z);
         }
         const double plen = std::sqrt(px * px + py * py + pz * pz);
         if (plen < 1e-9) continue;
@@ -3894,7 +3896,8 @@ void reportErosionTotals() {
     std::fprintf(stderr,
                  "[erosion] total rock removed %.6g m-cells over %zu cell-steps "
                  "(mean %.4g m per eroding cell-step)\n",
-                 gErodedRockM, gErodedCells, gErodedRockM / std::max<std::size_t>(1, gErodedCells));
+                 gErodedRockM, gErodedCells,
+                 gErodedRockM / static_cast<double>(std::max<std::size_t>(1, gErodedCells)));
 }
 
 void computeDrainage(const SphereField& field, std::vector<int32_t>& receiver,
@@ -4052,7 +4055,7 @@ void computeDrainage(const SphereField& field, std::vector<int32_t>& receiver,
         for (std::size_t i = 0; i < N; ++i) {
             if (field.surfaceElevationM[i] < 0.0f) continue;
             ++landCells;
-            landKm2 += areaKm2[static_cast<std::size_t>(i / LON)];
+            landKm2 += static_cast<double>(areaKm2[static_cast<std::size_t>(i / LON)]);
             maxA            = std::max(maxA, static_cast<double>(drainageAreaKm2[i]));
             const int32_t r = receiver[i];
             if (r < 0) {
@@ -4071,7 +4074,9 @@ void computeDrainage(const SphereField& field, std::vector<int32_t>& receiver,
         const auto pct = [&](double p) {
             return as.empty()
                        ? 0.0f
-                       : as[std::min(as.size() - 1, static_cast<std::size_t>(p * (as.size() - 1)))];
+                       : as[std::min(as.size() - 1,
+                                     static_cast<std::size_t>(
+                                         p * static_cast<double>(as.size() - 1)))];
         };
         std::fprintf(stderr,
                      "[drainage] land=%zu cells (%.3g Mkm2) mouths=%zu sinks=%zu\n"

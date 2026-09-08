@@ -853,7 +853,7 @@ void EncyclopediaScreen::open(UIManager& ui) {
             this->setCategory(cat);
             this->rebuildEntryList(ui);
         };
-        ui.createButton(this->m_categoryPanel, {0.0f, 0.0f, BTN_W, 22.0f}, std::move(btn));
+        static_cast<void>(ui.createButton(this->m_categoryPanel, {0.0f, 0.0f, BTN_W, 22.0f}, std::move(btn)));
     }
 
     // List and detail sit side by side; the inner panel flows vertically, so
@@ -959,7 +959,7 @@ void EncyclopediaScreen::rebuildEntryList(UIManager& ui) {
                 ui.setLabelText(this->m_detailLabel, std::move(detail));
             }
         };
-        ui.createButton(this->m_entryList, {0.0f, 0.0f, 200.0f, 18.0f}, std::move(btn));
+        static_cast<void>(ui.createButton(this->m_entryList, {0.0f, 0.0f, 200.0f, 18.0f}, std::move(btn)));
     }
 
     // Reset detail label

@@ -179,7 +179,7 @@ struct PerPlateStats {
     PerPlateStats s;
     const int32_t W = grid.width();
     const int32_t H = grid.height();
-    for (int32_t i = 0; i < 256; ++i) {
+    for (std::size_t i = 0; i < 256u; ++i) {
         s.minCol[i] = W;
         s.maxCol[i] = -1;
         s.minRow[i] = H;
@@ -212,7 +212,7 @@ struct PerPlateStats {
     std::ostringstream o;
     o << "[";
     bool first = true;
-    for (int32_t pid = 0; pid < 256; ++pid) {
+    for (std::size_t pid = 0; pid < 256u; ++pid) {
         if (s.cellCount[pid] == 0) continue;
         if (!first) o << ',';
         first = false;
@@ -408,7 +408,7 @@ ErrorCode Application::initialize(const Config& config) {
             std::array<int32_t, 256> maxCol{};
             std::array<int32_t, 256> minRow{};
             std::array<int32_t, 256> maxRow{};
-            for (int32_t i = 0; i < 256; ++i) {
+            for (std::size_t i = 0; i < 256u; ++i) {
                 minCol[i] = W;
                 maxCol[i] = -1;
                 minRow[i] = H;
@@ -434,7 +434,7 @@ ErrorCode Application::initialize(const Config& config) {
             pf << "plate_id,cell_count,land_frac,min_col,max_col,"
                   "min_row,max_row,centroid_col,centroid_row\n";
             int32_t emitted = 0;
-            for (int32_t pid = 0; pid < 256; ++pid) {
+            for (std::size_t pid = 0; pid < 256u; ++pid) {
                 if (cellCount[pid] == 0) continue;
                 const float lf =
                     static_cast<float>(landCount[pid]) / static_cast<float>(cellCount[pid]);
@@ -698,7 +698,7 @@ ErrorCode Application::initialize(const Config& config) {
             pf << "plate_id,cell_count,land_frac,min_col,max_col,"
                   "min_row,max_row,centroid_col,centroid_row\n";
             int32_t emitted = 0;
-            for (int32_t pid = 0; pid < 256; ++pid) {
+            for (std::size_t pid = 0; pid < 256u; ++pid) {
                 if (s.cellCount[pid] == 0) continue;
                 const float lf =
                     static_cast<float>(s.landCount[pid]) / static_cast<float>(s.cellCount[pid]);

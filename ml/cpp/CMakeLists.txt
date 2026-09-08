@@ -21,6 +21,11 @@ function(aoc_evolve_warnings tgt)
             -Wnon-virtual-dtor -Woverloaded-virtual
             -Wnull-dereference -Wdouble-promotion
             -Wformat=2
+            # See the root CMakeLists: a format string that outnumbers its
+            # arguments is UB, and this is the file set where that actually bit.
+            -Werror=format
+            -Werror=format-insufficient-args
+            -Werror=format-security
             -pipe
         )
     endif()

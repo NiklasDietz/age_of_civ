@@ -596,7 +596,7 @@ void runBiomeSubtypes(const HexGrid& grid, const BiomeSubtypesInputs& in,
         for (int32_t k = 0; k < 3 && !arcTiles.empty(); ++k) {
             const int32_t pick = evRng.nextInt(0,
                 static_cast<int32_t>(arcTiles.size()) - 1);
-            eventMrk[static_cast<std::size_t>(arcTiles[pick])] = 1;
+            eventMrk[static_cast<std::size_t>(arcTiles[static_cast<std::size_t>(pick)])] = 1;
             arcTiles.erase(arcTiles.begin()
                 + static_cast<std::ptrdiff_t>(pick));
         }
@@ -610,7 +610,7 @@ void runBiomeSubtypes(const HexGrid& grid, const BiomeSubtypesInputs& in,
         if (!cratonTiles.empty()) {
             const int32_t pick = evRng.nextInt(0,
                 static_cast<int32_t>(cratonTiles.size()) - 1);
-            eventMrk[static_cast<std::size_t>(cratonTiles[pick])] = 2;
+            eventMrk[static_cast<std::size_t>(cratonTiles[static_cast<std::size_t>(pick)])] = 2;
         }
     }
 }
