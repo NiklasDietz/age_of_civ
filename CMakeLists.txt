@@ -1032,6 +1032,7 @@ if(AOC_BUILD_TESTS)
         test_government_plaza_and_dam
         test_great_works
         test_city_states
+        test_ai_war_cadence
         test_diplomacy_actions
         test_deal_proposals
         test_natural_disasters

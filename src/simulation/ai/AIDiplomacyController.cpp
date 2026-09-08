@@ -12,6 +12,7 @@
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/diplomacy/DealProposals.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyActions.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
@@ -138,10 +139,18 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
                                  static_cast<unsigned>(other));
                     }
                 }
-                diplomacy.makePeace(this->m_player, other);
-                LOG_INFO("AI %u Proposed peace with player %u (ratio %.2f > threshold %.2f)",
-                         static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
-                         static_cast<double>(peaceMilRatio), static_cast<double>(peaceThreshold));
+                // Through requestMakePeace: the direct call IMPOSED peace,
+                // skipping both the WAR_MIN_TURNS minimum war duration and
+                // aiAcceptsPeace -- so one side wanting out was enough, and a
+                // war could end the turn after it began. The log line said
+                // "Proposed" while the code decided.
+                if (requestMakePeace(gameState, diplomacy, this->m_player, other,
+                                     gameState.currentTurn()) == ErrorCode::Ok) {
+                    LOG_INFO("AI %u made peace with player %u (ratio %.2f > threshold %.2f)",
+                             static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
+                             static_cast<double>(peaceMilRatio),
+                             static_cast<double>(peaceThreshold));
+                }
             }
         } else {
             const bool easyAI = (this->m_difficulty == aoc::ui::AIDifficulty::Easy);

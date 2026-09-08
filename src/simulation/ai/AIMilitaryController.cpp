@@ -23,6 +23,7 @@
 #include "aoc/simulation/unit/Combat.hpp"
 #include "aoc/simulation/unit/CombatExtensions.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyActions.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
@@ -904,13 +905,24 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                 }
                 // Commit to the new target.
                 if (weakestNeighbour != INVALID_PLAYER) {
-                    this->m_currentWarTarget   = weakestNeighbour;
-                    this->m_warCommitmentTurns = 1;
                     // WP-D3: actually declare war (not just move troops). Without
                     // a formal war state the engine treats movement as ZoC stops
                     // and city-capture occurs without diplomatic consequence —
                     // muddles AI decisions on retaliation, alliance triggers,
                     // and peace-deal negotiation.
+                    //
+                    // Through requestDeclareWar, not DiplomacyManager directly.
+                    // This path used to bypass the validated layer entirely, so
+                    // the Domination campaign observed none of PEACE_LOCK_TURNS,
+                    // the friendship window, or casus-belli validity -- it could
+                    // re-declare on the same civ the turn after peace. It also
+                    // passed currentTurn as literal 0, which set
+                    // warDeclaredOnTurn to 0 and left the WAR_MIN_TURNS gate on
+                    // peace unable to bind past turn 10. Together those two made
+                    // a war/peace cycle: measured on seed 42, 64 -> 145
+                    // declarations and 63 -> 142 treaties once combat became
+                    // decisive enough to end campaigns quickly.
+                    bool declared = false;
                     if (diplomacy != nullptr && this->m_player < aoc::sim::CITY_STATE_PLAYER_BASE &&
                         weakestNeighbour < aoc::sim::CITY_STATE_PLAYER_BASE &&
                         !diplomacy->isAtWar(this->m_player, weakestNeighbour)) {
@@ -920,11 +932,23 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                             diplomacy->holdsCasusBelli(this->m_player, weakestNeighbour)
                                 ? CasusBelliType::FormalWar
                                 : CasusBelliType::SurpriseWar;
-                        diplomacy->declareWar(this->m_player, weakestNeighbour, cb, nullptr,
-                                              &gameState, 0);
-                        LOG_INFO("AI Player %u declared war on Player %u (Domination campaign)",
-                                 static_cast<unsigned>(this->m_player),
-                                 static_cast<unsigned>(weakestNeighbour));
+                        declared = (requestDeclareWar(gameState, *diplomacy, this->m_player,
+                                                      weakestNeighbour, cb,
+                                                      gameState.currentTurn()) == ErrorCode::Ok);
+                        if (declared) {
+                            LOG_INFO("AI Player %u declared war on Player %u (Domination campaign)",
+                                     static_cast<unsigned>(this->m_player),
+                                     static_cast<unsigned>(weakestNeighbour));
+                        }
+                    }
+                    // Commit the campaign only if the war is real. Committing on
+                    // a refused declaration marched an army at a civ we were not
+                    // at war with, and burned the 30-turn commitment doing it.
+                    if (declared) {
+                        this->m_currentWarTarget   = weakestNeighbour;
+                        this->m_warCommitmentTurns = 1;
+                    } else {
+                        weakestNeighbour = INVALID_PLAYER;
                     }
                 }
             }

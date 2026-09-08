@@ -31,6 +31,17 @@ struct AllianceObligationTracker;
 
 inline constexpr int32_t PEACE_LOCK_TURNS       = 10; ///< No new war this soon after peace
 inline constexpr int32_t WAR_MIN_TURNS          = 10; ///< No peace this soon after declaring
+
+/// War weariness at which an AI takes peace even while winning.
+///
+/// aiAcceptsPeace only ever asked whether the AI was LOSING, and
+/// requestMakePeace asks the side being sued. So the winner was asked, and by
+/// construction refused: there was no path out of a war for the losing side and
+/// no path for a victor to grant terms. Wars ran to annihilation. Weariness
+/// accrues at 1/turn per enemy, so this is a war of about thirty turns -- the
+/// same span as the AI's own campaign commitment cap, past which it
+/// re-evaluates the campaign anyway.
+inline constexpr float   PEACE_WEARINESS_TURNS  = 30.0f;
 inline constexpr int32_t DENOUNCE_TURNS         = 30; ///< A denouncement, and its Formal War, lasts this long
 inline constexpr int32_t FRIENDSHIP_TURNS       = 30;
 inline constexpr int32_t OPEN_BORDERS_TURNS     = 30;

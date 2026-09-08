@@ -11,6 +11,7 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 
 #include <algorithm>
@@ -140,11 +141,33 @@ bool aiAcceptsPeace(const aoc::game::GameState& gameState, PlayerId ai, PlayerId
     const LeaderBehavior& beh = leaderPersonality(me->civId()).behavior;
     const int32_t ourMilitary   = me->militaryUnitCount();
     const int32_t theirMilitary = them->militaryUnitCount();
-    const float ratio = ourMilitary > 0
-                            ? static_cast<float>(theirMilitary) / static_cast<float>(ourMilitary)
-                            : 10.0f;
-    const float threshold = 1.5f + beh.grudgeHolding - beh.peaceAcceptanceThreshold;
-    return ratio > std::max(threshold, 0.8f);
+    // Exhaustion, not just weakness. A victor with thirty turns of weariness
+    // behind it takes the peace it is offered; without this the winning side
+    // always refused and the loser had no way out but destruction.
+    if (me->warWeariness().weariness >= PEACE_WEARINESS_TURNS) {
+        return true;
+    }
+
+    // Refuse only while holding a DECISIVE advantage.
+    //
+    // This used to accept peace only when the other side was much stronger,
+    // which inverted the interesting case: a near-parity war -- the one both
+    // sides most want to end -- was refused by both of them. Measured on seed
+    // 42, players 2 and 3 sued for peace at each other on alternating turns,
+    // each refusing the other at weariness 10-17, and the war ran until one
+    // was conquered. Cycling is not the risk it once was: PEACE_LOCK_TURNS and
+    // WAR_MIN_TURNS now both bind, capping a pair at one war per twenty turns.
+    // An empty enemy army only means dominance if we have one. Two civs with no
+    // military between them are at parity, not infinitely mismatched -- and
+    // that is the ordinary early-game case, so getting it wrong refused every
+    // peace before either side had raised troops.
+    const float advantage =
+        (theirMilitary > 0)
+            ? static_cast<float>(ourMilitary) / static_cast<float>(theirMilitary)
+            : ((ourMilitary > 0) ? 10.0f : 1.0f);
+    const float decisive =
+        std::max(1.2f, 1.5f + beh.grudgeHolding - beh.peaceAcceptanceThreshold);
+    return advantage <= decisive;
 }
 
 ErrorCode requestDeclareWar(aoc::game::GameState& gameState, DiplomacyManager& diplomacy, PlayerId actor,
