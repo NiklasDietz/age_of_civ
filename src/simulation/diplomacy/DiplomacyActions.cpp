@@ -109,6 +109,8 @@ ErrorCode casusBelliUsable(const aoc::game::GameState& gameState, const Diplomac
                        ? ErrorCode::Ok
                        : ErrorCode::InvalidArgument;
         case CasusBelliType::EconomicWar:
+            // Directional on purpose: the grounds are that THEY embargoed YOU.
+            // Your own embargo on them is not a grievance against them.
             return diplomacy.hasEmbargo(target, actor) ? ErrorCode::Ok : ErrorCode::InvalidArgument;
         case CasusBelliType::ProtectorateWar:
         default:

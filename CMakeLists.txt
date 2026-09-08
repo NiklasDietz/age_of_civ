@@ -1004,6 +1004,7 @@ if(AOC_BUILD_TESTS)
         test_wonder_gates
         test_era_combat
         test_alliance_payloads
+        test_embargo_direction
         test_spaceport
         test_government_plaza_and_dam
         test_great_works

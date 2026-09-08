@@ -618,6 +618,8 @@ void DiplomacyScreen::open(UIManager& ui) {
             embargoBtn.pressedColor = {0.625f, 0.328f, 0.142f, 1.0f};
             embargoBtn.cornerRadius = 3.0f;
             embargoBtn.onClick = [diplomacy, humanPlayer, otherId, &ui, this]() {
+                // The human refuses to trade with them; whether they refuse
+                // back is their own decision.
                 diplomacy->setEmbargo(humanPlayer, otherId, true);
                 LOG_INFO("Imposed trade embargo on player %u", static_cast<unsigned>(otherId));
                 this->close(ui);

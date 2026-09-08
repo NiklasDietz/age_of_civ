@@ -314,11 +314,27 @@ public:
     /// Check if two players are at war.
     [[nodiscard]] bool isAtWar(PlayerId a, PlayerId b) const;
 
-    /// Set or lift a trade embargo between two players.
-    void setEmbargo(PlayerId a, PlayerId b, bool embargo);
+    /// `embargoer` refuses to trade with `target`. ONE DIRECTION ONLY.
+    ///
+    /// This used to set both directions, and there was no way to express a
+    /// one-sided one. A World Congress sanction against one civ therefore
+    /// fabricated N reciprocal embargoes: the sanctioned civ automatically
+    /// embargoed everyone who had voted against it. FIXLIST H1.8 asked for the
+    /// split. The relation storage was already per ordered pair -- only this
+    /// setter collapsed the two.
+    void setEmbargo(PlayerId embargoer, PlayerId target, bool embargo);
 
-    /// Check if a trade embargo exists between two players.
-    [[nodiscard]] bool hasEmbargo(PlayerId a, PlayerId b) const;
+    /// Both civs refuse to trade with each other. For a mutual falling-out,
+    /// where each side's refusal is its own act.
+    void setMutualEmbargo(PlayerId a, PlayerId b, bool embargo);
+
+    /// True when `embargoer` refuses to trade with `target`. Directional: ask
+    /// the other way round for the reverse, and `hasAnyEmbargo` for either.
+    [[nodiscard]] bool hasEmbargo(PlayerId embargoer, PlayerId target) const;
+
+    /// True when either civ embargoes the other. This is the question most
+    /// trade code wants: a route needs both ends willing.
+    [[nodiscard]] bool hasAnyEmbargo(PlayerId a, PlayerId b) const;
 
     /// Set or lift a per-resource embargo between two players.
     void setResourceEmbargo(PlayerId a, PlayerId b, uint16_t goodId, bool embargo);

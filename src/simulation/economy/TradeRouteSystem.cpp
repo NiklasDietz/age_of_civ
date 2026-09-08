@@ -369,7 +369,8 @@ bool evaluateTradeConsent(const aoc::game::GameState& gameState,
         if (diplomacy->isAtWar(proposer, target)) {
             return false;
         }
-        if (diplomacy->hasEmbargo(proposer, target)) {
+        // A route needs both ends willing, so either side's embargo blocks it.
+        if (diplomacy->hasAnyEmbargo(proposer, target)) {
             return false;
         }
     }

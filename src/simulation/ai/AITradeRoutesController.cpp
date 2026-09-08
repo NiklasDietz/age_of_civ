@@ -80,7 +80,7 @@ void AIController::manageTradeRoutes(aoc::game::GameState& gameState, aoc::map::
                 // so traders pick a peaceful partner immediately.
                 if (cityPtr->owner() != this->m_player
                     && (diplomacy.isAtWar(this->m_player, cityPtr->owner())
-                        || diplomacy.hasEmbargo(this->m_player, cityPtr->owner()))) {
+                        || diplomacy.hasAnyEmbargo(this->m_player, cityPtr->owner()))) {
                     continue;
                 }
 

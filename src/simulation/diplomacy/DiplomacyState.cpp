@@ -559,20 +559,20 @@ void DiplomacyManager::tickModifiers() {
     }
 }
 
-void DiplomacyManager::setEmbargo(PlayerId a, PlayerId b, bool embargo) {
-    PairwiseRelation& relAB = this->relation(a, b);
-    PairwiseRelation& relBA = this->relation(b, a);
+void DiplomacyManager::setEmbargo(PlayerId embargoer, PlayerId target, bool embargo) {
+    PairwiseRelation& relAB = this->relation(embargoer, target);
+    PairwiseRelation& relBA = this->relation(target, embargoer);
 
+    // One direction. The reverse is the other civ's own decision to make.
     relAB.hasEmbargo = embargo;
-    relBA.hasEmbargo = embargo;
 
     if (embargo) {
         RelationModifier embargoMod{"Trade Embargo", -15, 20};
         relAB.modifiers.push_back(embargoMod);
         relBA.modifiers.push_back(embargoMod);
 
-        LOG_INFO("Trade embargo set between Player %u and Player %u",
-                 static_cast<unsigned>(a), static_cast<unsigned>(b));
+        LOG_INFO("Player %u embargoed Player %u",
+                 static_cast<unsigned>(embargoer), static_cast<unsigned>(target));
     } else {
         // Remove embargo modifiers
         // auto required: lambda type is unnameable
@@ -585,13 +585,22 @@ void DiplomacyManager::setEmbargo(PlayerId a, PlayerId b, bool embargo) {
         removeEmbargo(relAB.modifiers);
         removeEmbargo(relBA.modifiers);
 
-        LOG_INFO("Trade embargo lifted between Player %u and Player %u",
-                 static_cast<unsigned>(a), static_cast<unsigned>(b));
+        LOG_INFO("Player %u lifted its embargo on Player %u",
+                 static_cast<unsigned>(embargoer), static_cast<unsigned>(target));
     }
 }
 
-bool DiplomacyManager::hasEmbargo(PlayerId a, PlayerId b) const {
-    return this->relation(a, b).hasEmbargo;
+void DiplomacyManager::setMutualEmbargo(PlayerId a, PlayerId b, bool embargo) {
+    this->setEmbargo(a, b, embargo);
+    this->setEmbargo(b, a, embargo);
+}
+
+bool DiplomacyManager::hasEmbargo(PlayerId embargoer, PlayerId target) const {
+    return this->relation(embargoer, target).hasEmbargo;
+}
+
+bool DiplomacyManager::hasAnyEmbargo(PlayerId a, PlayerId b) const {
+    return this->relation(a, b).hasEmbargo || this->relation(b, a).hasEmbargo;
 }
 
 void DiplomacyManager::setResourceEmbargo(PlayerId a, PlayerId b,

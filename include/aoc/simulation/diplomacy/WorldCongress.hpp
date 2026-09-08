@@ -124,6 +124,19 @@ struct WorldCongressComponent {
 
 /// Process World Congress: accrue Favor, tick session timer, propose /
 /// resolve resolutions, tick active effects.
+/// Every other living civ refuses to trade with `target`, and the reverse.
+///
+/// One direction per civ: sanctioning one seat does not make it embargo the
+/// world back. Until the embargo split these wrote both halves of every pair,
+/// so a sanction fabricated N reciprocal embargoes against the voters.
+///
+/// Public because applying and lifting global sanctions is a coherent operation
+/// in its own right, not only a step inside a resolution.
+void applySanctionsBegin(DiplomacyManager* diplomacy, const aoc::game::GameState& gs,
+                         PlayerId target);
+void applySanctionsEnd(DiplomacyManager* diplomacy, const aoc::game::GameState& gs,
+                       PlayerId target);
+
 void processWorldCongress(aoc::game::GameState& gameState,
                           TurnNumber turn,
                           aoc::Random& rng,

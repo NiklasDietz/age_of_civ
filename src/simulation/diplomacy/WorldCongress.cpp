@@ -294,26 +294,6 @@ Resolution takePreferredProposal(WorldCongressComponent& congress,
 // Effects
 // ---------------------------------------------------------------------------
 
-void applySanctionsBegin(DiplomacyManager* diplomacy,
-                          const aoc::game::GameState& gs,
-                          PlayerId target) {
-    if (diplomacy == nullptr || target == INVALID_PLAYER) { return; }
-    for (const std::unique_ptr<aoc::game::Player>& p : gs.players()) {
-        if (p == nullptr || p->id() == target) { continue; }
-        diplomacy->setEmbargo(p->id(), target, true);
-    }
-}
-
-void applySanctionsEnd(DiplomacyManager* diplomacy,
-                        const aoc::game::GameState& gs,
-                        PlayerId target) {
-    if (diplomacy == nullptr || target == INVALID_PLAYER) { return; }
-    for (const std::unique_ptr<aoc::game::Player>& p : gs.players()) {
-        if (p == nullptr || p->id() == target) { continue; }
-        diplomacy->setEmbargo(p->id(), target, false);
-    }
-}
-
 void applyArmsReduction(aoc::game::GameState& gs) {
     for (const std::unique_ptr<aoc::game::Player>& p : gs.players()) {
         if (p == nullptr || p->victoryTracker().isEliminated) { continue; }
@@ -444,6 +424,30 @@ void notifyTargeted(NotificationCategory cat, PlayerId target, std::string title
 }
 
 } // namespace
+
+void applySanctionsBegin(DiplomacyManager* diplomacy,
+                          const aoc::game::GameState& gs,
+                          PlayerId target) {
+    if (diplomacy == nullptr || target == INVALID_PLAYER) { return; }
+    for (const std::unique_ptr<aoc::game::Player>& p : gs.players()) {
+        if (p == nullptr || p->id() == target) { continue; }
+        // One direction: each voting civ refuses to trade with the sanctioned
+        // one. The sanctioned civ does not thereby embargo the whole world back.
+        diplomacy->setEmbargo(p->id(), target, true);
+    }
+}
+
+void applySanctionsEnd(DiplomacyManager* diplomacy,
+                        const aoc::game::GameState& gs,
+                        PlayerId target) {
+    if (diplomacy == nullptr || target == INVALID_PLAYER) { return; }
+    for (const std::unique_ptr<aoc::game::Player>& p : gs.players()) {
+        if (p == nullptr || p->id() == target) { continue; }
+        diplomacy->setEmbargo(p->id(), target, false);
+    }
+}
+
+
 
 // ===========================================================================
 // Component methods

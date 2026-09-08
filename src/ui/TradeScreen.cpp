@@ -286,7 +286,7 @@ void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId
 
     // Check for embargo and show warning if active
     const bool embargoActive = (this->m_diplomacy != nullptr) &&
-        this->m_diplomacy->hasEmbargo(this->m_player, partner);
+        this->m_diplomacy->hasAnyEmbargo(this->m_player, partner);
     if (embargoActive) {
         (void)ui.createLabel(this->m_tradePanel, {0.0f, 0.0f, 510.0f, 20.0f},
                               LabelData{"Embargo in effect -- trade prohibited",
