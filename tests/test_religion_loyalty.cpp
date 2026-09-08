@@ -32,6 +32,14 @@ namespace {
 constexpr aoc::sim::ReligionId OURS{0};
 constexpr aoc::sim::ReligionId THEIRS{1};
 
+/// Register OURS to player 0 and THEIRS to player 1, so each faith has a
+/// patron. A faith nobody founded has nobody holding the other end of the
+/// wedge, and is now inert by design.
+void foundBothFaiths(aoc::test::World& w) {
+    REQUIRE(w.gameState.religionTracker().foundReligion("Ours", PlayerId{0}) == OURS);
+    REQUIRE(w.gameState.religionTracker().foundReligion("Theirs", PlayerId{1}) == THEIRS);
+}
+
 /// A city for player 0, following `faith` with the given pressure.
 aoc::game::City& cityFollowing(aoc::test::World& w, aoc::sim::ReligionId faith, float pressure) {
     aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Alpha");
@@ -58,17 +66,26 @@ TEST_CASE("religion no longer switches off from the Renaissance on") {
 }
 
 TEST_CASE("a city sharing its owner's faith is held; one following a rival's is not") {
-    aoc::test::World w            = aoc::test::makeWorld(2);
+    aoc::test::World w = aoc::test::makeWorld(2);
+    foundBothFaiths(w);
     aoc::game::Player& owner      = *w.gameState.player(PlayerId{0});
     owner.faith().foundedReligion = OURS;
 
-    aoc::game::City& city = cityFollowing(w, OURS, 100.0f);
-    CHECK(aoc::sim::religionLoyaltyAlignment(city, owner) > 0.0f);
+    aoc::game::City& city  = cityFollowing(w, OURS, 100.0f);
+    const float shared     = aoc::sim::religionLoyaltyAlignment(city, owner, w.gameState);
+    CHECK(shared > 0.0f);
 
     // The same city, converted to a rival's faith, pulls the other way.
     city.religion().pressure[OURS]   = 0.0f;
     city.religion().pressure[THEIRS] = 100.0f;
-    CHECK(aoc::sim::religionLoyaltyAlignment(city, owner) < 0.0f);
+    const float rival = aoc::sim::religionLoyaltyAlignment(city, owner, w.gameState);
+    CHECK(rival < 0.0f);
+
+    // But not as hard as its own church holds it. The owner still governs,
+    // taxes and garrisons the city either way; the rival patron has the
+    // citizens' allegiance and nothing else. Symmetric, this term decided the
+    // game -- most cities follow a faith their owner did not found.
+    CHECK(-rival < shared);
 }
 
 TEST_CASE("a city following nothing pulls neither way") {
@@ -76,17 +93,48 @@ TEST_CASE("a city following nothing pulls neither way") {
     aoc::game::Player& owner      = *w.gameState.player(PlayerId{0});
     owner.faith().foundedReligion = OURS;
     aoc::game::City& city         = cityFollowing(w, aoc::sim::NO_RELIGION, 0.0f);
-    CHECK(aoc::sim::religionLoyaltyAlignment(city, owner) == doctest::Approx(0.0f));
+    CHECK(aoc::sim::religionLoyaltyAlignment(city, owner, w.gameState) == doctest::Approx(0.0f));
 }
 
 TEST_CASE("a faith is a rival's even when its owner has none of their own") {
     // An occupier with no religion still faces an institution holding its
     // citizens' allegiance.
+    aoc::test::World w = aoc::test::makeWorld(2);
+    foundBothFaiths(w);
+    aoc::game::Player& owner      = *w.gameState.player(PlayerId{0});
+    owner.faith().foundedReligion = aoc::sim::NO_RELIGION;
+    aoc::game::City& city         = cityFollowing(w, THEIRS, 100.0f);
+    CHECK(aoc::sim::religionLoyaltyAlignment(city, owner, w.gameState) < 0.0f);
+}
+
+TEST_CASE("a faith with no patron left pulls at nothing") {
+    // The wedge needs somebody holding the other end. Counting every faith the
+    // owner did not found as a hostile institution meant nearly every city on
+    // the map paid the penalty simultaneously -- a global loyalty drain rather
+    // than a religious contest, which flipped 39 cities to Free City on seed 43
+    // and let barbarians eliminate three of four civs.
+    aoc::test::World w = aoc::test::makeWorld(2);
+    foundBothFaiths(w);
+    aoc::game::Player& owner      = *w.gameState.player(PlayerId{0});
+    owner.faith().foundedReligion = OURS;
+    aoc::game::City& city         = cityFollowing(w, THEIRS, 100.0f);
+    REQUIRE(aoc::sim::religionLoyaltyAlignment(city, owner, w.gameState) < 0.0f);
+
+    // Its patron is knocked out of the game: the church remains, the pull does
+    // not.
+    w.gameState.player(PlayerId{1})->victoryTracker().isEliminated = true;
+    CHECK(aoc::sim::religionLoyaltyAlignment(city, owner, w.gameState) ==
+          doctest::Approx(0.0f));
+}
+
+TEST_CASE("an unfounded faith is not a rival's church") {
+    // Nothing registered THEIRS, so no player is its patron.
     aoc::test::World w            = aoc::test::makeWorld(2);
     aoc::game::Player& owner      = *w.gameState.player(PlayerId{0});
     owner.faith().foundedReligion = aoc::sim::NO_RELIGION;
     aoc::game::City& city         = cityFollowing(w, THEIRS, 100.0f);
-    CHECK(aoc::sim::religionLoyaltyAlignment(city, owner) < 0.0f);
+    CHECK(aoc::sim::religionLoyaltyAlignment(city, owner, w.gameState) ==
+          doctest::Approx(0.0f));
 }
 
 TEST_CASE("the loyalty contribution is bounded in both directions") {
@@ -95,8 +143,12 @@ TEST_CASE("the loyalty contribution is bounded in both directions") {
     // put together, and an empire could hold anything at any range by
     // converting it.
     CHECK(RELIGION_LOYALTY_LIMIT > 0.0f);
+    // And it stays under the captured-city penalty, which is meant to be the
+    // harshest single term in the loyalty sum.
+    CHECK(RELIGION_LOYALTY_LIMIT < 8.0f);
 
-    aoc::test::World w            = aoc::test::makeWorld(2);
+    aoc::test::World w = aoc::test::makeWorld(2);
+    foundBothFaiths(w);
     aoc::game::Player& owner      = *w.gameState.player(PlayerId{0});
     owner.faith().foundedReligion = OURS;
     // Absurd devotion, far past anything the game produces.
@@ -111,7 +163,8 @@ TEST_CASE("sharing a faith beats following a rival's, through the real pass") {
     // Two identical cities but for their religion, both scored by
     // computeCityLoyalty rather than the helper alone.
     const auto devotionOf = [](aoc::sim::ReligionId cityFaith) {
-        aoc::test::World w            = aoc::test::makeWorld(2);
+        aoc::test::World w = aoc::test::makeWorld(2);
+        foundBothFaiths(w);
         aoc::game::Player& owner      = *w.gameState.player(PlayerId{0});
         owner.faith().foundedReligion = OURS;
         aoc::game::City& city         = cityFollowing(w, cityFaith, 60.0f);

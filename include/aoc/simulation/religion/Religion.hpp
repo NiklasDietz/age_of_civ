@@ -372,15 +372,24 @@ inline constexpr float APOSTLE_FAITH_COST = 250.0f;
 /// institutions taking over is a reason for the effect to WEAKEN, not vanish.
 [[nodiscard]] float religionLoyaltyCoefficient(EraId era);
 
-/// How a city's faith pulls on its loyalty to `owner`, per point of net
-/// devotion: +1 when the city follows the owner's own religion, -1 when it
-/// follows a rival's, 0 when it follows none.
+/// Weight of a rival's church relative to the owner's own, in the loyalty pull.
 ///
-/// The devotion loyalty bonus was faith-AGNOSTIC: a city devoutly following a
-/// rival's religion propped up its occupier's loyalty exactly as much as one
-/// following its owner's. A rival's church in your city is a liability, not an
-/// asset, and this is the sign that says so.
+/// Deliberately below 1.0: a shared faith holding a city and a rival's church
+/// pulling at one are not symmetric forces. The owner still governs, collects
+/// and garrisons the city either way; the rival patron has allegiance and
+/// nothing else. Measured at 1.0 the penalty decided the game -- most cities
+/// follow a faith their owner did not found, so a symmetric term was a
+/// map-wide loyalty drain that flipped 39 cities to Free City on seed 43 and
+/// let barbarians eliminate three of four civs.
+inline constexpr float RIVAL_CHURCH_ALIGNMENT = 0.5f;
+
+/// How a city's faith pulls on its loyalty to `owner`, per point of net
+/// devotion: +1 where the city follows the owner's own founded religion,
+/// -RIVAL_CHURCH_ALIGNMENT where it follows one founded by a rival still in
+/// the game, and 0 otherwise -- a faith whose patron is dead or absent has no
+/// one to pull the city towards.
 [[nodiscard]] float religionLoyaltyAlignment(const aoc::game::City& city,
-                                             const aoc::game::Player& owner);
+                                             const aoc::game::Player& owner,
+                                             const aoc::game::GameState& gameState);
 
 } // namespace aoc::sim

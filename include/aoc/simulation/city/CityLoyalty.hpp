@@ -47,8 +47,12 @@ namespace aoc::sim {
 /// Religion is meant to tilt the balance, not settle it. Without a bound, a
 /// devout city could out-weigh the distance, amenity and captured-city
 /// pressures put together, and an empire could hold anything at any range
-/// simply by converting it.
-inline constexpr float RELIGION_LOYALTY_LIMIT = 6.0f;
+/// simply by converting it. At 6.0 it still did: it out-ranked a Golden Age
+/// (+5) and a full garrison (+9 needs three units), and sat within reach of
+/// the -8 captured-city penalty that is supposed to be the harshest term here.
+/// 3.0 is the Monument-and-Telecom scale -- a real term that no city loses on
+/// alone.
+inline constexpr float RELIGION_LOYALTY_LIMIT = 3.0f;
 
 /// Loyalty status tiers (determines yield penalty and UI icon).
 enum class LoyaltyStatus : uint8_t {

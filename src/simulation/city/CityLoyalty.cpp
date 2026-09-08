@@ -202,7 +202,7 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         // any range by converting it.
         if (devotionLoyaltyCoef > 0.0f) {
             const float netDevotion = computeCityNetDevotion(*city);
-            const float alignment   = religionLoyaltyAlignment(*city, *gsPlayer);
+            const float alignment   = religionLoyaltyAlignment(*city, *gsPlayer, gameState);
             const float raw         = netDevotion * devotionLoyaltyCoef * alignment;
             loyalty.devotionBonus =
                 std::clamp(raw, -RELIGION_LOYALTY_LIMIT, RELIGION_LOYALTY_LIMIT);

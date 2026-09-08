@@ -787,18 +787,32 @@ float religionLoyaltyCoefficient(EraId era) {
     return (era.value <= 2) ? 0.30f : 0.12f;
 }
 
-float religionLoyaltyAlignment(const aoc::game::City& city, const aoc::game::Player& owner) {
+float religionLoyaltyAlignment(const aoc::game::City& city, const aoc::game::Player& owner,
+                               const aoc::game::GameState& gameState) {
     const ReligionId cityFaith = city.religion().dominantReligion();
     if (cityFaith == NO_RELIGION) {
         return 0.0f; // nothing to pull either way
     }
     const ReligionId ownerFaith = owner.faith().foundedReligion;
     if (ownerFaith != NO_RELIGION && cityFaith == ownerFaith) {
-        return 1.0f; // shared faith holds the city
+        return 1.0f; // the state church holds the city
     }
-    // Someone else's church. If the owner has no religion of their own this is
-    // still a rival institution with the citizens' allegiance.
-    return -1.0f;
+
+    // Someone else's church. A wedge needs somebody holding the other end: the
+    // rival who founded the faith and is still in the game. Only a handful of
+    // religions are ever founded, so treating EVERY unfounded-by-the-owner
+    // faith as a hostile institution meant almost every city on the map paid
+    // the penalty at once, which is a global loyalty drain rather than a
+    // religious contest.
+    const PlayerId patronId = gameState.religionTracker().religions[cityFaith].founder;
+    if (patronId == INVALID_PLAYER || patronId == owner.id()) {
+        return 0.0f;
+    }
+    const aoc::game::Player* patron = gameState.player(patronId);
+    if (patron == nullptr || patron->victoryTracker().isEliminated) {
+        return 0.0f; // a dead patron pulls at nothing
+    }
+    return -RIVAL_CHURCH_ALIGNMENT;
 }
 
 void processHolyCityAndDecay(aoc::game::GameState& gameState) {
