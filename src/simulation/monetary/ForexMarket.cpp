@@ -205,12 +205,15 @@ void updateExchangeRates(aoc::game::GameState& gameState) {
 
         const CurrencyTrustComponent& trust = playerPtr->currencyTrust();
 
-        // 1. Compute fundamental rate. Resource curse's currencyAppreciation
-        // multiplier lifts the fundamental (Dutch disease): raw-commodity
-        // exporters see their currency appreciate, hurting manufacturing
-        // exports elsewhere in the model (via the manufacturingPenalty).
+        // 1. Compute fundamental rate.
+        //
+        // A currencyAppreciation multiplier from ResourceCurse used to be
+        // applied on top of this. It was a second channel for an effect this
+        // function already produces: tradeBalanceEffect below moves the rate
+        // from what the civ actually exports, so a commodity exporter's
+        // currency appreciates on its own. The multiplier double-counted it
+        // from a coefficient. Removed with the rest of that module.
         forex.fundamentalRate = computeFundamentalRate(state, trust, averageGDP);
-        forex.fundamentalRate *= playerPtr->resourceCurse().currencyAppreciation;
 
         // 2. Apply trade balance (surplus strengthens, deficit weakens)
         float tradeBalanceEffect = 0.0f;

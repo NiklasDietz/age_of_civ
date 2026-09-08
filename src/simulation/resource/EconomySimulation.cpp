@@ -15,7 +15,6 @@
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
-#include "aoc/simulation/economy/ResourceCurse.hpp"
 #include "aoc/simulation/economy/InternalTrade.hpp"
 #include "aoc/simulation/economy/EnvironmentModifier.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
@@ -53,6 +52,29 @@ namespace {
 ///
 /// Before that, the goods do not exist in this civ's economy at all, and an
 /// unmet-demand penalty would be a penalty for the passage of time.
+/// Citizens this city has standing on extraction tiles.
+///
+/// A worked tile carrying a strategic or luxury resource is a mine, a well or a
+/// quarry, and the citizen on it is a miner. Those are the same citizens the
+/// recipe below wants for its factories, which is the whole of the resource
+/// curse: extraction and manufacturing compete for one labour force, and a civ
+/// that puts everyone down the mine has nobody left on the factory floor.
+[[nodiscard]] int32_t extractionWorkers(const aoc::game::City& city,
+                                        const aoc::map::HexGrid& grid) {
+    int32_t miners = 0;
+    for (const aoc::hex::AxialCoord& tileCoord : city.workedTiles()) {
+        if (tileCoord == city.location()) { continue; } // the centre is worked free
+        if (!grid.isValid(tileCoord)) { continue; }
+        const ResourceId resId = grid.resource(grid.toIndex(tileCoord));
+        if (!resId.isValid() || resId.value >= goodCount()) { continue; }
+        const GoodCategory cat = goodDef(resId.value).category;
+        if (cat == GoodCategory::RawStrategic || cat == GoodCategory::RawLuxury) {
+            ++miners;
+        }
+    }
+    return miners;
+}
+
 [[nodiscard]] bool playerCanProduceConsumerGoods(const aoc::game::Player& player) {
     constexpr BuildingId WORKSHOP{1};
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
@@ -110,8 +132,7 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
     // so manufacturingPenalty is live when executeProduction runs.
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         if (playerPtr == nullptr) { continue; }
-        const ResourceCurseModifiers mods = computeResourceCurse(gameState, playerPtr->id());
-        applyResourceCurseEffects(gameState, playerPtr->id(), mods);
+
     }
 
     this->executeProduction(gameState, grid);
@@ -560,7 +581,7 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
     // building levels, power, and strike are all owned by City objects.
 
     // 2026-05-03: clear last-turn production map for every player. Recipes
-    // re-fill it as they fire. ResourceCurse reads this
+    // re-fill it as they fire. The industrial-revolution pass reads this
     // BEFORE production runs (so they see the previous turn's totals -- a
     // one-turn-stale rate signal). The cumulative-ever boolean gate
     // `everSupplied` is intentionally NOT cleared.
@@ -686,7 +707,31 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                     if (rev >= IndustrialRevolutionId::Fourth) { robotSlots += 3; }
                     if (rev >= IndustrialRevolutionId::Fifth)  { robotSlots += 4; }
                 }
-                const int32_t maxSlots = totalWorkerCapacity(city->population(), robotSlots);
+                // ONE labour pool. Citizens standing on mines and wells are not
+                // also available to staff factories.
+                //
+                // The two uses of labour used to be counted independently: a
+                // pop-10 city worked 10 tiles AND got 5 recipe slots from the
+                // same 10 citizens, so extraction cost nothing in industrial
+                // capacity. That is why the resource curse needed a coefficient
+                // to fake it -- ResourceCurse.cpp computed a manufacturing
+                // penalty from the ratio of raw to total output value and
+                // multiplied it in, which is a formula standing in for the
+                // mechanism the double-counting had disabled. The mechanism was
+                // always the intended one: workerSlots' own comment says
+                // "resource-rich cities put workers on mines, leaving fewer for
+                // factories -- this naturally creates the resource curse".
+                //
+                // Now it does. Robots still offset it, which is the right escape
+                // valve: automation is exactly how a resource economy buys back
+                // the industrial capacity its mines cost it.
+                // Denominated in citizens, not slots: a slot is two citizens
+                // (totalWorkerCapacity is pop/2), so subtracting a headcount of
+                // miners from a slot budget would charge each miner twice. The
+                // budget is the capacity of the population that is NOT mining.
+                const int32_t miners = extractionWorkers(*city, grid);
+                const int32_t maxSlots =
+                    totalWorkerCapacity(city->population() - miners, robotSlots);
                 // Each recipe consumes workerSlots (1 for basic, 2-3 for advanced).
                 // A city can only run recipes whose total slots fit within capacity.
                 if (state.totalRecipesExecuted + recipe->workerSlots > maxSlots) {
@@ -799,18 +844,6 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 // Aligns recipes with broader import-dependency model.
                 const float supplyMultiplier = playerPtr->supplyChain().productionMultiplier();
 
-                // C40: Dutch-disease penalty on processed/advanced goods.
-                // Raw extraction (RawStrategic/RawLuxury) unaffected so the
-                // curse squeezes manufacturing, not extraction.
-                float curseMultiplier = 1.0f;
-                {
-                    const GoodDef& outDef = goodDef(recipe->outputGoodId);
-                    if (outDef.category != GoodCategory::RawStrategic
-                        && outDef.category != GoodCategory::RawLuxury) {
-                        curseMultiplier = playerPtr->resourceCurse().manufacturingPenalty;
-                    }
-                }
-
                 // Tool efficiency: industrial buildings need Tools (good 63) to
                 // operate at full capacity. Without tools, output is reduced to 60%.
                 // This creates demand for the tools supply chain and makes the
@@ -867,7 +900,7 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 const int32_t boostedOutput = std::max(1, static_cast<int32_t>(
                     static_cast<float>(recipe->outputAmount)
                     * infraBonus * envModifier * powerEff * expMultiplier
-                    * revMultiplier * toolEff * supplyMultiplier * curseMultiplier
+                    * revMultiplier * toolEff * supplyMultiplier
                     * chainMult * datacenterMult));
                 stockpile.addGoods(recipe->outputGoodId, boostedOutput);
 

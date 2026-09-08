@@ -382,7 +382,6 @@ set(AOC_LIB_SOURCES
     src/simulation/resource/ProductionChain.cpp
     src/simulation/resource/EconomySimulation.cpp
     src/simulation/economy/Market.cpp
-    src/simulation/economy/ResourceCurse.cpp
     src/simulation/monetary/Inflation.cpp
     src/simulation/monetary/CentralBank.cpp
     src/simulation/monetary/FiscalPolicy.cpp
@@ -1036,6 +1035,7 @@ if(AOC_BUILD_TESTS)
         test_revolt_is_not_conquest
         test_diplomacy_actions
         test_injury_grievances
+        test_resource_curse_is_emergent
         test_deal_proposals
         test_natural_disasters
         test_district_placement

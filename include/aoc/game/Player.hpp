@@ -39,7 +39,6 @@
 #include "aoc/simulation/economy/EnergyDependency.hpp"
 #include "aoc/simulation/economy/HumanCapital.hpp"
 #include "aoc/simulation/economy/SupplyChain.hpp"
-#include "aoc/simulation/economy/ResourceCurse.hpp"
 #include "aoc/simulation/economy/AdvancedEconomics.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
@@ -284,17 +283,6 @@ public:
     }
     [[nodiscard]] const aoc::sim::PlayerSupplyChainComponent& supplyChain() const {
         return this->m_supplyChain;
-    }
-
-    /// C40: last-turn Dutch-disease modifiers. Updated by EconomySimulation at
-    /// the start of each turn from computeResourceCurse(); consumed by
-    /// executeProduction (manufacturingPenalty) and ForexMarket
-    /// (currencyAppreciation). happinessPenalty is applied to cities on apply.
-    [[nodiscard]] aoc::sim::ResourceCurseModifiers& resourceCurse() {
-        return this->m_resourceCurse;
-    }
-    [[nodiscard]] const aoc::sim::ResourceCurseModifiers& resourceCurse() const {
-        return this->m_resourceCurse;
     }
 
     [[nodiscard]] aoc::sim::PlayerIndustrialComponent& industrial() { return this->m_industrial; }
@@ -575,7 +563,6 @@ private:
     aoc::sim::PlayerEnergyComponent m_energy;
     aoc::sim::PlayerHumanCapitalComponent m_humanCapital;
     aoc::sim::PlayerSupplyChainComponent m_supplyChain;
-    aoc::sim::ResourceCurseModifiers m_resourceCurse{};
     aoc::sim::PlayerIndustrialComponent m_industrial;
     aoc::sim::PlayerBankingComponent m_banking;
 
