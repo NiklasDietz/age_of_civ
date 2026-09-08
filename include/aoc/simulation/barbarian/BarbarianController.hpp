@@ -33,6 +33,11 @@ struct BarbarianEncampmentComponent {
     hex::AxialCoord location;          ///< Tile where the encampment sits.
     int32_t         spawnCooldown = 0; ///< Turns until the next unit spawns.
     int32_t         unitsSpawned  = 0; ///< Total number of units spawned from this camp.
+
+    /// Index into GameState::barbarianClans() -- which clan holds this camp.
+    /// -1 while unbound. Camps had no clan at all until 2026-09-08: the clan
+    /// list was never populated, so every clan field in the game was dead.
+    int32_t         clanIndex = -1;
 };
 
 /// Controls barbarian encampments and units each turn.

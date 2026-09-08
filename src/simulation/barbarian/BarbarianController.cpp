@@ -93,6 +93,28 @@ static aoc::game::Unit* findNearestTarget(const aoc::game::GameState& gameState,
     return closest;
 }
 
+/// The closest unit belonging to `onlyOwner` within `range`, or null.
+/// Used when a clan has been hired to go after one particular civ.
+static aoc::game::Unit* findNearestTargetOf(const aoc::game::GameState& gameState,
+                                            const aoc::map::HexGrid& grid,
+                                            hex::AxialCoord position, int32_t range,
+                                            PlayerId onlyOwner) {
+    const aoc::game::Player* owner = gameState.player(onlyOwner);
+    if (owner == nullptr) {
+        return nullptr;
+    }
+    aoc::game::Unit* closest = nullptr;
+    int32_t bestDist         = range + 1;
+    for (const std::unique_ptr<aoc::game::Unit>& unit : owner->units()) {
+        const int32_t dist = grid.distance(unit->position(), position);
+        if (dist <= range && dist < bestDist) {
+            bestDist = dist;
+            closest  = unit.get();
+        }
+    }
+    return closest;
+}
+
 /// The closest non-barbarian city within `range`, or null.
 ///
 /// Barbarians could not attack a city at all: the raid loop only ever looked
@@ -193,6 +215,20 @@ void BarbarianController::executeTurn(aoc::game::GameState& gameState,
                                        TurnEventLog* eventLog) {
     ++this->m_turnCounter;
 
+    // Bribes and hires run out. Nothing ticked these before, because nothing
+    // ever set them: the clan list was empty for the whole game.
+    for (BarbarianClanComponent& clan : gameState.barbarianClans()) {
+        if (clan.isBribed && --clan.bribeTurnsLeft <= 0) {
+            clan.isBribed       = false;
+            clan.bribeTurnsLeft = 0;
+        }
+        if (clan.hiredBy != INVALID_PLAYER && --clan.hireTurnsLeft <= 0) {
+            clan.hiredBy     = INVALID_PLAYER;
+            clan.hiredTarget = INVALID_PLAYER;
+            clan.hireTurnsLeft = 0;
+        }
+    }
+
     // Restore movement points for all barbarian-owned units.
     refreshMovement(gameState, BARBARIAN_PLAYER);
 
@@ -272,6 +308,26 @@ void BarbarianController::spawnEncampments(aoc::game::GameState& gameState,
         camp.location      = candidate;
         camp.spawnCooldown = SPAWN_COOLDOWN_TURNS;
         camp.unitsSpawned  = 1;
+
+        // Give the camp a clan. GameState::barbarianClans() was never populated,
+        // so BarbarianClanComponent -- its type, strength, isBribed, hiredBy --
+        // was dead in its entirety, and bribeClan and hireClan, both fully
+        // implemented, had no caller anywhere.
+        {
+            std::vector<BarbarianClanComponent>& clans = gameState.barbarianClans();
+            BarbarianClanComponent clan{};
+            clan.clanId = static_cast<uint8_t>(clans.size() % BARBARIAN_CLAN_COUNT);
+            clan.clanType = BARBARIAN_CLAN_DEFS[clan.clanId].type;
+            // Strength tracks the age: a late-game warband is a real threat, an
+            // ancient one is a nuisance. Also what bribe and hire cost scale on.
+            clan.strength = 1 + this->m_turnCounter / 50;
+            camp.clanIndex = static_cast<int32_t>(clans.size());
+            clans.push_back(clan);
+            LOG_INFO("Barbarian camp at (%d,%d) founded by the %.*s (strength %d)",
+                     candidate.q, candidate.r,
+                     static_cast<int>(BARBARIAN_CLAN_DEFS[clan.clanId].name.size()),
+                     BARBARIAN_CLAN_DEFS[clan.clanId].name.data(), clan.strength);
+        }
         this->m_encampments.push_back(camp);
 
         // Spawn the founding warrior at the encampment.
@@ -355,8 +411,43 @@ void BarbarianController::moveBarbarianUnits(aoc::game::GameState& gameState,
             continue;
         }
 
-        // Look for a nearby non-barbarian unit to attack.
-        aoc::game::Unit* target = findNearestTarget(gameState, grid, unit->position(), AGGRO_RANGE);
+        // Which clan answers for this unit: the one holding the nearest camp.
+        // Units carry no clan of their own, and the camp they operate out of is
+        // the honest association.
+        const BarbarianClanComponent* clan = nullptr;
+        {
+            int32_t bestDist = std::numeric_limits<int32_t>::max();
+            for (const BarbarianEncampmentComponent& camp : this->m_encampments) {
+                if (camp.clanIndex < 0 ||
+                    static_cast<std::size_t>(camp.clanIndex) >= gameState.barbarianClans().size()) {
+                    continue;
+                }
+                const int32_t d = grid.distance(camp.location, unit->position());
+                if (d < bestDist) {
+                    bestDist = d;
+                    clan     = &gameState.barbarianClans()[static_cast<std::size_t>(camp.clanIndex)];
+                }
+            }
+        }
+
+        // A bribed clan stands down. This is what the gold buys, and until the
+        // clan list was populated isBribed was written by nobody and read by
+        // nobody, so bribeClan -- fully implemented -- bought nothing.
+        if (clan != nullptr && clan->isBribed) {
+            continue;
+        }
+
+        // Look for a nearby non-barbarian unit to attack. A hired clan looks
+        // for its employer's enemy first and only falls back to whoever is
+        // nearest, which is what the hire is paying for.
+        aoc::game::Unit* target = nullptr;
+        if (clan != nullptr && clan->hiredTarget != INVALID_PLAYER) {
+            target = findNearestTargetOf(gameState, grid, unit->position(), AGGRO_RANGE,
+                                         clan->hiredTarget);
+        }
+        if (target == nullptr) {
+            target = findNearestTarget(gameState, grid, unit->position(), AGGRO_RANGE);
+        }
         const int32_t unitDist =
             (target != nullptr) ? grid.distance(unit->position(), target->position())
                                 : AGGRO_RANGE + 1;

@@ -7,6 +7,7 @@
  * City-level components are accessed via City member accessors.
  */
 
+#include "aoc/simulation/barbarian/BarbarianClans.hpp"
 #include "aoc/save/Serializer.hpp"
 
 #include "aoc/save/MapFile.hpp"
@@ -1283,6 +1284,22 @@ void writeMiscEntitiesSection(WriteBuffer& out, const aoc::game::GameState& game
             }
             ++unitIndex;
         }
+    }
+
+    // --- BarbarianClanComponent (v30): who holds each camp, and whether they
+    //     have been bribed off or hired. The whole clan module was dead before
+    //     v30 -- the list was never populated, so there was nothing to save. ---
+    const std::vector<aoc::sim::BarbarianClanComponent>& clans = gameState.barbarianClans();
+    section.writeU32(static_cast<uint32_t>(clans.size()));
+    for (const aoc::sim::BarbarianClanComponent& clan : clans) {
+        section.writeU8(clan.clanId);
+        section.writeU8(static_cast<uint8_t>(clan.clanType));
+        section.writeI32(clan.strength);
+        section.writeU8(clan.isBribed ? uint8_t{1} : uint8_t{0});
+        section.writeI32(clan.bribeTurnsLeft);
+        section.writeU8(clan.hiredBy);
+        section.writeU8(clan.hiredTarget);
+        section.writeI32(clan.hireTurnsLeft);
     }
 
     writeSection(out, SectionId::MiscEntities, section);
@@ -3563,6 +3580,33 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 if (unitIndex < static_cast<uint32_t>(loadedUnits.size())) {
                     loadedUnits[unitIndex]->experience() = std::move(xp);
                 }
+            }
+
+            // --- BarbarianClanComponent (v30) ---
+            const uint32_t clanCount = buf.readU32();
+            if (!buf.canReadRecords(clanCount, 16)) {
+                LOG_ERROR("Serializer: barbarian clan count %u exceeds file size", clanCount);
+                return ErrorCode::SaveCorrupted;
+            }
+            gameState.barbarianClans().clear();
+            gameState.barbarianClans().reserve(clanCount);
+            for (uint32_t i = 0; i < clanCount && !buf.isCorrupt(); ++i) {
+                aoc::sim::BarbarianClanComponent clan{};
+                clan.clanId   = buf.readU8();
+                const uint8_t type = buf.readU8();
+                if (type >= static_cast<uint8_t>(aoc::sim::BarbarianClanType::Count)) {
+                    LOG_ERROR("Serializer: barbarian clan type %u out of range",
+                              static_cast<unsigned>(type));
+                    return ErrorCode::SaveCorrupted;
+                }
+                clan.clanType       = static_cast<aoc::sim::BarbarianClanType>(type);
+                clan.strength       = buf.readI32();
+                clan.isBribed       = buf.readU8() != 0;
+                clan.bribeTurnsLeft = buf.readI32();
+                clan.hiredBy        = buf.readU8();
+                clan.hiredTarget    = buf.readU8();
+                clan.hireTurnsLeft  = buf.readI32();
+                gameState.barbarianClans().push_back(clan);
             }
             break;
         }

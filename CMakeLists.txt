@@ -1007,6 +1007,7 @@ if(AOC_BUILD_TESTS)
         test_embargo_direction
         test_monopoly_pricing
         test_war_reparations_term
+        test_barbarian_clans
         test_spaceport
         test_government_plaza_and_dam
         test_great_works

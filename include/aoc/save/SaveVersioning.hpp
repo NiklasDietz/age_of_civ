@@ -110,6 +110,13 @@ namespace aoc::save {
 /* v29 (2026-09-07): each ReligionDef carries its holy city (a flag and a
  * coordinate) after its four belief indices. Every v28 save becomes
  * unloadable. */
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 29;
+/* v30 (2026-09-08): MiscEntities carries the barbarian clan list -- which clan
+ * holds each camp, its strength, and whether it has been bribed off or hired.
+ * The whole clan module was dead before this: GameState::m_barbarianClans was
+ * never populated, so bribeClan and hireClan (both fully implemented) had no
+ * caller, every clan field was unread, and convertClanToCityState had no
+ * definition anywhere. Every v29 save becomes unloadable. */
+
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 30;
 
 } // namespace aoc::save

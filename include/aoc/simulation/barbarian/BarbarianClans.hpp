@@ -129,6 +129,23 @@ struct BarbarianClanComponent {
  * When leadingEra >= given threshold, barbs spawn Tanks/Infantry/etc. even
  * if turn count alone would keep them at Musketmen.
  */
+/**
+ * @brief Buy a barbarian clan's camp out of banditry and into a city-state.
+ *
+ * The camp becomes a settled city-state at the same tile, with `player` already
+ * its suzerain -- the point of paying is the ally it leaves you with. Costs
+ * `convertToCityStateCost(strength)` and needs a free city-state seat.
+ *
+ * This function was named in the design and had NO DEFINITION ANYWHERE until
+ * 2026-09-08: the whole clan module was dead, since the clan list was never
+ * populated in the first place.
+ *
+ * @param clanIndex  Index into GameState::barbarianClans().
+ */
+[[nodiscard]] ErrorCode convertClanToCityState(aoc::game::GameState& gameState,
+                                               aoc::map::HexGrid& grid, std::size_t clanIndex,
+                                               hex::AxialCoord campLocation, PlayerId player);
+
 [[nodiscard]] UnitTypeId barbarianSpawnUnit(int32_t turnNumber, int32_t leadingEra = -1);
 
 /**

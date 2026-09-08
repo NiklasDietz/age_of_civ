@@ -30,3 +30,7 @@ claude-code-tweaks
 
 # headless map cache files (aoc_simulate --map-cache)
 *.aocmap
+
+# Save-roundtrip test artefacts, written into the working directory by
+# test_save_roundtrip. The blessed corpus lives in tests/data/saves/.
+roundtrip_*.sav
