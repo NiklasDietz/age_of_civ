@@ -75,7 +75,23 @@ struct BalanceParams {
     // adopt your religion to count that civ as dominated. With multi-
     // religion crowding (every player founds), high fractions are
     // architecturally impossible.
-    float   religionDominanceFrac    = 0.08f;  // 2026-04-27: 0.10 still gave 7% RELIGION; eased
+    /// Fraction of a rival's cities that must follow your religion for that
+    /// rival to count as dominated for the religious victory.
+    ///
+    /// Was 0.08, eased down repeatedly to make the victory fire at all (the
+    /// comments read "still 0 fires" and "0.10 still gave 7% RELIGION"). At 8%
+    /// a twelve-city rival was "dominated" by a single converted city, so the
+    /// condition measured religious PRESENCE, not domination.
+    ///
+    /// It also sat outside its own GA search bounds, which are [0.3, 0.8]: the
+    /// tuner could never explore the shipped value, and any tuned genome jumped
+    /// it to at least 0.3. Those bounds are the design intent; the default had
+    /// drifted away from them.
+    ///
+    /// 0.50 means a majority. Reachable now that a rival's faith in a city
+    /// costs its owner loyalty (see religionLoyaltyAlignment), which is what
+    /// makes real domination attainable rather than needing a lowered bar.
+    float   religionDominanceFrac    = 0.50f;
 
     // Victory: space race cost multiplier (1.0 = nominal SPACE_PROJECT_DEFS).
     // Pulled up from GA 0.59 so science path lands similarly-paced to other

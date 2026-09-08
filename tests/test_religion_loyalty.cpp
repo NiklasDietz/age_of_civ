@@ -20,6 +20,8 @@
 #include "aoc/game/City.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/city/CityLoyalty.hpp"
+#include "aoc/balance/BalanceParams.hpp"
+#include "aoc/game/Unit.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 
 using aoc::PlayerId;
@@ -121,4 +123,97 @@ TEST_CASE("sharing a faith beats following a rival's, through the real pass") {
     const float rival  = devotionOf(THEIRS);
     CHECK(shared > rival);
     CHECK(rival <= 0.0f); // a rival's church is never an asset
+}
+
+TEST_CASE("dominating a rival means a majority of its cities, not a token presence") {
+    // The bar was 0.08: a twelve-city rival counted as dominated when ONE city
+    // converted, so the religious victory measured presence, not domination. It
+    // had been eased there to make the victory fire at all, and sat OUTSIDE its
+    // own GA search bounds of [0.3, 0.8] -- the tuner could never explore the
+    // shipped value, and any tuned genome jumped it to at least 0.3.
+    const aoc::balance::BalanceParams& bal = aoc::balance::params();
+    CHECK(bal.religionDominanceFrac >= 0.5f);
+
+    // And it must sit inside the range the tuner is allowed to search, or the
+    // default and the design intent disagree again.
+    const aoc::balance::BalanceBounds bounds = aoc::balance::defaultBalanceBounds();
+    bool inRange = false;
+    for (int32_t i = 0; i < aoc::balance::BALANCE_PARAM_COUNT; ++i) {
+        const std::size_t idx = static_cast<std::size_t>(i);
+        if (bal.religionDominanceFrac >= bounds.min[idx] &&
+            bal.religionDominanceFrac <= bounds.max[idx] &&
+            bounds.min[idx] >= 0.3f && bounds.max[idx] <= 0.8f) {
+            inRange = true;
+        }
+    }
+    CHECK(inRange);
+}
+
+TEST_CASE("an Inquisitor purges rival faiths from its own city") {
+    // This path lived in a dead second implementation of theological combat and
+    // had no caller anywhere. It matters now: a rival's faith in your city
+    // costs you loyalty, so clearing it is a real act.
+    aoc::test::World w            = aoc::test::makeWorld(2);
+    aoc::game::Player& owner      = *w.gameState.player(PlayerId{0});
+    owner.faith().foundedReligion = OURS;
+
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Alpha");
+    aoc::game::City& city              = *owner.cities()[0];
+    city.religion().pressure[OURS]     = 40.0f;
+    city.religion().pressure[THEIRS]   = 90.0f;
+    REQUIRE(city.religion().dominantReligion() == THEIRS);
+
+    aoc::game::Unit& inq = owner.addUnit(aoc::sim::INQUISITOR_UNIT_ID, {5, 5});
+    inq.setChargesRemaining(2);
+
+    REQUIRE(aoc::sim::requestPurgeReligion(w.gameState, PlayerId{0}, {5, 5}) == aoc::ErrorCode::Ok);
+
+    // The rival faith is gone; ours is untouched.
+    CHECK(city.religion().pressure[THEIRS] == doctest::Approx(0.0f));
+    CHECK(city.religion().pressure[OURS] == doctest::Approx(40.0f));
+    CHECK(city.religion().dominantReligion() == OURS);
+    // And it cost a charge.
+    CHECK(inq.chargesRemaining() == 1);
+}
+
+TEST_CASE("a spent Inquisitor is consumed by the purge") {
+    aoc::test::World w            = aoc::test::makeWorld(2);
+    aoc::game::Player& owner      = *w.gameState.player(PlayerId{0});
+    owner.faith().foundedReligion = OURS;
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Alpha");
+    owner.cities()[0]->religion().pressure[THEIRS] = 50.0f;
+
+    aoc::game::Unit& inq = owner.addUnit(aoc::sim::INQUISITOR_UNIT_ID, {5, 5});
+    inq.setChargesRemaining(1);
+    REQUIRE(owner.units().size() == 1);
+
+    REQUIRE(aoc::sim::requestPurgeReligion(w.gameState, PlayerId{0}, {5, 5}) == aoc::ErrorCode::Ok);
+    CHECK(owner.units().empty());
+}
+
+TEST_CASE("there is nothing to purge from a city of one's own faith") {
+    aoc::test::World w            = aoc::test::makeWorld(2);
+    aoc::game::Player& owner      = *w.gameState.player(PlayerId{0});
+    owner.faith().foundedReligion = OURS;
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Alpha");
+    owner.cities()[0]->religion().pressure[OURS] = 50.0f;
+
+    aoc::game::Unit& inq = owner.addUnit(aoc::sim::INQUISITOR_UNIT_ID, {5, 5});
+    inq.setChargesRemaining(1);
+
+    CHECK(aoc::sim::requestPurgeReligion(w.gameState, PlayerId{0}, {5, 5}) != aoc::ErrorCode::Ok);
+    CHECK(inq.chargesRemaining() == 1); // no charge wasted
+}
+
+TEST_CASE("an Inquisitor cannot purge another civ's city") {
+    aoc::test::World w            = aoc::test::makeWorld(2);
+    aoc::game::Player& owner      = *w.gameState.player(PlayerId{0});
+    owner.faith().foundedReligion = OURS;
+    aoc::test::addCityAt(w, PlayerId{1}, 9, 9, "Theirs");
+    w.gameState.player(PlayerId{1})->cities()[0]->religion().pressure[THEIRS] = 50.0f;
+
+    aoc::game::Unit& inq = owner.addUnit(aoc::sim::INQUISITOR_UNIT_ID, {9, 9});
+    inq.setChargesRemaining(1);
+
+    CHECK(aoc::sim::requestPurgeReligion(w.gameState, PlayerId{0}, {9, 9}) != aoc::ErrorCode::Ok);
 }

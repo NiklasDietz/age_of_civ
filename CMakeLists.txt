@@ -437,7 +437,6 @@ set(AOC_LIB_SOURCES
     src/simulation/city/DistrictPlacement.cpp
     src/simulation/unit/CombatExtensions.cpp
     src/simulation/unit/AttackRequest.cpp
-    src/simulation/religion/TheologicalCombat.cpp
     src/simulation/diplomacy/DiplomacyExtensions.cpp
     src/simulation/greatpeople/GreatPeopleExpanded.cpp
     src/simulation/tech/CivicEffects.cpp

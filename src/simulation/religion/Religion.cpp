@@ -972,4 +972,53 @@ ErrorCode requestTheologicalCombat(aoc::game::GameState& gameState, aoc::Random&
     return ErrorCode::Ok;
 }
 
+
+ErrorCode requestPurgeReligion(aoc::game::GameState& gameState, PlayerId player,
+                               hex::AxialCoord at) {
+    aoc::game::Player* owner = gameState.player(player);
+    if (owner == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+    // The city must be the player's own: an Inquisitor tends its own flock.
+    aoc::game::City* city = owner->cityAt(at);
+    if (city == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+    // And an Inquisitor with a charge must be standing in it.
+    aoc::game::Unit* inquisitor = nullptr;
+    for (const std::unique_ptr<aoc::game::Unit>& u : owner->units()) {
+        if (u == nullptr || u->position() != at) {
+            continue;
+        }
+        if (u->typeId() == INQUISITOR_UNIT_ID && u->hasCharges()) {
+            inquisitor = u.get();
+            break;
+        }
+    }
+    if (inquisitor == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    const ReligionId ownFaith = owner->faith().foundedReligion;
+    CityReligionComponent& rel = city->religion();
+    float purged = 0.0f;
+    for (uint8_t r = 0; r < MAX_RELIGIONS; ++r) {
+        if (ownFaith == NO_RELIGION || r != static_cast<uint8_t>(ownFaith)) {
+            purged += rel.pressure[r];
+            rel.pressure[r] = 0.0f;
+        }
+    }
+    if (purged <= 0.0f) {
+        return ErrorCode::InvalidState; // nothing foreign to purge
+    }
+
+    inquisitor->useCharge();
+    LOG_INFO("Player %u purged %.0f foreign religious pressure from %s",
+             static_cast<unsigned>(player), static_cast<double>(purged), city->name().c_str());
+    if (!inquisitor->hasCharges()) {
+        owner->removeUnit(inquisitor);
+    }
+    return ErrorCode::Ok;
+}
+
 } // namespace aoc::sim

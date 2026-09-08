@@ -21,7 +21,10 @@ namespace aoc::game { class Unit; }
 namespace aoc::game { class Player; class GameState; class City; }
 namespace aoc::map { class HexGrid; }
 
-namespace aoc::sim { class DiplomacyManager; }
+namespace aoc::sim {
+
+/// The Inquisitor row in UNIT_TYPE_DEFS.
+inline constexpr UnitTypeId INQUISITOR_UNIT_ID{21}; class DiplomacyManager; }
 
 namespace aoc::sim {
 
@@ -270,6 +273,21 @@ void processFounderBeliefs(aoc::game::GameState& gameState);
                                                  aoc::Random& rng,
                                                  const aoc::map::HexGrid& grid, PlayerId player,
                                                  hex::AxialCoord from, hex::AxialCoord to);
+
+/// An Inquisitor standing in one of your cities purges every faith but your own
+/// from it, spending a charge.
+///
+/// This path lived in `religion/TheologicalCombat.cpp`, which had no caller at
+/// all -- a second, dead implementation of theological combat that also held
+/// this purge. That file is gone; the purge is here, on the live path, keyed by
+/// coordinates like every other request rather than by the flat entity indices
+/// it used to take.
+///
+/// It matters more than it did: a rival's faith in your city now costs you
+/// loyalty (see religionLoyaltyAlignment), so clearing it is a real act rather
+/// than cosmetic tidying.
+[[nodiscard]] ErrorCode requestPurgeReligion(aoc::game::GameState& gameState, PlayerId player,
+                                             hex::AxialCoord at);
 
 /// Strength a religious unit brings to a theological contest. An Apostle is
 /// built for it; a Missionary is not and an Inquisitor only defends its own.
