@@ -667,6 +667,34 @@ std::vector<ProductionRecipe> buildRecipes() {
         1, TechId{9}, true});  // Forge, Banking tech, recycling
 
     // ================================================================
+    // Farmland chain (2026-09-08). The new food district's three buildings
+    // would otherwise be bare adjacency sources with nothing to make. These
+    // also give PROCESSED_FOOD a second production path: it had exactly one,
+    // so a civ without that building could never make any.
+    // ================================================================
+    // No FLOUR good exists, so grain goes straight to processed food rather
+    // than inventing an intermediate the rest of the economy would not use.
+    recipes.push_back({80, "Mill Grain",
+        {{goods::WHEAT, 3}},
+        goods::PROCESSED_FOOD, 2, BuildingId{52}, 1,
+        1, TechId{}, false});  // Grain Silo
+
+    recipes.push_back({81, "Can Preserves",
+        {{goods::WHEAT, 2}, {goods::SALT, 1}},
+        goods::PROCESSED_FOOD, 3, BuildingId{53}, 2,
+        1, TechId{21}, false});  // Cannery, Food Preservation
+
+    recipes.push_back({82, "Bottle Wine",
+        {{goods::WINE, 2}, {goods::GLASS, 1}},
+        goods::ADV_CONSUMER_GOODS, 2, BuildingId{53}, 2,
+        1, TechId{21}, false});  // Cannery, Food Preservation
+
+    recipes.push_back({83, "Weave Textiles",
+        {{goods::COTTON, 3}},
+        goods::CLOTHING, 2, BuildingId{51}, 1,
+        1, TechId{20}, false});  // Irrigation Works, Textiles
+
+    // ================================================================
     // WP-C2 cut: GOLD_CONTACTS chain deprecated. Recipes 48/49 removed —
     // Gold ore no longer bottlenecks electronics. Premium microchip tier
     // can be reintroduced later keyed off an active good (e.g. LITHIUM or

@@ -137,6 +137,28 @@ static const std::array<WonderDef, WONDER_COUNT> s_wonderDefs = {{
     {23, "International Space Station", EraId{7}, 750, TechId{}, CivicId{}, WonderAdjacencyReq{},
       {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
       "+10% science all cities."},
+
+    // 2026-09-08 additions. Chosen to fill gaps rather than pad the count: two
+    // eras had a single wonder each, no wonder housed great works until the
+    // Great Library was given slots, and nothing rewarded fresh water.
+    {24, "Hanging Aqueduct", EraId{1}, 260, TechId{}, CivicId{}, {.requiresRiver=true},
+      {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+      "+3 housing and fresh water for this city.",
+      false, ResourceId{}, 0, 0},
+    {25, "Great Bazaar", EraId{2}, 340, TechId{}, CivicId{}, WonderAdjacencyReq{},
+      {1.0f, 0.0f, 4.0f, 0.0f, 0.0f, 0.0f},
+      "+4 gold per turn, and trade routes carry one extra good.",
+      false, ResourceId{}, 0, 0},
+    // National: a country's own academy of arts, and the second wonder that
+    // houses great works.
+    {26, "Academy of Arts", EraId{3}, 420, TechId{}, CivicId{}, WonderAdjacencyReq{},
+      {1.0f, 0.0f, 0.0f, 0.0f, 3.0f, 0.0f},
+      "+3 culture per turn. Houses three great works.",
+      true, ResourceId{}, 0, 3},
+    {27, "Grand Observatory", EraId{5}, 560, TechId{}, CivicId{}, {.requiresMountain=true},
+      {1.0f, 6.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+      "+6 science per turn; must adjoin a mountain.",
+      false, ResourceId{}, 0, 0},
 }};
 
 // One row per wonder, in id order, saying which kind of great person it draws.

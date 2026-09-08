@@ -141,8 +141,8 @@ struct UnitTypeDef {
 // Unit type IDs: keep stable for serialization. Gaps are fine.
 // Format: {id, name, class, era, hp, melee, ranged, range, move, cost, reqTech, upgradesTo, upgradeCost}
 
-inline constexpr int32_t UNIT_TYPE_COUNT = 78;
-inline constexpr std::array<UnitTypeDef, 78> UNIT_TYPE_DEFS = {{
+inline constexpr int32_t UNIT_TYPE_COUNT = 82;
+inline constexpr std::array<UnitTypeDef, 82> UNIT_TYPE_DEFS = {{
     // ========================================================================
     // MELEE INFANTRY: Warrior -> Swordsman -> Man-at-Arms -> Musketman -> Infantry -> Mech Infantry
     // ========================================================================
@@ -168,7 +168,7 @@ inline constexpr std::array<UnitTypeDef, 78> UNIT_TYPE_DEFS = {{
     {UnitTypeId{11}, "Crossbowman",     UnitClass::Ranged,   UnitEra::Medieval,      90, 15, 35, 2, 2, 100, TechId{51}, UnitTypeId{37}, 80,  {{60, 1}}},             // Machinery
     {UnitTypeId{37}, "Field Cannon",    UnitClass::Ranged,   UnitEra::Renaissance,  100, 20, 45, 2, 2, 160, TechId{60}, UnitTypeId{38}, 120, {{60, 1}}},             // Ballistics
     {UnitTypeId{38}, "Machine Gun",     UnitClass::Ranged,   UnitEra::Modern,       100, 25, 60, 2, 2, 260, TechId{12}, UnitTypeId{39}, 180, {{64, 1}}},             // 1 Steel
-    {UnitTypeId{39}, "Rocket Infantry", UnitClass::Ranged,   UnitEra::Atomic,       100, 30, 75, 2, 2, 350, TechId{18}, UnitTypeId{},   0,   {{64, 1}, {71, 1}}},    // 1 Steel + 1 Ammunition
+    {UnitTypeId{39}, "Rocket Infantry", UnitClass::Ranged,   UnitEra::Atomic,       100, 30, 75, 2, 2, 350, TechId{18}, UnitTypeId{105}, 220, {{64, 1}, {71, 1}}},    // 1 Steel + 1 Ammunition
 
     // ========================================================================
     // CAVALRY: Horseman -> Knight -> Cuirassier -> Cavalry -> Helicopter Gunship
@@ -207,7 +207,7 @@ inline constexpr std::array<UnitTypeDef, 78> UNIT_TYPE_DEFS = {{
     {UnitTypeId{25}, "Bombard",         UnitClass::Artillery,UnitEra::Renaissance,   90, 15, 50, 2, 2, 220, TechId{58}, UnitTypeId{16}, 120, {{60, 1}, {5, 1}}},     // Metal Casting
     {UnitTypeId{16}, "Field Artillery", UnitClass::Artillery,UnitEra::Industrial,    80, 15, 65, 3, 2, 280, TechId{60}, UnitTypeId{44}, 160, {{64, 1}}},             // Ballistics
     {UnitTypeId{44}, "Rocket Artillery",UnitClass::Artillery,UnitEra::Modern,        90, 18, 80, 3, 2, 380, TechId{15}, UnitTypeId{45}, 200, {{64, 1}, {71, 1}}},    // 1 Steel + 1 Ammunition
-    {UnitTypeId{45}, "MLRS",            UnitClass::Artillery,UnitEra::Atomic,       100, 20,100, 4, 2, 480, TechId{18}, UnitTypeId{},   0,   {{64, 2}, {71, 2}, {106, 1}}},   // +Microchip (guidance)
+    {UnitTypeId{45}, "MLRS",            UnitClass::Artillery,UnitEra::Atomic,       100, 20,100, 4, 2, 480, TechId{18}, UnitTypeId{104}, 260, {{64, 2}, {71, 2}, {106, 1}}},   // +Microchip (guidance)
 
     // ========================================================================
     // ANTI-CAVALRY: Spearman -> Pikeman -> Pike & Shot -> AT Gun -> Modern AT
@@ -218,7 +218,7 @@ inline constexpr std::array<UnitTypeDef, 78> UNIT_TYPE_DEFS = {{
     {UnitTypeId{26}, "Pikeman",         UnitClass::AntiCavalry,UnitEra::Medieval,   110, 38,  0, 0, 2,  80, TechId{53}, UnitTypeId{46}, 60},                          // Military Tactics
     {UnitTypeId{46}, "Pike and Shot",   UnitClass::AntiCavalry,UnitEra::Renaissance,120, 48,  0, 0, 2, 140, TechId{10}, UnitTypeId{27}, 100},                         // Gunpowder
     {UnitTypeId{27}, "AT Gun",          UnitClass::AntiCavalry,UnitEra::Modern,     100, 35, 55, 1, 2, 260, TechId{12}, UnitTypeId{47}, 150},
-    {UnitTypeId{47}, "Modern AT",       UnitClass::AntiCavalry,UnitEra::Atomic,     100, 40, 70, 1, 2, 340, TechId{18}, UnitTypeId{},   0},
+    {UnitTypeId{47}, "Modern AT",       UnitClass::AntiCavalry,UnitEra::Atomic,     100, 40, 70, 1, 2, 340, TechId{18}, UnitTypeId{103}, 200},
 
     // ========================================================================
     // AIR: Biplane -> Fighter -> Jet Fighter -> Stealth Fighter
@@ -302,6 +302,16 @@ inline constexpr std::array<UnitTypeDef, 78> UNIT_TYPE_DEFS = {{
     // collision with Frigate/Ironclad.
     // ========================================================================
     {UnitTypeId{102}, "Great Person",   UnitClass::Civilian, UnitEra::Ancient,       50,  0,  0, 0, 3,   0, TechId{},   UnitTypeId{},    0},
+
+    // 2026-09-08 additions. Every one closes a chain that dead-ended in the
+    // Atomic era, so these extend the upgrade paths repaired earlier rather
+    // than starting new ones. Ids continue the sparse space above 102.
+    {UnitTypeId{103}, "Guided AT",      UnitClass::AntiCavalry,UnitEra::Information, 110, 46, 82, 1, 2, 400, TechId{16}, UnitTypeId{},   0,   {{64, 1}, {106, 1}}},   // +Microchip
+    {UnitTypeId{104}, "Rocket Battery", UnitClass::Artillery,UnitEra::Information,  110, 24,118, 4, 2, 560, TechId{16}, UnitTypeId{},   0,   {{64, 2}, {71, 2}, {108, 1}}}, // +Software
+    {UnitTypeId{105}, "Missile Team",   UnitClass::Ranged,   UnitEra::Information,  110, 34, 88, 2, 2, 420, TechId{16}, UnitTypeId{},   0,   {{64, 1}, {71, 1}, {106, 1}}}, // +Microchip
+    // A second transport hull: the Galley and Caravel were the only two, and
+    // both are pre-gunpowder, so an industrial civ had no way to carry troops.
+    {UnitTypeId{106}, "Troop Ship",     UnitClass::Naval,    UnitEra::Industrial,   120,  30, 0, 0, 5, 220, TechId{11}, UnitTypeId{},   0,   {{64, 2}}},             // 2 Steel
 
     // ========================================================================
     // CIV6 PARITY UNITS (added 2026-05-02)

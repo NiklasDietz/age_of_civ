@@ -1448,7 +1448,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             // gives Holy Sites in every seed but costs two thirds of the
             // conquest by spending slots that would have been Encampments.
             const float holySiteEraMult = std::clamp(1.0f + religionCoefNow, 0.4f, 1.8f);
-            const std::array<DistrictOption, 7> districtOptions = {{
+            const std::array<DistrictOption, 8> districtOptions = {{
                 { DistrictType::Industrial,
                   60.0f,
                   1.4f * personality.behavior.prodBuildings * personality.behavior.economicFocus },
@@ -1487,6 +1487,14 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                   55.0f,
                   1.1f * personality.behavior.cultureFocus
                        * personality.behavior.greatPersonFocus },
+                // Farmland: the food district. Wanted most by a city that is
+                // actually short of food, so it is scored on the deficit rather
+                // than on personality alone -- a city already growing well has
+                // better uses for a scarce specialty slot.
+                { DistrictType::Farmland,
+                  50.0f,
+                  (city.foodSurplus() < 0.0f ? 1.6f : 0.7f)
+                      * personality.behavior.expansionism },
             }};
 
             // Specialty district slots are scarce: maxSpecialtyDistricts is

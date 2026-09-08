@@ -199,6 +199,16 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid, const Distri
         bonus.culture += static_cast<float>(adjTheatreDistricts) * 1.0f;
         break;
 
+    case DistrictType::Farmland:
+        // Fields feed a city. Food was the one AdjacencyBonus column no rule
+        // ever filled; the Harbor took a share of it when that was fixed, and
+        // this is the district whose whole purpose it is.
+        bonus.food += (adjRiverEdges > 0) ? 2.0f : 0.0f;
+        bonus.food += static_cast<float>(terrain.forests) * 0.5f;
+        // Farms cluster: a fed district beside another feeds more.
+        bonus.food += static_cast<float>(adjDistricts) * 0.5f;
+        break;
+
     case DistrictType::Encampment:
         // Defense bonus from hills (not yield but tracked for combat)
         break;

@@ -27,11 +27,17 @@ std::vector<UnitUpgradeDef> getAvailableUpgrades(UnitTypeId currentType) {
     // it is what let the two tables drift apart in the first place: a unit you
     // cannot build yet is a unit you cannot upgrade into.
     std::vector<UnitUpgradeDef> result;
-    if (currentType.value >= UNIT_TYPE_COUNT) {
+    // Validate by row existence, NOT by id < UNIT_TYPE_COUNT. The id space is
+    // sparse: 78 rows carry ids running to 102, so an `id < 78` guard silently
+    // refused every upgrade for the six units numbered above the row count, and
+    // every upgrade whose successor was one of them. unitTypeDef falls back to
+    // the Warrior for an unknown id, so comparing the row's own id back is the
+    // only honest existence test.
+    if (unitTypeDef(currentType).id != currentType) {
         return result;
     }
     const UnitTypeId next = unitTypeDef(currentType).upgradesTo;
-    if (!next.isValid() || next.value >= UNIT_TYPE_COUNT) {
+    if (!next.isValid() || unitTypeDef(next).id != next) {
         return result;
     }
     UnitUpgradeDef def{};

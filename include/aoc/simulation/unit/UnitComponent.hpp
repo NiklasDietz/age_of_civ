@@ -76,6 +76,8 @@ struct UnitComponent {
                 unit.cargoCapacity = 1;
             } else if (typeId.value == 7) { // Caravel
                 unit.cargoCapacity = 2;
+            } else if (typeId.value == 106) { // Troop Ship
+                unit.cargoCapacity = 4;
             }
             // Battleship (id 8) has 0 cargo capacity
         }

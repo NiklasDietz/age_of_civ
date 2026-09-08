@@ -34,6 +34,13 @@ enum class DistrictType : uint8_t {
     Encampment, ///< Military buildings
     Theatre,    ///< Culture buildings, great works
 
+    /// Farmland: the food district. Adjacency food had no district home at all
+    /// -- AdjacencyBonus carried a food column that no rule filled -- so the
+    /// Harbor was the only source once that was fixed. A district for growing
+    /// food is the obvious owner of it, and it gives a river valley a reason to
+    /// be built on beyond tile yields.
+    Farmland,
+
     Count
 };
 
@@ -42,7 +49,7 @@ static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType
 [[nodiscard]] constexpr std::string_view districtTypeName(DistrictType type) {
     constexpr std::array<std::string_view, DISTRICT_TYPE_COUNT> NAMES = {
         {"City Center", "Industrial Zone", "Commercial Hub", "Campus", "Holy Site", "Harbor",
-         "Encampment", "Theatre Square"}};
+         "Encampment", "Theatre Square", "Farmland"}};
     return NAMES[static_cast<uint8_t>(type)];
 }
 
@@ -53,6 +60,9 @@ static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType
     aoc::sim::WonderAdjacencyReq r{};
     if (type == DistrictType::Harbor) {
         r.requiresCoast = true;
+    } else if (type == DistrictType::Farmland) {
+        // Fields need ground you can plough.
+        r.requiresFlat = true;
     }
     return r;
 }
@@ -94,6 +104,8 @@ static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType
         return 2.0f; // Entertainment Complex
     case 44:
         return 2.0f; // Water Park
+    case 53:
+        return 1.0f; // Cannery: preserved food is a comfort
     default:
         return 0.0f;
     }
@@ -112,6 +124,8 @@ static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType
         return 4; // Aqueduct (when connected)
     case 45:
         return 4; // Neighborhood: ordinary value; appeal scales it in computeCityHousing
+    case 52:
+        return 3; // Grain Silo: stored food supports more people
     default:
         return 0;
     }
@@ -213,7 +227,7 @@ struct BuildingDef {
 // Format: {id, name, district, prodCost, maint, prodBonus, sciBonus, goldBonus, sciMult,
 // resourceCosts, fuelGoodId, fuelPerTurn} Resource costs and fuel added for mid/late-game buildings
 // per plan Phase 1C/1D.
-inline constexpr std::array<BuildingDef, 51> BUILDING_DEFS = {{
+inline constexpr std::array<BuildingDef, 55> BUILDING_DEFS = {{
     //                                                                                                                     resourceCosts         fuel
     {BuildingId{0}, "Forge", DistrictType::Industrial, 60, 1, 2, 0, 0, 1.0f}, // no cost, no fuel
     {BuildingId{1}, "Workshop", DistrictType::Industrial, 40, 1, 1, 0, 0, 1.0f},
@@ -587,6 +601,58 @@ inline constexpr std::array<BuildingDef, 51> BUILDING_DEFS = {{
      0,
      1.0f,
      {{64, 2}}}, // 2 Steel
+
+    // Farmland buildings (2026-09-08). The food district had no buildings of
+    // its own, which would have made it a bare adjacency source; these give it
+    // a chain like every other district has.
+    {BuildingId{51},
+     "Irrigation Works",
+     DistrictType::Farmland,
+     90,
+     1,
+     0,
+     0,
+     0,
+     1.0f,
+     {{44, 2}}}, // 2 Stone
+    {BuildingId{52},
+     "Grain Silo",
+     DistrictType::Farmland,
+     120,
+     1,
+     0,
+     0,
+     0,
+     1.0f,
+     {{62, 2}}}, // 2 Lumber
+    {BuildingId{53},
+     "Cannery",
+     DistrictType::Farmland,
+     180,
+     2,
+     0,
+     0,
+     2,
+     1.0f,
+     {{64, 2}}}, // 2 Steel
+    // The Public Library sits in the Campus beside the existing science chain:
+    // 51 buildings covered every district but this tier was missing between the
+    // Library and the University.
+    {BuildingId{54},
+     "Public Library",
+     DistrictType::Campus,
+     140,
+     1,
+     0,
+     2,
+     0,
+     1.10f,
+     {{62, 2}},
+     0xFFFF,
+     0,
+     0,
+     0,
+     1}, // 2 Lumber; houses one great work
 }};
 
 [[nodiscard]] inline constexpr const BuildingDef& buildingDef(BuildingId id) {

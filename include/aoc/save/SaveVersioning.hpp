@@ -117,6 +117,12 @@ namespace aoc::save {
  * caller, every clan field was unread, and convertClanToCityState had no
  * definition anywhere. Every v29 save becomes unloadable. */
 
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 30;
+/* v31 (2026-09-08): WONDER_COUNT went 24 -> 28, and GlobalWonderTracker's
+ * builtBy array is written whole, so the wonder section's byte count changed
+ * with it. DISTRICT_TYPE_COUNT went 8 -> 9 (Farmland) and BUILDING_DEFS 51 ->
+ * 55; those are bounds checks rather than layout, but the version covers them
+ * too. Every v30 save becomes unloadable. */
+
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 31;
 
 } // namespace aoc::save

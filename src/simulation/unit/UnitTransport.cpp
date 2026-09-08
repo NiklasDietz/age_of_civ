@@ -30,6 +30,9 @@ int32_t transportCapacity(UnitTypeId typeId) {
         return 1; // Galley
     case 7:
         return 2; // Caravel
+    case 106:
+        return 4; // Troop Ship: the Galley and Caravel were the only hulls, and
+                  // both pre-gunpowder, so an industrial civ could carry nobody
     default:
         return 0; // Battleship and the rest are warships, not hulls for hire
     }
