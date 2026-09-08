@@ -1033,6 +1033,7 @@ if(AOC_BUILD_TESTS)
         test_great_works
         test_city_states
         test_ai_war_cadence
+        test_revolt_is_not_conquest
         test_diplomacy_actions
         test_deal_proposals
         test_natural_disasters

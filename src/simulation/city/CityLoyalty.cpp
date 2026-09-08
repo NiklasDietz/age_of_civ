@@ -50,6 +50,12 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     // empire loses half its periphery in a single turn -- stress tests showed
     // same-turn multi-city loss was possible and bricks the affected civ.
     bool secededThisTurn = false;
+    // One combined revolt per civ per turn, matching the secession path's own
+    // one-per-call rule below. civStressed is a CIV-level flag, so without this
+    // every unhappy city flipped on the same turn: player 1 lost eleven cities
+    // in one turn on seed 42 and was declared eliminated immediately after.
+    // An empire flipping at once is not a revolt, it is a delete.
+    bool revoltedThisTurn = false;
 
     const aoc::balance::BalanceParams& bal = aoc::balance::params();
 
@@ -63,7 +69,15 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     std::vector<std::pair<aoc::hex::AxialCoord, PlayerId>> reversions;
     for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
         CityLoyaltyComponent& loyalty = city->loyalty();
-        if (loyalty.revoltFreeCityTurns > 0) {
+        // Negative counts down a cooldown after the city came back. Without it
+        // a returned city re-revolted the moment its ten turns expired, because
+        // civStressed and the city's unhappiness both persist: seed 43 logged
+        // 593 revolts and 561 returns over 500 turns, the same cities flipping
+        // in and out. A city that has just been through a revolt is not
+        // immediately ready for another.
+        if (loyalty.revoltFreeCityTurns < 0) {
+            ++loyalty.revoltFreeCityTurns;
+        } else if (loyalty.revoltFreeCityTurns > 0) {
             --loyalty.revoltFreeCityTurns;
             if (loyalty.revoltFreeCityTurns == 0 && loyalty.revoltOriginalOwner != INVALID_PLAYER) {
                 reversions.emplace_back(city->location(), loyalty.revoltOriginalOwner);
@@ -75,6 +89,7 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 loyalty.revoltOriginalOwner = INVALID_PLAYER;
                 loyalty.loyalty             = 50.0f;
                 loyalty.unrestTurns         = 0;
+                loyalty.revoltFreeCityTurns = -REVOLT_COOLDOWN_TURNS;
             }
         }
     }
@@ -263,8 +278,9 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         // grievance count are both high, AND the city itself is actively
         // unhappy (happiness < -1), flip to Free-City for 10 turns. Softer
         // than true secession — city reverts automatically.
-        if (civStressed && loyalty.revoltFreeCityTurns == 0 &&
+        if (civStressed && !revoltedThisTurn && loyalty.revoltFreeCityTurns == 0 &&
             city->happiness().happiness < -1.0f) {
+            revoltedThisTurn            = true;
             loyalty.revoltFreeCityTurns = 10;
             loyalty.revoltOriginalOwner = player;
             gameState.transferCity(city->location(), INVALID_PLAYER);

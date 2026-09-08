@@ -541,13 +541,27 @@ void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber current
             // Conquest is "your capital fell and you currently own <=1 city".
             // Use ownedCityCount: a city the player founded then lost via
             // secession should not count toward the "still alive" bucket.
-            const int32_t cities = gsPlayer->ownedCityCount();
+            //
+            // A city in a COMBINED REVOLT is a different thing. That mechanic
+            // hands the city to INVALID_PLAYER for ten turns and gives it back
+            // -- "city reverts automatically", per its own comment -- so it is
+            // on loan, not lost. Counting it as lost let a temporary revolt
+            // cause PERMANENT elimination, reported as conquest when nobody had
+            // conquered anything: on seed 42 all three losing civs died this
+            // way, one of them with a city still standing, and the only city
+            // actually captured in the whole run was taken by barbarians.
+            const auto onLoanToRevolt = [&](const aoc::game::City& c) {
+                return c.loyalty().revoltFreeCityTurns > 0 &&
+                       c.loyalty().revoltOriginalOwner == gsPlayer->id();
+            };
+            int32_t cities = gsPlayer->ownedCityCount();
             for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
                 if (city == nullptr) { continue; }
-                if (city->owner() != gsPlayer->id()) { continue; }
+                const bool onLoan = onLoanToRevolt(*city);
+                if (city->owner() != gsPlayer->id() && !onLoan) { continue; }
+                if (onLoan && city->owner() != gsPlayer->id()) { ++cities; }
                 if (city->isOriginalCapital()) {
                     hasCapital = true;
-                    break;
                 }
             }
             if (cities > 0) {

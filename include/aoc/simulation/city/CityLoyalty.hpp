@@ -54,6 +54,13 @@ namespace aoc::sim {
 /// alone.
 inline constexpr float RELIGION_LOYALTY_LIMIT = 3.0f;
 
+/// Turns a city is ineligible to revolt again after one ends.
+///
+/// Twice the ten-turn revolt itself, so a city can spend at most a third of its
+/// time as a Free City. The war/peace pair uses the same shape: an event and a
+/// lock that outlasts it.
+inline constexpr int32_t REVOLT_COOLDOWN_TURNS = 20;
+
 /// Loyalty status tiers (determines yield penalty and UI icon).
 enum class LoyaltyStatus : uint8_t {
     Loyal,      ///< 76-100: Full yields, green icon
@@ -120,6 +127,10 @@ struct CityLoyaltyComponent {
     /// WP-A5 combined-stress revolt: while > 0 the city is a Free-City and
     /// the countdown ticks each turn. On 0 the city reverts to
     /// `revoltOriginalOwner` with loyalty reset to 50.
+    /// Sign carries the phase, so no new save field was needed:
+    ///   > 0  turns left as a Free City
+    ///   < 0  turns left of the cooldown after returning
+    ///   == 0 eligible to revolt
     int32_t  revoltFreeCityTurns  = 0;
     PlayerId revoltOriginalOwner  = INVALID_PLAYER;
 
