@@ -2195,9 +2195,13 @@ void EconomyScreen::open(UIManager& ui) {
                 }
             }
             {
+                // lastTurnConsumption, not totalDemand: that field was declared
+                // on the player economy and written by NOBODY -- the Market's
+                // same-named field is on a different struct -- so this column
+                // showed 0 for every good in every game since it was added.
                 std::unordered_map<uint16_t, int32_t>::const_iterator it =
-                    playerEcon->totalDemand.find(goodId);
-                if (it != playerEcon->totalDemand.end()) {
+                    playerEcon->lastTurnConsumption.find(goodId);
+                if (it != playerEcon->lastTurnConsumption.end()) {
                     info.demand = it->second;
                 }
             }

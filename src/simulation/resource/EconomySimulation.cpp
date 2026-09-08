@@ -42,6 +42,8 @@
 #include "aoc/map/HexGrid.hpp"
 
 #include <algorithm>
+#include <cstdio>
+#include <set>
 #include <unordered_set>
 
 namespace aoc::sim {
@@ -123,17 +125,23 @@ void EconomySimulation::initialize() {
 }
 
 void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::HexGrid& grid) {
+    // The harvest and consumption ledgers reset at the top of the TURN, not
+    // inside executeProduction where lastTurnProduction resets. harvestResources
+    // runs first, so a clear inside executeProduction wiped every harvest that
+    // had just been recorded -- the ledger read harvested=0 for goods that are
+    // only ever farmed or mined. lastTurnProduction's clear stays where it is:
+    // its "stale by one tick" semantics are documented and read by the
+    // Industrial Revolution thresholds and the AI trade controller.
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) { continue; }
+        playerPtr->economy().lastTurnConsumption.clear();
+        playerPtr->economy().lastTurnHarvest.clear();
+    }
+
     this->harvestResources(gameState, grid);
     this->applyResourceDepletion(gameState, grid);
     this->processInternalTradeForAllPlayers(gameState, grid);
     this->consumeBuildingFuel(gameState, grid);
-
-    // C40: stamp resource-curse modifiers onto each player before production
-    // so manufacturingPenalty is live when executeProduction runs.
-    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
-
-    }
 
     this->executeProduction(gameState, grid);
 
@@ -203,6 +211,69 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
     this->processCrisisAndBonds(gameState);
     this->processEconomicZonesAndSpeculation(gameState, grid);
     this->executeMonetaryPolicy(gameState);
+
+    // AOC_DUMP_ECONOMY: per-good produced / consumed / unmet-need / stock, so a
+    // shortage can be identified by measurement instead of inferred from the
+    // volume of "production stalled" log lines.
+    //
+    // That inference is what this exists to replace. A stall count counts
+    // ATTEMPTS: a good many recipes want shows many stalls even when its supply
+    // is fine, so "most-stalled good" is not "binding constraint". Reading it as
+    // one produced a confident wrong diagnosis (Tools, 428 stalls on seed 42 and
+    // the highest of any good) and a change that had to be reverted. Same
+    // opt-in-by-env-var shape as AOC_DUMP_OROGENY: off by default, costs
+    // nothing when unset.
+    {
+        static const bool dumpEconomy = std::getenv("AOC_DUMP_ECONOMY") != nullptr;
+        if (!dumpEconomy) { return; }
+
+        for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+            if (playerPtr == nullptr) { continue; }
+            const PlayerEconomyComponent& econ = playerPtr->economy();
+
+            // Union of every good the civ produced, consumed or wanted.
+            std::set<uint16_t> ids;
+            for (const std::pair<const uint16_t, int32_t>& e : econ.lastTurnProduction) {
+                ids.insert(e.first);
+            }
+            for (const std::pair<const uint16_t, int32_t>& e : econ.lastTurnConsumption) {
+                ids.insert(e.first);
+            }
+            for (const std::pair<const uint16_t, int32_t>& e : econ.lastTurnHarvest) {
+                ids.insert(e.first);
+            }
+            for (const std::pair<const uint16_t, int32_t>& e : econ.totalNeeds) {
+                ids.insert(e.first);
+            }
+            if (ids.empty()) { continue; }
+
+            for (const uint16_t gid : ids) {
+                const auto prodIt = econ.lastTurnProduction.find(gid);
+                const auto harvIt = econ.lastTurnHarvest.find(gid);
+                const auto consIt = econ.lastTurnConsumption.find(gid);
+                const auto needIt = econ.totalNeeds.find(gid);
+                const int32_t produced = (prodIt != econ.lastTurnProduction.end()) ? prodIt->second : 0;
+                const int32_t consumed = (consIt != econ.lastTurnConsumption.end()) ? consIt->second : 0;
+                const int32_t unmet    = (needIt != econ.totalNeeds.end()) ? needIt->second : 0;
+                const int32_t harvested = (harvIt != econ.lastTurnHarvest.end()) ? harvIt->second : 0;
+
+                int32_t stock = 0;
+                for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+                    if (cityPtr == nullptr || cityPtr->owner() != playerPtr->id()) { continue; }
+                    stock += cityPtr->stockpile().getAmount(gid);
+                }
+
+                std::fprintf(stderr,
+                             "[econ] t=%d p=%u good=%u %.*s made=%d harvested=%d consumed=%d "
+                             "net=%d unmet=%d stock=%d\n",
+                             gameState.currentTurn(), static_cast<unsigned>(playerPtr->id()),
+                             static_cast<unsigned>(gid),
+                             static_cast<int>(goodDef(gid).name.size()), goodDef(gid).name.data(),
+                             produced, harvested, consumed,
+                             produced + harvested - consumed, unmet, stock);
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -238,6 +309,7 @@ void EconomySimulation::harvestResources(aoc::game::GameState& gameState,
                 }
                 if (isCultivated) {
                     stockpile.addGoods(cultivatedGood, 2);
+                    playerPtr->economy().lastTurnHarvest[cultivatedGood] += 2;
                 }
 
                 // WP-C4 Greenhouse production: planted-crop output at 50%.
@@ -323,8 +395,10 @@ void EconomySimulation::harvestResources(aoc::game::GameState& gameState,
                                  goodDef(goodId).name.data());
                     }
                     stockpile.addGoods(goodId, actualYield);
+                    playerPtr->economy().lastTurnHarvest[goodId] += actualYield;
                 } else {
                     stockpile.addGoods(goodId, yield);
+                    playerPtr->economy().lastTurnHarvest[goodId] += yield;
                 }
             }
         }
@@ -792,6 +866,7 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
 
                 for (const RecipeInput& input : recipe->inputs) {
                     if (input.consumed) {
+                        playerPtr->economy().lastTurnConsumption[input.goodId] += input.amount;
                         if (!stockpile.consumeGoods(input.goodId, input.amount)) {
                             LOG_WARN("%s: consumeGoods failed for good %u despite "
                                      "prior availability check", city->name().c_str(),
@@ -855,6 +930,9 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                     constexpr uint16_t TOOLS_GOOD_ID = 63;
                     if (stockpile.getAmount(TOOLS_GOOD_ID) > 0) {
                         // Consume 1 tool per 3 recipe batches (tools wear out)
+                        if (state.totalRecipesExecuted % 3 == 0) {
+                            playerPtr->economy().lastTurnConsumption[TOOLS_GOOD_ID] += 1;
+                        }
                         if (state.totalRecipesExecuted % 3 == 0
                             && !stockpile.consumeGoods(TOOLS_GOOD_ID, 1)) {
                             LOG_WARN("%s: consumeGoods failed for good %u despite "

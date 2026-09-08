@@ -115,7 +115,35 @@ struct PlayerEconomyComponent {
     /// many turns. Renamed 2026-05-03; the cumulative-ever boolean gate
     /// moved to `everSupplied` below.
     std::unordered_map<uint16_t, int32_t> lastTurnProduction;
-    std::unordered_map<uint16_t, int32_t> totalDemand;
+
+    /// Last-turn CONSUMPTION volume per good, cleared and repopulated on the
+    /// same schedule as lastTurnProduction above.
+    ///
+    /// Production was tracked and consumption was not, which left no way to
+    /// tell a good that is genuinely SHORT from one that is merely in wide
+    /// demand. The only signal available was the count of "production stalled"
+    /// log lines, and that counts ATTEMPTS: a good many recipes want shows many
+    /// stalls even when its supply is adequate. Acting on that measure produced
+    /// a wrong diagnosis and a change that had to be reverted (Tools, the
+    /// most-stalled good on seed 42 at 428, turned out not to be the binding
+    /// constraint). Produced-versus-consumed is the honest question.
+    ///
+    /// Populated where recipe inputs are consumed and where industrial
+    /// buildings burn a tool. Diagnostic only, and not serialised -- like
+    /// lastTurnProduction it is a per-turn rate signal.
+    std::unordered_map<uint16_t, int32_t> lastTurnConsumption;
+
+    /// Last-turn HARVEST volume per good: what came off worked tiles rather
+    /// than out of a recipe.
+    ///
+    /// Kept separate from lastTurnProduction on purpose. That map is read by
+    /// the Industrial Revolution thresholds and by the AI trade controller as a
+    /// measure of MANUFACTURING, so folding tile yield into it would change
+    /// behaviour rather than merely observe it. But leaving harvest out of the
+    /// ledger entirely made the ledger lie in the same direction the stall
+    /// counts did: Wheat showed produced=0 with the largest unmet need on the
+    /// map, because wheat is farmed, not manufactured.
+    std::unordered_map<uint16_t, int32_t> lastTurnHarvest;
     /// Set of good ids the civ has EVER produced. Cumulative, never
     /// cleared. The Industrial Revolution Path B test reads this to confirm
     /// the chain ran at least once -- Steel produced and consumed the same
