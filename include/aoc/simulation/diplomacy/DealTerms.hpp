@@ -107,6 +107,25 @@ struct DiplomaticDeal {
 };
 
 /// Global deal tracker.
+/// How many shipments' worth of value an ExclusiveAccess claim is treated as
+/// carrying. It is a standing right rather than a delivery, so it prices above
+/// one consignment.
+inline constexpr int32_t EXCLUSIVE_ACCESS_SHIPMENTS = 8;
+
+// NOT YET ENFORCED: MostFavoredNation and MutualDefense.
+//
+// Both are declared, described to the player, and executed nowhere.
+//   MostFavoredNation would exempt the favoured buyer from a monopolist's
+//   markup, which lives in MonopolyPricing::buyerPriceMultiplier. The trade
+//   path cannot see active deals: GlobalDealTracker is owned by Application and
+//   HeadlessSimulation separately rather than by GameState, so honouring it
+//   needs the tracker threaded into processTradeRoutes.
+//   MutualDefense duplicates the bilateral Military Alliance that
+//   AllianceObligationTracker already implements; it should route there rather
+//   than grow a second obligation path.
+// The AI values both at zero on purpose -- paying for a promise that nothing
+// keeps is worse than not offering it at all.
+
 /// A deal offered to a human player, waiting in GameState::pendingProposals()
 /// (DealProposals.hpp). `deal.playerA` proposed it to `deal.playerB`.
 inline constexpr int32_t PROPOSAL_TTL_TURNS = 5;
@@ -172,10 +191,14 @@ struct GlobalDealTracker {
 /**
  * @brief Accept a proposed deal. Applies immediate terms (city cession, etc.).
  */
+/// `diplomacy` is optional only so existing call sites keep compiling; an
+/// ExclusiveAccess term cannot be honoured without it, since granting one civ
+/// sole access means embargoing the good to everyone else.
 [[nodiscard]] ErrorCode acceptDeal(aoc::game::GameState& gameState,
                                    aoc::map::HexGrid& grid,
                                    GlobalDealTracker& tracker,
-                                   int32_t dealIndex);
+                                   int32_t dealIndex,
+                                   DiplomacyManager* diplomacy = nullptr);
 
 /**
  * @brief Break a deal (violate terms). Applies grievance and reputation penalties.

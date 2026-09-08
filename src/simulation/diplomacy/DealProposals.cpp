@@ -120,7 +120,8 @@ ErrorCode applyDeal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, Gl
     if (proposed != ErrorCode::Ok) {
         return proposed;
     }
-    const ErrorCode accepted = acceptDeal(gameState, grid, tracker, static_cast<int32_t>(index));
+    const ErrorCode accepted =
+        acceptDeal(gameState, grid, tracker, static_cast<int32_t>(index), &diplomacy);
     if (accepted != ErrorCode::Ok) {
         return accepted;
     }
@@ -196,11 +197,33 @@ int32_t dealValueFor(const aoc::game::GameState& gameState, const DiplomacyManag
             case DealTermType::WarGuilt:
                 value += term.fromPlayer == evaluator ? WAR_GUILT_BLAME : WAR_GUILT_GAIN;
                 break;
-            case DealTermType::GoodsExchange:
+            case DealTermType::GoodsExchange: {
+                // Valued at the goods' own market worth, from the evaluator's
+                // side of the transfer. These three sat in a `default: break;`
+                // marked "neutral until the goods valuation lands", so the AI
+                // scored every economic term at exactly zero -- it would hand
+                // over anything for free and never ask for anything.
+                const int32_t worth =
+                    term.goodAmount * std::max(1, static_cast<int32_t>(goodDef(term.goodId).basePrice));
+                value += (term.toPlayer == evaluator) ? worth : -worth;
+                break;
+            }
+            case DealTermType::ExclusiveAccess: {
+                // Sole access is worth a multiple of a single shipment, since it
+                // is a standing claim rather than a one-off. Granting it costs
+                // the seller its other customers.
+                const int32_t unit = std::max(1, static_cast<int32_t>(goodDef(term.goodId).basePrice));
+                const int32_t worth = unit * EXCLUSIVE_ACCESS_SHIPMENTS;
+                value += (term.toPlayer == evaluator) ? worth : -worth;
+                break;
+            }
             case DealTermType::MostFavoredNation:
-            case DealTermType::ExclusiveAccess:
+                // Deliberately still neutral: nothing enforces it yet, so
+                // pricing it would have the AI pay for a promise that does
+                // nothing. See the note in DealTerms.hpp.
+                break;
             default:
-                break; // economy terms: neutral until the goods valuation lands
+                break;
         }
     }
     // Goodwill only sweetens: a hostile evaluator still takes a gift, but pacts

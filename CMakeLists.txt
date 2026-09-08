@@ -970,6 +970,7 @@ if(AOC_BUILD_TESTS)
         test_save_hostile
         test_lua_sandbox
         test_deal_atomicity
+        test_deal_economic_terms
         test_diplomatic_favor
         test_iou_term_expiry
         test_save_finite

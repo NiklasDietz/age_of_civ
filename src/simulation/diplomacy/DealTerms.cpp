@@ -57,6 +57,77 @@ void reownCityFootprint(aoc::map::HexGrid& grid, hex::AxialCoord center, PlayerI
 }
 
 /// Validate that every asset-transferring term of `deal` can execute against
+/// Total units of `goodId` held across every city `player` owns.
+[[nodiscard]] int32_t playerGoodsHeld(const aoc::game::Player& player, uint16_t goodId) {
+    int32_t total = 0;
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player.cities()) {
+        if (cityPtr == nullptr || cityPtr->owner() != player.id()) { continue; }
+        total += cityPtr->stockpile().getAmount(goodId);
+    }
+    return total;
+}
+
+/// Move `amount` of `goodId` from `giver`'s cities into `receiver`'s. Goods are
+/// held per city, not per player, so a transfer has to be gathered from
+/// wherever the giver keeps it and landed somewhere the receiver owns.
+/// Returns what was actually moved.
+int32_t transferGoods(aoc::game::Player& giver, aoc::game::Player& receiver, uint16_t goodId,
+                      int32_t amount) {
+    aoc::game::City* landing = nullptr;
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : receiver.cities()) {
+        if (cityPtr == nullptr || cityPtr->owner() != receiver.id()) { continue; }
+        landing = cityPtr.get();
+        if (cityPtr->isOriginalCapital()) { break; } // prefer the capital
+    }
+    if (landing == nullptr) { return 0; }
+
+    int32_t moved = 0;
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : giver.cities()) {
+        if (moved >= amount) { break; }
+        if (cityPtr == nullptr || cityPtr->owner() != giver.id()) { continue; }
+        const int32_t take = std::min(amount - moved, cityPtr->stockpile().getAmount(goodId));
+        if (take <= 0) { continue; }
+        if (!cityPtr->stockpile().consumeGoods(goodId, take)) { continue; }
+        moved += take;
+    }
+    if (moved > 0) { landing->stockpile().addGoods(goodId, moved); }
+    return moved;
+}
+
+/// Lift the third-party embargoes an ExclusiveAccess term put in place.
+///
+/// Exclusivity must not outlive its contract. Caveat worth stating: this
+/// removes the good from those relations without asking why it was there, so an
+/// embargo declared independently on the same good by the same civ is lifted
+/// too. Tracking provenance per embargo entry would need a save-format change;
+/// an exclusivity deal quietly becoming permanent is the worse failure.
+void liftExclusiveAccess(const aoc::game::GameState& gameState, DiplomacyManager& diplomacy,
+                         const DiplomaticDeal& deal);
+
+/// Every major seat other than the two parties to the deal.
+[[nodiscard]] std::vector<PlayerId> thirdParties(const aoc::game::GameState& gameState,
+                                                 PlayerId a, PlayerId b) {
+    std::vector<PlayerId> out;
+    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+        if (p == nullptr) { continue; }
+        if (p->id() == a || p->id() == b) { continue; }
+        out.push_back(p->id());
+    }
+    return out;
+}
+
+void liftExclusiveAccess(const aoc::game::GameState& gameState, DiplomacyManager& diplomacy,
+                         const DiplomaticDeal& deal) {
+    for (const DealTerm& term : deal.terms) {
+        if (term.type != DealTermType::ExclusiveAccess) { continue; }
+        for (const PlayerId other : thirdParties(gameState, term.fromPlayer, term.toPlayer)) {
+            PairwiseRelation& rel = diplomacy.relation(term.fromPlayer, other);
+            std::vector<uint16_t>& list = rel.embargoedGoods;
+            list.erase(std::remove(list.begin(), list.end(), term.goodId), list.end());
+        }
+    }
+}
+
 /// the current state, WITHOUT mutating anything. acceptDeal calls this first
 /// so a deal that cannot execute in full never half-applies -- the bug this
 /// guards is ceding a city (or tile) and then failing to collect the gold,
@@ -116,6 +187,24 @@ void reownCityFootprint(aoc::map::HexGrid& grid, hex::AxialCoord center, PlayerI
             }
             break;
         }
+        case DealTermType::GoodsExchange: {
+            if (term.goodAmount <= 0) { break; } // no-op, not a failure
+            const aoc::game::Player* giver    = gameState.player(term.fromPlayer);
+            const aoc::game::Player* receiver = gameState.player(term.toPlayer);
+            if (giver == nullptr || receiver == nullptr) {
+                return ErrorCode::InvalidState;
+            }
+            // The receiver needs somewhere to put it.
+            bool receiverHasCity = false;
+            for (const std::unique_ptr<aoc::game::City>& c : receiver->cities()) {
+                if (c != nullptr && c->owner() == receiver->id()) { receiverHasCity = true; break; }
+            }
+            if (!receiverHasCity) { return ErrorCode::InvalidState; }
+            if (playerGoodsHeld(*giver, term.goodId) < term.goodAmount) {
+                return ErrorCode::InsufficientResources;
+            }
+            break;
+        }
         case DealTermType::GoldLump: {
             if (term.goldLump <= 0) {
                 break;
@@ -155,7 +244,8 @@ ErrorCode proposeDeal(aoc::game::GameState& /*gameState*/, GlobalDealTracker& tr
 }
 
 ErrorCode acceptDeal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
-                     GlobalDealTracker& tracker, int32_t dealIndex) {
+                     GlobalDealTracker& tracker, int32_t dealIndex,
+                     DiplomacyManager* diplomacy) {
     if (dealIndex < 0 || dealIndex >= static_cast<int32_t>(tracker.activeDeals.size())) {
         return ErrorCode::InvalidArgument;
     }
@@ -182,6 +272,39 @@ ErrorCode acceptDeal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
 
     for (const DealTerm& term : deal.terms) {
         switch (term.type) {
+        case DealTermType::GoodsExchange: {
+            // Declared, described in the UI, and executed by nobody until now:
+            // goods could only ever move by trade route, so a negotiated deal
+            // had no way to hand over the thing being negotiated about.
+            if (term.goodAmount <= 0) { break; }
+            aoc::game::Player* giver    = gameState.player(term.fromPlayer);
+            aoc::game::Player* receiver = gameState.player(term.toPlayer);
+            if (giver == nullptr || receiver == nullptr) { break; }
+            const int32_t moved =
+                transferGoods(*giver, *receiver, term.goodId, term.goodAmount);
+            LOG_INFO("Deal: player %u handed %d of good %u to player %u",
+                     static_cast<unsigned>(term.fromPlayer), moved,
+                     static_cast<unsigned>(term.goodId),
+                     static_cast<unsigned>(term.toPlayer));
+            break;
+        }
+        case DealTermType::ExclusiveAccess: {
+            // Sole access means everyone ELSE is cut off, which the per-good
+            // embargo list already expresses and TradeRouteSystem already
+            // enforces by seizing embargoed cargo. Nothing had to be invented.
+            if (diplomacy == nullptr) { break; }
+            for (const PlayerId other : thirdParties(gameState, term.fromPlayer, term.toPlayer)) {
+                PairwiseRelation& rel = diplomacy->relation(term.fromPlayer, other);
+                if (!rel.isGoodEmbargoed(term.goodId)) {
+                    rel.embargoedGoods.push_back(term.goodId);
+                }
+            }
+            LOG_INFO("Deal: player %u granted player %u exclusive access to good %u",
+                     static_cast<unsigned>(term.fromPlayer),
+                     static_cast<unsigned>(term.toPlayer),
+                     static_cast<unsigned>(term.goodId));
+            break;
+        }
         case DealTermType::CedeCity: {
             // Match by axial location. Prior code stored
             // q*10000 + r in EntityId.index and decoded via the same
@@ -306,6 +429,9 @@ void breakDeal(aoc::game::GameState& gameState, GlobalDealTracker& tracker,
 
     DiplomaticDeal& deal = tracker.activeDeals[static_cast<std::size_t>(dealIndex)];
     deal.isBroken        = true;
+
+    // A broken contract stops granting what it granted.
+    liftExclusiveAccess(gameState, diplomacy, deal);
 
     PlayerId victim = (deal.playerA == breaker) ? deal.playerB : deal.playerA;
 
@@ -513,6 +639,7 @@ void processDeals(aoc::game::GameState& gameState, GlobalDealTracker& tracker,
         if (it->turnsRemaining <= 0) {
             LOG_INFO("Deal between player %u and %u expired", static_cast<unsigned>(it->playerA),
                      static_cast<unsigned>(it->playerB));
+            liftExclusiveAccess(gameState, diplomacy, *it);
             it = tracker.activeDeals.erase(it);
         } else {
             ++it;
