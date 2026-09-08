@@ -350,8 +350,13 @@ bool aiOfferPeace(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, Glob
     term.fromPlayer = loser;
     term.toPlayer   = winner;
     if (me->treasury() > 0) {
-        term.type     = DealTermType::GoldLump;
-        term.goldLump = std::max<int32_t>(1, static_cast<int32_t>(me->treasury() / 10));
+        // Reparations, not a lump sum. DealTermType::WarReparations had
+        // enforcement, AI valuation, UI text and a save round-trip, and no
+        // surface anywhere built the term -- its switch case could not be
+        // entered. A beaten civ paying tribute over time is what it is for.
+        term.type        = DealTermType::WarReparations;
+        term.goldPerTurn = std::max<int32_t>(1, static_cast<int32_t>(me->treasury() / 20));
+        term.duration    = REPARATIONS_DURATION_TURNS;
     } else {
         term.type     = DealTermType::NonAggression;
         term.duration = 30;

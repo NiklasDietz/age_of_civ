@@ -109,27 +109,34 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
                              static_cast<unsigned>(this->m_player), static_cast<unsigned>(other));
                 }
             } else if (peaceMilRatio > std::max(peaceThreshold, 0.8f)) {
-                // War reparations: the weaker side (proposing peace) pays 10% of
-                // their treasury to the stronger side. This makes war economically
-                // meaningful — winning wars pays for the military investment.
-                aoc::game::Player* loser  = gameState.player(this->m_player);
-                aoc::game::Player* winner = gameState.player(other);
-                if (loser != nullptr && winner != nullptr && loser->treasury() > 0) {
-                    // Pay what can actually be paid, the way the deal path does
-                    // at DealTerms.cpp. The enclosing `treasury() > 0` already
-                    // makes the debit safe, but the clamp states the invariant
-                    // where the transfer is rather than leaving it to arithmetic
-                    // two lines up: a treasury must not be driven negative,
-                    // because the loan and crisis maths downstream read it.
-                    const CurrencyAmount owed =
-                        std::max(static_cast<CurrencyAmount>(1), loser->treasury() / 10);
-                    const CurrencyAmount reparations =
-                        std::min<CurrencyAmount>(owed, loser->treasury());
-                    loser->addGold(-reparations);
-                    winner->addGold(reparations);
-                    LOG_INFO("AI %u paid %lld gold in war reparations to player %u",
-                             static_cast<unsigned>(this->m_player),
-                             static_cast<long long>(reparations), static_cast<unsigned>(other));
+                // War reparations: the weaker side, suing for peace, pays the
+                // stronger one. Winning a war should pay for the military that
+                // won it.
+                //
+                // Through the deal system, not a direct debit.
+                // This used to move 10% of the treasury straight across with no
+                // term record and no persistence: it was invisible to a human,
+                // absent from the save, and enforced by nobody. The same term a
+                // human would be offered is now recorded and enforced per turn.
+                aoc::game::Player* loser = gameState.player(this->m_player);
+                if (loser != nullptr && dealTracker != nullptr && loser->treasury() > 0) {
+                    DiplomaticDeal deal;
+                    deal.playerA = this->m_player;
+                    deal.playerB = other;
+                    DealTerm term{};
+                    term.type        = DealTermType::WarReparations;
+                    term.fromPlayer  = this->m_player;
+                    term.toPlayer    = other;
+                    term.goldPerTurn =
+                        std::max<int32_t>(1, static_cast<int32_t>(loser->treasury() / 20));
+                    term.duration = REPARATIONS_DURATION_TURNS;
+                    deal.terms.push_back(term);
+                    if (proposeDeal(gameState, *dealTracker, deal) == ErrorCode::Ok) {
+                        LOG_INFO("AI %u offered war reparations of %lld/turn to player %u",
+                                 static_cast<unsigned>(this->m_player),
+                                 static_cast<long long>(term.goldPerTurn),
+                                 static_cast<unsigned>(other));
+                    }
                 }
                 diplomacy.makePeace(this->m_player, other);
                 LOG_INFO("AI %u Proposed peace with player %u (ratio %.2f > threshold %.2f)",

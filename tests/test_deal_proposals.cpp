@@ -202,8 +202,14 @@ TEST_CASE("a deal concluded at war is the peace treaty, and the AI offers one to
     CHECK(aoc::sim::aiOfferPeace(gs, f.world.grid, f.tracker, f.d, PlayerId{1}, PlayerId{0}, 20));
     REQUIRE(gs.pendingProposals().size() == 1);
     REQUIRE(gs.pendingProposals().front().deal.terms.size() == 1);
-    CHECK(gs.pendingProposals().front().deal.terms[0].type == DealTermType::GoldLump);
-    CHECK(gs.pendingProposals().front().deal.terms[0].goldLump == 20); // a tenth of the treasury
+    // Reparations, not a lump. This pinned GoldLump until 2026-09-08, which was
+    // the only term aiOfferPeace could build; WarReparations had enforcement,
+    // valuation, UI text and a save round-trip but no constructor anywhere.
+    // A beaten civ paying tribute over time is what the term is for.
+    CHECK(gs.pendingProposals().front().deal.terms[0].type == DealTermType::WarReparations);
+    CHECK(gs.pendingProposals().front().deal.terms[0].goldPerTurn == 10); // a twentieth per turn
+    CHECK(gs.pendingProposals().front().deal.terms[0].duration ==
+          aoc::sim::REPARATIONS_DURATION_TURNS);
     CHECK_FALSE(aoc::sim::aiOfferPeace(gs, f.world.grid, f.tracker, f.d, PlayerId{1}, PlayerId{0}, 21)); // one open
     const std::vector<aoc::sim::event::GameNotification> arrived = aoc::sim::event::drainNotifications(PlayerId{0});
     REQUIRE_FALSE(arrived.empty());
@@ -213,7 +219,21 @@ TEST_CASE("a deal concluded at war is the peace treaty, and the AI offers one to
           == ErrorCode::Ok);
     CHECK_FALSE(f.d.isAtWar(PlayerId{0}, PlayerId{1}));
     CHECK(f.d.relation(PlayerId{0}, PlayerId{1}).turnsSincePeace == 0);
-    CHECK(gs.player(PlayerId{0})->treasury() == 20);
+    // Nothing changes hands on acceptance. A lump sum paid at once; reparations
+    // are a stream, collected per turn by the deal enforcement pass. The term
+    // being active is what acceptance buys.
+    CHECK(gs.player(PlayerId{0})->treasury() == 0);
+    bool reparationsActive = false;
+    for (const aoc::sim::DiplomaticDeal& d : f.tracker.activeDeals) {
+        for (const aoc::sim::DealTerm& t : d.terms) {
+            if (t.type == DealTermType::WarReparations) {
+                reparationsActive = true;
+                CHECK(t.fromPlayer == PlayerId{1}); // the loser pays
+                CHECK(t.toPlayer == PlayerId{0});
+            }
+        }
+    }
+    CHECK(reparationsActive);
 
     // Broke: the offer becomes a non-aggression pact instead of gold.
     f.d.declareWar(PlayerId{1}, PlayerId{0}, aoc::sim::CasusBelliType::SurpriseWar, nullptr, &gs, 30);

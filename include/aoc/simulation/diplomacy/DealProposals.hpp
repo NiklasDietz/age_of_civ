@@ -69,6 +69,13 @@ ErrorCode requestRespondToProposal(aoc::game::GameState& gameState, aoc::map::He
 /// the inbox, an AI winner values it. Open borders: offered when `ai` is at
 /// least Friendly toward `other`; the other side consents by its own stance.
 /// Both return true when the proposal was delivered or applied.
+/// How long a beaten civ pays war reparations, in turns.
+///
+/// Reparations are a stream, not a lump: that is the difference between
+/// DealTermType::WarReparations and DealTermType::GoldLump, and it is why the
+/// term is enforced per turn.
+inline constexpr int32_t REPARATIONS_DURATION_TURNS = 20;
+
 bool aiOfferPeace(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
                   DiplomacyManager& diplomacy, PlayerId loser, PlayerId winner, int32_t currentTurn);
 bool aiOfferOpenBorders(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
