@@ -119,9 +119,34 @@ public:
     // Economy
     // ========================================================================
 
-    [[nodiscard]] CurrencyAmount treasury() const { return this->m_treasury; }
-    void setTreasury(CurrencyAmount amount) { this->m_treasury = amount; }
-    void addGold(CurrencyAmount amount) { this->m_treasury += amount; }
+    /// ONE treasury. These read and write `m_monetary.treasury`, which is the
+    /// same account every `monetary().treasury` site touches.
+    ///
+    /// There used to be two. `m_treasury` was the real one -- purchases,
+    /// maintenance and income used it -- while `MonetaryStateComponent::treasury`
+    /// was a shadow that `TurnProcessor` overwrote from it once per turn. So
+    /// roughly twenty-five gold flows wrote to an account that was wiped before
+    /// anything could spend from it: ALL trade-route cargo revenue, bonds, IOUs,
+    /// seigniorage, fiat printing, war reparations, monopoly income, city-capture
+    /// plunder, the stock market, futures, colonial tribute, barbarian bribes and
+    /// more. Measured over 120 turns, four civs earned 2970/6384/5909/3826 gold
+    /// of trade revenue and all four still ended with a NEGATIVE treasury.
+    ///
+    /// The bug was visible inside a single file: in TradeRouteSystem, tolls were
+    /// paid with `addGold` into the real account while cargo revenue went to the
+    /// shadow. Two comments disagreed about which was authoritative
+    /// (TurnProcessor called this one "the actual spending account";
+    /// AdvancedEconomics called the other "the authoritative spending account"),
+    /// and WorldEvents already carried a note warning contributors to route
+    /// around the overwrite instead of fixing it.
+    ///
+    /// Unifying here rather than editing the writers was deliberate: several of
+    /// them (printMoney, seigniorage, the bond and forex helpers) receive only a
+    /// MonetaryStateComponent& and have no Player to call addGold on, so no
+    /// amount of rewriting call sites could have closed the hole.
+    [[nodiscard]] CurrencyAmount treasury() const { return this->m_monetary.treasury; }
+    void setTreasury(CurrencyAmount amount) { this->m_monetary.treasury = amount; }
+    void addGold(CurrencyAmount amount) { this->m_monetary.treasury += amount; }
     bool spendGold(CurrencyAmount amount); ///< Returns false if insufficient
 
     [[nodiscard]] CurrencyAmount incomePerTurn() const { return this->m_incomePerTurn; }
@@ -521,7 +546,11 @@ private:
     aoc::sim::PlayerCivicComponent m_civics;
 
     // Economy
-    CurrencyAmount m_treasury      = 0; ///< Starts at 0: no money at game start (barter)
+    // m_treasury is GONE. It was the second of two accounts; the gold API above
+    // now reads and writes m_monetary.treasury so there is exactly one.
+    // Serialization keeps working: the saved field was always
+    // MonetaryStateComponent::treasury (Serializer.cpp writes the monetary
+    // block), and this account IS that field.
     CurrencyAmount m_incomePerTurn = 0;
     aoc::sim::MonetaryStateComponent m_monetary;
 

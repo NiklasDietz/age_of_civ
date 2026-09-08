@@ -496,9 +496,10 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     // units accumulate `turnsStarving` (combat strength derate + auto-disband).
     processMilitaryFoodConsumption(*turnContext.gameState, grid, *gsPlayer);
 
-    // Sync monetary().treasury from the actual spending account so AI decisions
-    // and display both see the real value.
-    gsPlayer->monetary().treasury = gsPlayer->treasury();
+    // The per-turn treasury sync that used to live here is gone: there is only
+    // one account now (see Player::treasury). It read
+    // `monetary().treasury = treasury()`, which discarded every credit the
+    // monetary systems had made during the turn.
 
     // --- Per-turn unit healing ---
     // Units heal each turn based on territory:

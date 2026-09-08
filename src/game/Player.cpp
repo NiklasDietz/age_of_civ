@@ -90,10 +90,10 @@ bool Player::canSeeResource(uint16_t goodId) const {
 }
 
 bool Player::spendGold(CurrencyAmount amount) {
-    if (this->m_treasury < amount) {
+    if (this->m_monetary.treasury < amount) {
         return false;
     }
-    this->m_treasury -= amount;
+    this->m_monetary.treasury -= amount;
     return true;
 }
 
