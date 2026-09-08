@@ -55,6 +55,28 @@ struct NamedGreatPersonDef {
     std::string_view     abilityName;
     std::string_view     abilityDescription;
     EraId                era;
+
+    // ---- What this particular figure actually does -------------------------
+    //
+    // Until 2026-09-08 the three strings above were the whole of a named
+    // person: effects came from the 30-entry GreatPersonDef selected by
+    // `defId`, and `namedId` drove only the name, Great Work attribution and
+    // UI. Monet's "+200 tourism" was text.
+    //
+    // `magnitudeScale` multiplies the type's own magnitude, so a figure
+    // remembered for a bigger contribution gives more of whatever its type
+    // gives. The bonus yields below are granted on top, and are what let a
+    // description naming a specific yield actually pay it.
+
+    /// Multiplier on the type's magnitude (science, production, gold, faith).
+    float   magnitudeScale = 1.0f;
+
+    /// One-off yields this figure grants on activation, over and above its
+    /// type's effect.
+    float   bonusCulture = 0.0f;
+    float   bonusFaith   = 0.0f;
+    float   bonusScience = 0.0f;
+    int64_t bonusGold    = 0;
 };
 
 /// Total named great people.

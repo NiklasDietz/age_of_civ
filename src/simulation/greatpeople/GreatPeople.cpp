@@ -383,6 +383,43 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
         return;
     }
 
+    // Who this actually is, not merely what type they are. Until 2026-09-08 the
+    // named figure drove only the name, Great Work attribution and UI: every
+    // Scientist ran the same numbers, so an ability line promising a specific
+    // yield was decoration. `magnitudeScale` scales the type's own effect and
+    // the bonus yields below are paid on top.
+    const NamedGreatPersonDef& who = namedGreatPersonDef(gp.namedId);
+    const float scale              = std::max(0.0f, who.magnitudeScale);
+
+    // Bonus yields go only to figures on their type's default path. One with a
+    // unique effect already does something of a different KIND -- Mansa Musa
+    // brings faith where other merchants bring gold -- and paying the
+    // type-shaped bonus on top would undo exactly the substitution that makes
+    // the unique effect worth having.
+    const bool takesTypeDefault = (def.effect == GreatPersonEffect::TypeDefault);
+    if (takesTypeDefault && who.bonusCulture > 0.0f) {
+        // Culture accumulates on the victory tracker; there is no per-turn
+        // culture pool to add to.
+        playerObj->victoryTracker().totalCultureAccumulated += who.bonusCulture;
+    }
+    if (takesTypeDefault && who.bonusFaith > 0.0f) {
+        playerObj->faith().faith += who.bonusFaith;
+    }
+    if (takesTypeDefault && who.bonusScience > 0.0f) {
+        playerObj->tech().researchProgress += who.bonusScience;
+    }
+    if (takesTypeDefault && who.bonusGold > 0) {
+        // economy().treasury, not addGold: the merchant effect below credits
+        // that account, and paying a bonus into Player::m_treasury instead put
+        // it somewhere the same activation did not read.
+        playerObj->economy().treasury += static_cast<CurrencyAmount>(who.bonusGold);
+    }
+    if (takesTypeDefault && (who.bonusCulture > 0.0f || who.bonusFaith > 0.0f ||
+                             who.bonusScience > 0.0f || who.bonusGold > 0)) {
+        LOG_INFO("%.*s: %.*s", static_cast<int>(who.name.size()), who.name.data(),
+                 static_cast<int>(who.abilityDescription.size()), who.abilityDescription.data());
+    }
+
     // A few named figures do something of a different KIND from the rest of
     // their type. These run instead of the type's behaviour, not alongside it.
     if (def.effect != GreatPersonEffect::TypeDefault) {
@@ -417,7 +454,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                 break;
             }
             case GreatPersonEffect::Pilgrimage: {
-                playerObj->faith().faith += def.faith;
+                playerObj->faith().faith += def.faith * scale;
                 LOG_INFO("Pilgrimage: +%.0f faith", static_cast<double>(def.faith));
                 break;
             }
@@ -454,7 +491,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                  || nearestCity->districts().hasBuilding(BuildingId{7}));
             if (hasLab) {
                 PlayerGreatPeopleComponent& gpComp = playerObj->greatPeople();
-                gpComp.pulseScienceAmount = def.pulseAmount;
+                gpComp.pulseScienceAmount = def.pulseAmount * scale;
                 gpComp.pulseScienceTurns  = def.pulseTurns;
                 LOG_INFO("Scientist: %d-turn +%.0f science pulse (science-building synergy)",
                          def.pulseTurns, static_cast<double>(def.pulseAmount));
@@ -462,7 +499,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                 PlayerTechComponent& tech = playerObj->tech();
                 if (tech.currentResearch.isValid()) {
                     const float bonus =
-                        effectiveResearchCost(tech, tech.currentResearch) * def.researchFraction;
+                        effectiveResearchCost(tech, tech.currentResearch) * def.researchFraction * scale;
                     tech.researchProgress += bonus;
                     LOG_INFO("Scientist added %.0f research progress",
                              static_cast<double>(bonus));
@@ -489,7 +526,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
             }
             if (nearestCity != nullptr) {
                 if (!nearestCity->production().isEmpty()) {
-                    nearestCity->production().queue.front().progress += def.production;
+                    nearestCity->production().queue.front().progress += def.production * scale;
                 }
                 if (!nearestCity->districts().hasDistrict(DistrictType::Industrial)) {
                     CityDistrictsComponent::PlacedDistrict newDistrict;
@@ -570,7 +607,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
             // the religion itself. When there is nothing left to found -- the
             // civ already has a religion, or the world has run out of them --
             // the faith is the whole gift.
-            playerObj->faith().faith += def.faith;
+            playerObj->faith().faith += def.faith * scale;
             if (!playerObj->faith().hasPantheon) {
                 static_cast<void>(foundPantheonFor(gameState, gp.owner));
             }
@@ -617,7 +654,8 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
 
         case GreatPersonType::Merchant: {
             // WP-A3: gold (per person, see GreatPersonDef) AND a permanent trade slot.
-            playerObj->economy().treasury += def.gold;
+            playerObj->economy().treasury +=
+                static_cast<CurrencyAmount>(static_cast<float>(def.gold) * scale);
             PlayerGreatPeopleComponent& gpComp = playerObj->greatPeople();
             gpComp.extraTradeSlots += 1;
             LOG_INFO("Merchant: +%lld gold + 1 permanent trade slot (total %d)",

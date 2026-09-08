@@ -1011,6 +1011,7 @@ if(AOC_BUILD_TESTS)
         test_unit_transport
         test_religion_loyalty
         test_goods_economy
+        test_named_great_people
         test_spaceport
         test_government_plaza_and_dam
         test_great_works

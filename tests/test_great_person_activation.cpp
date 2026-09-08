@@ -12,6 +12,7 @@
 #include "support/World.hpp"
 
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
+#include "aoc/simulation/greatpeople/GreatPeopleExpanded.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 
 #include <algorithm>
@@ -217,9 +218,15 @@ TEST_CASE("a second Prophet cannot found a second religion, so it leaves its fai
 
     aoc::game::Unit* second = recruitOf(w, GreatPersonType::Prophet);
     REQUIRE(second != nullptr);
-    // Each prophet carries its own amount of faith, so read the one we got.
+    // Each prophet carries its own amount of faith, AND the named figure scales
+    // it: since 2026-09-08 the person, not just the type, decides the size of
+    // the contribution. Read both.
+    const aoc::sim::NamedGreatPersonDef& secondWho =
+        aoc::sim::namedGreatPersonDef(second->greatPerson().namedId);
     const float secondFaith =
-        aoc::sim::allGreatPersonDefs()[second->greatPerson().defId].faith;
+        aoc::sim::allGreatPersonDefs()[second->greatPerson().defId].faith *
+            secondWho.magnitudeScale +
+        secondWho.bonusFaith;
     CHECK(aoc::sim::requestGreatPersonActivation(w.gameState, w.grid, PlayerId{0}, {5, 5})
           == aoc::ErrorCode::Ok);
     CHECK(p.faith().foundedReligion == first);              // still the same one
@@ -293,8 +300,17 @@ TEST_CASE("a merchant hands over its own gold, not a fixed amount") {
     for (int32_t n = 0; n < 3; ++n) {
         aoc::game::Unit* merchant = recruitOf(w, GreatPersonType::Merchant);
         if (merchant == nullptr) { break; }
+        // Its own row's gold, scaled by the named figure, plus whatever that
+        // figure's own ability text promises in gold. Before 2026-09-08 the
+        // named person changed nothing, so the row alone was the whole answer.
+        const aoc::sim::NamedGreatPersonDef& who =
+            aoc::sim::namedGreatPersonDef(merchant->greatPerson().namedId);
         const int64_t expected =
-            aoc::sim::allGreatPersonDefs()[merchant->greatPerson().defId].gold;
+            static_cast<int64_t>(
+                static_cast<float>(
+                    aoc::sim::allGreatPersonDefs()[merchant->greatPerson().defId].gold) *
+                who.magnitudeScale) +
+            who.bonusGold;
         const int64_t before = p.economy().treasury;
         REQUIRE(aoc::sim::requestGreatPersonActivation(w.gameState, w.grid, PlayerId{0}, {5, 5})
                 == aoc::ErrorCode::Ok);
