@@ -328,10 +328,17 @@ runBalanceGA(const BalanceGAConfig& cfg, uint64_t masterSeed, ThreadPool* pool) 
             static_cast<double>(top.health.lengthScore),
             static_cast<double>(top.health.giniScore),
             static_cast<double>(top.health.decisiveShare));
+        // One conversion per parameter, in genome order. The integrationThreshold
+        // and integrationTurnsRequired genes were removed (they tuned a victory
+        // condition that does not exist), and their arguments went with them --
+        // but their %-conversions stayed. That left eleven conversions reading
+        // nine arguments: relFrac and spaceMul were printing whatever followed
+        // the varargs, which is why they reported values outside their own GA
+        // bounds. -Wformat-insufficient-args said so on every build.
         std::fprintf(stderr,
             "  top genome: baseLoy=%.2f radius=%d unrest=%d distant=%d "
-            "culT=%.0f culW=%d culLead=%.2f integT=%.2f integN=%d "
-            "relFrac=%.2f spaceMul=%.2f\n",
+            "culT=%.0f culW=%d culLead=%.2f relFrac=%.2f spaceMul=%.2f "
+            "chainOut=%.2f consDemand=%.2f\n",
             static_cast<double>(tp.baseLoyalty),
             tp.loyaltyPressureRadius, tp.sustainedUnrestTurns,
             tp.distantCityThreshold,
@@ -339,7 +346,9 @@ runBalanceGA(const BalanceGAConfig& cfg, uint64_t masterSeed, ThreadPool* pool) 
             tp.cultureVictoryMinWonders,
             static_cast<double>(tp.cultureVictoryLeadRatio),
             static_cast<double>(tp.religionDominanceFrac),
-            static_cast<double>(tp.spaceRaceCostMult));
+            static_cast<double>(tp.spaceRaceCostMult),
+            static_cast<double>(tp.chainOutputMult),
+            static_cast<double>(tp.consumerDemandScale));
 
         if (gen == cfg.generations - 1) { break; }
 
@@ -402,7 +411,13 @@ void saveBalanceSummary(const std::vector<BalanceIndividual>& sortedPop,
         f << "  cultureVictoryMinWonders = " << p.cultureVictoryMinWonders << "\n";
         f << "  cultureVictoryLeadRatio  = " << p.cultureVictoryLeadRatio  << "\n";
         f << "  religionDominanceFrac    = " << p.religionDominanceFrac    << "\n";
-        f << "  spaceRaceCostMult        = " << p.spaceRaceCostMult        << "\n\n";
+        f << "  spaceRaceCostMult        = " << p.spaceRaceCostMult        << "\n";
+        // Genome slots 9 and 10. Absent from this summary since they were
+        // added, so a balance sweep reported nine of its eleven genes and the
+        // two production-chain ones -- the whole reason the last sweep was
+        // asked for -- were invisible in its output.
+        f << "  chainOutputMult          = " << p.chainOutputMult          << "\n";
+        f << "  consumerDemandScale      = " << p.consumerDemandScale      << "\n\n";
     }
     f.close();
     std::fprintf(stderr, "[Saved] %s\n", path);
