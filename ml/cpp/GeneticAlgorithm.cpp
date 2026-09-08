@@ -238,7 +238,7 @@ void printAsCppInitializer(const Individual& individual, const char* label) {
 
     // Also print named parameters
     for (int32_t i = 0; i < NUM_PARAMS; ++i) {
-        std::fprintf(stderr, "  %-30s = %.3f\n", PARAM_NAMES[i],
+        std::fprintf(stderr, "  %-30s = %.3f\n", PARAM_NAMES[static_cast<std::size_t>(i)],
                      static_cast<double>(individual.genes[static_cast<std::size_t>(i)]));
     }
 }
