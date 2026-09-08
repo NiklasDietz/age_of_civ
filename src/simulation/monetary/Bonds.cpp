@@ -112,6 +112,14 @@ ErrorCode issueBond(aoc::game::GameState& gameState,
     buyerState.treasury  -= principal;
     issuerState.treasury += principal;
 
+    // And record the LIABILITY. A bond is borrowed money; issuing one used to
+    // move cash and leave governmentDebt untouched, so debt stayed at exactly 0
+    // for every civ for the whole game. That single zero switched off the
+    // sovereign-default trigger (`governmentDebt > 0`), the bank-run
+    // debt-to-gold test, the DebtSpiral collapse type, the bond-yield debt
+    // premium, and pinned currency trust's debtFactor at its best value.
+    issuerState.governmentDebt += principal;
+
     // Record in both portfolios
     issuerPlayer->bonds().issuedBonds.push_back(bond);
     buyerPlayer->bonds().heldBonds.push_back(bond);
@@ -201,6 +209,10 @@ void processBondPayments(aoc::game::GameState& gameState) {
 
                 if (issuerState.treasury >= totalPayment) {
                     issuerState.treasury -= totalPayment;
+                    // Repaid: the principal is no longer owed. Interest was
+                    // never part of the debt stock.
+                    issuerState.governmentDebt =
+                        std::max<CurrencyAmount>(0, issuerState.governmentDebt - it->principal);
 
                     // Pay the holder
                     aoc::game::Player* holderPlayer = gameState.player(it->holder);
@@ -294,6 +306,8 @@ ErrorCode createIOU(aoc::game::GameState& gameState,
     // Transfer cash
     creditorState.treasury -= principal;
     debtorState.treasury   += principal;
+    // An IOU is debt for the same reason a bond is.
+    debtorState.governmentDebt += principal;
 
     // Create the contract. A unique id pairs the creditor's loansGiven copy
     // with the debtor's loansReceived copy, so two equal-principal loans
@@ -352,6 +366,8 @@ ErrorCode callInIOU(aoc::game::GameState& gameState,
         CurrencyAmount payment = std::min(debtorState.treasury, it->remaining);
         debtorState.treasury   -= payment;
         creditorState.treasury += payment;
+        debtorState.governmentDebt =
+            std::max<CurrencyAmount>(0, debtorState.governmentDebt - payment);
         totalPaid += payment;
 
         if (payment < it->remaining) {

@@ -82,3 +82,71 @@ TEST_CASE("civic LoyaltyBoost (civic 6) raises loyalty in all cities, capped") {
     aoc::sim::applyCivicEffect(gs, aoc::PlayerId{0}, 6);
     CHECK(other.loyalty().loyalty == doctest::Approx(40.0f));
 }
+
+// ============================================================================
+// Borrowing is recorded as debt
+// ============================================================================
+
+TEST_CASE("issuing a bond records the principal as government debt") {
+    // governmentDebt used to be exactly 0 for every civ for entire games. The
+    // only thing that wrote it was an auto-borrow in executeFiscalPolicy whose
+    // deficit was defined as max(0.9 * revenue, 0.04 * GDP) - revenue, which
+    // needs a tax rate under about 4 % to be positive; the default is 15 % and
+    // the AI only raises it. Bonds and IOUs moved cash and recorded no
+    // liability at all.
+    //
+    // That single permanent zero switched off the sovereign-default trigger
+    // (governmentDebt > 0), the bank-run debt-to-gold test, the DebtSpiral
+    // collapse type, the bond-yield debt premium, and pinned currency trust's
+    // debtFactor at its most favourable value.
+    aoc::game::GameState gs;
+    gs.initialize(2);
+    aoc::game::Player& issuer = *gs.players()[0];
+    aoc::game::Player& holder = *gs.players()[1];
+    issuer.monetary().treasury = 50;
+    holder.monetary().treasury = 1000;
+    REQUIRE(issuer.monetary().governmentDebt == 0);
+
+    REQUIRE(aoc::sim::issueBond(gs, aoc::PlayerId{0}, aoc::PlayerId{1}, 200)
+            == aoc::ErrorCode::Ok);
+
+    CHECK(issuer.monetary().governmentDebt == 200);
+    // The lender has not borrowed anything.
+    CHECK(holder.monetary().governmentDebt == 0);
+}
+
+TEST_CASE("an IOU is debt for the borrower, not the lender") {
+    aoc::game::GameState gs;
+    gs.initialize(2);
+    aoc::game::Player& creditor = *gs.players()[0];
+    aoc::game::Player& debtor   = *gs.players()[1];
+    creditor.monetary().treasury = 1000;
+    debtor.monetary().treasury   = 10;
+
+    REQUIRE(aoc::sim::createIOU(gs, aoc::PlayerId{0}, aoc::PlayerId{1}, 300)
+            == aoc::ErrorCode::Ok);
+
+    CHECK(debtor.monetary().governmentDebt == 300);
+    CHECK(creditor.monetary().governmentDebt == 0);
+}
+
+TEST_CASE("debt never goes negative when more is repaid than was borrowed") {
+    // Repayment subtracts from the stock, and interest is not part of it, so a
+    // clamp is the difference between a solvent civ and one holding a negative
+    // debt that would read as an asset everywhere downstream.
+    aoc::game::GameState gs;
+    gs.initialize(2);
+    aoc::game::Player& debtor = *gs.players()[1];
+    debtor.monetary().governmentDebt = 0;
+    debtor.monetary().treasury       = 5000;
+    gs.players()[0]->monetary().treasury = 5000;
+
+    REQUIRE(aoc::sim::createIOU(gs, aoc::PlayerId{0}, aoc::PlayerId{1}, 100)
+            == aoc::ErrorCode::Ok);
+    REQUIRE(debtor.monetary().governmentDebt == 100);
+
+    for (int32_t turn = 0; turn < 20; ++turn) {
+        aoc::sim::processIOUPayments(gs);
+    }
+    CHECK(debtor.monetary().governmentDebt >= 0);
+}

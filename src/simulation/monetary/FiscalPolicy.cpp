@@ -43,18 +43,35 @@ void executeFiscalPolicy(MonetaryStateComponent& state, CurrencyAmount gdp) {
     // Deficit = spending - revenue
     state.deficit = state.governmentSpending - state.taxRevenue;
 
-    if (state.deficit > 0) {
-        // Running a deficit: borrow (add to debt)
-        state.governmentDebt += state.deficit;
-    } else {
-        // Running a surplus: pay down debt only.
-        // NOTE: surplus is NOT added to state.treasury here.
-        // Treasury is managed exclusively by processGoldIncome and Maintenance,
-        // which use player.m_treasury (the Player object's spending account).
-        // Adding surplus here caused double-counting: fiscal policy surplus AND
-        // income from processGoldIncome both accumulated into separate fields.
-        CurrencyAmount surplus = -state.deficit;
-        CurrencyAmount debtPayment = std::min(surplus, state.governmentDebt);
+    // `deficit` above is a DISPLAY figure computed from synthetic revenue
+    // (taxRate * GDP) and synthetic spending, neither of which is the civ's
+    // actual cash flow -- that comes from Maintenance, out of worked tiles,
+    // buildings and goods.
+    //
+    // It used to auto-borrow: a positive deficit added itself to
+    // governmentDebt. That could never fire, because spending is defined as
+    // max(0.9 * revenue, 0.04 * GDP), so a deficit needs a tax rate under about
+    // 4 % and the default is 15 % with the AI only ever raising it. Measured:
+    // governmentDebt was exactly 0 for every civ for entire games, which
+    // silently switched off the sovereign-default trigger, the bank-run
+    // debt-to-gold test, the DebtSpiral collapse, the bond-yield debt premium
+    // and currency trust's debtFactor.
+    //
+    // The auto-borrow is REMOVED rather than repaired, because repairing it
+    // would double-count. A civ that cannot pay its maintenance already has its
+    // treasury driven negative by Maintenance, which is what feeds the existing
+    // bankruptcy mechanic (five turns below -200 disbands its costliest unit).
+    // Charging that shortfall a second time as debt would penalise it twice for
+    // one event.
+    //
+    // Debt is now what the word means: money actually borrowed. Bonds and IOUs
+    // record their principal against governmentDebt on issue and retire it on
+    // repayment (see Bonds.cpp). That is a real stock, movable by player and AI
+    // decisions, and it is what the systems above were always waiting for.
+    if (state.deficit <= 0) {
+        // A surplus still services outstanding borrowing.
+        const CurrencyAmount surplus     = -state.deficit;
+        const CurrencyAmount debtPayment = std::min(surplus, state.governmentDebt);
         state.governmentDebt -= debtPayment;
     }
 
