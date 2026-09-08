@@ -208,11 +208,22 @@ void updateExchangeRates(aoc::game::GameState& gameState) {
         // 1. Compute fundamental rate.
         //
         // A currencyAppreciation multiplier from ResourceCurse used to be
-        // applied on top of this. It was a second channel for an effect this
-        // function already produces: tradeBalanceEffect below moves the rate
-        // from what the civ actually exports, so a commodity exporter's
-        // currency appreciates on its own. The multiplier double-counted it
-        // from a coefficient. Removed with the rest of that module.
+        // applied on top of this, and was removed with that module.
+        //
+        // CORRECTION 2026-09-08: the reason first written here was wrong. It
+        // claimed tradeBalanceEffect below already moves the rate from what the
+        // civ actually exports, so the multiplier double-counted it. It does
+        // not: `forex.tradeBalance` is READ at that line and reset to 0 at the
+        // end of this function, and NOTHING anywhere writes a non-zero value to
+        // it -- the field occurs exactly twice in the tree, here and in its own
+        // declaration. So tradeBalanceEffect is identically zero and that
+        // channel does not exist.
+        //
+        // The removal still stands on its own: the multiplier was a coefficient
+        // fabricated from a production ratio, not a modelled effect. But the
+        // exchange rate's only live input is now computeFundamentalRate below
+        // (state, trust, GDP). Populating tradeBalance from the net flow already
+        // computed in EconomySimulation would make the trade channel real.
         forex.fundamentalRate = computeFundamentalRate(state, trust, averageGDP);
 
         // 2. Apply trade balance (surplus strengthens, deficit weakens)
