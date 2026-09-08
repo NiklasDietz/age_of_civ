@@ -38,8 +38,8 @@ struct BalanceParams {
     // GA-tuned 2026-04-25 (30 gen × 12 pop × 5 games × 800 turns, 4 maps,
     // --balance-winrate, fit=0.9120, ent=0.97): committed top genome.
     float   baseLoyalty              = 2.0f;   ///< GA 2026-04-26
-    int32_t loyaltyPressureRadius    = 11;
-    int32_t sustainedUnrestTurns     = 8;
+    int32_t loyaltyPressureRadius    = 13;
+    int32_t sustainedUnrestTurns     = 2;
     int32_t distantCityThreshold     = 8;
 
     /// WP-C1: era-indexed foreign-city-pressure decay multiplier. Index is
@@ -59,9 +59,9 @@ struct BalanceParams {
     // accumulates over the whole game so longer games naturally favour it
     // unless the threshold bites harder. (Threshold scaled by GamePace
     // costMultiplier at use site, so still turn-fraction-independent.)
-    float   cultureVictoryThreshold  = 5500.0f;
-    int32_t cultureVictoryMinWonders = 3;
-    float   cultureVictoryLeadRatio  = 1.25f;
+    float   cultureVictoryThreshold  = 3593.65f;
+    int32_t cultureVictoryMinWonders = 2;
+    float   cultureVictoryLeadRatio  = 1.3319f;
 
     // integrationThreshold and integrationTurnsRequired lived here and in the
     // GA genome, tuning a "Global Integration Project" victory that does not
@@ -99,7 +99,7 @@ struct BalanceParams {
     // cost more than nominal -- the previous comment here claimed "still below
     // 1.0" while the value read 1.70, which is the sort of contradiction that
     // makes a tuned constant look like a mistake.
-    float   spaceRaceCostMult        = 1.70f;  // 2026-04-27 iter8: 1.55 → 31%; bump for ~22%
+    float   spaceRaceCostMult        = 0.750195f;  // 2026-04-27 iter8: 1.55 → 31%; bump for ~22%
 
     // Production-chain tuning (added for the chain-health audit).  GA-tunable
     // scalars that shift recipe output and consumer drain so the balance
@@ -111,8 +111,8 @@ struct BalanceParams {
     //   be picked by the ranked recipe loop.
     // consumerDemandScale: scales per-population CONSUMER_GOODS /
     //   ADV_CONSUMER_GOODS drain.  1.0 = baseline (pop/3 + 1 per turn).
-    float   chainOutputMult          = 1.00f;
-    float   consumerDemandScale      = 1.00f;
+    float   chainOutputMult          = 1.92823f;
+    float   consumerDemandScale      = 1.82678f;
 
     // workerCapacityPerPop: recipe slots a city gets per point of population,
     // before robots. This is THE measured binding constraint on the whole
@@ -129,7 +129,7 @@ struct BalanceParams {
     //
     // Raising it does NOT weaken the resource curse: that emerges from miners
     // and factories drawing on ONE pool, not from the pool being small.
-    float   workerCapacityPerPop     = 0.50f;
+    float   workerCapacityPerPop     = 0.55996f;
 };
 
 /// Access the single global balance-params instance.
