@@ -466,8 +466,20 @@ struct MonetaryStateComponent {
      * @param playerCount  Total active players. GDP rank must be top half for fiat.
      * @return Ok if transition is valid, InvalidMonetaryTransition if not.
      */
+    /// `hasTech` answers whether the player has researched a given TechId. It
+    /// is a callback rather than a Player& because this header is included by
+    /// the component layer and must not depend on the game object.
+    ///
+    /// Before it existed, `MonetaryTransitionReq::requiredTech` was declared,
+    /// populated with Banking and Computers, and read by NOBODY -- a grep for
+    /// the field returned only its own declaration. The gate would have let a
+    /// civ reach the Gold Standard with no Banking at all; the only thing
+    /// keeping the ladder tech-ordered was a hardcoded override elsewhere that
+    /// bypassed this whole function.
+    template <typename HasTechFn>
     [[nodiscard]] ErrorCode canTransition(MonetarySystemType target,
                                            int32_t cityCount,
+                                           HasTechFn hasTech,
                                            int32_t tradePartnerCount = 0,
                                            int32_t gdpRank = 1,
                                            int32_t playerCount = 1) const {
@@ -480,6 +492,9 @@ struct MonetaryStateComponent {
 
         for (const MonetaryTransitionReq& req : MONETARY_TRANSITIONS) {
             if (req.target == target) {
+                if (req.requiredTech.isValid() && !hasTech(req.requiredTech)) {
+                    return ErrorCode::InvalidMonetaryTransition;
+                }
                 // G8: read raw (pre-debasement) strength. Debasement inflates
                 // coin counts without adding real silver/gold, so allowing the
                 // gate to read post-debasement totals lets a civ clear the

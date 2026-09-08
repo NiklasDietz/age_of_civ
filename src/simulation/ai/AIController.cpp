@@ -2155,8 +2155,13 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
         }
     }
 
-    const ErrorCode result = myState.canTransition(
-        nextTarget, cityCount, tradePartnerCount, gdpRank, playerCount);
+    const aoc::game::Player* techPlayer = gameState.player(this->m_player);
+    const ErrorCode result               = myState.canTransition(
+        nextTarget, cityCount,
+        [techPlayer](aoc::TechId t) {
+            return techPlayer != nullptr && techPlayer->hasResearched(t);
+        },
+        tradePartnerCount, gdpRank, playerCount);
     if (result == ErrorCode::Ok) {
         myState.transitionTo(nextTarget);
 
