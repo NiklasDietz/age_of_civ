@@ -40,6 +40,7 @@
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/monetary/MonetaryActions.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/economy/TradeRouteSystem.hpp"
@@ -2107,6 +2108,34 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
                      static_cast<unsigned>(this->m_player),
                      static_cast<long long>(printed),
                      static_cast<double>(myState.inflationRate * 100.0f));
+        }
+    }
+
+    // Debasement: the coinage-era answer to a shortfall, and the counterpart to
+    // printing. It was fully implemented with zero callers, so nothing could
+    // ever debase, debasementRatio stayed 0 forever, and the whole discovery /
+    // Gresham's-law / remint machinery below it was unreachable code.
+    //
+    // The trade is real: more coins now from the same bullion, against a
+    // discovery risk and a reputational trade penalty once found out. An AI
+    // reaches for it under the same pressure that makes a fiat civ print.
+    if (myState.system == MonetarySystemType::CommodityMoney && gsPlayer->treasury() < 0
+        && myState.debasement.debasementRatio < 0.25f) {
+        if (requestDebaseCurrency(gameState, this->m_player, 0.05f) == ErrorCode::Ok) {
+            LOG_INFO("AI %u debased its coinage to %.0f%% base metal (treasury %lld)",
+                     static_cast<unsigned>(this->m_player),
+                     static_cast<double>(myState.debasement.debasementRatio * 100.0f),
+                     static_cast<long long>(gsPlayer->treasury()));
+        }
+    }
+
+    // And the escape valve: once solvent again, restrike at full content rather
+    // than carry the penalty forever. Requires real money to do it, which is
+    // what makes debasement a loan against reputation rather than free gold.
+    if (myState.debasement.debasementRatio > 0.0f && gsPlayer->treasury() > 400) {
+        if (requestRemintCurrency(gameState, this->m_player) == ErrorCode::Ok) {
+            LOG_INFO("AI %u reminted its coinage at full metal content",
+                     static_cast<unsigned>(this->m_player));
         }
     }
 

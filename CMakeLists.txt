@@ -384,6 +384,7 @@ set(AOC_LIB_SOURCES
     src/simulation/economy/Market.cpp
     src/simulation/monetary/Inflation.cpp
     src/simulation/monetary/CentralBank.cpp
+    src/simulation/monetary/MonetaryActions.cpp
     src/simulation/monetary/FiscalPolicy.cpp
     src/simulation/monetary/CurrencyTrust.cpp
     src/simulation/monetary/CurrencyCrisis.cpp
@@ -1037,6 +1038,7 @@ if(AOC_BUILD_TESTS)
         test_crust_mass_conservation
         test_diplomacy_actions
         test_injury_grievances
+        test_monetary_actions
         test_one_treasury
         test_resource_curse_is_emergent
         test_deal_proposals
