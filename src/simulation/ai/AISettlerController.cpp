@@ -360,8 +360,17 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
     // has 0 movement that turn) founds immediately on its next turn rather
     // than waiting a full extra turn.
     constexpr int32_t STUCK_TURNS_LIMIT = 5;
-    // Search radius for best city location.
-    constexpr int32_t SEARCH_RADIUS     = 15;
+    // Search radius for best city location. Scaled by difficulty: this
+    // controller stored m_difficulty and never read it, so difficulty had no
+    // effect at all on where an AI settled. How far a civ bothers to look
+    // before committing a city is a diligence axis, which is the same shape as
+    // the difficulty tweaks the military and research controllers already make
+    // -- it changes how well the AI plays, not what it is allowed to do.
+    // Normal keeps 15 exactly, so difficulty stays additive.
+    const int32_t SEARCH_RADIUS =
+        (this->m_difficulty == aoc::ui::AIDifficulty::Hard)   ? 20
+        : (this->m_difficulty == aoc::ui::AIDifficulty::Easy) ? 9
+                                                              : 15;
     // ... but before the first city the settler may not wander: the site 14
     // hexes away that scored best on the Tutorial map cost the AI its whole
     // civilization (2026-09-04, finding 1). Two hexes is one turn's walk.

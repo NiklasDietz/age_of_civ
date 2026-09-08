@@ -472,8 +472,19 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                 }
 
                 const int32_t dist = grid.distance(builder.position, tile);
-                // Weight: prioritize mountain-mine tiles heavily (bias -3 hexes).
-                const int32_t weighted = dist - 3;
+                // Weight: prioritize mountain-mine tiles (a bias in hexes, so a
+                // mine this far out still beats a nearer ordinary tile).
+                //
+                // Scaled by difficulty: this controller stored m_difficulty and
+                // never read it, so difficulty had no effect on what the AI
+                // built. Recognising that a high-value job is worth the walk is
+                // a diligence axis, matching the military and research
+                // controllers' existing tweaks. Normal keeps 3 exactly.
+                const int32_t mineBias =
+                    (this->m_difficulty == aoc::ui::AIDifficulty::Hard)   ? 6
+                    : (this->m_difficulty == aoc::ui::AIDifficulty::Easy) ? 1
+                                                                          : 3;
+                const int32_t weighted = dist - mineBias;
                 if (weighted < bestDist) {
                     bestDist   = weighted;
                     bestTarget = tile;
