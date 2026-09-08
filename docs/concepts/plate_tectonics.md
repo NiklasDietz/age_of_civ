@@ -150,6 +150,15 @@ Most continental area is FLAT plains (cratonic platforms with sediment cover) or
 
 ## 14. Key quantitative targets for our sim
 
+> **Audited 2026-09-08.** Of the targets below, the mountain one is not met and
+> cannot be met as the generator is currently gated: measured mountain coverage
+> is **0.00 % of land on seeds 42, 7, 1234 and 99**, because `Mountain` requires
+> a peak 4000 m above sea level (`SphereField.hpp`, `MOUNTAIN_THRESHOLD_M`),
+> which is roughly Earth's top 1 % of land rather than the >1 km definition §10
+> uses. Plate count measures 7-13 against the ~15 here. Hills (measured
+> 19-38 %) and the ocean/land split (~63/37) are broadly in line. Details and
+> the dead tuning levers are in `continent_generation_design.md`.
+
 - ~15 plates total at any sim time (mergers ≈ rifts).
 - ~10 % continental area = mountain.
 - ~25 % continental area = hills.

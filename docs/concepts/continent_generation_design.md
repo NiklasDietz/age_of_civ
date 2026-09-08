@@ -118,3 +118,39 @@ For each world tile (col, row):
 - maxPlates = max(20, initial × 2)
 - Rift CYCLE = 5 epochs, 1 split per epoch
 - Rift offsetMag 0.05–0.10
+
+---
+
+## Audit 2026-09-08 — measured against the generator
+
+Four seeds (42, 7, 1234, 99), default 140x90 Lambert, via `aoc_mapgen
+--format csv`:
+
+| Metric | This file's target | Measured | Verdict |
+|--------|--------------------|----------|---------|
+| Mountain coverage | 7-12 % of land | **0.00 % on all four seeds** | MISS |
+| Hills coverage | 20-30 % of land | 19.0, 26.1, 26.8, 37.9 % | in band on 2 of 4 |
+| Plates total | ~15 | 7, 9, 9, 13 | LOW |
+| Ocean / land | 60/40 | ~63/37 (seed 42) | close |
+
+**The mountain miss is a definition conflict, not a tuning drift.** The lever
+this file names, `MOUNTAIN_OROGENY_THRESHOLD` (0.20 on an orogeny scale), no
+longer exists. Mountains are now decided upstream in the world-frame elevation
+pass and merely relabelled in `ClimateBiome.cpp:466`, gated on
+`SphereField.hpp`'s `MOUNTAIN_THRESHOLD_M = 4000.0f` — a tile is Mountain only
+if its peak sample stands 4000 m above sea level. On Earth roughly 1 % of land
+clears 4000 m; `plate_tectonics.md` §10 defines mountain as **above 1 km**
+(~24 % of land) and its §14 target of ~10 % corresponds to something nearer a
+2 km gate. A 4000 m gate and a 7-12 % target cannot both be right, and the
+measurement says the gate wins: no tile on any of the four seeds clears it.
+
+Fixing this belongs to the worldgen rebuild program, not to a doc pass: moving
+`MOUNTAIN_THRESHOLD_M` re-bases every hypsometry gate and the committed
+baselines under `tools/mapgen_baselines/`.
+
+**These named levers are GONE from the code** and the checklist below is stale
+wherever it cites them: `MOUNTAIN_OROGENY_THRESHOLD`, `STRESS_GATE`,
+`maxPlates`, `slabPullX`/`slabPullY`, `hotspotTrail`. Still present:
+`effectiveWaterRatio`, `orogenyLocal`, `landFraction`. Treat the per-plate
+struct and tuning-checklist sections as a record of the design's intent rather
+than a map of current symbols.

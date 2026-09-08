@@ -14,7 +14,10 @@
 - Game logic (GameState/Player/City/Unit) is mostly position-independent
 
 **Existing infrastructure:**
-- `third_party/vulkan_renderer/src/Renderer3D.cpp` (708 lines, currently unused)
+- `third_party/vulkan_renderer/src/Renderer3D.cpp` -- NO LONGER UNUSED.
+  `src/render/GlobeRenderer.cpp` (444 lines) owns one Renderer3D instance,
+  `Application` constructs and initialises it, and there is a `m_creatorGlobe`
+  path. Audited 2026-09-08: this item is partly built, not greenfield.
 - `shaders/forward3d.vert.glsl` and `forward3d.frag.glsl` (pre-compiled SPV available)
 - Simulation is decoupled from rendering (HeadlessSimulation proves this)
 
@@ -34,9 +37,16 @@ players who prefer the flat overview.
 
 ---
 
-## Screenshot via Vulkan Swapchain Readback
+## Screenshot via Vulkan Swapchain Readback -- DONE
 
-The `GameDBus::TakeScreenshot` method currently forks `spectacle -a` to grab
+Audited 2026-09-08: shipped. `Application::captureScreenshot` calls
+`m_renderPipeline->readSwapchainPixels(...)` and hands the result to
+`writeScreenshotPng` (`src/app/ScreenshotEncoder.cpp`, which also owns the one
+`STB_IMAGE_WRITE_IMPLEMENTATION` expansion). No `spectacle` call remains
+anywhere in the tree, so the compositor-focus problem below is history. Kept
+for the rationale.
+
+The original problem: `GameDBus::TakeScreenshot` forked `spectacle -a` to grab
 the active window. On Wayland compositors (KDE/GNOME) an app without an
 xdg-activation token cannot raise itself over another focused window
 (e.g., an editor), so the screenshot captures whatever is frontmost rather
@@ -68,26 +78,41 @@ The spectator mode HUD overlay (`SpectatorHUD`) breaks terrain rendering when `m
 
 ## Influence Maps
 
+Audited 2026-09-08: genuinely unbuilt. No `InfluenceMap` type exists.
+
 Overlay influence data on the hex grid showing territory control, threat zones, and strategic value. Propagate unit/city influence with exponential decay. Use for military positioning, settler placement, border detection. See `docs/AI_MULTI_SYSTEM_COORDINATION.md` for design details.
 
 ---
 
 ## Strategic AI Improvements
 
-- Budget allocation system (divide production capacity between military/expansion/infrastructure)
+Audited 2026-09-08. Budget allocation and nuclear strategy exist
+(`AIController.cpp`, `AIMilitaryController.cpp`, `UtilityScoring.cpp`,
+`LeaderPersonality.cpp`). The rest found no implementation:
+
+- ~~Budget allocation system~~ -- built
 - Deeper diplomatic AI (alliance networks, trade leverage, war coalitions)
-- Wonder race AI (track what other players are building)
-- Religion victory path AI
-- Naval invasion planning
-- Nuclear weapon strategy
+- Wonder race AI (track what other players are building) -- UNBUILT
+- Religion victory path AI -- UNBUILT
+- Naval invasion planning -- UNBUILT
+- ~~Nuclear weapon strategy~~ -- built
+
+One finding of its own, from the golden re-bless of 2026-09-08:
+`AIMilitaryController.cpp:895` chooses its war target by raw
+`militaryUnitCount()` with no strength weighting, and re-declares after every
+peace. A 6%-per-era-step combat modifier -- which the AI never even reads,
+since it applies only inside combat resolution -- produced a 2.3x war rate
+(64 -> 145 declarations over 350 turns on seed 42). Any combat buff will be
+amplified this way until the target choice weighs strength.
 
 ---
 
 ## Gameplay Features
 
-- Map editor (already has `MapEditor.cpp` stub)
+- Map editor -- there is NO `MapEditor.cpp`; the stub this claimed does not
+  exist (audited 2026-09-08)
 - Multiplayer networking (GameServer infrastructure exists)
 - Mod support via Lua scripting (LuaEngine exists)
 - Replay system (ReplayRecorder exists)
 - Encyclopedia/Civilopedia (Encyclopedia.cpp exists)
-- Sound effects and music (audio system exists but no assets)
+- Sound effects and music (audio system exists; still no `assets/` directory)

@@ -109,86 +109,59 @@ stays up to date.
 
 ## Open / deferred — next sessions
 
-### Loyalty era decay (idea 1 in `ideas.txt`)
-- Propose: era-5+ multiplier on loyalty pressure (0.85 per era past 4) +
-  Telecom Hub / Research Lab grants +3 loyalty floor.
-- Reasoning: matches real-world — mass communication + mobility erodes
-  city-level separation pressure.
-- Effort: small.
+**Audited 2026-09-08 against the code.** Most of what this section listed has
+since shipped; those entries are recorded below as done rather than deleted, so
+the next reader can tell "built" from "never wanted". Only the items under
+*Still open* are actually outstanding.
 
-### Goods table cleanup (idea 2 in `ideas.txt`)
-- Consolidate luxuries: cut PEARLS, TOBACCO, IVORY, INCENSE, TEA, COFFEE,
-  GEMS, DEUTERIUM, GOLD_CONTACTS (9 goods gone).
-- Add: ELECTRICITY (tracked power), PHARMACEUTICALS, BATTERIES, LITHIUM
-  (4 new). Net 76 → 71 goods.
-- Effort: medium. Breaking change for save format — needs migration path.
+### Shipped since this list was written
 
-### Tile infrastructure (multi-building per tile)
-- Add per-tile bitfield lanes: `hasRoad`, `hasRail`, `hasPowerPole`,
-  `hasPipeline`. All stack with `improvement`.
-- Power grid: power plants generate `powerOutput`; pole network propagates
-  along connected tiles; cities in range get production/science
-  multiplier.
-- Pipelines: oil/gas/fuel trade routes on pipeline-connected tiles settle
-  in 1 turn vs 3-5, throughput ×2.
-- Cross-player poles/pipelines → Transit Treaty (diplomatic).
-- Effort: ~1 week. Touches map gen, save/load, renderer, UI, AI builder.
+- **Loyalty era decay** — era multiplier on foreign pressure plus a +3 loyalty
+  floor from Telecom Hub / Research Lab, both in `CityLoyalty.cpp`.
+- **Greenhouse / cross-zone crops** — present in `Terrain.hpp` and
+  `HexGridLayers.hpp`.
+- **Recipe-preference UI** — the city detail screen calls
+  `setRecipePreference` (`CityDetailTabs.cpp:1085`).
+- **Goods additions** — ELECTRICITY, PHARMACEUTICALS, BATTERIES and LITHIUM all
+  exist in `ResourceTypes.hpp`.
+- **Tile infrastructure** — `hasRoad`, `hasPowerPole` and `hasPipeline` lanes
+  exist. `hasRail` does not; see *Still open*.
+- **Instrumentation** — the recipe fire counter is no longer a static
+  in-function array of 64. It is `m_recipeFireCount`, an
+  `std::array<int32_t, MAX_RECIPES>` with `MAX_RECIPES = 128`, written behind a
+  bounds check (`EconomySimulation.cpp:890`).
+- **Moon mining (WP-B)** — Lunar Colony is in `SpaceRace.hpp`.
+- **Geological resource placement and per-building environment modifiers**
+  (both from `IDEAS_ANALYSIS.md`) — `placeGeologyResources` with cratons and
+  sedimentary basins, `ResourcePlacementMode::Realistic` as the default, and
+  `computeEnvironmentModifier`, called from `EconomySimulation.cpp:781`.
+- **Visibility event system** (`todo.txt`) — `VisibilityEventBus` emits,
+  `processVisibilityEvents` filters per player through FogOfWar, and the AI
+  blackboard consumes the result as `attackTargets` / `bestCitySites`.
+- **Monetary progression** (`ideas.txt`) — Barter -> CommodityMoney ->
+  GoldStandard -> FiatMoney -> Digital, with copper/silver/gold coin tiers and
+  the gold standard gated behind Banking (era 3). The one part of that note not
+  built is below.
 
-### Greenhouse / climate cross-zone crops
-- Research gate (biology or genetic eng): unlocks Greenhouse improvement.
-- Greenhouse on a tile outside a crop's climate lets it still grow the crop
-  at 50% yield.
-- Effort: medium. Needs per-crop climate metadata + Greenhouse improvement +
-  yield penalty multiplier in `harvestResources`.
+### Still open
 
-### Recipe-preference UI
-- `EconomySimulation::setRecipePreference` already wired. Need city detail
-  screen dropdown per building: list candidate recipes + Auto default.
-- Enables forcing Biofuel Plant to brew Biogas (recipe 52) instead of
-  Biofuel, etc.
-- Effort: small-medium.
-
-### GA tuning run
-- `BalanceGenome` now has 13 slots including chainOutputMult and
-  consumerDemandScale.
-- Run `aoc_evolve --tune-mode balance` over a 20-30 gen × 5-game batch.
-- Effort: code change tiny; runtime cost ~hours.
-
-### Remaining dead recipes (chain completion)
-- Recipes 21-26 Semiconductor/Microchip/Computer/Aircraft chain: genuinely
-  post-500-turn content. Would fire naturally in 1000-turn games.
-- Recipe 44 Biofuel (Wheat): loses profit ranking to recipe 45 (Sugar);
-  needs preference UI or a small profit nudge.
-- Recipe 52 Biogas: same — Biofuel Plant runs 44/45 first.
-- Recipe 54 Rice: river-adjacent Grassland is a rare tile combo. Could
-  relax to any Grassland.
-
-### Production chain integrity items
-- Many `IMPROVEMENT_DEFS` tech IDs are display-only and drift from
-  TechTree.cpp. Not enforced, but Encyclopedia shows misleading info. Audit
-  + align.
-- Rework BuildingDef / ImprovementDef tech IDs into a single source of
-  truth (ideally the JSON `data/definitions/*.json`).
-
-### Instrumentation
-- `s_recipeFireCount` in `EconomySimulation.cpp` is currently a static
-  in-function counter with array size 64. Recipes now extend to id 60;
-  moving toward explicit bounds + maybe per-player telemetry.
-
-### Mechanic synergy audit (idea 3 in `ideas.txt`)
-- Game has ~20 systems (tech, civics, religion, diplomacy, spy, monetary,
-  loyalty, prestige, great people, wonders, climate/pollution, supply
-  lines, war weariness, grievances, trade routes, IR, production chain,
-  victory conditions, government, promotions).  Many operate in isolation
-  instead of compounding.
-- Weak synergy spots identified — see `WORKPACKAGES.md` WP-A.
-
-### Moon mining expansion (idea 4 in `ideas.txt`)
-- Decision: stay abstract (no separate moon map).  Add depth via
-  additional space-race projects + one new strategic good gated to
-  lunar mining.
-- Lunar Colony project (between Moon Landing and Mars) multiplies He3 ×3 +
-  grants flat science bonus + unlocks lunar Titanium.
-- Mars Colony requirement tightened to consume He3 + Titanium +
-  Semiconductors so the late-tech chain is self-referential.
-- Detailed plan in `WORKPACKAGES.md` WP-B.
+- **`hasRail` tile lane.** Road, power pole and pipeline landed; rail did not.
+- **Silver and gold as two separate media.** `ideas.txt` asked for silver as
+  the everyday standard of value with gold reserved for international and
+  high-value trade, and for the two to fluctuate against each other. The coin
+  tiers rank the metals but do not split domestic from international
+  settlement.
+- **The nine luxury-goods removals** (PEARLS, TOBACCO, IVORY, INCENSE, TEA,
+  COFFEE, GEMS, DEUTERIUM, GOLD_CONTACTS). All still present. Deliberate: the
+  additions were worth a save-format break, the deletions are not.
+- **`IMPROVEMENT_DEFS` / `BuildingDef` tech IDs are display-only** and drift
+  from `TechTree.cpp`. Unenforced, so the Encyclopedia can show a wrong tech.
+- **Remaining dead recipes.** 21-26 (semiconductor -> aircraft chain) are
+  genuinely post-500-turn content. 44 vs 45 and 52 lose profit ranking rather
+  than being unreachable. 54 needs river-adjacent Grassland, a rare combo.
+- **GA balance sweep.** `BalanceGenome` has **11** slots, not the 13 this file
+  claimed: two genes tuned a victory condition that does not exist and were
+  removed in `809b1d4`. `religionDominanceFrac` also moved 0.08 -> 0.50, the
+  first value that sits inside its own GA bounds of [0.3, 0.8], so every
+  previously tuned genome is incomparable.
+- **Mechanic synergy audit (WP-A).** See `WORKPACKAGES.md`.
