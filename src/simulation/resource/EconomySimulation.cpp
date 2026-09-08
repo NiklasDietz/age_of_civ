@@ -47,6 +47,24 @@
 
 namespace aoc::sim {
 
+namespace {
+
+/// True once any city of `player` holds the Workshop that makes consumer goods.
+///
+/// Before that, the goods do not exist in this civ's economy at all, and an
+/// unmet-demand penalty would be a penalty for the passage of time.
+[[nodiscard]] bool playerCanProduceConsumerGoods(const aoc::game::Player& player) {
+    constexpr BuildingId WORKSHOP{1};
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        if (city != nullptr && city->hasBuilding(WORKSHOP)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
 EconomySimulation::EconomySimulation() = default;
 
 static inline uint64_t makePreferenceKey(PlayerId owner, uint32_t cityLocHash, uint16_t buildingId) {
@@ -1102,12 +1120,24 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
             // for failing it, and this drain's own comment said no downstream
             // effect read its result. The happiness pass reads it now, so the
             // marginal unit of a finished good is finally worth something.
+            //
+            // NEUTRAL until the civ can actually make them. Consumer goods are
+            // manufactured, so no city has any before a Workshop exists, and
+            // scoring that as unmet demand penalised every city in the game
+            // from turn one. Happiness feeds loyalty at double weight, so the
+            // whole map collapsed into free cities and three of four civs were
+            // eliminated by turn 211 (seed 42, measured). A city cannot be
+            // blamed for lacking what nobody can produce yet.
+            constexpr float SATISFACTION_NEUTRAL = 0.5f;
+            const bool canProduceConsumerGoods   = playerCanProduceConsumerGoods(*playerPtr);
             cityPtr->happiness().consumerSatisfaction =
-                (consumerDrain > 0)
-                    ? std::clamp(static_cast<float>(consumerTake) /
-                                     static_cast<float>(consumerDrain),
-                                 0.0f, 1.0f)
-                    : 1.0f;
+                (!canProduceConsumerGoods)
+                    ? SATISFACTION_NEUTRAL
+                    : ((consumerDrain > 0)
+                           ? std::clamp(static_cast<float>(consumerTake) /
+                                            static_cast<float>(consumerDrain),
+                                        0.0f, 1.0f)
+                           : 1.0f);
             if (pop > 10) {
                 const int32_t advDrain = (pop - 10) / 3 + 1;
                 const int32_t advAvail = stockpileMut.getAmount(goods::ADV_CONSUMER_GOODS);

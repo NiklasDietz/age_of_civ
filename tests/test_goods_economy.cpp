@@ -145,3 +145,26 @@ TEST_CASE("an empty city is taxed nothing") {
     aoc::game::City& city = oneCity(w);
     CHECK(aoc::sim::cityGoodsTax(city) == 0);
 }
+
+TEST_CASE("no opinion on demand the civ cannot yet supply") {
+    // Consumer goods are manufactured, so no city holds any before a Workshop
+    // exists. Scoring that as unmet demand penalised every city from turn one,
+    // and since happiness feeds loyalty at double weight the map collapsed into
+    // free cities -- three of four civs eliminated by turn 211 on seed 42. A
+    // city cannot be blamed for lacking what nobody can produce yet.
+    //
+    // The neutral point of the amenity term is 0.5: neither reward nor penalty.
+    aoc::test::World w        = aoc::test::makeWorld(1);
+    aoc::game::City& city     = oneCity(w);
+    aoc::game::Player& player = *w.gameState.player(PlayerId{0});
+    REQUIRE_FALSE(city.hasBuilding(aoc::BuildingId{1})); // no Workshop
+
+    city.happiness().consumerSatisfaction = 0.5f;
+    aoc::sim::computeCityHappiness(player);
+    const float neutralAmenities = city.happiness().amenities;
+
+    // A starved city, once supply IS possible, sits below that neutral point.
+    city.happiness().consumerSatisfaction = 0.0f;
+    aoc::sim::computeCityHappiness(player);
+    CHECK(city.happiness().amenities < neutralAmenities);
+}
