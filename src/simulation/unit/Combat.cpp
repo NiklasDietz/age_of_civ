@@ -16,6 +16,7 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/CombatExtensions.hpp"
 #include "aoc/simulation/unit/SupplyLines.hpp"
+#include "aoc/simulation/unit/UnitTransport.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyExtensions.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/simulation/economy/DomesticCourier.hpp"
@@ -288,6 +289,12 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rn
     if (result.defenderKilled) {
         aoc::game::Player* defPlayer = findOwningPlayer(gameState, &defender);
         if (defPlayer != nullptr) {
+            // Everyone aboard a sunk transport goes down with it. Done before
+            // the stack sweep below so the passengers are removed once, here,
+            // rather than counted twice.
+            if (aoc::sim::isTransport(defender)) {
+                aoc::sim::drownPassengers(*defPlayer, defender);
+            }
             // Stack kill: if the defender died on open terrain (no city, no fort),
             // all other units of the same owner on that tile are also destroyed.
             bool tileHasCity = false;

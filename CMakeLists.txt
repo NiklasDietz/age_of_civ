@@ -315,6 +315,7 @@ set(AOC_LIB_SOURCES
     src/simulation/unit/Movement.cpp
     src/simulation/unit/Combat.cpp
     src/simulation/unit/Naval.cpp
+    src/simulation/unit/UnitTransport.cpp
     src/simulation/unit/UnitUpgrade.cpp
     src/simulation/tech/TechTree.cpp
     src/simulation/tech/CivicTree.cpp
@@ -1008,6 +1009,7 @@ if(AOC_BUILD_TESTS)
         test_monopoly_pricing
         test_war_reparations_term
         test_barbarian_clans
+        test_unit_transport
         test_spaceport
         test_government_plaza_and_dam
         test_great_works

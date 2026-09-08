@@ -7,6 +7,7 @@
  * City-level components are accessed via City member accessors.
  */
 
+#include "aoc/simulation/unit/UnitTransport.hpp"
 #include "aoc/simulation/barbarian/BarbarianClans.hpp"
 #include "aoc/save/Serializer.hpp"
 
@@ -485,7 +486,11 @@ void writeEntitySection(WriteBuffer& out, const aoc::game::GameState& gameState)
             section.writeU8(static_cast<uint8_t>(unit->state()));
             // v4: chargesRemaining, cargoCapacity (always 0 in object model), pendingPath
             section.writeU8(static_cast<uint8_t>(unit->chargesRemaining()));
-            section.writeU8(static_cast<uint8_t>(0)); // cargoCapacity: not stored in Unit object
+            // v30: the real capacity, not a hardcoded 0. It is derived from the
+            // unit type, so this is belt-and-braces, but writing a lie in a save
+            // is how the field came to look dead in the first place.
+            section.writeU8(static_cast<uint8_t>(
+                std::max<int32_t>(0, aoc::sim::transportCapacity(unit->typeId()))));
             section.writeU16(static_cast<uint16_t>(unit->pendingPath().size()));
             for (const aoc::hex::AxialCoord& coord : unit->pendingPath()) {
                 section.writeI32(coord.q);

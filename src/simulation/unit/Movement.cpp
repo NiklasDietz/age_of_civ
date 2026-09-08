@@ -3,6 +3,7 @@
  * @brief Unit movement implementation with stacking rules and zone of control.
  */
 
+#include "aoc/simulation/unit/UnitTransport.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/simulation/city/CityBombardment.hpp"
@@ -162,6 +163,15 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
         // Advance the unit; record animation data for smooth interpolation
         const aoc::hex::AxialCoord oldPosition = unit.position();
         unit.setPosition(nextTile);
+        // Anyone riding this hull goes with it. Without this a transport sailed
+        // out from under its passengers, who were left treading water on the
+        // tile it left.
+        if (aoc::sim::isTransport(unit)) {
+            aoc::game::Player* carrier = gameState.player(unit.owner());
+            if (carrier != nullptr) {
+                aoc::sim::carryPassengers(*carrier, unit, oldPosition, nextTile);
+            }
+        }
         unit.setMovementRemaining(unit.movementRemaining() - cost);
         unit.pendingPath().erase(unit.pendingPath().begin());
         unit.movementTrace().push_back(nextTile);

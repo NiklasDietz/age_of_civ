@@ -24,7 +24,12 @@ struct UnitComponent {
     UnitState       state = UnitState::Idle;
     int8_t          chargesRemaining = -1;   ///< -1 = unlimited, >= 0 = remaining build charges
     int8_t          cargoCapacity = 0;       ///< Number of land units this naval unit can carry (0 = none).
-    std::vector<EntityId> cargo;             ///< Land units currently embarked on this naval unit.
+    // A `std::vector<EntityId> cargo` lived here and was written at creation,
+    // never read. It could not have worked: units carry no stable identity in
+    // this object model -- EntityId is a flat index across every player's unit
+    // vector, which shifts the moment any unit is removed -- so a stored handle
+    // would rot. Transport.hpp derives the passenger list from position and
+    // state instead, which the save format already records.
 
     uint8_t spreadingReligion = 255;  ///< Which religion this religious unit spreads (255 = N/A)
     int8_t  spreadCharges = -1;       ///< Number of times this unit can spread (-1 = N/A)
