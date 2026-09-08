@@ -1105,6 +1105,12 @@ if(AOC_BUILD_TESTS)
         # #warning, so silencing the directive class on test targets only costs
         # nothing.
         target_compile_options(${aoc_test} PRIVATE "-Wno-#warnings")
+        # Lets a test assert a property of the SOURCE, not just of behaviour --
+        # e.g. that no AI path calls DiplomacyManager::declareWar directly,
+        # bypassing the validated request layer. Such tests skip themselves when
+        # the tree is absent, so a packaged binary stays runnable.
+        target_compile_definitions(${aoc_test} PRIVATE
+            AOC_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
         add_test(NAME ${aoc_test} COMMAND ${aoc_test})
         set_tests_properties(${aoc_test} PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")
     endforeach()
@@ -1127,6 +1133,8 @@ if(AOC_BUILD_TESTS)
             target_include_directories(${aoc_test} PRIVATE tests)
             target_include_directories(${aoc_test} SYSTEM PRIVATE third_party/doctest)
             target_compile_options(${aoc_test} PRIVATE "-Wno-#warnings")
+            target_compile_definitions(${aoc_test} PRIVATE
+                AOC_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
             add_test(NAME ${aoc_test} COMMAND ${aoc_test}
                      WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
             set_tests_properties(${aoc_test} PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")

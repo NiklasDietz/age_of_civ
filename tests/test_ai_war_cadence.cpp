@@ -27,6 +27,11 @@
 #include "aoc/simulation/diplomacy/DiplomacyActions.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <vector>
+
 using aoc::ErrorCode;
 using aoc::PlayerId;
 using aoc::sim::DiplomacyManager;
@@ -125,4 +130,50 @@ TEST_CASE("an unmet civ is not a war target") {
     n.d.relation(PlayerId{1}, PlayerId{0}).hasMet = false;
     n.runAI();
     CHECK_FALSE(n.d.isAtWar(PlayerId{0}, PlayerId{1}));
+}
+
+// ============================================================================
+// The class of bug, not just the one site
+// ============================================================================
+
+TEST_CASE("no AI code path declares war outside the validated layer") {
+    // Four sites called DiplomacyManager::declareWar directly. Two were fixed
+    // when the Domination campaign was (c790e0c); a sweep afterwards found
+    // three more in AIDiplomacyController -- the personality-driven
+    // declaration, the opportunistic one, and the border-violation response.
+    // The last had no cooldown of its own at all, so a standing violation could
+    // re-declare the turn after every peace.
+    //
+    // Asserted as a source property because the alternative is discovering the
+    // fifth one in a golden diff. DiplomacyState.cpp defines the primitive and
+    // DiplomacyActions.cpp is the validated layer that wraps it; nowhere else
+    // may call it.
+    const std::filesystem::path root = std::filesystem::path(AOC_SOURCE_DIR);
+    if (!std::filesystem::exists(root / "src")) {
+        // A packaged binary with no source tree beside it. Skip rather than
+        // fail: this test asserts a property of the repository.
+        MESSAGE("source tree not present, skipping the direct-call sweep");
+        return;
+    }
+    std::vector<std::string> offenders;
+    for (const std::filesystem::directory_entry& entry :
+         std::filesystem::recursive_directory_iterator(root / "src")) {
+        if (!entry.is_regular_file() || entry.path().extension() != ".cpp") { continue; }
+        const std::string name = entry.path().filename().string();
+        if (name == "DiplomacyState.cpp" || name == "DiplomacyActions.cpp") { continue; }
+        std::ifstream in(entry.path());
+        std::string line;
+        int32_t lineNo = 0;
+        while (std::getline(in, line)) {
+            ++lineNo;
+            if (line.find(".declareWar(") != std::string::npos ||
+                line.find("->declareWar(") != std::string::npos) {
+                offenders.push_back(name + ":" + std::to_string(lineNo));
+            }
+        }
+    }
+    for (const std::string& o : offenders) {
+        MESSAGE("direct declareWar call: " << o);
+    }
+    CHECK(offenders.empty());
 }

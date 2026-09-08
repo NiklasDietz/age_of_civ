@@ -249,18 +249,24 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
                 // pseudo-RNG that the GA harness could not reproduce
                 // across hosts (audit 2026-05-10 #WP11.3).
                 const int32_t warChance = rng.nextInt(0, 99);
-                if (warChance < warChanceThreshold &&
-                    rel.friendshipUntilTurn <= gameState.currentTurn()) {
-                    diplomacy.declareWar(this->m_player, other,
-                                         diplomacy.holdsCasusBelli(this->m_player, other)
-                                             ? aoc::sim::CasusBelliType::FormalWar
-                                             : aoc::sim::CasusBelliType::SurpriseWar,
-                                         nullptr, &gameState, gameState.currentTurn());
-                    LOG_INFO("AI %u Declared war on player %u (military %d vs %d, "
-                             "relations %d, aggression %.2f)",
-                             static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
-                             ourMilitary, theirMilitary, relationScore,
-                             static_cast<double>(beh.militaryAggression));
+                // Through requestDeclareWar. The friendship window used to be
+                // re-checked inline here because the direct call observed none
+                // of the validated layer's gates; the request enforces it, along
+                // with PEACE_LOCK_TURNS, hasMet and casus-belli validity.
+                if (warChance < warChanceThreshold) {
+                    const aoc::sim::CasusBelliType cb =
+                        diplomacy.holdsCasusBelli(this->m_player, other)
+                            ? aoc::sim::CasusBelliType::FormalWar
+                            : aoc::sim::CasusBelliType::SurpriseWar;
+                    if (aoc::sim::requestDeclareWar(gameState, diplomacy, this->m_player, other, cb,
+                                                    gameState.currentTurn()) == ErrorCode::Ok) {
+                        LOG_INFO("AI %u Declared war on player %u (military %d vs %d, "
+                                 "relations %d, aggression %.2f)",
+                                 static_cast<unsigned>(this->m_player),
+                                 static_cast<unsigned>(other), ourMilitary, theirMilitary,
+                                 relationScore,
+                                 static_cast<double>(beh.militaryAggression));
+                    }
                 }
             }
 
@@ -281,11 +287,11 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
                     // reproduce identical event logs across runs and hosts.
                     const int32_t warChance = rng.nextInt(0, 99);
                     const int32_t threshold = hardAI ? 3 : 2;
-                    if (warChance < threshold &&
-                        rel.friendshipUntilTurn <= gameState.currentTurn()) {
-                        diplomacy.declareWar(this->m_player, other,
-                                             aoc::sim::CasusBelliType::SurpriseWar, nullptr,
-                                             &gameState, gameState.currentTurn());
+                    if (warChance < threshold
+                        && aoc::sim::requestDeclareWar(gameState, diplomacy, this->m_player, other,
+                                                       aoc::sim::CasusBelliType::SurpriseWar,
+                                                       gameState.currentTurn())
+                               == ErrorCode::Ok) {
                         LOG_INFO(
                             "AI %u Declared opportunistic war on player %u "
                             "(%.1f:1 advantage: %d vs %d, aggression %.2f)",
@@ -697,10 +703,15 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
                     violatorRel.friendshipUntilTurn <= gameState.currentTurn()) {
                     // Beyond tolerance and casus belli granted: declare war
                     // (if not already at war and we have military capability)
-                    if (ourMilitary > 0 && beh.militaryAggression > 0.3f) {
-                        diplomacy.declareWar(this->m_player, other,
-                                             aoc::sim::CasusBelliType::FormalWar, nullptr,
-                                             &gameState, gameState.currentTurn());
+                    // This branch is the one that most needed the request
+                    // layer: unlike the two declarations above it had no
+                    // cooldown of its own, so a standing border violation could
+                    // re-declare war the turn after every peace.
+                    if (ourMilitary > 0 && beh.militaryAggression > 0.3f
+                        && aoc::sim::requestDeclareWar(gameState, diplomacy, this->m_player, other,
+                                                       aoc::sim::CasusBelliType::FormalWar,
+                                                       gameState.currentTurn())
+                               == ErrorCode::Ok) {
                         LOG_INFO("AI %u Declared war on Player %u for border violation "
                                  "(%d turns, tolerance %d, aggression %.2f)",
                                  static_cast<unsigned>(this->m_player),
