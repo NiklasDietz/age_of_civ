@@ -133,43 +133,52 @@ Four seeds (42, 7, 1234, 99), default 140x90 Lambert, via `aoc_mapgen
 | Plates total | ~15 | 7, 9, 9, 13 | LOW |
 | Ocean / land | 60/40 | ~63/37 (seed 42) | close |
 
-**The mountain miss is an empty mask, not a definition conflict.** Corrected
-2026-09-08 after measuring with `AOC_DUMP_OROGENY=1`; an earlier version of this
-note blamed a 4000 m elevation gate, which was read off a STALE COMMENT. That
-criterion was replaced long ago and `MOUNTAIN_THRESHOLD_M` now survives only in
-comments -- no code reads it. `MOUNTAIN_OROGENY_THRESHOLD`, which this file
-still names as the lever, does not exist either.
+**The mountain miss: diagnosed and FIXED 2026-09-08.** Measured coverage was
+0.00 % of land on seeds 42/7/1234/99. Two earlier explanations in this file were
+both wrong and are corrected here: it was not the 4000 m elevation gate (read
+off a stale comment; no code reads `MOUNTAIN_THRESHOLD_M`), and it was not
+merely a mis-tuned ratio.
 
-The live criterion is `SphereField.hpp`'s `MOUNTAIN_CRUST_RATIO`: a tile is
-Mountain where its peak crustal thickness reaches that multiple of the planet's
-own median continental crust, with a `continentalFraction >= 0.5` gate. It
-measures crustal thickening, which is what an orogen actually is.
+Two real defects, both now fixed:
 
-It produces nothing because the ratio was never re-derived after a DIFFERENT
-defect was fixed. Median continental crust is now 37.5-40.1 km across seeds
-(Earth-scale); it was 15.6-18.2 km when the ratio was chosen. So median x 2.0
-puts the cutoff at 75-80 km while crust is hard-clamped at 70 km
-(`PlatePhysics::maxCrustThicknessKm`). The cutoff sits above the ceiling.
+*Crustal mass was fabricated.* `thickenFromClosingRate` added thickness at every
+convergent continental cell and debited nobody, so crustal volume was created
+from nothing each epoch. Over a 3 Gy run that drove the whole convergent belt
+into the 70 km cap, and peak crust read p95 through p100 = exactly 70.0 on every
+seed — the top of the distribution carried no information to threshold against.
+Thickening now conserves volume: a cell takes its material from the continental
+neighbours being shortened, which is what crustal shortening is. Because cells
+are equal in degrees, sharing the donated volume by donor area means every donor
+loses the same thickness. Where donors cannot supply, less is thickened — the
+conservation doing its job.
 
-Re-deriving the ratio does not fix it, which is the useful part:
+*The criterion was a ratio that had outlived its reason.* `MOUNTAIN_CRUST_RATIO`
+existed to survive two measurement errors — freeboard (sea level solved to
+-910..-1255 m) and continental crust at half Earth-scale. Both are now fixed:
+sea level solves to 0 m and the median is 35.5-39.0 km. Worse, the ratio had
+become harmful, because with the scale corrected the median is nearly flat
+across seeds while the crust tail is not, and the two are ANTI-CORRELATED —
+scaling the cutoff up with the median emptied precisely the seeds that had least
+high crust. It is replaced by `MOUNTAIN_ROOT_KM = 66.5`, an orogenic root
+measured directly in km (Earth: continental median ~40, orogens 50-70, Tibet
+~70).
 
-| seed | median | x1.8 cutoff | peak p90 | mountains |
-|------|--------|-------------|----------|-----------|
-| 42   | 37.5   | 67.5        | 68.8     | 8.0 % of land |
-| 7    | 40.1   | 72.2        | 68.4     | 0 % (cutoff over the clamp) |
-| 1234 | 38.9   | 70.02       | 70.0     | 0 % (cutoff over the clamp) |
+Result, mountain share of land:
 
-The cutoff is `median x ratio` against a fixed clamp, and the median varies per
-seed, so viability flips between seeds. Above ~1.87 the mask empties on some
-seeds; below it over-selects on others. The peak distribution is
-**clamp-saturated** -- p95 through p100 read exactly 70.0 on every seed measured
--- so the top of the distribution carries nothing to threshold against.
+| seed | before | after |
+|------|--------|-------|
+| 42   | 0.00 % | 5.2 % |
+| 7    | 0.00 % | 8.1 % |
+| 1234 | 0.00 % | 10.7 % |
+| 99   | 0.00 % | 16.9 % |
 
-Two real fixes, both outside the constant: stop the thickening saturating the
-clamp (the causal one), or move the criterion off the clamp, e.g. onto the local
-relief instrument that already works for Hills. Left alone here on purpose:
-every value in reach is equally broken, so changing it would move worldgen
-output for no gain.
+Mean 10.2 %, against Earth's ~10 % of land and this file's 7-12 % target. Two of
+four seeds sit inside the band. **Known limit:** the per-seed spread is a factor
+of 3.25, wider than the 1.7x band, so no single cutoff puts every seed in it —
+that is the generator's crust-tail variance rather than a threshold wanting more
+tuning, and a percentile quota would only hide it (CLAUDE.md forbids quota
+shapers). Resource placement follows the terrain: 68 resources now sit on
+mountains, where there were none to sit on before.
 
 **These named levers are GONE from the code** and the checklist below is stale
 wherever it cites them: `MOUNTAIN_OROGENY_THRESHOLD`, `STRESS_GATE`,

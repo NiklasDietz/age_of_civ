@@ -1904,11 +1904,50 @@ void accumulateClosingRate(SphereField& field, const std::vector<Plate>& plates,
     }
 }
 
+/// Floor a donor cell may be shortened to, km. Continental crust does thin
+/// dramatically when stretched, but a convergent belt drawing its neighbours
+/// below this is pathological rather than geological.
+inline constexpr float THICKEN_DONOR_FLOOR_KM = 20.0f;
+
 void thickenFromClosingRate(SphereField& field, float dtMy) {
     const float maxCrust = PhysicsConstants::maxCrustThicknessKm;
-#if defined(AOC_HAS_OPENMP)
-#pragma omp parallel for schedule(static)
-#endif
+
+    // Thickening CONSERVES MASS: a cell that thickens takes the material from
+    // the crust around it, because that is what crustal shortening is. The
+    // material has to come from somewhere.
+    //
+    // This pass used to add `dCrustKm` and debit nobody, fabricating crustal
+    // volume at every convergent continental cell of every epoch. Over a 3 Gy
+    // run that ran the whole belt into the 70 km cap, and the measurable
+    // consequence was that peak crust read p95 through p100 = exactly 70.0 on
+    // every seed: the top of the distribution carried no information at all.
+    // MOUNTAIN_CRUST_RATIO thresholds against that distribution, so the
+    // mountain mask had nothing to select on and came out EMPTY (0.00 % of land
+    // on seeds 42/7/1234/99) once the crust scale was corrected and the cutoff
+    // rose above the cap.
+    //
+    // Volume, not thickness, is what conserves: cells are equal in DEGREES, so
+    // their area goes as cos(lat) and a km of thickness is worth more volume at
+    // the equator. Conveniently, sharing the donated volume between donors in
+    // proportion to their area means every donor loses the SAME thickness --
+    // dCrustKm * area(i) / totalDonorArea -- so the arithmetic stays simple.
+    //
+    // Serial with a delta buffer, deliberately. The debit writes to
+    // NEIGHBOURING cells, so the previous in-place parallel loop would both
+    // race and make the result thread-count dependent, and this generator has a
+    // determinism gate.
+    constexpr double DEG2RAD_D = 0.01745329252;
+    const auto areaWeight      = [](int32_t latIdx) -> double {
+        const double latDeg =
+            (static_cast<double>(latIdx) + 0.5) * static_cast<double>(SphereField::CELL_DEG) - 90.0;
+        return std::cos(latDeg * DEG2RAD_D);
+    };
+
+    const int32_t LON_N = SphereField::LON_CELLS;
+    const int32_t LAT_N = SphereField::LAT_CELLS;
+
+    std::vector<float> delta(SphereField::CELL_COUNT, 0.0f);
+
     for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
         // Only convergent cells thicken — transform shear should not
         // build crust, and divergent cells extrude basalt instead.
@@ -1916,9 +1955,62 @@ void thickenFromClosingRate(SphereField& field, float dtMy) {
         const float rate = field.convergenceRateRadPerMy[i];
         if (rate <= 0.0f) continue;
         if (field.continentalFraction[i] <= 0.5f) continue;
-        const float dCrustKm = K_THICKEN_KM_PER_RADMY * rate * dtMy;
-        float h              = field.crustThicknessKm[i] + dCrustKm;
+
+        const int32_t latIdx = static_cast<int32_t>(i / static_cast<std::size_t>(LON_N));
+        const int32_t lonIdx = static_cast<int32_t>(i % static_cast<std::size_t>(LON_N));
+        const int32_t lonW   = (lonIdx == 0) ? LON_N - 1 : lonIdx - 1;
+        const int32_t lonE   = (lonIdx == LON_N - 1) ? 0 : lonIdx + 1;
+        const int32_t latS   = std::max(0, latIdx - 1);
+        const int32_t latN   = std::min(LAT_N - 1, latIdx + 1);
+        const std::size_t nbrs[4] = {
+            SphereField::cellIndex(lonW, latIdx),
+            SphereField::cellIndex(lonE, latIdx),
+            SphereField::cellIndex(lonIdx, latS),
+            SphereField::cellIndex(lonIdx, latN),
+        };
+
+        // Donors: continental neighbours with material to spare. Oceanic crust
+        // is not shortened into a mountain root, it subducts.
+        std::size_t donors[4];
+        int32_t donorCount   = 0;
+        double totalDonorArea = 0.0;
+        float minHeadroomKm  = std::numeric_limits<float>::max();
+        for (int32_t k = 0; k < 4; ++k) {
+            const std::size_t n = nbrs[k];
+            if (n == i) continue; // polar clamp can fold a neighbour onto self
+            if (field.continentalFraction[n] <= 0.5f) continue;
+            const float available =
+                field.crustThicknessKm[n] + delta[n] - THICKEN_DONOR_FLOOR_KM;
+            if (available <= 0.0f) continue;
+            donors[donorCount++] = n;
+            totalDonorArea += areaWeight(static_cast<int32_t>(n / static_cast<std::size_t>(LON_N)));
+            minHeadroomKm = std::min(minHeadroomKm, available);
+        }
+        if (donorCount == 0 || totalDonorArea <= 0.0) {
+            continue; // nothing to shorten: an isolated cell cannot pile up
+        }
+
+        const float wantKm       = K_THICKEN_KM_PER_RADMY * rate * dtMy;
+        const double areaI       = areaWeight(latIdx);
+        // Same loss for every donor, by the area-share identity above.
+        double perDonorLossKm    = static_cast<double>(wantKm) * areaI / totalDonorArea;
+        // Never draw a donor below the floor; if that binds, LESS is thickened.
+        // That is the conservation doing its job rather than an approximation.
+        perDonorLossKm = std::min(perDonorLossKm, static_cast<double>(minHeadroomKm));
+        if (perDonorLossKm <= 0.0) continue;
+
+        const double gainedKm = perDonorLossKm * totalDonorArea / areaI;
+        delta[i] += static_cast<float>(gainedKm);
+        for (int32_t k = 0; k < donorCount; ++k) {
+            delta[donors[k]] -= static_cast<float>(perDonorLossKm);
+        }
+    }
+
+    for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
+        if (delta[i] == 0.0f) continue;
+        float h = field.crustThicknessKm[i] + delta[i];
         if (h > maxCrust) h = maxCrust;
+        if (h < 0.0f) h = 0.0f;
         field.crustThicknessKm[i] = h;
     }
 }

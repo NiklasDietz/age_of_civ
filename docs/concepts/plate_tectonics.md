@@ -150,16 +150,17 @@ Most continental area is FLAT plains (cratonic platforms with sediment cover) or
 
 ## 14. Key quantitative targets for our sim
 
-> **Audited 2026-09-08, corrected the same day.** Measured mountain coverage is
-> **0.00 % of land on seeds 42, 7, 1234 and 99** against the ~10 % below. The
-> cause is NOT the 4000 m elevation gate an earlier version of this note blamed
-> -- that was read off a stale comment and no code reads it. The live criterion
-> is a crustal-thickness ratio whose cutoff now sits ABOVE the hard 70 km crust
-> clamp, because the ratio was never re-derived after the crust scale was fixed
-> from half-Earth to Earth-scale. It cannot be repaired by retuning the ratio;
-> see `continent_generation_design.md` for the per-seed measurements and the two
-> real fixes. Plate count measures 7-13 against the ~15 here. Hills (19-38 %)
-> and the ocean/land split (~63/37) are broadly in line.
+> **Audited and FIXED 2026-09-08.** Mountain coverage measured 0.00 % of land on
+> seeds 42/7/1234/99 against the ~10 % below. Two defects: crustal thickening
+> fabricated mass (no debit from the shortened neighbour), which saturated the
+> 70 km cap and left the crust distribution with no informative tail; and the
+> mountain criterion was a ratio to the planet's median that had outlived the
+> two measurement errors it was designed to survive. Thickening now conserves
+> volume, and the criterion is a directly measured orogenic root
+> (`MOUNTAIN_ROOT_KM`). Mountains are now 5.2-16.9 % of land, mean 10.2 %.
+> Plate count still measures 7-13 against the ~15 here. Hills (19-31 %) and the
+> ocean/land split (~63/37) are in line. Details in
+> `continent_generation_design.md`.
 
 - ~15 plates total at any sim time (mergers ≈ rifts).
 - ~10 % continental area = mountain.

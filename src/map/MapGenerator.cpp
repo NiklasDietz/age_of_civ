@@ -1469,40 +1469,22 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         const float hexLonStepDeg = 360.0f / static_cast<float>(width);
         const float hexLatStepDeg = 180.0f / static_cast<float>(height);
 
-        // Reference continental crustal thickness for THIS planet: the median
-        // over continental sphere cells. The mountain mask is a multiple of it
-        // (MOUNTAIN_CRUST_RATIO), so the criterion measures thickening rather
-        // than depth and survives the fact that this simulation's absolute
-        // thickness scale is about half of Earth's.
+        // The crustal root that makes a tile Mountain. An orogen IS a thick
+        // root, so this is measured directly in km.
         //
-        // Computed from the sphere raster rather than from projected tiles: it is
-        // a property of the planet's crust, not of the projection, and one serial
-        // nth_element over the raster is deterministic regardless of thread count.
-        float mountainCrustKm = 0.0f;
-        {
-            std::vector<float> contCrustKm;
-            contCrustKm.reserve(aoc::map::gen::SphereField::CELL_COUNT);
-            for (std::size_t c = 0; c < sphereField.crustThicknessKm.size(); ++c) {
-                if (sphereField.continentalFraction[c] >= 0.5f) {
-                    contCrustKm.push_back(sphereField.crustThicknessKm[c]);
-                }
-            }
-            if (contCrustKm.empty()) {
-                // No continental crust at all: nothing can be an orogen. Set the
-                // bar above the hard 70 km cap so the mask is empty rather than
-                // dividing by an undefined reference.
-                mountainCrustKm = 1.0e9f;
-            } else {
-                const std::ptrdiff_t mid = static_cast<std::ptrdiff_t>(contCrustKm.size() / 2u);
-                std::nth_element(contCrustKm.begin(), contCrustKm.begin() + mid, contCrustKm.end());
-                const float medianKm = contCrustKm[static_cast<std::size_t>(mid)];
-                mountainCrustKm      = medianKm * aoc::map::gen::MOUNTAIN_CRUST_RATIO;
-                LOG_DEBUG("[mapgen] median continental crust %.1f km -> mountain root cutoff "
-                          "%.1f km (%.1fx)",
-                          static_cast<double>(medianKm), static_cast<double>(mountainCrustKm),
-                          static_cast<double>(aoc::map::gen::MOUNTAIN_CRUST_RATIO));
-            }
-        }
+        // It used to be a multiple of this planet's own median continental
+        // crust (MOUNTAIN_CRUST_RATIO), an indirection that existed to survive
+        // two measurement errors -- freeboard, and a crust scale at half of
+        // Earth's. Both are fixed now: sea level solves to 0 m and the median
+        // is 35.5-39.0 km. The indirection had stopped helping and started
+        // hurting, because with the scale corrected the median is nearly flat
+        // across seeds while the crust tail is not, and the two are
+        // anti-correlated -- scaling the cutoff up with the median emptied the
+        // very seeds that had the least high crust. See SphereField.hpp for the
+        // measured table.
+        const float mountainCrustKm = aoc::map::gen::MOUNTAIN_ROOT_KM;
+        LOG_DEBUG("[mapgen] mountain root cutoff %.1f km",
+                  static_cast<double>(mountainCrustKm));
 
         // AOC_DUMP_OROGENY: histogram the inputs the mountain mask is built from,
         // so the MOUNTAIN_CRUST_KM threshold can be checked against the crust
@@ -2028,7 +2010,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 }
                 std::fprintf(stderr, "[orogeny] land tiles=%zu; mountain %% of LAND vs threshold:",
                              landTiles);
-                for (const float t : {25.0f, 30.0f, 35.0f, 40.0f, 45.0f, 50.0f, 55.0f}) {
+                // Extended past 55 km: the interesting region is the top of the
+                // distribution, and the old table stopped short of every
+                // threshold that produces an Earth-like ~10 % share.
+                for (const float t : {40.0f, 45.0f, 50.0f, 55.0f, 58.0f, 60.0f, 62.0f, 64.0f,
+                                      66.0f, 68.0f, 69.0f, 69.9f}) {
                     std::size_t mtnLand = 0;
                     for (std::size_t i = 0; i < crustPeakKmDump.size(); ++i) {
                         if (elevationMap[i] >= 0.0f && contFracDump[i] >= 0.5f &&
