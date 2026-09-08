@@ -107,8 +107,55 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
             continue;
         }
 
-        // Step 1: Check if current tile can be improved
         const int32_t currentIdx = grid.toIndex(builder.position);
+
+        // Step 0: an adjacent metal-bearing mountain, which is why Step 2a
+        // walked this builder here in the first place.
+        //
+        // Everything below improves `currentIdx`, the tile the builder STANDS
+        // on. A MountainMine goes on the mountain, and mountains are
+        // impassable, so no builder can ever stand on one -- the AI would walk
+        // to the deposit it had specifically hunted for, build a farm on the
+        // approach tile and leave. The seek existed without the placement. The
+        // HUD's "Mine Mountain" button has always done this correctly, so the
+        // capability was reachable by a human and structurally unreachable by
+        // the AI. It went unnoticed because until crustal thickening conserved
+        // mass there were no mountains on any map to mine.
+        if (grid.owner(currentIdx) == this->m_player && grid.movementCost(currentIdx) > 0) {
+            const aoc::game::Player* techOwner0 = gameState.player(this->m_player);
+            const PlayerTechComponent* aiTech0 = techOwner0 != nullptr ? &techOwner0->tech() : nullptr;
+            const std::array<aoc::hex::AxialCoord, 6> mtnNbrs =
+                aoc::hex::neighbors(builder.position);
+            bool minedMountain = false;
+            for (const aoc::hex::AxialCoord& nbr : mtnNbrs) {
+                if (!grid.isValid(nbr)) { continue; }
+                const int32_t nbrIdx = grid.toIndex(nbr);
+                if (grid.terrain(nbrIdx) != aoc::map::TerrainType::Mountain) { continue; }
+                if (grid.improvement(nbrIdx) != aoc::map::ImprovementType::None) { continue; }
+                if (!canPlaceImprovement(grid, nbrIdx, aoc::map::ImprovementType::MountainMine,
+                                         aiTech0)) {
+                    continue;
+                }
+                grid.setImprovement(nbrIdx, aoc::map::ImprovementType::MountainMine);
+                if (grid.owner(nbrIdx) == INVALID_PLAYER) {
+                    grid.setOwner(nbrIdx, this->m_player);
+                }
+                builder.ptr->useCharge();
+                LOG_INFO("AI %u Builder mined mountain (%d,%d) from (%d,%d)",
+                         static_cast<unsigned>(this->m_player), nbr.q, nbr.r,
+                         builder.position.q, builder.position.r);
+                if (!builder.ptr->hasCharges()) {
+                    exhaustedBuilders.push_back(builder.ptr);
+                }
+                minedMountain = true;
+                break;
+            }
+            if (minedMountain) {
+                continue; // one action per builder per turn
+            }
+        }
+
+        // Step 1: Check if current tile can be improved
         if (grid.owner(currentIdx) == this->m_player &&
             grid.improvement(currentIdx) == aoc::map::ImprovementType::None &&
             grid.movementCost(currentIdx) > 0) {

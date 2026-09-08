@@ -1057,6 +1057,7 @@ if(AOC_BUILD_TESTS)
         test_combat_rules
         test_government_policies
         test_city_actions
+        test_ai_mines_mountains
         test_builders
         test_combat_preview
         test_unit_orders
