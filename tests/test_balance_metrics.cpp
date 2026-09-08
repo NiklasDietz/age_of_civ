@@ -17,6 +17,8 @@
 #include "BalanceMetrics.hpp"
 
 #include "aoc/balance/BalanceParams.hpp"
+
+#include <cmath>
 #include "aoc/simulation/victory/VictoryCondition.hpp"
 
 #include <array>
@@ -102,5 +104,56 @@ TEST_CASE("the search bounds cover every slot and are ordered") {
         const std::size_t idx = static_cast<std::size_t>(i);
         // A slot left behind by a renumbering would keep its default 0/0 here.
         CHECK(b.min[idx] < b.max[idx]);
+    }
+}
+
+// ============================================================================
+// Every balance parameter must be reachable by the tuner
+// ============================================================================
+
+TEST_CASE("every genome slot round-trips through toParams and back") {
+    // The genome is a flat array and the mapping is written by hand twice, in
+    // toParams and fromParams. A slot missing from either is a parameter the GA
+    // silently cannot search -- which is exactly how workerCapacityPerPop spent
+    // its life as a constexpr in Automation.hpp while being, by measurement,
+    // the binding constraint on the entire production chain.
+    aoc::balance::BalanceGenome g;
+    for (int32_t i = 0; i < aoc::balance::BALANCE_PARAM_COUNT; ++i) {
+        // Distinct, in-range-ish values so a mis-wired slot cannot coincide.
+        g.g[static_cast<std::size_t>(i)] = 1.0f + static_cast<float>(i);
+    }
+    aoc::balance::BalanceGenome round;
+    round.fromParams(g.toParams());
+
+    for (int32_t i = 0; i < aoc::balance::BALANCE_PARAM_COUNT; ++i) {
+        const std::size_t idx = static_cast<std::size_t>(i);
+        // Integer-typed parameters truncate on the way through, so compare with
+        // a tolerance of one rather than demanding bit equality.
+        CHECK(std::abs(round.g[idx] - g.g[idx]) <= 1.0f);
+    }
+}
+
+TEST_CASE("every balance parameter has usable bounds") {
+    const aoc::balance::BalanceBounds b = aoc::balance::defaultBalanceBounds();
+    for (int32_t i = 0; i < aoc::balance::BALANCE_PARAM_COUNT; ++i) {
+        const std::size_t idx = static_cast<std::size_t>(i);
+        // A slot left at {0, 0} is a parameter the search cannot move, which is
+        // indistinguishable from not having exposed it at all.
+        CHECK(b.max[idx] > b.min[idx]);
+    }
+}
+
+TEST_CASE("the shipped defaults sit inside their own search bounds") {
+    // religionDominanceFrac spent a long time at 0.08 while its bounds were
+    // [0.3, 0.8], so the tuner could never explore the shipped value and every
+    // tuned genome jumped it. Assert the general property rather than that one
+    // case.
+    aoc::balance::BalanceGenome shipped;
+    shipped.fromParams(aoc::balance::BalanceParams{});
+    const aoc::balance::BalanceBounds b = aoc::balance::defaultBalanceBounds();
+    for (int32_t i = 0; i < aoc::balance::BALANCE_PARAM_COUNT; ++i) {
+        const std::size_t idx = static_cast<std::size_t>(i);
+        CHECK(shipped.g[idx] >= b.min[idx]);
+        CHECK(shipped.g[idx] <= b.max[idx]);
     }
 }

@@ -94,9 +94,11 @@ struct BalanceParams {
     float   religionDominanceFrac    = 0.50f;
 
     // Victory: space race cost multiplier (1.0 = nominal SPACE_PROJECT_DEFS).
-    // Pulled up from GA 0.59 so science path lands similarly-paced to other
-    // victory types instead of sprinting; still below 1.0 default so science
-    // civs have reachable projects.
+    // Pulled up from GA 0.59 so the science path lands similarly-paced to other
+    // victory types instead of sprinting. It is ABOVE 1.0, i.e. space projects
+    // cost more than nominal -- the previous comment here claimed "still below
+    // 1.0" while the value read 1.70, which is the sort of contradiction that
+    // makes a tuned constant look like a mistake.
     float   spaceRaceCostMult        = 1.70f;  // 2026-04-27 iter8: 1.55 → 31%; bump for ~22%
 
     // Production-chain tuning (added for the chain-health audit).  GA-tunable
@@ -111,6 +113,23 @@ struct BalanceParams {
     //   ADV_CONSUMER_GOODS drain.  1.0 = baseline (pop/3 + 1 per turn).
     float   chainOutputMult          = 1.00f;
     float   consumerDemandScale      = 1.00f;
+
+    // workerCapacityPerPop: recipe slots a city gets per point of population,
+    // before robots. This is THE measured binding constraint on the whole
+    // production chain: with the shipped 0.5, AOC_DUMP_ECONOMY reports 98.9 %
+    // of city-turns exhausting their labour budget, and only 27 of 81 recipes
+    // ever fire on seed 42.
+    //
+    // Exposed to the GA rather than set by hand. A single-parameter sweep found
+    // 1.5 drops slot-bound city-turns to 77 % and lifts recipes fired to 40,
+    // keeping both seeds' victory types but costing one elimination on seed 43
+    // -- a real trade-off between economic depth and civ stability, which is
+    // what the balance fitness function exists to weigh. Before this it was a
+    // constexpr in Automation.hpp and the tuner could not see it at all.
+    //
+    // Raising it does NOT weaken the resource curse: that emerges from miners
+    // and factories drawing on ONE pool, not from the pool being small.
+    float   workerCapacityPerPop     = 0.50f;
 };
 
 /// Access the single global balance-params instance.
@@ -122,13 +141,13 @@ struct BalanceParams {
 ///   0 baseLoyalty, 1 loyaltyPressureRadius, 2 sustainedUnrestTurns,
 ///   3 distantCityThreshold, 4 cultureVictoryThreshold, 5 cultureVictoryMinWonders,
 ///   6 cultureVictoryLeadRatio, 7 religionDominanceFrac, 8 spaceRaceCostMult,
-///   9 chainOutputMult, 10 consumerDemandScale
+///   9 chainOutputMult, 10 consumerDemandScale, 11 workerCapacityPerPop
 ///
 /// Was 13. The two integration slots were dropped 2026-09-07. Nothing on disk
 /// stores this genome positionally -- the tuner writes its report by parameter
 /// name and only ever builds a genome from BalanceParams defaults -- so the
 /// renumbering invalidates no saved state.
-constexpr int32_t BALANCE_PARAM_COUNT = 11;
+constexpr int32_t BALANCE_PARAM_COUNT = 12;
 
 struct BalanceGenome {
     std::array<float, BALANCE_PARAM_COUNT> g{};

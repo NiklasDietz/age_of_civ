@@ -338,7 +338,7 @@ runBalanceGA(const BalanceGAConfig& cfg, uint64_t masterSeed, ThreadPool* pool) 
         std::fprintf(stderr,
             "  top genome: baseLoy=%.2f radius=%d unrest=%d distant=%d "
             "culT=%.0f culW=%d culLead=%.2f relFrac=%.2f spaceMul=%.2f "
-            "chainOut=%.2f consDemand=%.2f\n",
+            "chainOut=%.2f consDemand=%.2f workerCap=%.2f\n",
             static_cast<double>(tp.baseLoyalty),
             tp.loyaltyPressureRadius, tp.sustainedUnrestTurns,
             tp.distantCityThreshold,
@@ -348,7 +348,8 @@ runBalanceGA(const BalanceGAConfig& cfg, uint64_t masterSeed, ThreadPool* pool) 
             static_cast<double>(tp.religionDominanceFrac),
             static_cast<double>(tp.spaceRaceCostMult),
             static_cast<double>(tp.chainOutputMult),
-            static_cast<double>(tp.consumerDemandScale));
+            static_cast<double>(tp.consumerDemandScale),
+            static_cast<double>(tp.workerCapacityPerPop));
 
         if (gen == cfg.generations - 1) { break; }
 
@@ -417,7 +418,8 @@ void saveBalanceSummary(const std::vector<BalanceIndividual>& sortedPop,
         // two production-chain ones -- the whole reason the last sweep was
         // asked for -- were invisible in its output.
         f << "  chainOutputMult          = " << p.chainOutputMult          << "\n";
-        f << "  consumerDemandScale      = " << p.consumerDemandScale      << "\n\n";
+        f << "  consumerDemandScale      = " << p.consumerDemandScale      << "\n";
+        f << "  workerCapacityPerPop     = " << p.workerCapacityPerPop     << "\n\n";
     }
     f.close();
     std::fprintf(stderr, "[Saved] %s\n", path);

@@ -71,12 +71,11 @@ void updateCityAutomation(aoc::game::City& city);
  * @param robotWorkers Number of robot workers assigned.
  * @return Maximum recipes per turn.
  */
-[[nodiscard]] constexpr int32_t totalWorkerCapacity(int32_t population,
-                                                     int32_t robotWorkers) {
-    // Population provides population/2 slots (min 1), robots add 1 each
-    int32_t humanSlots = (population > 0) ? (population / 2) : 0;
-    humanSlots = (humanSlots < 1 && population > 0) ? 1 : humanSlots;
-    return humanSlots + robotWorkers;
-}
+/// No longer constexpr: the per-population rate is a BALANCE PARAMETER
+/// (`workerCapacityPerPop`, default 0.50) so the tuner can search it. It is the
+/// measured binding constraint on the production chain -- 98.9 % of city-turns
+/// exhaust their labour budget at the shipped rate -- and it was invisible to
+/// the GA while it lived here as a hard-coded division.
+[[nodiscard]] int32_t totalWorkerCapacity(int32_t population, int32_t robotWorkers);
 
 } // namespace aoc::sim
