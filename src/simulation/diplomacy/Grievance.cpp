@@ -161,6 +161,14 @@ void accrueIdeologicalGrievances(::aoc::game::GameState& gameState) {
     }
 }
 
+std::size_t PlayerGrievanceComponent::injuryGrievanceCount() const {
+    std::size_t n = 0;
+    for (const Grievance& g : this->grievances) {
+        if (g.type != GrievanceType::IdeologicalDifference) { ++n; }
+    }
+    return n;
+}
+
 int32_t PlayerGrievanceComponent::totalGrievanceAgainst(PlayerId target) const {
     int32_t total = 0;
     for (const Grievance& g : this->grievances) {

@@ -104,7 +104,11 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     // Loosen weariness gate (40 → 25) and grievance count (4 → 2) so the
     // signal actually appears in play without being spammy.
     const float weariness  = gsPlayer->warWeariness().weariness;
-    const bool civStressed = (weariness > 25.0f) && (gsPlayer->grievances().grievances.size() >= 2);
+    // injuryGrievanceCount, not the raw size: IdeologicalDifference is
+    // refreshed every turn for every ideologically-different pair and never
+    // expires, so a raw count sat at >= 2 permanently from mid-game and this
+    // gate had quietly become single-factor.
+    const bool civStressed = (weariness > 25.0f) && (gsPlayer->grievances().injuryGrievanceCount() >= 2);
 
     // Iterate all cities owned by this player. Cities captured/seceded away
     // remain in the old owner's vector (capture mechanic never rewires lists),
@@ -290,7 +294,7 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             LOG_INFO("COMBINED REVOLT: %s (P%u) → Free City for 10 turns "
                      "(weariness=%.1f, grievances=%zu, happiness=%.1f)",
                      city->name().c_str(), static_cast<unsigned>(player),
-                     static_cast<double>(weariness), gsPlayer->grievances().grievances.size(),
+                     static_cast<double>(weariness), gsPlayer->grievances().injuryGrievanceCount(),
                      static_cast<double>(city->happiness().happiness));
             continue;
         }

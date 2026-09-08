@@ -1035,6 +1035,7 @@ if(AOC_BUILD_TESTS)
         test_ai_war_cadence
         test_revolt_is_not_conquest
         test_diplomacy_actions
+        test_injury_grievances
         test_deal_proposals
         test_natural_disasters
         test_district_placement

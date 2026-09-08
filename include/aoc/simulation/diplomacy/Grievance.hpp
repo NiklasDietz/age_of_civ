@@ -58,6 +58,19 @@ struct PlayerGrievanceComponent {
 
     /// Sum of all grievance severities against a specific target player.
     [[nodiscard]] int32_t totalGrievanceAgainst(PlayerId target) const;
+
+    /// Grievances arising from something a rival DID, excluding
+    /// IdeologicalDifference.
+    ///
+    /// That one is accrued every turn for every pair of civs holding different
+    /// late-game ideologies, and addGrievance refreshes its timer rather than
+    /// appending, so it never expires while the ideologies differ. Counting it
+    /// made a plain count of grievances read ">= 2" permanently from mid-game
+    /// onward, which is why the combined-stress revolt gate -- documented as
+    /// war-weariness AND grievances both being high -- had in practice
+    /// collapsed to war-weariness alone. Disliking someone's government is not
+    /// an injury.
+    [[nodiscard]] std::size_t injuryGrievanceCount() const;
 };
 
 } // namespace aoc::sim
