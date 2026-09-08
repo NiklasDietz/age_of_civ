@@ -29,6 +29,35 @@
 
 namespace aoc::sim {
 
+CurrencyAmount goodsTaxCap(int32_t population) {
+    // Was a flat 15 for every city, which a modest stockpile reached and then
+    // exceeded forever, so every further unit of a finished good was worth
+    // nothing. A larger city is a larger market and bears more trade.
+    return static_cast<CurrencyAmount>(15 + std::max(0, population) * 3);
+}
+
+CurrencyAmount cityGoodsTax(const aoc::game::City& city) {
+    const CityStockpileComponent& stock = city.stockpile();
+    int32_t gold                        = 0;
+
+    // Everyday goods: plentiful, so taxed lightly per unit.
+    gold += stock.getAmount(goods::CONSUMER_GOODS) / 4;
+    gold += stock.getAmount(goods::PROCESSED_FOOD) / 4;
+    gold += stock.getAmount(goods::CLOTHING) / 2;
+
+    // High-value finished goods. Only ELECTRONICS was counted before, so the
+    // most valuable things a civ can make contributed nothing to its economy:
+    // Software at a base price of 200 and Microchips at 160 earned zero.
+    gold += stock.getAmount(goods::ELECTRONICS);
+    gold += stock.getAmount(goods::ADV_CONSUMER_GOODS) * 2;
+    gold += stock.getAmount(goods::COMPUTERS_GOOD) * 2;
+    gold += stock.getAmount(goods::MICROCHIPS) * 3;
+    gold += stock.getAmount(goods::SOFTWARE) * 4;
+
+    return std::min(static_cast<CurrencyAmount>(gold), goodsTaxCap(city.population()));
+}
+
+
 EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
                                            const aoc::map::HexGrid& grid) {
     EconomicBreakdown bd{};
@@ -110,21 +139,11 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
         bd.incomeCommercial +=
             static_cast<CurrencyAmount>(cityAdjacencyYields(grid, districtIndex, *city).gold);
 
-        // Goods economic activity (Phase B: increased caps/rates).
-        // Must stay in sync with the identical block in processGoldIncome
-        // (below) — previous hardcoded ids 72/79/75 resolved to
-        // SURFACE_PLATE / CHARCOAL / SEMICONDUCTORS instead of
-        // CONSUMER_GOODS / CLOTHING / ELECTRONICS, so the diagnostic
-        // breakdown and the real income loop both taxed the wrong goods.
-        {
-            const CityStockpileComponent& stock = city->stockpile();
-            int32_t ecoGold                     = 0;
-            ecoGold += stock.getAmount(goods::CONSUMER_GOODS) / 4;
-            ecoGold += stock.getAmount(goods::PROCESSED_FOOD) / 4;
-            ecoGold += stock.getAmount(goods::CLOTHING) / 2;
-            ecoGold += stock.getAmount(goods::ELECTRONICS) / 1;
-            bd.incomeGoodsEcon += static_cast<CurrencyAmount>(std::min(ecoGold, 15));
-        }
+        // Goods economic activity. One function now, shared with
+        // processGoldIncome below: two copies of this sum used to sit here with
+        // a comment begging them to stay in sync, and they had already drifted
+        // once into taxing the wrong goods entirely.
+        bd.incomeGoodsEcon += cityGoodsTax(*city);
 
         // Building maintenance (no flat district fee; only building definitions)
         for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
@@ -343,19 +362,9 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player, const aoc::map::HexG
         }
 
         // Goods-based commerce tax: goods circulating in the city represent
-        // real economic activity that the government taxes. This is the natural
-        // income loop: produce goods → local market activity → tax revenue.
-        // Goods-rich cities pay more taxes because they have a larger real economy.
-        // Max 15 gold/city so supply-side improvements are meaningful but not dominant.
-        {
-            const CityStockpileComponent& stock = city->stockpile();
-            int32_t economicActivityGold        = 0;
-            economicActivityGold += stock.getAmount(goods::CONSUMER_GOODS) / 4; // was /5
-            economicActivityGold += stock.getAmount(goods::PROCESSED_FOOD) / 4; // was /5
-            economicActivityGold += stock.getAmount(goods::CLOTHING) / 2;       // was /3
-            economicActivityGold += stock.getAmount(goods::ELECTRONICS) / 1;    // was /2
-            cityGold += static_cast<CurrencyAmount>(std::min(economicActivityGold, 15));
-        }
+        // real economic activity that the government taxes. Produce goods ->
+        // local market activity -> tax revenue.
+        cityGold += cityGoodsTax(*city);
 
         // Distance-based corruption: reduces gold based on distance from capital.
         // Varies by government type (Communism has 0 distance corruption).

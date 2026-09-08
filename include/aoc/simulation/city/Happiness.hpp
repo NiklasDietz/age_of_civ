@@ -22,6 +22,19 @@ class Player;
 
 namespace aoc::sim {
 
+/// Ceiling on a single good's amenity contribution, as a multiple of its base.
+///
+/// Was 4x, which a stockpile of sixteen units reached; every unit past that was
+/// worth nothing at all. Raised so a well-supplied city reads differently from
+/// a barely-supplied one, but still bounded -- unbounded amenities from a
+/// stockpile would turn happiness into a warehousing exercise.
+inline constexpr float GOODS_AMENITY_CAP_MULTIPLE = 8.0f;
+
+/// Amenity swing between a city whose consumer demand is fully met and one
+/// getting nothing. Half up, half down from neutral, so meeting demand is a
+/// reward and failing it is a penalty rather than merely the absence of one.
+inline constexpr float CONSUMER_SATISFACTION_AMENITIES = 2.0f;
+
 struct CityHappinessComponent {
     float amenities       = 1.0f;   ///< From luxury resources, buildings, policies
     float demand          = 0.0f;   ///< Based on population (1 per 2 citizens)
@@ -30,6 +43,15 @@ struct CityHappinessComponent {
     /// 10%/turn in computeCityHappiness; folded into modifiers each recompute.
     float disasterUnhappiness = 0.0f;
     float happiness       = 1.0f;   ///< Net happiness = amenities - demand + modifiers
+
+    /// How much of last turn's consumer-goods demand the city could actually
+    /// meet, 0..1. Recomputed by the consumption drain every turn, so it is
+    /// NOT persisted -- a loaded save simply recomputes it on the next turn.
+    ///
+    /// The drains that consume these goods destroyed them with no reward for
+    /// consuming and no penalty for lacking; one drain's own comment said no
+    /// downstream effect read its result. This is that result.
+    float consumerSatisfaction = 1.0f;
 
     /// Growth multiplier from happiness. Happy cities grow faster.
     [[nodiscard]] float growthMultiplier() const {

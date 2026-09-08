@@ -19,9 +19,30 @@ class HexGrid;
 namespace aoc::game {
 class Player;
 class GameState;
+class City;
 }
 
 namespace aoc::sim {
+
+/// Taxable economic activity from the goods circulating in a city.
+///
+/// One function, because there were two copies of this sum with a comment
+/// begging them to stay in sync -- and they had already drifted once, taxing
+/// SURFACE_PLATE, CHARCOAL and SEMICONDUCTORS instead of CONSUMER_GOODS,
+/// CLOTHING and ELECTRONICS.
+///
+/// It counted four goods and capped at a flat 15 per city, so the marginal unit
+/// of a finished good was worth nothing almost immediately, and the most
+/// valuable goods in the game earned nothing at all: Software (price 200) and
+/// Microchips (160) were not in the list. It now counts every finished good
+/// worth taxing, and the cap scales with the city -- a bigger market bears more
+/// trade than a village.
+[[nodiscard]] CurrencyAmount cityGoodsTax(const aoc::game::City& city);
+
+/// Ceiling on the goods tax for a city of `population`.
+[[nodiscard]] CurrencyAmount goodsTaxCap(int32_t population);
+
+
 
 /// Detailed per-turn economic breakdown for diagnostic analysis.
 struct EconomicBreakdown {

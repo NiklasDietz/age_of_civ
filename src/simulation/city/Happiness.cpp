@@ -126,9 +126,16 @@ void computeCityHappiness(aoc::game::Player& player, const GlobalReligionTracker
                 if (amount <= 0) {
                     return 0.0f;
                 }
-                // sqrt scaling: 1 unit = baseBonus, 4 units = 2x, 9 units = 3x, capped at 4x
+                // sqrt scaling with a cap. The cap was 4x, which one unit in
+                // four reaches and everything past is worth nothing -- the
+                // marginal unit of a finished good stopped counting almost
+                // immediately, which is half of why hoarding beat consuming.
+                // Raised so a genuinely well-supplied city is distinguishable
+                // from a barely-supplied one; still capped, because unbounded
+                // amenities from a stockpile would make happiness a
+                // warehousing exercise.
                 return std::min(baseBonus * std::sqrt(static_cast<float>(amount)),
-                                baseBonus * 4.0f);
+                                baseBonus * GOODS_AMENITY_CAP_MULTIPLE);
             };
             happiness.amenities += goodsHappiness(goods::CONSUMER_GOODS, 0.5f);
             happiness.amenities += goodsHappiness(goods::CLOTHING, 0.7f);
@@ -136,6 +143,18 @@ void computeCityHappiness(aoc::game::Player& player, const GlobalReligionTracker
             happiness.amenities += goodsHappiness(goods::PROCESSED_FOOD, 0.3f);
             // Electronics raise modern quality of life
             happiness.amenities += goodsHappiness(goods::ELECTRONICS, 0.8f);
+        }
+
+        // Whether the city's consumer demand was actually MET, as distinct from
+        // how much it happens to be sitting on. The stockpile bonuses above
+        // reward hoarding and saturate almost at once; this rewards the goods
+        // being consumed, and penalises a city that ran short. Half the swing
+        // up, half down, so meeting demand is a reward and failing it is a
+        // penalty rather than merely the absence of one.
+        {
+            const float satisfaction = std::clamp(happiness.consumerSatisfaction, 0.0f, 1.0f);
+            happiness.amenities +=
+                (satisfaction - 0.5f) * CONSUMER_SATISFACTION_AMENITIES;
         }
 
         // Specialist entertainers: +2 amenity each

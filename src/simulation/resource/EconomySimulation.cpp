@@ -1094,11 +1094,20 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
             const int32_t avail = stockpileMut.getAmount(goods::CONSUMER_GOODS);
             const int32_t consumerTake = std::min(consumerDrain, avail);
             if (consumerTake > 0) {
-                // Best-effort drain: consumerTake is capped at `avail` above and no
-                // downstream effect reads the result -- missing goods simply don't
-                // drain this turn (see comment above), so failure needs no branch.
+                // consumerTake is capped at `avail` above, so this cannot fail.
                 static_cast<void>(stockpileMut.consumeGoods(goods::CONSUMER_GOODS, consumerTake));
             }
+            // Record how much of the demand was met. Consuming these goods used
+            // to be pure destruction: no reward for meeting demand, no penalty
+            // for failing it, and this drain's own comment said no downstream
+            // effect read its result. The happiness pass reads it now, so the
+            // marginal unit of a finished good is finally worth something.
+            cityPtr->happiness().consumerSatisfaction =
+                (consumerDrain > 0)
+                    ? std::clamp(static_cast<float>(consumerTake) /
+                                     static_cast<float>(consumerDrain),
+                                 0.0f, 1.0f)
+                    : 1.0f;
             if (pop > 10) {
                 const int32_t advDrain = (pop - 10) / 3 + 1;
                 const int32_t advAvail = stockpileMut.getAmount(goods::ADV_CONSUMER_GOODS);
