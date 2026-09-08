@@ -3,6 +3,8 @@
  * @brief Era dedications, emergency system, extended World Congress.
  */
 
+#include "aoc/simulation/tech/TechTree.hpp"
+#include "aoc/game/Player.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyExtensions.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
@@ -12,6 +14,69 @@
 #include <algorithm>
 
 namespace aoc::sim {
+
+void grantResearchAllianceBoons(aoc::game::GameState& gameState, DiplomacyManager& diplomacy,
+                                PlayerId player, int32_t currentTurn) {
+    aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer == nullptr) {
+        return;
+    }
+    const uint8_t seats = diplomacy.playerCount();
+    if (player >= seats) {
+        return;
+    }
+    for (uint8_t other = 0; other < seats; ++other) {
+        if (other == player) {
+            continue;
+        }
+        PairwiseRelation& rel = diplomacy.relation(player, static_cast<PlayerId>(other));
+        for (std::size_t i = 1; i < rel.alliances.size(); ++i) {
+            AllianceState& a = rel.alliances[i];
+            if (!a.isActive() || a.type != AllianceType::Research) {
+                continue;
+            }
+            const uint8_t level = static_cast<uint8_t>(a.level);
+
+            // Level 2: a eureka, on its interval.
+            if (level >= static_cast<uint8_t>(AllianceLevel::Level2) &&
+                currentTurn - a.lastEurekaGrantTurn >= RESEARCH_EUREKA_INTERVAL) {
+                a.lastEurekaGrantTurn = currentTurn;
+                const TechId researching = gsPlayer->tech().currentResearch;
+                if (researching.isValid()) {
+                    // A shared breakthrough: worth a slice of the current tech.
+                    gsPlayer->tech().researchProgress +=
+                        effectiveResearchCost(gsPlayer->tech(), researching) * 0.25f;
+                    LOG_INFO("Research alliance: player %u received a eureka from its ally %u",
+                             static_cast<unsigned>(player), static_cast<unsigned>(other));
+                }
+            }
+
+            // Level 3: a free tech, on its own longer interval, and only when
+            // the ally is genuinely ahead -- the table says "if ally has more
+            // techs", which is the point of the clause.
+            if (level >= static_cast<uint8_t>(AllianceLevel::Level3) &&
+                currentTurn - a.lastTechGrantTurn >= RESEARCH_TECH_INTERVAL) {
+                const aoc::game::Player* ally = gameState.player(static_cast<PlayerId>(other));
+                if (ally != nullptr &&
+                    ally->tech().completedTechs.size() > 0) {
+                    int32_t mine = 0;
+                    int32_t theirs = 0;
+                    for (bool b : gsPlayer->tech().completedTechs) { mine += b ? 1 : 0; }
+                    for (bool b : ally->tech().completedTechs)     { theirs += b ? 1 : 0; }
+                    if (theirs > mine) {
+                        const TechId researching = gsPlayer->tech().currentResearch;
+                        if (researching.isValid()) {
+                            a.lastTechGrantTurn = currentTurn;
+                            gsPlayer->tech().completeResearch();
+                            LOG_INFO("Research alliance: player %u was given a tech by its ally %u",
+                                     static_cast<unsigned>(player), static_cast<unsigned>(other));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 AllianceYieldModifiers computeAllianceYieldModifiers(
         const DiplomacyManager& diplomacy, PlayerId player, uint8_t playerCount) {
@@ -42,15 +107,10 @@ AllianceYieldModifiers computeAllianceYieldModifiers(
             constexpr float LEVEL1_BUMP = 0.05f;
             switch (a.type) {
                 case AllianceType::Research:
+                    // Level 1 only. The level-2 eureka and level-3 free tech are
+                    // PERIODIC grants, paid by grantResearchAllianceBoons on
+                    // their own intervals rather than as a standing multiplier.
                     out.scienceMult += LEVEL1_BUMP;
-                    // The table describes these as periodic grants (a eureka
-                    // every 30 turns, a free tech every 50). Granting on a
-                    // period needs a per-pair "last granted" counter, which is
-                    // persisted state and so waits for the save-version bump.
-                    // Until then they read as a standing research edge of the
-                    // same magnitude.
-                    if (atLeast2) { out.scienceMult += def.level2Bonus.bonusValue; }
-                    if (atLeast3) { out.scienceMult += def.level3Bonus.bonusValue; }
                     break;
                 case AllianceType::Cultural:
                     out.cultureMult += LEVEL1_BUMP;

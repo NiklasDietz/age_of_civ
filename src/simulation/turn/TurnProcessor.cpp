@@ -664,6 +664,12 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
             const aoc::sim::AllianceYieldModifiers all = aoc::sim::computeAllianceYieldModifiers(
                 *turnContext.diplomacy, player,
                 static_cast<uint8_t>(turnContext.gameState->playerCount()));
+            // A Research alliance's level-2 eureka and level-3 free tech are
+            // grants on their own intervals, not a standing multiplier, so they
+            // are paid here rather than folded into scienceMult.
+            grantResearchAllianceBoons(*turnContext.gameState, *turnContext.diplomacy, player,
+                                       static_cast<int32_t>(turnContext.currentTurn));
+
             science *= all.scienceMult;
             culture *= all.cultureMult;
             if (all.faithMult != 1.0f) {

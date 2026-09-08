@@ -37,6 +37,12 @@ enum class AllianceType : uint8_t {
 
 inline constexpr int32_t ALLIANCE_TYPE_COUNT = 5;
 
+/// How often a Research alliance hands over its level-2 eureka and its
+/// level-3 free tech, in turns. The descriptions in ALLIANCE_TYPE_DEFS name
+/// both intervals; these are those numbers.
+inline constexpr int32_t RESEARCH_EUREKA_INTERVAL = 30;
+inline constexpr int32_t RESEARCH_TECH_INTERVAL   = 50;
+
 enum class AllianceLevel : uint8_t {
     Level1 = 1,  ///< Basic: Open Borders + Defensive Pact
     Level2 = 2,  ///< Intermediate: type-specific bonus
@@ -95,6 +101,14 @@ struct AllianceState {
     AllianceType  type  = AllianceType::None;
     AllianceLevel level = AllianceLevel::Level1;
     int32_t       turnsActive = 0;
+
+    /// Turn the Research alliance last handed over a eureka (level 2) and a
+    /// free tech (level 3). The table describes both as periodic grants, and a
+    /// period needs somewhere to remember when it last fired -- without these
+    /// two counters they could only be paid as a standing science multiplier,
+    /// which is what they were until save v30.
+    int32_t lastEurekaGrantTurn = -1000;
+    int32_t lastTechGrantTurn   = -1000;
 
     [[nodiscard]] bool isActive() const { return this->type != AllianceType::None; }
 

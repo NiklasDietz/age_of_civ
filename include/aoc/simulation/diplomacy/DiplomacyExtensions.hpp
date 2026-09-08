@@ -183,6 +183,15 @@ struct AllianceYieldModifiers {
 
 class DiplomacyManager;
 
+/// Pay the Research alliance's periodic grants: a eureka every
+/// RESEARCH_EUREKA_INTERVAL turns at level 2, and a free tech every
+/// RESEARCH_TECH_INTERVAL turns at level 3 when the ally is genuinely ahead.
+///
+/// These are grants on a period, not a standing multiplier, which is what the
+/// table describes and what the per-pair counters on AllianceState exist for.
+void grantResearchAllianceBoons(aoc::game::GameState& gameState, DiplomacyManager& diplomacy,
+                                PlayerId player, int32_t currentTurn);
+
 /// Compute alliance-driven yield modifiers for a given player.
 /// Iterates pairwise relations and accumulates +5% per active-alliance level.
 [[nodiscard]] AllianceYieldModifiers computeAllianceYieldModifiers(

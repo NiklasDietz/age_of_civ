@@ -1104,6 +1104,8 @@ void writeDiplomacySection(WriteBuffer& out, const aoc::sim::DiplomacyManager& d
                 section.writeU8(static_cast<uint8_t>(st.type));
                 section.writeU8(static_cast<uint8_t>(st.level));
                 section.writeI32(st.turnsActive);
+                section.writeI32(st.lastEurekaGrantTurn); // v30
+                section.writeI32(st.lastTechGrantTurn);   // v30
             }
             section.writeI32(rel.lastAllianceFormTurn);
             section.writeI32(rel.allianceBreakWarningTurns);
@@ -3050,7 +3052,9 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                     for (aoc::sim::AllianceState& st : rel.alliances) {
                         st.type        = static_cast<aoc::sim::AllianceType>(buf.readU8());
                         st.level       = static_cast<aoc::sim::AllianceLevel>(buf.readU8());
-                        st.turnsActive = buf.readI32();
+                        st.turnsActive         = buf.readI32();
+                        st.lastEurekaGrantTurn  = buf.readI32(); // v30
+                        st.lastTechGrantTurn    = buf.readI32(); // v30
                     }
                     rel.lastAllianceFormTurn      = buf.readI32();
                     rel.allianceBreakWarningTurns = buf.readI32();
