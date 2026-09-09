@@ -5,6 +5,7 @@
 
 #include "aoc/simulation/unit/UnitTransport.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
+#include "aoc/simulation/unit/Naval.hpp"
 #include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/simulation/city/CityBombardment.hpp"
 #include "aoc/simulation/city/CitySiege.hpp"
@@ -103,6 +104,36 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
         if (!grid.isValid(nextTile)) {
             unit.clearPath();
             break;
+        }
+
+        // Shoreline transitions. A land-only path never contains water, so this
+        // only fires for a unit that was deliberately given an amphibious path
+        // (orderUnitMove's opt-in flag) -- which is what lets an AI unit cross
+        // water at all. tryEmbark enforces its own tech gate, Sailing for
+        // civilians and Shipbuilding for military, and consumes the rest of the
+        // turn, so boarding costs a turn exactly as it does for the human.
+        if (!unit.isNaval()) {
+            const bool nextIsWater = aoc::map::isWater(grid.terrain(grid.toIndex(nextTile)));
+            if (nextIsWater && unit.state() != aoc::sim::UnitState::Embarked) {
+                const aoc::game::Player* owner = gameState.player(unit.owner());
+                if (!tryEmbark(unit, nextTile, grid,
+                               owner != nullptr ? &owner->tech() : nullptr)) {
+                    // Cannot board -- abandon the crossing rather than walk into
+                    // the sea. The caller's stuck counter takes it from here.
+                    unit.clearPath();
+                    break;
+                }
+                moved = true;
+                break;  // embarking ends the turn
+            }
+            if (!nextIsWater && unit.state() == aoc::sim::UnitState::Embarked) {
+                if (!tryDisembark(unit, nextTile, grid)) {
+                    unit.clearPath();
+                    break;
+                }
+                moved = true;
+                break;  // landing ends the turn too
+            }
         }
 
         // Determine movement cost based on unit class and current state
@@ -259,7 +290,8 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
 }
 
 bool orderUnitMove(aoc::game::Unit& unit,
-                    aoc::hex::AxialCoord goal, const aoc::map::HexGrid& grid) {
+                    aoc::hex::AxialCoord goal, const aoc::map::HexGrid& grid,
+                    bool amphibious) {
     if (unit.position() == goal) {
         unit.clearPath();
         return true;
@@ -267,8 +299,21 @@ bool orderUnitMove(aoc::game::Unit& unit,
 
     const bool navalPath = unit.isNaval();
 
-    const std::optional<aoc::map::PathResult> pathResult = aoc::map::findPath(
+    // Land first, sea only if there is no land route. Asking for an amphibious
+    // path outright lets A* take a shortcut through the water on the unit's own
+    // continent, and each crossing costs a turn to board and another to land.
+    // Measured with the unconditional version: settlers went to sea to save
+    // distance, seed 42's best/worst GDP spread went 4.4x -> 13.0x and seed
+    // 43's 1.7x -> 2.6x, while not one civ settled another landmass. Water is
+    // a last resort, not a shortcut.
+    std::optional<aoc::map::PathResult> pathResult = aoc::map::findPath(
         grid, unit.position(), goal, 0, nullptr, INVALID_PLAYER, navalPath);
+
+    if (!pathResult.has_value() && amphibious && !navalPath) {
+        pathResult = aoc::map::findPath(
+            grid, unit.position(), goal, 0, nullptr, INVALID_PLAYER, false,
+            /*avoidCanals=*/false, /*amphibious=*/true);
+    }
 
     if (!pathResult.has_value()) {
         return false;

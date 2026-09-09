@@ -45,8 +45,14 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
  * @param grid   Hex grid for pathfinding.
  * @return true if a path was found, false if the destination is unreachable.
  */
+/// `amphibious` routes a land unit across water as well as land, for a unit
+/// that intends to embark. Defaults false so every existing caller keeps a
+/// land-only (or naval-only) path exactly as before; only a caller that has
+/// checked the embark tech should opt in. moveUnitAlongPath performs the
+/// embark and disembark transitions when a path actually crosses a shoreline.
 bool orderUnitMove(aoc::game::Unit& unit,
-                   aoc::hex::AxialCoord goal, const aoc::map::HexGrid& grid);
+                   aoc::hex::AxialCoord goal, const aoc::map::HexGrid& grid,
+                   bool amphibious = false);
 
 /**
  * @brief Restore movement points for all units belonging to a player.

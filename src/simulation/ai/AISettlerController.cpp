@@ -619,7 +619,14 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
 
         // --- Move toward the target ---
         if (snap.movementRemaining > 0) {
-            aoc::sim::orderUnitMove(*snap.ptr, target, grid);
+            // Route across water too, once the civ can put a settler to sea.
+            // Sailing (31) is the civilian embark gate that tryEmbark enforces,
+            // so asking for an amphibious path before researching it would only
+            // produce a route the unit refuses to walk. moveUnitAlongPath does
+            // the boarding and landing at the shorelines.
+            const bool canEmbark =
+                gsPlayer->tech().hasResearched(aoc::TechId{31});
+            aoc::sim::orderUnitMove(*snap.ptr, target, grid, canEmbark);
             aoc::sim::moveUnitAlongPath(gameState, *snap.ptr, grid);
 
             // If the settler moved, remove the old position entry so the new
