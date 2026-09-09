@@ -1038,6 +1038,7 @@ if(AOC_BUILD_TESTS)
         test_crust_mass_conservation
         test_diplomacy_actions
         test_injury_grievances
+        test_forex_trade_balance
         test_monetary_actions
         test_one_treasury
         test_resource_curse_is_emergent

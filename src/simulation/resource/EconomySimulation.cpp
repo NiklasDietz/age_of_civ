@@ -1509,6 +1509,20 @@ void EconomySimulation::settleTradeInCoins(aoc::game::GameState& gameState) {
         aoc::game::Player* receiverPlayer = gameState.player(receiver);
         if (payerPlayer == nullptr || receiverPlayer == nullptr) { continue; }
 
+        // Feed the exchange rate. ForexMarket READS forex.tradeBalance to move
+        // the rate away from its fundamental, and resets it to 0 at the end of
+        // its own update -- but nothing anywhere WROTE a non-zero value, so the
+        // field occurred exactly twice in the tree (its declaration and that
+        // reset) and the trade channel contributed identically zero. This is
+        // the net flow it always wanted: a civ exporting more than it imports
+        // accumulates a surplus and its currency firms.
+        //
+        // I removed a ResourceCurse currencyAppreciation multiplier earlier on
+        // the stated grounds that this channel already did the job. It did not.
+        // Now it does.
+        receiverPlayer->currencyExchange().tradeBalance += paymentValue;
+        payerPlayer->currencyExchange().tradeBalance    -= paymentValue;
+
         float efficiency = bilateralTradeEfficiency(gameState, payer, receiver);
         int32_t effectivePayment = static_cast<int32_t>(
             static_cast<float>(paymentValue) * efficiency * 0.05f);

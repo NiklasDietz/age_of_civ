@@ -832,6 +832,24 @@ void writeMonetarySection(WriteBuffer& out, const aoc::game::GameState& gameStat
         section.writeI32(m.debasement.turnsDebased);
         section.writeU8(m.debasement.discoveredByPartners ? 1 : 0);
         section.writeI32(m.turnsInCurrentSystem);
+        // v32. These are live and were being dropped.
+        //
+        // The three allocation shares are a civ's standing economic policy --
+        // read by science (CityScience), by amenities (Happiness) and by income
+        // (Maintenance), and moved by the AI every turn in response to treasury
+        // and unhappiness. Omitting them meant a reload silently reset every
+        // civ to the 0.70/0.20/0.10 defaults, discarding whatever policy the
+        // game had arrived at.
+        //
+        // consecutiveNegativeTurns is the bankruptcy clock: five turns below
+        // -200 disbands a unit. Dropping it handed a failing civ a clean slate
+        // on every load. reserveStressTurns is the gold-standard suspension
+        // counter and had the same problem.
+        section.writeF32(m.goldAllocation);
+        section.writeF32(m.scienceAllocation);
+        section.writeF32(m.luxuryAllocation);
+        section.writeI32(m.consecutiveNegativeTurns);
+        section.writeI32(m.reserveStressTurns);
     }
 
     writeSection(out, SectionId::MonetaryState, section);
@@ -2729,6 +2747,11 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 m.debasement.turnsDebased         = buf.readI32();
                 m.debasement.discoveredByPartners = buf.readU8() != 0;
                 m.turnsInCurrentSystem            = buf.readI32();
+                m.goldAllocation                  = buf.readF32();
+                m.scienceAllocation               = buf.readF32();
+                m.luxuryAllocation                = buf.readF32();
+                m.consecutiveNegativeTurns        = buf.readI32();
+                m.reserveStressTurns              = buf.readI32();
                 if (player != nullptr) {
                     player->monetary() = std::move(m);
                 }

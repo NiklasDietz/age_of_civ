@@ -123,6 +123,6 @@ namespace aoc::save {
  * 55; those are bounds checks rather than layout, but the version covers them
  * too. Every v30 save becomes unloadable. */
 
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 31;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 32;
 
 } // namespace aoc::save

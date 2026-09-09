@@ -208,22 +208,17 @@ void updateExchangeRates(aoc::game::GameState& gameState) {
         // 1. Compute fundamental rate.
         //
         // A currencyAppreciation multiplier from ResourceCurse used to be
-        // applied on top of this, and was removed with that module.
+        // applied on top of this, and was removed with that module. The reason
+        // first given for that removal was wrong -- it claimed tradeBalanceEffect
+        // below already carried the effect, when in fact nothing anywhere wrote
+        // forex.tradeBalance, so that channel contributed identically zero and
+        // the field occurred exactly twice in the whole tree.
         //
-        // CORRECTION 2026-09-08: the reason first written here was wrong. It
-        // claimed tradeBalanceEffect below already moves the rate from what the
-        // civ actually exports, so the multiplier double-counted it. It does
-        // not: `forex.tradeBalance` is READ at that line and reset to 0 at the
-        // end of this function, and NOTHING anywhere writes a non-zero value to
-        // it -- the field occurs exactly twice in the tree, here and in its own
-        // declaration. So tradeBalanceEffect is identically zero and that
-        // channel does not exist.
-        //
-        // The removal still stands on its own: the multiplier was a coefficient
-        // fabricated from a production ratio, not a modelled effect. But the
-        // exchange rate's only live input is now computeFundamentalRate below
-        // (state, trust, GDP). Populating tradeBalance from the net flow already
-        // computed in EconomySimulation would make the trade channel real.
+        // It is written now: EconomySimulation credits and debits it from the
+        // net bilateral flow when it settles trade imbalances, so a civ that
+        // exports more than it imports really does see its currency firm. The
+        // removal stands on its own merits either way -- the multiplier was a
+        // coefficient fabricated from a production ratio, not a modelled effect.
         forex.fundamentalRate = computeFundamentalRate(state, trust, averageGDP);
 
         // 2. Apply trade balance (surplus strengthens, deficit weakens)
