@@ -49,6 +49,43 @@ namespace aoc::sim {
 [[nodiscard]] ErrorCode requestDevalueCurrency(aoc::game::GameState& gameState, PlayerId player,
                                                GlobalCurrencyWarState& warState);
 
+/// Set the central-bank policy rate. Refused for CommodityMoney and Barter,
+/// which have no central bank; the value is clamped to [0, 0.25] inside
+/// setInterestRate.
+///
+/// The rate was previously moved from exactly two places -- the hyperinflation
+/// branch of the AI's crisis response, which slams it to 0.25, and a bond
+/// default, which adds 0.05 -- so outside those it sat at its 0.05 default for
+/// an entire game. Six systems read it: debt service in FiscalPolicy and
+/// CurrencyCrisis, bond yields, the forex interest differential, speculative
+/// bubble formation and popping, and (since taxableMoneyShare) the tax base.
+[[nodiscard]] ErrorCode requestSetInterestRate(aoc::game::GameState& gameState, PlayerId player,
+                                               float rate);
+
+/// Choose and apply this turn's policy rate for one civ, balancing the
+/// tradeoffs its consumers create. Returns the rate now in force.
+///
+/// Leaving inflation alone is not free and neither is fighting it: cheap money
+/// widens the tax base and lightens debt service, but breeds bubbles (which
+/// form only below 0.08) and feeds inflation. This is the decision nobody was
+/// making.
+///
+/// DELIBERATELY NOT CALLED PER TURN YET, pending a balance decision that is the
+/// project owner's rather than mine. Enabling it is one line at the top of
+/// EconomySimulation::tickMonetaryMechanics, in the per-player loop:
+///
+///     applyCentralBankPolicy(gameState, playerPtr->id());
+///
+/// Measured with that line in, over 500 turns: seed 42 is unchanged to slightly
+/// better (same winner and victory type, wars 15 -> 14, revolts and secessions
+/// identical), while seed 43 keeps its winner but revolts go 611 -> 766,
+/// secessions 396 -> 541 and wars 23 -> 31. One seed improves and one degrades,
+/// which is exactly the call not to make silently. The mechanism is visible:
+/// seed 43 runs hotter than the target, so its banks tighten, tightening slows
+/// velocity, a slower velocity narrows the tax base (taxableMoneyShare), and
+/// the lost revenue shows up as unrest.
+float applyCentralBankPolicy(aoc::game::GameState& gameState, PlayerId player);
+
 /// Issue new fiat money. Refused outside fiat-class systems; the amount is
 /// capped inside printMoney at a share of GDP.
 [[nodiscard]] ErrorCode requestPrintMoney(aoc::game::GameState& gameState, PlayerId player,
