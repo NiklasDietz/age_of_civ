@@ -37,6 +37,7 @@ namespace aoc::map { class HexGrid; }
 namespace aoc::sim {
 
 struct MonetaryStateComponent;
+struct CurrencyTrustComponent;
 
 // ============================================================================
 // Crisis types and state
@@ -139,9 +140,13 @@ struct CurrencyCrisisComponent {
  * @param crisis Player's crisis component (will be mutated).
  * @return true if a new crisis was triggered this turn.
  */
+/// `trust` is the civ's live credit standing. A crisis is supposed to cost it,
+/// and for a long time did not: every penalty here was written to a `fiatTrust`
+/// field on MonetaryStateComponent that nothing ever read.
 bool processCurrencyCrisis(aoc::game::GameState& gameState,
                            MonetaryStateComponent& state,
-                           CurrencyCrisisComponent& crisis);
+                           CurrencyCrisisComponent& crisis,
+                           CurrencyTrustComponent& trust);
 
 /**
  * @brief Force a currency reform to end hyperinflation.
@@ -154,7 +159,8 @@ bool processCurrencyCrisis(aoc::game::GameState& gameState,
  * @param crisis Player's crisis component.
  */
 void executeCurrencyReform(MonetaryStateComponent& state,
-                           CurrencyCrisisComponent& crisis);
+                           CurrencyCrisisComponent& crisis,
+                           CurrencyTrustComponent& trust);
 
 /**
  * @brief Track reserve-ratio stress on GoldStandard civs and force the
@@ -175,6 +181,7 @@ void executeCurrencyReform(MonetaryStateComponent& state,
  *
  * No-op for non-GoldStandard civs. Call once per player per turn.
  */
-void processReserveStress(MonetaryStateComponent& state);
+void processReserveStress(MonetaryStateComponent& state,
+                          CurrencyTrustComponent& trust);
 
 } // namespace aoc::sim

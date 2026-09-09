@@ -300,11 +300,6 @@ struct MonetaryStateComponent {
     CurrencyAmount governmentDebt     = 0;
     CurrencyAmount taxRevenue         = 0;
 
-    // Sustained-hyperinflation tracker. Each turn inflationRate ≥ 0.30
-    // bumps this counter; resets to 0 when inflation eases below 0.20.
-    // When it crosses 5, the collapse system is signaled to set
-    // CollapseType::DebtSpiral. UI surfaces a warning at counter ≥ 3.
-    int32_t        hyperinflationTurns = 0;
     CurrencyAmount deficit            = 0;
 
     // -- Derived stats --
@@ -315,23 +310,17 @@ struct MonetaryStateComponent {
     DebasementState debasement;
 
     // -- Fiat currency specifics --
-    /// Player-chosen currency name (e.g., "Dollar", "Yuan", "Mark").
-    /// Default: civilization name + "Crown" (e.g., "Roman Crown").
-    std::string currencyName = "Crown";
-
-    /// Fiat trust score [0.0, 1.0]. Determines trade acceptance and exchange rate.
-    /// Trust depends on: GDP rank, inflation, debt-to-GDP, military, trade partners.
-    /// Below 0.3: severe trade penalties, partners demand commodity payment.
-    /// 0.3-0.6: fiat accepted at discount.
-    /// 0.6-0.8: normal fiat acceptance.
-    /// Above 0.8: candidate for reserve currency.
-    Percentage fiatTrust = 0.5f;
-
-    /// Whether this player holds reserve currency status (global acceptance).
-    bool isReserveCurrency = false;
-
-    /// Cumulative money printed (fiat only). Drives inflation via Fisher equation.
-    CurrencyAmount totalMoneyPrinted = 0;
+    //
+    // Trust and reserve-currency status live in CurrencyTrustComponent
+    // (CurrencyTrust.hpp), which is the model that computes them, the one the
+    // save file carries, and the one forex, victory scoring and the UI read.
+    // This struct used to carry `fiatTrust` and `isReserveCurrency` as well:
+    // shadow copies that nothing read, so every trust penalty the crisis
+    // system levied landed on them and did nothing. See CurrencyCrisis.cpp.
+    //
+    // `totalMoneyPrinted` went with them -- its comment claimed it drove
+    // inflation "via Fisher equation", but that equation uses money GROWTH,
+    // which is computed from moneySupply directly.
 
     /// Amount to print this turn (set by government policy).
     CurrencyAmount printAmountThisTurn = 0;
@@ -352,8 +341,6 @@ struct MonetaryStateComponent {
     int32_t reserveStressTurns = 0;
     /// True once a redemption-run drain started (< 0.5 ratio). Lets UI notify.
     bool    redemptionRunActive = false;
-    /// Pending suspension decision waiting on player input. AI resolves instantly.
-    bool    suspensionPending = false;
 
     // ========================================================================
     // Coin tier computation
@@ -462,7 +449,6 @@ struct MonetaryStateComponent {
 
         this->treasury += actualPrint;
         this->moneySupply += actualPrint;
-        this->totalMoneyPrinted += actualPrint;
         this->printAmountThisTurn = actualPrint;
 
         // Direct inflation impact: printed money / GDP
@@ -471,11 +457,6 @@ struct MonetaryStateComponent {
                                  / static_cast<float>(this->gdp);
         }
         return actualPrint;
-    }
-
-    /// Set the currency name (e.g. "Dollar", "Yuan", "Drachma").
-    void setCurrencyName(std::string_view name) {
-        this->currencyName = std::string(name);
     }
 
     // ========================================================================

@@ -1740,8 +1740,9 @@ void EconomySimulation::processCrisisAndBonds(aoc::game::GameState& gameState) {
         // Reserve-ratio stress must run BEFORE processCurrencyCrisis so the
         // forced GoldStandard -> Fiat suspension lands before hyperinflation
         // checks see the new fiat state.
-        processReserveStress(state);
-        processCurrencyCrisis(gameState, state, crisis);
+        CurrencyTrustComponent& trust = playerPtr->currencyTrust();
+        processReserveStress(state, trust);
+        processCurrencyCrisis(gameState, state, crisis, trust);
     }
 
     processBondPayments(gameState);

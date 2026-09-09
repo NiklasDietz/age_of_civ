@@ -1040,6 +1040,7 @@ if(AOC_BUILD_TESTS)
         test_injury_grievances
         test_forex_trade_balance
         test_gold_backing
+        test_crisis_costs_credit
         test_monetary_actions
         test_one_treasury
         test_resource_curse_is_emergent

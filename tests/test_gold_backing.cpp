@@ -19,6 +19,7 @@
 
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/monetary/CurrencyTrust.hpp"
 
 using aoc::sim::MonetarySystemType;
 
@@ -38,7 +39,8 @@ float backingWith(int32_t copper, int32_t silver, int32_t goldBars) {
     // value plus a statutory note issue, NOT a function of the backing ratio.
     s.moneySupply = static_cast<aoc::CurrencyAmount>(
         static_cast<float>(s.totalCoinValue()) * (1.0f + aoc::sim::GOLD_STANDARD_NOTE_ISSUE));
-    aoc::sim::processReserveStress(s);
+    aoc::sim::CurrencyTrustComponent trust;
+    aoc::sim::processReserveStress(s, trust);
     return s.goldBackingRatio;
 }
 

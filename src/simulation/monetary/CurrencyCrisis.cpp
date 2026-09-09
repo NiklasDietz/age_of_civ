@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
+#include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/Bonds.hpp"
 #include "aoc/game/GameState.hpp"
@@ -47,22 +48,28 @@ constexpr int32_t DEFAULT_DURATION = 5;
 
 bool processCurrencyCrisis(aoc::game::GameState& gameState,
                            MonetaryStateComponent& state,
-                           CurrencyCrisisComponent& crisis) {
+                           CurrencyCrisisComponent& crisis,
+                           CurrencyTrustComponent& trust) {
     bool newCrisis = false;
 
     // Tick down default cooldown regardless of active crisis
     if (crisis.defaultCooldown > 0) {
         --crisis.defaultCooldown;
     }
-    // G4: tick post-reform penalties. Lockout blocks new borrowing; trust cap
-    // holds fiatTrust at 0.3 so the civ cannot immediately rebuild reserve
+    // G4: tick post-reform penalties. Lockout blocks new borrowing; the trust
+    // cap holds credit at 0.3 so the civ cannot immediately rebuild reserve
     // currency status after hyperinflating its debt away.
+    //
+    // updateReserveCurrencyStatus grants that status at trustScore >= 0.80 and
+    // computeCurrencyTrust only drifts 20% toward target per turn, so
+    // re-applying the cap each turn keeps the ceiling at 0.44 -- comfortably
+    // short of the gate -- for the full 50 turns.
     if (crisis.reformLockoutTurns > 0) {
         --crisis.reformLockoutTurns;
     }
     if (crisis.reformTrustCapTurns > 0) {
         --crisis.reformTrustCapTurns;
-        state.fiatTrust = std::min(state.fiatTrust, 0.3f);
+        trust.trustScore = std::min(trust.trustScore, 0.3f);
     }
 
     // ================================================================
@@ -129,7 +136,7 @@ bool processCurrencyCrisis(aoc::game::GameState& gameState,
                     }
                 }
                 // Auto-execute currency reform at end of hyperinflation
-                executeCurrencyReform(state, crisis);
+                executeCurrencyReform(state, crisis, trust);
             }
 
             LOG_INFO("Player %u: %s crisis resolved",
@@ -214,7 +221,8 @@ bool processCurrencyCrisis(aoc::game::GameState& gameState,
 }
 
 void executeCurrencyReform(MonetaryStateComponent& state,
-                           CurrencyCrisisComponent& crisis) {
+                           CurrencyCrisisComponent& crisis,
+                           CurrencyTrustComponent& trust) {
     // Reset price level to baseline
     state.priceLevel = 1.0f;
     // Wipe 50% of money supply (the "new currency" is worth 2x the old)
@@ -228,11 +236,11 @@ void executeCurrencyReform(MonetaryStateComponent& state,
     // Reset consecutive inflation counter
     crisis.turnsHighInflation = 0;
     // G4: post-reform penalties. Borrow lockout matches default cooldown
-    // convention (turns-remaining counter). Trust cap locks fiatTrust at 0.3
-    // for the full duration.
+    // convention (turns-remaining counter). Trust cap locks credit at 0.3 for
+    // the full duration.
     crisis.reformLockoutTurns  = 30;
     crisis.reformTrustCapTurns = 50;
-    state.fiatTrust = std::min(state.fiatTrust, 0.3f);
+    trust.trustScore = std::min(trust.trustScore, 0.3f);
 
     LOG_INFO("Player %u: currency reform executed. Money supply halved, debt halved, borrow lockout 30t, trust cap 50t.",
              static_cast<unsigned>(state.owner));
@@ -252,11 +260,11 @@ constexpr float RESERVE_COLLAPSE_THRESHOLD = 0.10f;  // below: forced suspension
 constexpr float REDEMPTION_RUN_DRAIN       = 0.05f;  // 5%/turn foreign redemption
 constexpr int32_t RESERVE_STRESS_SUSPEND_TURNS = 10; // long-stress suspends
 
-void processReserveStress(MonetaryStateComponent& state) {
+void processReserveStress(MonetaryStateComponent& state,
+                          CurrencyTrustComponent& trust) {
     if (state.system != MonetarySystemType::GoldStandard) {
         state.reserveStressTurns   = 0;
         state.redemptionRunActive  = false;
-        state.suspensionPending    = false;
         return;
     }
 
@@ -320,10 +328,11 @@ void processReserveStress(MonetaryStateComponent& state) {
         state.transitionTo(MonetarySystemType::FiatMoney);
         state.reserveStressTurns  = 0;
         state.redemptionRunActive = false;
-        state.suspensionPending   = false;
-        // Start at below-baseline fiat trust: world just watched us default
-        // on a gold pledge.
-        state.fiatTrust = std::max(0.15f, state.fiatTrust - 0.20f);
+        // Start at below-baseline credit: the world just watched us default on
+        // a gold pledge. Measured on seed 42, three civs per game reach this
+        // branch, so until the penalty landed on trustScore, defaulting on
+        // convertibility was free.
+        trust.trustScore = std::max(0.15f, trust.trustScore - 0.20f);
     }
 }
 
