@@ -48,6 +48,28 @@ struct MonopolyInfo {
     /// 3x at 80%. A request to charge more than this is clamped.
     float maxPriceMultiplier = 1.0f;
 
+    // NOBODY CAN CURRENTLY CHOOSE. `priceMultiplier` starts at 1.0, is reset to
+    // 1.0 when a monopoly forms and when it lapses, is clamped DOWN to a fallen
+    // ceiling, and is raised in exactly one place: requestSetMonopolyPrice,
+    // which has no caller in the tree -- no AI decision, no UI, no REST route,
+    // no MCP tool. So it is permanently 1.0, buyerPriceMultiplier always
+    // returns 1.0, the markup at the trader delivery is a no-op, and
+    // monopolyIncome -- (priceMultiplier - 1) * 50 * controlShare -- is always
+    // exactly zero. Detection and notification work; the mechanic pays nothing.
+    //
+    // Adding an AI caller is NOT sufficient, and would be worse than leaving it
+    // alone. Gouging carries no cost anywhere: no grievance type, no reputation
+    // modifier, no buyer response. An AI weighing a free benefit always takes
+    // the maximum, which reproduces the automatic share-derived markup that was
+    // deliberately removed from this struct -- the thing the comment above
+    // objects to. A choice needs something on the other side of it.
+    //
+    // So this needs a design decision before code: what does squeezing cost?
+    // Candidates the systems already support -- a grievance against the
+    // monopolist from every civ that buys the good, a trade-reputation hit like
+    // the one debasement carries, or buyers substituting away and eroding
+    // controlShare.
+
     bool isActive = false;
 };
 
