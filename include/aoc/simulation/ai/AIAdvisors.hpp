@@ -63,6 +63,30 @@ void updateEconomyAssessment(aoc::game::Player& player);
  *
  * Scans nearby tiles using scoreCityLocation to find the top candidate
  * founding sites.  Posts expansionOpportunity [0,1] and bestCitySites
+ *
+ * MEASURED 2026-09-09: this advisor is NOT the reason some civs never expand.
+ * On seed 42 at 500 turns, players 0 and 2 stall at TWO cities for the whole
+ * game while 1 and 3 reach 12 and 11. Instrumenting the advisor shows it doing
+ * its job for the stalled pair every single run -- targets of 9 and 8 cities,
+ * expansionOpportunity 0.78 and 0.75, three viable sites found, and
+ * expansionExhausted never once set. They know where to go and are told to go.
+ *
+ * The block is downstream, in what the cities actually queue. Player 0's Ulundi
+ * and Nodwengu produced Pike and Shot 26 and 14 times plus 7 Archers, and
+ * player 2's Wallmapu and Temuco 23 and 10 Pike and Shot -- and between them
+ * NOT ONE SETTLER in 500 turns. Players 1 and 3 spent the same period on
+ * Builders and infrastructure. Both stalled civs are aggressive-leader civs
+ * (Zulu and Mapuche), so military production appears to crowd the settler out
+ * of the queue permanently, and the expansion advisor's signal never wins.
+ *
+ * The cost is not cosmetic: player 0 finished on GDP 8730 against player 3's
+ * 133089, and one city against eleven. An aggressive leader that never expands
+ * is not playing aggressively, it is not playing. The fix belongs in the
+ * static scoreSettler() in AIController.cpp, which already receives
+ * militaryUnits and treasury alongside expansionOpportunity -- the inputs
+ * needed to notice that a two-city civ with forty Pike and Shot should be
+ * building a settler instead. It is a balance change that will move both
+ * goldens, so it is recorded rather than applied.
  * to the blackboard.
  *
  * @param gameState  Full game state for existing city positions.
