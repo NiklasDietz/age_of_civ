@@ -75,6 +75,21 @@ struct AIBlackboard {
     std::vector<aoc::hex::AxialCoord> defendPriorities;
 
     /// Top candidate city founding sites scored by ExpansionAdvisor.
+    ///
+    /// ONLY ITS EMPTINESS IS EVER READ. The advisor spirals SCAN_RADIUS from
+    /// every owned city, scores each tile, sorts, dedups by a 3-hex spacing
+    /// rule and keeps the best three -- and then nothing consults the
+    /// coordinates. The single consumer is `bestCitySites.empty()`, which sets
+    /// expansionExhausted and so gates settler PRODUCTION. Where a settler
+    /// actually goes is decided independently in
+    /// AISettlerController::executeSettlerActions, which runs its own spiral
+    /// around the settler and never looks at this list. VisibilityEvents pushes
+    /// discovered sites here too; those are equally unread.
+    ///
+    /// This matters for the naval work. Adding overseas candidates HERE would
+    /// change nothing: the list does not steer anyone. The AI's overseas
+    /// ambition has to go into the settler controller's own candidate search,
+    /// in the same change that teaches it to embark.
     std::vector<aoc::hex::AxialCoord> bestCitySites;
 
     /// Set of building IDs owned across all of this player's cities.
