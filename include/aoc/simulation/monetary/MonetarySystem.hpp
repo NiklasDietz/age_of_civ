@@ -343,6 +343,31 @@ struct MonetaryStateComponent {
     bool    redemptionRunActive = false;
 
     // ========================================================================
+    // Taxable turnover
+    // ========================================================================
+
+    /// Share of the money supply that changes hands this turn, and so can be
+    /// taxed.
+    ///
+    /// 0.35 is the calibrated share at a neutral velocity of 1.0. Both tax-base
+    /// sites in Maintenance.cpp used to hardcode that constant and ignore
+    /// `velocityOfMoney` entirely -- which tickInflation recomputes every turn
+    /// from the interest rate and the monetary system, and which the save file
+    /// carries. The comment beside one of them described velocity as the thing
+    /// that "limits how fast the economy can use" its coins, so the model always
+    /// meant to consult it.
+    ///
+    /// Multiplying rather than substituting keeps that calibration: velocity
+    /// starts at 1.0, so a fresh game collects exactly what it did before, and
+    /// monetary policy moves it from there. Cheap money quickens turnover and
+    /// widens the tax base; dear money slows both.
+    static constexpr float TAXABLE_SHARE_AT_NEUTRAL_VELOCITY = 0.35f;
+
+    [[nodiscard]] float taxableMoneyShare() const {
+        return TAXABLE_SHARE_AT_NEUTRAL_VELOCITY * this->velocityOfMoney;
+    }
+
+    // ========================================================================
     // Coin tier computation
     // ========================================================================
 

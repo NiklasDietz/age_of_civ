@@ -110,11 +110,21 @@ void buildWorld(World& w) {
     aoc::game::Player& p0 = *w.gameState.players()[0];
     aoc::game::Player& p1 = *w.gameState.players()[1];
 
-    // NOTE: Player::m_treasury (the setTreasury/treasury() account) is NOT
-    // serialized -- only the monetary/economy component treasuries are; the
-    // app resyncs the spending account after load. Pin the component field.
+    // There is one treasury. Player::m_treasury used to shadow
+    // m_monetary.treasury, and TurnProcessor overwrote the monetary one from it
+    // every turn, so anything crediting the component -- trade-route cargo
+    // revenue among others -- paid into an account that was wiped before it
+    // could be spent. treasury() now reads m_monetary.treasury directly, which
+    // is the field serialised here.
     p0.monetary().treasury = 1234;
     p1.monetary().treasury = 87;
+    // v33: the persistent half of the forex component. A reload used to reset
+    // every currency to parity, which stopped being harmless once a cross-civ
+    // sale was priced through the exchange rate.
+    p0.currencyExchange().exchangeRate    = 1.37f;
+    p0.currencyExchange().foreignReserves = 640;
+    p1.currencyExchange().exchangeRate    = 0.62f;
+    p1.currencyExchange().foreignReserves = 0;
 
     aoc::game::City& alpha = p0.addCity({5, 5}, "Alpha");
     // v14: a housed great work (Amphitheater slot) and an antiquity site.
@@ -344,6 +354,13 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     const aoc::game::Player& lp1 = *loaded.gameState.players()[1];
     CHECK(lp0.monetary().treasury == 1234);
     CHECK(lp1.monetary().treasury == 87);
+    // The one treasury is reachable through both spellings.
+    CHECK(lp0.treasury() == 1234);
+    // v33: forex survives the round trip.
+    CHECK(lp0.currencyExchange().exchangeRate == doctest::Approx(1.37f));
+    CHECK(lp0.currencyExchange().foreignReserves == 640);
+    CHECK(lp1.currencyExchange().exchangeRate == doctest::Approx(0.62f));
+    CHECK(lp1.currencyExchange().owner == aoc::PlayerId{1});
     REQUIRE(lp0.cities().size() == 1);
     const aoc::game::City& lAlpha = *lp0.cities()[0];
     CHECK(lAlpha.name() == "Alpha");

@@ -198,11 +198,10 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
                     }
                 }
             }
-            collectionEfficiency           = std::min(collectionEfficiency, 1.0f);
-            constexpr float MONEY_VELOCITY = 0.35f;
-            bd.incomeCommercial +=
-                static_cast<CurrencyAmount>(static_cast<float>(moneySupply) * MONEY_VELOCITY *
-                                            player.monetary().taxRate * collectionEfficiency);
+            collectionEfficiency = std::min(collectionEfficiency, 1.0f);
+            bd.incomeCommercial += static_cast<CurrencyAmount>(
+                static_cast<float>(moneySupply) * player.monetary().taxableMoneyShare() *
+                player.monetary().taxRate * collectionEfficiency);
         }
     }
 
@@ -403,8 +402,6 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player, const aoc::map::HexG
     {
         const int32_t moneySupply = player.monetary().totalCoinValue();
         if (moneySupply > 0) {
-            constexpr float MONEY_VELOCITY = 0.35f; // 35% of supply transacts per turn
-
             float collectionEfficiency = 0.50f;
             for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
                 const CityDistrictsComponent& districts = city->districts();
@@ -432,9 +429,10 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player, const aoc::map::HexG
             collectionEfficiency = std::min(collectionEfficiency, 1.0f);
 
             const float taxRate = player.monetary().taxRate;
-            // Effective rate: taxRate × velocity × efficiency
+            // Effective rate: taxRate x velocity x efficiency
             const CurrencyAmount taxRevenue = static_cast<CurrencyAmount>(
-                static_cast<float>(moneySupply) * MONEY_VELOCITY * taxRate * collectionEfficiency);
+                static_cast<float>(moneySupply) * player.monetary().taxableMoneyShare()
+                * taxRate * collectionEfficiency);
             goldIncome += taxRevenue;
         }
     }

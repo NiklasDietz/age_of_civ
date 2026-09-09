@@ -850,6 +850,21 @@ void writeMonetarySection(WriteBuffer& out, const aoc::game::GameState& gameStat
         section.writeF32(m.luxuryAllocation);
         section.writeI32(m.consecutiveNegativeTurns);
         section.writeI32(m.reserveStressTurns);
+        // v33: the persistent half of CurrencyExchangeComponent, which was not
+        // saved at all. It mattered little while the exchange rate fed nothing
+        // an AI game could reach; now that a cross-civ sale is priced through
+        // bilateralTradeEfficiency, which reads the rate, a reload was resetting
+        // every currency to parity and wiping the reserves a central bank held.
+        //
+        // Only these two. The rest of the struct is per-turn scratch that
+        // updateExchangeRates clears at the end of its own pass -- netOrderFlow,
+        // tradeBalance, defenseSpending, isDefendingRate -- and defenseTarget
+        // means nothing once isDefendingRate is false. fundamentalRate is
+        // recomputed from scratch every turn before it is read. Saving any of
+        // them would persist a value the next turn overwrites.
+        const aoc::sim::CurrencyExchangeComponent& fx = player->currencyExchange();
+        section.writeF32(fx.exchangeRate);
+        section.writeI64(fx.foreignReserves);
     }
 
     writeSection(out, SectionId::MonetaryState, section);
@@ -2752,8 +2767,14 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 m.luxuryAllocation                = buf.readF32();
                 m.consecutiveNegativeTurns        = buf.readI32();
                 m.reserveStressTurns              = buf.readI32();
+                const float          fxRate     = buf.readF32();  // v33
+                const CurrencyAmount fxReserves = buf.readI64();  // v33
                 if (player != nullptr) {
                     player->monetary() = std::move(m);
+                    aoc::sim::CurrencyExchangeComponent& fx = player->currencyExchange();
+                    fx.owner           = owner;
+                    fx.exchangeRate    = fxRate;
+                    fx.foreignReserves = fxReserves;
                 }
             }
             break;
