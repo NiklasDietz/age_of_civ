@@ -358,6 +358,21 @@ void updateExpansionAssessment(const aoc::game::GameState& gameState,
         }
     }
 
+    // NOTHING HERE PROPOSES AN OVERSEAS SITE. scoreCandidate rejects only water,
+    // mountain and foreign-owned tiles -- it has no reachability test -- so a
+    // tile across a channel is a legal candidate in principle. In practice none
+    // is ever chosen: measured over 500 turns of seed 42, ZERO of the 49
+    // distinct sites the four civs proposed lay on a landmass other than their
+    // own, because the scan spirals SCAN_RADIUS from owned cities and the other
+    // seven landmasses are further off than that.
+    //
+    // So amphibious pathfinding (findPath's `amphibious` mode) cannot help on
+    // its own -- the AI has no overseas ambition for it to serve. THE TWO MUST
+    // SHIP TOGETHER, and in this order within one change: proposing overseas
+    // sites BEFORE settlers can embark would be a regression, sending them to
+    // target tiles they cannot reach until the stuck-turns timer force-founds
+    // them somewhere worse.
+    //
     // Expansion exhaustion: advisor found zero viable sites but the player
     // already owns cities.  Stamp the current turn so settler production and
     // purchase back off for a cooldown window.
