@@ -27,7 +27,8 @@ std::optional<PathResult> findPath(const HexGrid& grid,
                                     const aoc::game::GameState* gameState,
                                     PlayerId movingPlayer,
                                     bool isNavalPath,
-                                    bool avoidCanals) {
+                                    bool avoidCanals,
+                                    bool amphibious) {
     if (!grid.isValid(start) || !grid.isValid(goal)) {
         return std::nullopt;
     }
@@ -37,8 +38,13 @@ std::optional<PathResult> findPath(const HexGrid& grid,
     }
 
     // Check goal is passable (use appropriate cost function)
+    // Amphibious: a tile is passable if it is passable EITHER ashore or afloat,
+    // so one route can leave the beach, cross, and land again.
     int32_t goalCost = 0;
-    if (isNavalPath) {
+    if (amphibious) {
+        goalCost = std::max(grid.movementCost(grid.toIndex(goal)),
+                            grid.navalMovementCost(grid.toIndex(goal)));
+    } else if (isNavalPath) {
         goalCost = avoidCanals
             ? grid.navalMovementCostNoCanals(grid.toIndex(goal))
             : grid.navalMovementCost(grid.toIndex(goal));
@@ -143,7 +149,15 @@ std::optional<PathResult> findPath(const HexGrid& grid,
             const hex::AxialCoord neighbor = canonical(rawNeighbor);
 
             int32_t moveCost = 0;
-            if (isNavalPath) {
+            if (amphibious) {
+                // Ashore pay the terrain cost, afloat pay the naval one. The
+                // land cost is edge-dependent (slopes, rivers), the naval cost
+                // is not, so they are queried differently.
+                const int32_t ashore =
+                    grid.movementCost(grid.toIndex(current), grid.toIndex(neighbor));
+                const int32_t afloat = grid.navalMovementCost(grid.toIndex(neighbor));
+                moveCost = (ashore > 0) ? ashore : afloat;
+            } else if (isNavalPath) {
                 moveCost = avoidCanals
                     ? grid.navalMovementCostNoCanals(grid.toIndex(neighbor))
                     : grid.navalMovementCost(grid.toIndex(neighbor));

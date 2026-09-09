@@ -35,6 +35,20 @@ struct PathResult {
  * @param world         Optional ECS world for ZoC-aware costing. If non-null,
  *                      tiles in an enemy zone of control cost +3 extra.
  * @param movingPlayer  The player whose units are pathfinding (needed for ZoC check).
+ * @param amphibious    Cross land AND water in one path, paying the land cost
+ *                      ashore and the naval cost afloat. This is how an
+ *                      embarking land unit moves: `isNavalPath` is water-only
+ *                      and the default is land-only, so before this there was
+ *                      no way to ask for a route from one landmass to another
+ *                      and the AI had none -- measured on seed 42, 55% of the
+ *                      land (2204 tiles over seven landmasses, plus three
+ *                      city-states) was unreachable by every AI player. Takes
+ *                      precedence over `isNavalPath` when both are set.
+ *
+ *                      Routing only. It does not embark the unit, check the
+ *                      Sailing/Shipbuilding gates that tryEmbark enforces, or
+ *                      know that a stack afloat is defenceless -- callers must
+ *                      still do all three.
  * @return PathResult if a path exists, std::nullopt if unreachable.
  */
 [[nodiscard]] std::optional<PathResult> findPath(
@@ -45,7 +59,8 @@ struct PathResult {
     const aoc::game::GameState* gameState = nullptr,
     PlayerId movingPlayer = INVALID_PLAYER,
     bool isNavalPath = false,
-    bool avoidCanals = false);
+    bool avoidCanals = false,
+    bool amphibious = false);
 
 /**
  * @brief Get all tiles reachable from a starting tile within a movement budget.

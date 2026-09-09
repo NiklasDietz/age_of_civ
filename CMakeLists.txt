@@ -1045,6 +1045,7 @@ if(AOC_BUILD_TESTS)
         test_central_bank_rate
         test_monopoly_costs_standing
         test_warmonger_still_expands
+        test_amphibious_path
         test_monetary_actions
         test_one_treasury
         test_resource_curse_is_emergent
