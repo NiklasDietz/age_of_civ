@@ -19,6 +19,7 @@
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/economy/Market.hpp"
+#include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/economy/AdvancedEconomics.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/simulation/automation/Automation.hpp"
@@ -1246,6 +1247,36 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 goldEarned = static_cast<CurrencyAmount>(
                     static_cast<float>(goldEarned) * relMult);
             }
+            // Monetary settlement quality. A civ whose currency nobody trusts
+            // gets worse terms on the same cargo -- which is what
+            // bilateralTradeEfficiency computes, from both sides' monetary
+            // systems, their fiat trust, and the exchange-rate risk between
+            // them.
+            //
+            // It had exactly one caller, EconomySimulation::settleTradeInCoins,
+            // which walks gameState.tradeRoutes(); the only code that appends
+            // to that vector is the human's trade screen. So in an AI game the
+            // function was never called, and currency trust -- computed every
+            // turn, saved, penalised by crises, gating reserve status -- had no
+            // route to anyone's treasury at all. Traders are how the AI trades,
+            // so the multiplier belongs here.
+            //
+            // This is a third multiplier on the same cargo and they measure
+            // different things: distance is physical attrition, the relation
+            // multiplier is tariffs and seizure, and this is the quality of the
+            // money the sale settles in. City-states are skipped, matching the
+            // relation block above.
+            if (goldEarned > 0
+                && trader.owner != cityOwner
+                && trader.owner != INVALID_PLAYER && cityOwner != INVALID_PLAYER
+                && trader.owner < aoc::sim::CITY_STATE_PLAYER_BASE
+                && cityOwner < aoc::sim::CITY_STATE_PLAYER_BASE) {
+                const float monetaryEfficiency =
+                    bilateralTradeEfficiency(gameState, trader.owner, cityOwner);
+                goldEarned = static_cast<CurrencyAmount>(
+                    static_cast<float>(goldEarned) * monetaryEfficiency);
+            }
+
             // WP-K3: throughput log per route type for audit ratio analysis.
             const char* routeTag =
                 (trader.routeType == TradeRouteType::Land) ? "Land"
@@ -1279,6 +1310,31 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                     } else if (sellerMon.system != MonetarySystemType::Barter) {
                         sellerMon.treasury += goldEarned;
                     }
+                }
+            }
+
+            // Record the sale as an export for the seller and an import for the
+            // buyer, which is what ForexMarket means by `tradeBalance`: a civ
+            // selling more abroad than it buys sees its currency firm.
+            //
+            // The other place that writes tradeBalance is
+            // EconomySimulation::settleTradeInCoins, and it cannot fire in an
+            // AI game. That settles TradeRouteComponent entries, and the only
+            // code in the tree that appends one is the human's trade screen
+            // (GameScreens.cpp), so gameState.tradeRoutes() is empty for every
+            // headless run: measured over 500 turns of seed 42, that loop
+            // settled exactly zero payments and IncomeGoodsEcon was 0 in all
+            // 1400 player-turns. Traders are how the AI actually trades, so the
+            // channel has to be fed from here to exist at all.
+            if (goldEarned > 0
+                && trader.owner != cityOwner
+                && trader.owner != INVALID_PLAYER && cityOwner != INVALID_PLAYER
+                && trader.owner < aoc::sim::CITY_STATE_PLAYER_BASE
+                && cityOwner < aoc::sim::CITY_STATE_PLAYER_BASE) {
+                aoc::game::Player* buyerPlayer = gameState.player(cityOwner);
+                if (sellerPlayer != nullptr && buyerPlayer != nullptr) {
+                    sellerPlayer->currencyExchange().tradeBalance += goldEarned;
+                    buyerPlayer->currencyExchange().tradeBalance  -= goldEarned;
                 }
             }
 
