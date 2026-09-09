@@ -29,6 +29,27 @@ struct PlayerTechComponent;
 /// With `tech` given, Civ VI's gate applies: civilians embark after Sailing
 /// (31), military units after Shipbuilding (42). Before 2026-09-05 a turn-1
 /// Warrior could embark.
+///
+/// ONLY THE HUMAN EVER CALLS THIS. tryEmbark and tryDisembark are reached from
+/// exactly one place, the right-click handler in Application.cpp; nothing under
+/// src/simulation/ai mentions embarking, transports, or UnitState::Embarked,
+/// and requestLoadUnit / requestUnloadUnit in UnitTransport.hpp -- the separate
+/// carry-aboard-a-ship mechanism -- have no caller at all. So no AI unit can
+/// cross water by any route: no naval invasion, no settling another landmass,
+/// no contact with anyone it cannot walk to.
+///
+/// Measured on seed 42, whose four civs all share one continent so the gap
+/// never shows in the golden runs: of 4008 land tiles, civs can reach 1804
+/// (45%). The other 2204 across seven landmasses -- including a second
+/// continent of 1745, nearly as large as the one they live on -- are
+/// permanently outside the game for every AI player, and three city-states
+/// (200, 201, 203) sit out there unreachable, unmeetable and unlevyable.
+/// On an archipelago map the AI would be crippled rather than merely fenced in.
+///
+/// Building this is a feature, not a wiring fix: it needs water pathfinding for
+/// land units, a landing-site choice, escort logic so a loaded stack is not
+/// free kills, and a reason for the AI to want the far shore. It is the
+/// "naval invasion planning" item on the unbuilt-features list.
 [[nodiscard]] bool tryEmbark(aoc::game::Unit& unit,
                               hex::AxialCoord coastTile,
                               const aoc::map::HexGrid& grid,
