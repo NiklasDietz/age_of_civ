@@ -920,13 +920,30 @@ static float scoreMilitary(const LeaderBehavior& behavior,
 
     (void)treasury;  // production paid in hammers, not gold.
     // WP-D3: warmonger pivot. Leaders with militaryAggression >= 1.5 get a
-    // sharp boost to military score so production queue dominates with
-    // military units. This is the "pump out tanks" mode for civs like
-    // Tlatoani / Genghis. Without this they still build wonders/buildings
-    // even when supposedly all-in on conquest.
-    const float warmongerBoost = (behavior.militaryAggression >= 1.5f)
-        ? 2.0f * behavior.militaryAggression
-        : 1.0f;
+    // sharp boost to military score so the production queue leans to military
+    // units. This is the "pump out tanks" mode for civs like Tlatoani /
+    // Genghis. Without this they still build wonders/buildings even when
+    // supposedly all-in on conquest.
+    //
+    // The boost was `2.0f * militaryAggression`, applied ON TOP OF the
+    // `* militaryAggression` term in the return below, so aggression entered
+    // this score QUADRATICALLY: at 1.90 it contributed 7.2x rather than 1.9x.
+    // Measured consequence on seed 42, where the deciding product at two cities
+    // came out military 21.66 vs settler 3.85 for the Zulu and 15.61 vs 3.42
+    // for the Mapuche, against 1.22 vs 7.98 (Phoenicia) and 0.63 vs 8.55
+    // (Egypt): the two aggressive civs produced 73 military units between them
+    // and NOT ONE SETTLER in 500 turns, sat on two cities each while their
+    // neighbours reached eleven and twelve, and finished on a seventeenth of
+    // the winner's GDP. A leader that never expands is not playing
+    // aggressively, it is not playing.
+    //
+    // A flat step keeps the pivot the work package asked for -- aggressive
+    // leaders still lean military, and still outweigh a builder -- without
+    // letting one gene enter the same product twice.
+    constexpr float WARMONGER_PIVOT = 1.5f;
+    constexpr float WARMONGER_BOOST = 2.0f;
+    const float warmongerBoost =
+        (behavior.militaryAggression >= WARMONGER_PIVOT) ? WARMONGER_BOOST : 1.0f;
     return behavior.milBaseWeight
            * behavior.prodMilitary
            * behavior.militaryAggression
