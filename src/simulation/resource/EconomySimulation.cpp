@@ -1664,9 +1664,14 @@ void EconomySimulation::updateCoinReservesFromStockpiles(aoc::game::GameState& g
             if (state.system == MonetarySystemType::CommodityMoney) {
                 state.moneySupply = static_cast<CurrencyAmount>(state.totalCoinValue());
             } else if (state.system == MonetarySystemType::GoldStandard) {
+                // Notes are issued against the coinage at a STATUTORY multiple,
+                // not against the measured backing ratio. Using the ratio here
+                // closed a loop with CurrencyCrisis, which derives that same
+                // ratio from this same money supply -- see
+                // GOLD_STANDARD_NOTE_ISSUE.
                 const int32_t coinWealth = state.totalCoinValue();
-                state.moneySupply = static_cast<CurrencyAmount>(
-                    static_cast<float>(coinWealth) * (1.0f + state.goldBackingRatio));
+                state.moneySupply        = static_cast<CurrencyAmount>(
+                    static_cast<float>(coinWealth) * (1.0f + GOLD_STANDARD_NOTE_ISSUE));
             }
             // Fiat moneySupply is managed by printMoney() and tracked separately.
         }

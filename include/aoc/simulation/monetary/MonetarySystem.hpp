@@ -57,6 +57,26 @@ enum class MonetarySystemType : uint8_t {
     Count
 };
 
+/// Paper notes a gold-standard civ issues per unit of coin value.
+///
+/// The money supply used to be `coinWealth * (1 + goldBackingRatio)` while the
+/// backing ratio was measured as `metalBacking / moneySupply`, both every turn.
+/// That is circular: solving it gives r(1+r) = 1, so the ratio converges on
+/// 0.618 regardless of anything a player does, permanently clear of the 0.40
+/// stress threshold -- until copper passes about 45 % of coin value, at which
+/// point it sits permanently below and forces a suspension. Whether a civ kept
+/// its gold standard was decided by its copper/silver MIX, not by its conduct,
+/// and the design comment describing stress as a response to over-issue could
+/// not have been true.
+///
+/// A statutory note issue breaks the loop. At 1.0 -- notes equal to coin value
+/// -- a civ whose coins are all silver and gold measures exactly 0.5 backing,
+/// which is the entry value transitionTo sets and the figure that comment
+/// assumed. Backing then FALLS as base metal enters the coinage, so debasing or
+/// minting copper genuinely erodes the peg and can force a suspension. That is
+/// the mechanic the threshold was written for.
+inline constexpr float GOLD_STANDARD_NOTE_ISSUE = 1.0f;
+
 /// Cargo slots consumed by the currency medium when a trader carries money on route.
 /// Only CommodityMoney is heavy (metal coins). All paper/electronic tiers are 0.
 /// Used by `TraderComponent::effectiveCargoSlots()` to shrink goods capacity.
@@ -253,7 +273,11 @@ struct MonetaryStateComponent {
     // -- Money supply (paper/fiat currency in GoldStandard/Fiat) --
     CurrencyAmount moneySupply    = 0;    ///< Total currency in circulation
     CurrencyAmount treasury       = 0;    ///< Government cash = coin stockpile. Starts at 0 (barter).
-    Percentage     goldBackingRatio = 1.0f; ///< Paper currency per gold bar (gold standard only)
+    /// Metal backing per unit of circulating money, gold standard only. An
+    /// OUTPUT: measured each turn as reserves over money supply. It must not be
+    /// fed back into the money supply that defines it -- see
+    /// GOLD_STANDARD_NOTE_ISSUE.
+    Percentage     goldBackingRatio = 1.0f;
 
     // -- Inflation --
     Percentage     inflationRate  = 0.0f; ///< Current per-turn CPI change
