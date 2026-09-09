@@ -1208,6 +1208,23 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 const float gouge =
                     gameState.monopoly().buyerPriceMultiplier(c.goodId, cityOwner);
                 price = static_cast<int32_t>(static_cast<float>(price) * gouge);
+                // Squeezing is not free. The buyer resents the civ that cornered
+                // the good, which is what makes the markup a decision rather
+                // than free gold -- see aiChooseMonopolyPrices. Charged on the
+                // delivery so it follows real transactions, and addGrievance
+                // dedups by (type, against), so a standing markup refreshes one
+                // grievance instead of stacking a new one every shipment.
+                if (gouge > 1.0f && cityOwner != INVALID_PLAYER
+                    && cityOwner < aoc::sim::CITY_STATE_PLAYER_BASE) {
+                    const PlayerId squeezer = gameState.monopoly().monopolistOf(c.goodId);
+                    aoc::game::Player* buyerPlayer = gameState.player(cityOwner);
+                    if (buyerPlayer != nullptr && squeezer != INVALID_PLAYER
+                        && squeezer != cityOwner
+                        && squeezer < aoc::sim::CITY_STATE_PLAYER_BASE) {
+                        buyerPlayer->grievances().addGrievance(
+                            GrievanceType::PriceGouged, squeezer);
+                    }
+                }
                 goldEarned += static_cast<CurrencyAmount>(c.amount)
                             * static_cast<CurrencyAmount>(price) / 5;
             }

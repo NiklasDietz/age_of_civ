@@ -37,6 +37,10 @@ void PlayerGrievanceComponent::addGrievance(GrievanceType type, PlayerId against
                 existing.severity = std::max(-100, existing.severity - 20);
                 return;
             case GrievanceType::BulliedCityState:          existing.turnsRemaining = 30; return;
+            // Refresh only, deliberately: the monopolist is charged on every
+            // delivery of the good, so stacking severity here would turn one
+            // standing markup into unbounded hatred within a few turns.
+            case GrievanceType::PriceGouged:               existing.turnsRemaining = 40; return;
             // Historically permanent (H1.10 capped at 100 turns). Re-incident
             // refreshes the countdown so repeated offenses stay fresh.
             case GrievanceType::DeclaredWarOnAlly:         existing.turnsRemaining = 100; return;
@@ -73,6 +77,13 @@ void PlayerGrievanceComponent::addGrievance(GrievanceType type, PlayerId against
             break;
         case GrievanceType::ViolatedEmbargo:
             g.severity       = -15;
+            g.turnsRemaining = 40;
+            break;
+        case GrievanceType::PriceGouged:
+            // Being squeezed for a good you cannot source elsewhere is an
+            // injury, and injuryGrievanceCount() counts it as one, so it feeds
+            // the combined-stress revolt gate and the casus belli list.
+            g.severity       = -10;
             g.turnsRemaining = 40;
             break;
         case GrievanceType::FailedAllianceObligation:

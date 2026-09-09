@@ -28,6 +28,8 @@ namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
 
+class DiplomacyManager;
+
 /// Monopoly status for a specific good.
 struct MonopolyInfo {
     uint16_t goodId = 0;
@@ -95,6 +97,16 @@ struct GlobalMonopolyComponent {
         return total;
     }
 
+    /// Who holds the active monopoly on `goodId`, or INVALID_PLAYER.
+    [[nodiscard]] PlayerId monopolistOf(uint16_t goodId) const {
+        for (int32_t i = 0; i < this->trackedCount; ++i) {
+            if (this->monopolies[i].goodId == goodId && this->monopolies[i].isActive) {
+                return this->monopolies[i].monopolist;
+            }
+        }
+        return INVALID_PLAYER;
+    }
+
     /// Price penalty for a buyer of a monopolized good.
     [[nodiscard]] float buyerPriceMultiplier(uint16_t goodId, PlayerId buyer) const {
         for (int32_t i = 0; i < this->trackedCount; ++i) {
@@ -134,5 +146,39 @@ void detectMonopolies(aoc::game::GameState& gameState, const aoc::map::HexGrid& 
  * @brief Apply monopoly income to monopolists' treasuries.
  */
 void applyMonopolyIncome(aoc::game::GameState& gameState);
+
+/**
+ * @brief Let a monopolist choose this turn's markup on every good it corners.
+ *
+ * The decision the mechanic was missing. Squeezing is no longer free -- each
+ * delivery of a marked-up good earns the monopolist a PriceGouged grievance
+ * from the buyer -- so the choice is between gold and standing.
+ *
+ * The rule: squeeze the civs that already resent you and spare the ones you
+ * might still win over, so greed is the share of met civs that are already
+ * Hostile, Unfriendly or at war. Writes through requestSetMonopolyPrice so the
+ * validated path stays the only writer.
+ *
+ * NOT CALLED PER TURN YET, and the reason is a measurement rather than
+ * caution. Wired into aiEconomicStrategy, both seeds keep 0 eliminations and
+ * both end on a genuine Culture victory instead of one timing out on Score --
+ * seed 42 holds its exact winner and type with revolts 5 -> 7 and wars 15 -> 13,
+ * seed 43 halves its revolts, 611 -> 318. But at a common turn 340 the world is
+ * far poorer: GDP -47% on seed 42 and -40% on seed 43, with cities -8% and -17%.
+ *
+ * The grievance is NOT what costs that. Running the markup with the grievance
+ * disabled gives GDP -47.3% and -39.7%, against -46.9% and -39.6% with it, so
+ * the cost model is nearly free and the MARKUP ITSELF is the expensive part:
+ * pricing strategic inputs above cost is a deadweight loss, and the monopolist's
+ * individually rational squeeze shrinks the whole economy. That is a defensible
+ * and rather good dynamic, but a 40% swing in world GDP is a decision about
+ * what kind of game this is, not a tuning detail, so it waits.
+ *
+ * To enable, restore this line in aiEconomicStrategy after aiCrisisResponse:
+ *
+ *     aiChooseMonopolyPrices(gameState, player, diplomacy);
+ */
+void aiChooseMonopolyPrices(aoc::game::GameState& gameState, PlayerId player,
+                            const DiplomacyManager& diplomacy);
 
 } // namespace aoc::sim

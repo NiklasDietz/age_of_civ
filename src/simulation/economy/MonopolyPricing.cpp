@@ -9,6 +9,8 @@
 #include <string>
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/economy/MonopolyPricing.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
@@ -178,6 +180,57 @@ ErrorCode requestSetMonopolyPrice(GlobalMonopolyComponent& monopolies, PlayerId 
         return ErrorCode::Ok;
     }
     return ErrorCode::InvalidArgument;
+}
+
+void aiChooseMonopolyPrices(aoc::game::GameState& gameState, PlayerId player,
+                            const DiplomacyManager& diplomacy) {
+    if (player >= CITY_STATE_PLAYER_BASE) { return; }
+
+    GlobalMonopolyComponent& mono = gameState.monopoly();
+
+    // Squeeze the civs that already resent you; spare the ones you might yet
+    // win over. Greed is the share of met civs that are ALREADY hostile.
+    //
+    // The first version of this counted friends instead and charged
+    // (1 - friendly/met), which reads a neutral as someone with nothing to
+    // lose. Early on every relation is Neutral, so every monopolist went
+    // straight to its ceiling against the whole world, and the grievances
+    // soured diplomacy globally from the first monopoly onward. Measured at
+    // turn 340 that cost seed 42 42% of its cities and both seeds about 40% of
+    // GDP. A civ you have not yet fallen out with is an asset, not a target.
+    int32_t met     = 0;
+    int32_t hostile = 0;
+    for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+        if (other == nullptr) { continue; }
+        const PlayerId id = other->id();
+        if (id == player || id >= CITY_STATE_PLAYER_BASE) { continue; }
+        const PairwiseRelation& rel = diplomacy.relation(player, id);
+        if (!rel.hasMet) { continue; }
+        ++met;
+        if (rel.isAtWar) { ++hostile; continue; }
+        const DiplomaticStance stance = rel.stance();
+        if (stance == DiplomaticStance::Hostile || stance == DiplomaticStance::Unfriendly) {
+            ++hostile;
+        }
+    }
+
+    // Nobody met yet: no buyers to anger and no trade to tax. Leave it alone.
+    if (met == 0) { return; }
+
+    const float greed = static_cast<float>(hostile) / static_cast<float>(met);
+
+    for (int32_t i = 0; i < mono.trackedCount; ++i) {
+        const MonopolyInfo& info = mono.monopolies[i];
+        if (!info.isActive || info.monopolist != player) { continue; }
+
+        const float target = 1.0f + (info.maxPriceMultiplier - 1.0f) * greed;
+        // Below a fifth of a point the markup rounds away in the integer price
+        // at the delivery site, so it would buy grievances for nothing.
+        if (target < 1.2f) { continue; }
+        if (requestSetMonopolyPrice(mono, player, info.goodId, target) != ErrorCode::Ok) {
+            continue;
+        }
+    }
 }
 
 } // namespace aoc::sim

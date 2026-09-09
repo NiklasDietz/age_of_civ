@@ -31,6 +31,7 @@ enum class GrievanceType : uint8_t {
     IdeologicalDifference,     ///< -5/turn, capped at -50 per pair
     EspionageCaught,           ///< -20 per caught spy, decays over 40 turns
     BulliedCityState,          ///< -10 per bully, decays over 30 turns
+    PriceGouged,               ///< -10, decays over 40 turns; refreshed while squeezed
 };
 
 struct Grievance {

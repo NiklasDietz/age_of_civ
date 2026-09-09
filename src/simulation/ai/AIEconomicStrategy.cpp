@@ -6,6 +6,7 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
+#include "aoc/simulation/economy/MonopolyPricing.hpp"
 #include "aoc/simulation/ai/AIEconomicStrategy.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/CentralBank.hpp"
