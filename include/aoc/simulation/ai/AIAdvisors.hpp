@@ -82,6 +82,18 @@ void updateEconomyAssessment(aoc::game::Player& player);
  * The cost is not cosmetic: player 0 finished on GDP 8730 against player 3's
  * 133089, and one city against eleven. An aggressive leader that never expands
  * is not playing aggressively, it is not playing. The fix belongs in the
+ * OVERSEAS SETTLEMENT, attempted and reverted 2026-09-09. I added a wide
+ * (radius 40) fallback search in AISettlerController that accepted a distant
+ * site only if an amphibious findPath could reach it. It NEVER FIRED on seeds
+ * 42, 43, 44 or 45 -- zero across-water targets -- because I gated it on
+ * "the local spiral disqualified every candidate", and that is not how
+ * settlers actually fail. Seeds 44 and 45 disband 37 and 18 settlers apiece
+ * while each of them has a perfectly good local target it cannot REACH. The
+ * trigger has to be reachability, not candidate scarcity: the moment to look
+ * across the water is when orderUnitMove cannot produce a path to the chosen
+ * target, or when the stuck counter says the settler is not making progress.
+ * Reverted rather than left in as a branch that never executes.
+ *
  * static scoreSettler() in AIController.cpp, which already receives
  * militaryUnits and treasury alongside expansionOpportunity -- the inputs
  * needed to notice that a two-city civ with forty Pike and Shot should be
