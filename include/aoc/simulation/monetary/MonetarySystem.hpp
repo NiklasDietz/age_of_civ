@@ -234,8 +234,20 @@ inline constexpr std::array<MonetaryTransitionReq, 4> MONETARY_TRANSITIONS = {{
     {MonetarySystemType::FiatMoney,      TechId{9}, 75,   2, 5, 3, 0.15f},
     // Fiat -> Digital: late-game electronic settlement. Needs sustained
     // stability. "Computers" (TechId{16}) gates access; low inflation and a
-    // mature economy are required. An additional powered-grid check is
-    // enforced externally by `playerMeetsDigitalPowerRequirement()`.
+    // mature economy are required.
+    //
+    // This comment used to promise "an additional powered-grid check enforced
+    // externally by playerMeetsDigitalPowerRequirement()". No such function
+    // exists anywhere in the tree, so there is no power requirement: the row
+    // below is the whole gate. PlayerEnergyComponent (EnergyDependency.hpp)
+    // holds the renewableCapacity and oil-shock state such a check would read,
+    // if one is ever wanted.
+    //
+    // Adding it would change nothing measurable today. Digital is reached in
+    // ZERO player-turns of either blessed seed over 500 turns -- seed 42 splits
+    // 1060 Barter / 67 Commodity / 33 Gold / 240 Fiat, and seed 43 splits
+    // 512 / 128 / 104 / 1256 -- so the row above is already the binding
+    // constraint and a power gate would sit behind an unreachable one.
     {MonetarySystemType::Digital,        TechId{16}, 200,  3, 10, 4, 0.10f},
 }};
 
