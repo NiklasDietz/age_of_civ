@@ -123,6 +123,23 @@ namespace aoc::save {
  * 55; those are bounds checks rather than layout, but the version covers them
  * too. Every v30 save becomes unloadable. */
 
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 33;
+/* v32 (2026-09-09): MonetaryState carries the three allocation shares, the
+ * bankruptcy clock and the reserve-stress counter. Every v31 save becomes
+ * unloadable. */
+/* v33 (2026-09-09): MonetaryState carries the exchange rate and the foreign
+ * reserves of CurrencyExchangeComponent. Every v32 save becomes unloadable. */
+/* v34 (2026-09-10): the one bump for the money-and-trade programme.
+ * - ActiveDeals: the deals in force, now owned by GameState::deals(). They
+ *   lived in Application (and in a HeadlessSimulation local), so no save
+ *   carried them and every pact dissolved on reload.
+ * - PlayerState drops PlayerEconomyComponent::treasury and incomePerTurn, a
+ *   second account three effects paid into and nothing spent from.
+ * - MonetaryState carries the private money pools (specie, notes, bullion)
+ *   and the coinage metal a civ chose.
+ * - Each unit record carries its TraderComponent and autoRenewRoute, so a
+ *   loaded Trader keeps its route, cargo, carried coin and the goods reserved
+ *   for it at the pickup city instead of coming back idle.
+ * Every v33 save becomes unloadable. */
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 34;
 
 } // namespace aoc::save

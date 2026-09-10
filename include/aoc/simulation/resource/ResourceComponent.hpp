@@ -100,11 +100,12 @@ struct CityStockpileComponent {
     }
 };
 
-/// Attached to player entities. Tracks the player's treasury.
+/// Attached to player entities: per-turn goods ledgers and needs. The one
+/// treasury is MonetaryStateComponent::treasury, reached through Player. This
+/// struct carried a second `treasury` until 2026-09-10; three live effects
+/// paid into it and nothing could spend from it.
 struct PlayerEconomyComponent {
     PlayerId       owner = INVALID_PLAYER;
-    CurrencyAmount treasury = 100;          ///< Gold / currency on hand
-    CurrencyAmount incomePerTurn = 0;       ///< Net income last turn (for display)
 
     /// Last-turn production volume per good. Cleared at the top of
     /// EconomySimulation::executeProduction and populated as recipes fire,

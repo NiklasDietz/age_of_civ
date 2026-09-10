@@ -95,6 +95,8 @@ enum class SectionId : uint16_t {
     ReligionState      = 0x002A, ///< GlobalReligionTracker + per-player faith (city pressure rides on the city record)
     WorldCongressState = 0x002B, ///< WorldCongressComponent + per-player diplomatic favor
     DealProposals      = 0x002C, ///< Deal proposals waiting for the human (DealProposals.hpp), v22
+    // v34 sections --------------------------------------------------------
+    ActiveDeals        = 0x002D, ///< Deals in force (GameState::deals()); read after Entities
 };
 
 /// Low-level binary write buffer.

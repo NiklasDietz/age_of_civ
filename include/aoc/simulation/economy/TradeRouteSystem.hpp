@@ -122,6 +122,11 @@ struct TraderComponent {
     /// Stolen in full on pillage; credited to the owner's treasury on arrival.
     CurrencyAmount carriedGold = 0;
 
+    /// What `carriedGold` is made of (v34): 0 = specie, 1 = notes. Decides
+    /// which private pool it lands in on arrival once settlement is conserved;
+    /// until then it is written and read only by the save file.
+    uint8_t carriedMedium = 0;
+
     /// Toll paid this turn to territory owners along the route.
     CurrencyAmount tollPaidThisTurn = 0;
 

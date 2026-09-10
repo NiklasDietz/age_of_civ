@@ -118,6 +118,13 @@ void buildWorld(World& w) {
     // is the field serialised here.
     p0.monetary().treasury = 1234;
     p1.monetary().treasury = 87;
+    // v34: private money pools and the chosen coinage metal, every value off
+    // its default so a skipped field cannot round-trip by accident.
+    p0.monetary().privateSpecie   = 410;
+    p0.monetary().privateNotes    = 25;
+    p0.monetary().bullion         = 7;
+    p0.monetary().coinageStandard = aoc::sim::CoinTier::Silver;
+    p1.monetary().bullion         = 3;
     // v33: the persistent half of the forex component. A reload used to reset
     // every currency to parity, which stopped being harmless once a cross-civ
     // sale was priced through the exchange rate.
@@ -204,6 +211,33 @@ void buildWorld(World& w) {
     sage.greatPerson().defId    = 2;
     sage.greatPerson().namedId  = 31;
     sage.greatPerson().position = {5, 6};
+    // v34: a Trader mid-route with every field off its default. A loaded
+    // Trader used to come back idle with its cargo and carried coin lost.
+    aoc::game::Unit& caravan    = p0.addUnit(aoc::UnitTypeId{30}, {6, 6});
+    aoc::sim::TraderComponent& tr = caravan.trader();
+    tr.owner              = aoc::PlayerId{0};
+    tr.originCityLocation = {5, 5};
+    tr.destCityLocation   = {12, 10};
+    tr.destOwner          = aoc::PlayerId{1};
+    tr.routeType          = aoc::sim::TradeRouteType::Sea;
+    tr.cargo              = {{22, 4}, {40, 2}};
+    tr.pendingPickupCargo = {{23, 1}};
+    tr.pickupCityLocation = {12, 10};
+    tr.path               = {{6, 6}, {7, 7}, {8, 8}};
+    tr.pathIndex          = 1;
+    tr.isReturning        = true;
+    tr.completedTrips     = 2;
+    tr.turnsActive        = 9;
+    tr.maxTrips           = 5;
+    tr.carriedGold        = 33;
+    tr.carriedMedium      = 1;
+    tr.fuelGoodId         = 2;
+    tr.fuelOnBoard        = 4;
+    tr.fuelPerTile        = 0.5f;
+    tr.idleTurnsNoFuel    = 1;
+    tr.scienceSpread      = 1.5f;
+    tr.cultureSpread      = 0.6f;
+    caravan.autoRenewRoute = true;
     alpha.walls().setTier(aoc::sim::WallTier::Medieval);
     static_cast<void>(alpha.walls().takeDamage(30));
     alpha.loyalty().loyalty             = 63.5f;
@@ -293,6 +327,42 @@ void buildWorld(World& w) {
         offer.deal.terms   = {gold, borders};
         w.gameState.pendingProposals().push_back(offer);
     }
+    // v34: the deals in force -- one live, one broken -- now owned by
+    // GameState and therefore saved. Before, every pact dissolved on reload.
+    {
+        aoc::sim::DiplomaticDeal live;
+        live.playerA        = aoc::PlayerId{0};
+        live.playerB        = aoc::PlayerId{1};
+        live.turnsRemaining = 17;
+        live.isAccepted     = true;
+        aoc::sim::DealTerm pact{};
+        pact.type       = aoc::sim::DealTermType::NonAggression;
+        pact.fromPlayer = aoc::PlayerId{0};
+        pact.toPlayer   = aoc::PlayerId{1};
+        pact.duration   = 30;
+        aoc::sim::DealTerm goods{};
+        goods.type       = aoc::sim::DealTermType::GoodsExchange;
+        goods.fromPlayer = aoc::PlayerId{1};
+        goods.toPlayer   = aoc::PlayerId{0};
+        goods.goodId     = 22;
+        goods.goodAmount = 9;
+        live.terms       = {pact, goods};
+
+        aoc::sim::DiplomaticDeal broken;
+        broken.playerA        = aoc::PlayerId{1};
+        broken.playerB        = aoc::PlayerId{2};
+        broken.turnsRemaining = 3;
+        broken.isAccepted     = true;
+        broken.isBroken       = true;
+        aoc::sim::DealTerm open{};
+        open.type       = aoc::sim::DealTermType::OpenBorders;
+        open.fromPlayer = aoc::PlayerId{2};
+        open.toPlayer   = aoc::PlayerId{1};
+        open.duration   = 20;
+        broken.terms    = {open};
+
+        w.gameState.deals().activeDeals = {live, broken};
+    }
     w.gameState.initializeCityStateSlots(2);
     aoc::sim::CityStateComponent cs0{};
     cs0.defId     = 3;
@@ -356,6 +426,12 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(lp1.monetary().treasury == 87);
     // The one treasury is reachable through both spellings.
     CHECK(lp0.treasury() == 1234);
+    CHECK(lp0.monetary().privateSpecie == 410);   // v34
+    CHECK(lp0.monetary().privateNotes == 25);
+    CHECK(lp0.monetary().bullion == 7);
+    CHECK(lp0.monetary().coinageStandard == aoc::sim::CoinTier::Silver);
+    CHECK(lp1.monetary().bullion == 3);
+    CHECK(lp1.monetary().coinageStandard == aoc::sim::CoinTier::None);
     // v33: forex survives the round trip.
     CHECK(lp0.currencyExchange().exchangeRate == doctest::Approx(1.37f));
     CHECK(lp0.currencyExchange().foreignReserves == 640);
@@ -392,6 +468,43 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     REQUIRE(lVeteran->experience().promotions.size() == 1);
     CHECK(lVeteran->experience().promotions[0] == aoc::PromotionId{0});
     CHECK(lVeteran->formationLevel() == aoc::sim::FormationLevel::Corps); // v15
+    // v34: the Trader's route came back with it.
+    const aoc::game::Unit* lCaravan = nullptr;
+    for (const std::unique_ptr<aoc::game::Unit>& u : lp0.units()) {
+        if (u->typeId() == aoc::UnitTypeId{30}) {
+            lCaravan = u.get();
+        }
+    }
+    REQUIRE(lCaravan != nullptr);
+    const aoc::sim::TraderComponent& ltr = lCaravan->trader();
+    CHECK(ltr.owner == aoc::PlayerId{0});
+    CHECK(ltr.originCityLocation == aoc::hex::AxialCoord{5, 5});
+    CHECK(ltr.destCityLocation == aoc::hex::AxialCoord{12, 10});
+    CHECK(ltr.destOwner == aoc::PlayerId{1});
+    CHECK(ltr.routeType == aoc::sim::TradeRouteType::Sea);
+    REQUIRE(ltr.cargo.size() == 2);
+    CHECK(ltr.cargo[0].goodId == 22);
+    CHECK(ltr.cargo[0].amount == 4);
+    CHECK(ltr.cargo[1].goodId == 40);
+    REQUIRE(ltr.pendingPickupCargo.size() == 1);
+    CHECK(ltr.pendingPickupCargo[0].goodId == 23);
+    CHECK(ltr.pickupCityLocation == aoc::hex::AxialCoord{12, 10});
+    REQUIRE(ltr.path.size() == 3);
+    CHECK(ltr.path[2] == aoc::hex::AxialCoord{8, 8});
+    CHECK(ltr.pathIndex == 1);
+    CHECK(ltr.isReturning);
+    CHECK(ltr.completedTrips == 2);
+    CHECK(ltr.turnsActive == 9);
+    CHECK(ltr.maxTrips == 5);
+    CHECK(ltr.carriedGold == 33);
+    CHECK(ltr.carriedMedium == 1);
+    CHECK(ltr.fuelGoodId == 2);
+    CHECK(ltr.fuelOnBoard == 4);
+    CHECK(ltr.fuelPerTile == doctest::Approx(0.5f));
+    CHECK(ltr.idleTurnsNoFuel == 1);
+    CHECK(ltr.scienceSpread == doctest::Approx(1.5f));
+    CHECK(ltr.cultureSpread == doctest::Approx(0.6f));
+    CHECK(lCaravan->autoRenewRoute);
     CHECK(lAlpha.stockpile().goods.at(42) == 10);
     CHECK(lAlpha.stockpile().goods.at(199) == 25);
     CHECK(lAlpha.stockpile().exportBuffer.at(2) == 6);
@@ -543,6 +656,24 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(lOffer.deal.terms[0].goldLump == 50);
     CHECK(lOffer.deal.terms[1].type == aoc::sim::DealTermType::OpenBorders);
     CHECK(lOffer.deal.terms[1].fromPlayer == aoc::PlayerId{0});
+    // v34: the deals in force, with their history.
+    const std::vector<aoc::sim::DiplomaticDeal>& lDeals = loaded.gameState.deals().activeDeals;
+    REQUIRE(lDeals.size() == 2);
+    CHECK(lDeals[0].playerA == aoc::PlayerId{0});
+    CHECK(lDeals[0].playerB == aoc::PlayerId{1});
+    CHECK(lDeals[0].turnsRemaining == 17);
+    CHECK(lDeals[0].isAccepted);
+    CHECK_FALSE(lDeals[0].isBroken);
+    REQUIRE(lDeals[0].terms.size() == 2);
+    CHECK(lDeals[0].terms[0].type == aoc::sim::DealTermType::NonAggression);
+    CHECK(lDeals[0].terms[1].type == aoc::sim::DealTermType::GoodsExchange);
+    CHECK(lDeals[0].terms[1].goodId == 22);
+    CHECK(lDeals[0].terms[1].goodAmount == 9);
+    CHECK(lDeals[1].playerB == aoc::PlayerId{2});
+    CHECK(lDeals[1].turnsRemaining == 3);
+    CHECK(lDeals[1].isBroken);
+    REQUIRE(lDeals[1].terms.size() == 1);
+    CHECK(lDeals[1].terms[0].duration == 20);
     REQUIRE(loaded.gameState.cityStates().size() == 2);
     const aoc::sim::CityStateComponent& lCs0 = loaded.gameState.cityStates()[0];
     CHECK(lCs0.defId == 3);

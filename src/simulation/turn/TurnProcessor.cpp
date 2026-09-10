@@ -1334,8 +1334,8 @@ void processGlobalSystems(TurnContext& turnContext) {
     processStandingRoutes(gameState, grid, turnContext.economy->market(), turnContext.diplomacy);
 
     // Diplomatic deals: enforce terms (reparations, DMZ, arms limits, non-aggression)
-    if (turnContext.dealTracker != nullptr && turnContext.diplomacy != nullptr) {
-        processDeals(gameState, *turnContext.dealTracker, *turnContext.diplomacy, grid);
+    if (turnContext.diplomacy != nullptr) {
+        processDeals(gameState, gameState.deals(), *turnContext.diplomacy, grid);
     }
 
     // Ideological friction: different post-industrial governments accrue
@@ -1493,8 +1493,7 @@ void processTurn(TurnContext& turnContext) {
         }
         aoc::Random aiRng = turnContext.rng->fork();
         ai->executeTurn(*turnContext.gameState, *turnContext.grid, turnContext.fogOfWar,
-                        *turnContext.diplomacy, turnContext.economy->market(), aiRng,
-                        turnContext.dealTracker);
+                        *turnContext.diplomacy, turnContext.economy->market(), aiRng);
     }
 
     // Robot-worker slot assignment runs before production so bonus recipe

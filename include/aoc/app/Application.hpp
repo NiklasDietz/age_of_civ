@@ -202,7 +202,6 @@ private:
     aoc::sim::DiplomacyManager m_diplomacy;
     std::vector<aoc::sim::ai::AIController> m_aiControllers;
     aoc::sim::BarbarianController m_barbarianController;
-    aoc::sim::GlobalDealTracker m_dealTracker;
     aoc::sim::AllianceObligationTracker m_allianceTracker;
     aoc::sim::GoodyHutState m_goodyHuts; ///< Ancient ruins placed on map.
     aoc::Random m_gameRng{0};            ///< Reseeded in startGame()

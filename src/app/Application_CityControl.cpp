@@ -1028,7 +1028,7 @@ void Application::registerDealRoutes() {
             }
             json += "],\"activeDeals\":[";
             first = true;
-            for (const aoc::sim::DiplomaticDeal& deal : this->m_dealTracker.activeDeals) {
+            for (const aoc::sim::DiplomaticDeal& deal : this->m_gameState.deals().activeDeals) {
                 if (deal.playerA != me && deal.playerB != me) {
                     continue;
                 }
@@ -1085,13 +1085,13 @@ void Application::executeGameControlCommand(const aoc::debug::ProposeDealCommand
     }
     logDiplomacyResult("Deal proposal", cmd.player, cmd.target,
                        aoc::sim::requestProposeDeal(this->m_gameState, this->m_hexGrid,
-                                                    this->m_dealTracker, this->m_diplomacy, deal,
+                                                    this->m_gameState.deals(), this->m_diplomacy, deal,
                                                     this->m_gameState.currentTurn()));
 }
 
 void Application::executeGameControlCommand(const aoc::debug::RespondProposalCommand& cmd) {
     const ErrorCode rc = aoc::sim::requestRespondToProposal(
-        this->m_gameState, this->m_hexGrid, this->m_dealTracker, this->m_diplomacy, cmd.player,
+        this->m_gameState, this->m_hexGrid, this->m_gameState.deals(), this->m_diplomacy, cmd.player,
         static_cast<std::size_t>(cmd.index), cmd.accept, this->m_gameState.currentTurn());
     if (rc != ErrorCode::Ok) {
         LOG_WARN("Proposal answer by player %u rejected: %.*s", static_cast<unsigned>(cmd.player),

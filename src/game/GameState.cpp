@@ -26,6 +26,9 @@ void GameState::initialize(int32_t playerCount) {
     this->m_cityStatePlayers.clear();
     this->m_players.reserve(static_cast<std::size_t>(playerCount));
     this->m_currentTurn = 0;
+    // A restarted game must not inherit the previous game's inbox or pacts.
+    this->m_pendingProposals.clear();
+    this->m_deals.activeDeals.clear();
 
     for (int32_t i = 0; i < playerCount; ++i) {
         this->m_players.push_back(std::make_unique<Player>(static_cast<PlayerId>(i)));

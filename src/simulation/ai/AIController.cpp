@@ -302,8 +302,8 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                                 const aoc::map::FogOfWar* fogOfWar,
                                 DiplomacyManager& diplomacy,
                                 const Market& market,
-                                aoc::Random& rng,
-                                GlobalDealTracker* dealTracker) {
+                                aoc::Random& rng) {
+    GlobalDealTracker* dealTracker = &gameState.deals();
     // -----------------------------------------------------------------------
     // Advisor updates: run at varying frequencies to maintain a fresh view of
     // the game situation.  All results are posted to the player's AIBlackboard

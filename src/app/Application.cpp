@@ -2414,7 +2414,6 @@ void Application::spectatorAdvanceTurn() {
     turnCtx.economy         = &this->m_economy;
     turnCtx.diplomacy       = &this->m_diplomacy;
     turnCtx.barbarians      = &this->m_barbarianController;
-    turnCtx.dealTracker     = &this->m_dealTracker;
     turnCtx.allianceTracker = &this->m_allianceTracker;
     this->m_diplomacy.setAllianceTracker(&this->m_allianceTracker);
     turnCtx.rng         = &this->m_gameRng;
@@ -7200,7 +7199,6 @@ void Application::handleEndTurn() {
         turnCtx.economy         = &this->m_economy;
         turnCtx.diplomacy       = &this->m_diplomacy;
         turnCtx.barbarians      = &this->m_barbarianController;
-        turnCtx.dealTracker     = &this->m_dealTracker;
         turnCtx.allianceTracker = &this->m_allianceTracker;
         this->m_diplomacy.setAllianceTracker(&this->m_allianceTracker);
         turnCtx.rng         = &this->m_gameRng;
@@ -7637,7 +7635,6 @@ void Application::spawnStartingEntities(aoc::sim::CivId civId, hex::AxialCoord s
         monetary.governmentSpending                = 0;
 
         humanPlayer->economy().owner    = 0;
-        humanPlayer->economy().treasury = 0;
         humanPlayer->setTreasury(0);
 
         humanPlayer->tech().owner = 0;
@@ -7798,7 +7795,6 @@ void Application::spawnAIPlayer(PlayerId player, aoc::sim::CivId civId, hex::Axi
         monetary.treasury                          = 0;
 
         aiPlayer->economy().owner    = player;
-        aiPlayer->economy().treasury = 0;
         aiPlayer->setTreasury(0);
 
         aiPlayer->tech().owner = player;

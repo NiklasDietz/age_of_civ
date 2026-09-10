@@ -407,10 +407,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
         playerObj->tech().researchProgress += who.bonusScience;
     }
     if (takesTypeDefault && who.bonusGold > 0) {
-        // economy().treasury, not addGold: the merchant effect below credits
-        // that account, and paying a bonus into Player::m_treasury instead put
-        // it somewhere the same activation did not read.
-        playerObj->economy().treasury += static_cast<CurrencyAmount>(who.bonusGold);
+        playerObj->addGold(static_cast<CurrencyAmount>(who.bonusGold));
     }
     if (takesTypeDefault && (who.bonusCulture > 0.0f || who.bonusFaith > 0.0f ||
                              who.bonusScience > 0.0f || who.bonusGold > 0)) {
@@ -652,8 +649,8 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
 
         case GreatPersonType::Merchant: {
             // WP-A3: gold (per person, see GreatPersonDef) AND a permanent trade slot.
-            playerObj->economy().treasury +=
-                static_cast<CurrencyAmount>(static_cast<float>(def.gold) * scale);
+            playerObj->addGold(
+                static_cast<CurrencyAmount>(static_cast<float>(def.gold) * scale));
             PlayerGreatPeopleComponent& gpComp = playerObj->greatPeople();
             gpComp.extraTradeSlots += 1;
             LOG_INFO("Merchant: +%lld gold + 1 permanent trade slot (total %d)",

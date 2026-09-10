@@ -80,7 +80,6 @@ struct TurnContext {
     EconomySimulation* economy = nullptr;
     DiplomacyManager* diplomacy = nullptr;
     BarbarianController* barbarians = nullptr;
-    GlobalDealTracker* dealTracker = nullptr;
     AllianceObligationTracker* allianceTracker = nullptr;
     aoc::Random* rng = nullptr;
 

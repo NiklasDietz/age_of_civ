@@ -152,8 +152,6 @@ void processCityStateBonuses(aoc::game::GameState& gameState, PlayerId player) {
     if (gsPlayer == nullptr) {
         return;
     }
-    PlayerEconomyComponent& econ = gsPlayer->economy();
-
     for (const CityStateComponent& cs : cityStates) {
         if (player >= cs.envoys.size()) {
             continue;
@@ -194,7 +192,7 @@ void processCityStateBonuses(aoc::game::GameState& gameState, PlayerId player) {
                 gsPlayer->civics().researchProgress += magF * 4.0f;
                 break;
             case CityStateType::Trade:
-                econ.treasury += bonus * 3;
+                gsPlayer->addGold(bonus * 3);
                 break;
             case CityStateType::Religious:
                 gsPlayer->faith().faith += magF * 3.0f;

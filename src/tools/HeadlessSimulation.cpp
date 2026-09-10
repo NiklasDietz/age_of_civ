@@ -411,7 +411,6 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     // Initialize simulation subsystems
     aoc::sim::DiplomacyManager diplomacy;
     diplomacy.initialize(static_cast<uint8_t>(playerCount));
-    aoc::sim::GlobalDealTracker dealTracker;
     aoc::sim::AllianceObligationTracker allianceTracker;
 
     aoc::sim::EconomySimulation economy;
@@ -570,7 +569,6 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
             // Initialize economy component
             gsPlayer->economy().owner = player;
-            gsPlayer->economy().treasury = 0;
 
             // Initialize tech
             gsPlayer->tech().owner = player;
@@ -631,7 +629,6 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     turnCtx.economy = &economy;
     turnCtx.diplomacy = &diplomacy;
     turnCtx.barbarians = &barbarians;
-    turnCtx.dealTracker = &dealTracker;
     turnCtx.allianceTracker = &allianceTracker;
     diplomacy.setAllianceTracker(&allianceTracker);
     turnCtx.rng = &rng;

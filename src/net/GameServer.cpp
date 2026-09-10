@@ -171,7 +171,6 @@ void GameServer::initialize(const GameConfig& config) {
 
             // Initialize economy component
             gsPlayer->economy().owner    = player;
-            gsPlayer->economy().treasury = 0;
 
             // Initialize government
             gsPlayer->government().owner = player;

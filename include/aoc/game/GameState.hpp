@@ -295,6 +295,12 @@ public:
     [[nodiscard]] const std::vector<aoc::sim::PendingProposal>& pendingProposals() const {
         return this->m_pendingProposals;
     }
+    /// Deals in force (DealTerms.hpp). Owned here so the turn processor, the
+    /// AI, the UI and the save file all see one list. It used to live in
+    /// Application and in a HeadlessSimulation local, so no save carried it,
+    /// and GameServer never set the pointer at all, so deals never ran there.
+    [[nodiscard]] aoc::sim::GlobalDealTracker& deals() { return this->m_deals; }
+    [[nodiscard]] const aoc::sim::GlobalDealTracker& deals() const { return this->m_deals; }
     /// Disasters that struck, newest last (NaturalDisasters.hpp). Transient, not saved.
     [[nodiscard]] std::vector<aoc::sim::DisasterRecord>& disasterHistory() {
         return this->m_disasterHistory;
@@ -358,6 +364,7 @@ private:
     std::vector<aoc::sim::BarbarianClanComponent> m_barbarianClans;
     std::vector<aoc::sim::CityStateComponent> m_cityStates;
     std::vector<aoc::sim::PendingProposal> m_pendingProposals;
+    aoc::sim::GlobalDealTracker m_deals;
     std::vector<aoc::sim::DisasterRecord> m_disasterHistory;
     std::vector<aoc::sim::ElectricityAgreementComponent> m_electricityAgreements;
 

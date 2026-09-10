@@ -311,10 +311,10 @@ TEST_CASE("a merchant hands over its own gold, not a fixed amount") {
                     aoc::sim::allGreatPersonDefs()[merchant->greatPerson().defId].gold) *
                 who.magnitudeScale) +
             who.bonusGold;
-        const int64_t before = p.economy().treasury;
+        const int64_t before = p.treasury();
         REQUIRE(aoc::sim::requestGreatPersonActivation(w.gameState, w.grid, PlayerId{0}, {5, 5})
                 == aoc::ErrorCode::Ok);
-        const int64_t gained = p.economy().treasury - before;
+        const int64_t gained = p.treasury() - before;
         CHECK(gained == expected);            // its own amount, from its own row
         if (previousGain >= 0 && gained != previousGain) { sawDifferentGain = true; }
         previousGain = gained;
@@ -386,14 +386,14 @@ TEST_CASE("a person with a unique effect does not take its type's default path")
         aoc::game::Unit* pilgrim = recruitWithEffect(
             w, GreatPersonType::Merchant, aoc::sim::GreatPersonEffect::Pilgrimage);
         REQUIRE(pilgrim != nullptr);
-        const int64_t goldBefore  = p.economy().treasury;
+        const int64_t goldBefore  = p.treasury();
         const float   faithBefore = p.faith().faith;
 
         REQUIRE(aoc::sim::requestGreatPersonActivation(
                     w.gameState, w.grid, PlayerId{0}, pilgrim->position()) == aoc::ErrorCode::Ok);
 
         CHECK(p.faith().faith > faithBefore);          // faith arrived
-        CHECK(p.economy().treasury == goldBefore);     // and no gold did
+        CHECK(p.treasury() == goldBefore);     // and no gold did
     }
 }
 

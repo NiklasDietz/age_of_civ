@@ -305,7 +305,6 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
             gsPlayer->monetary().treasury = 0;
 
             gsPlayer->economy().owner = player;
-            gsPlayer->economy().treasury = 0;
 
             gsPlayer->tech().owner = player;
             gsPlayer->tech().initialize();

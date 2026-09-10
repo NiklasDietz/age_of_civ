@@ -285,6 +285,17 @@ struct MonetaryStateComponent {
     // -- Money supply (paper/fiat currency in GoldStandard/Fiat) --
     CurrencyAmount moneySupply    = 0;    ///< Total currency in circulation
     CurrencyAmount treasury       = 0;    ///< Government cash = coin stockpile. Starts at 0 (barter).
+
+    // -- Private money (v34) --
+    // Coin the Mint strikes is swept out of the city stockpiles at the end of
+    // the turn into one of these pools, so that what the state spends returns
+    // to the people it pays instead of vanishing. Nothing reads them until the
+    // conserved-money ledger lands; they are carried in the save now so the
+    // format is bumped once.
+    CurrencyAmount privateSpecie   = 0;   ///< Coin in private hands, civ-wide
+    CurrencyAmount privateNotes    = 0;   ///< Paper in private hands once notes are issued
+    CurrencyAmount bullion         = 0;   ///< Minted metal held before coinage is adopted
+    CoinTier       coinageStandard = CoinTier::None; ///< Metal chosen at adoption; None until then
     /// Metal backing per unit of circulating money, gold standard only. An
     /// OUTPUT: measured each turn as reserves over money supply. It must not be
     /// fed back into the money supply that defines it -- see

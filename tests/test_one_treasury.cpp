@@ -22,6 +22,7 @@
 #include "support/World.hpp"
 
 #include "aoc/game/Player.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 
 using aoc::PlayerId;
@@ -59,6 +60,23 @@ TEST_CASE("money credited through the monetary component can be spent") {
     // Overspending still refuses.
     CHECK_FALSE(p.spendGold(1000));
     CHECK(p.treasury() == 180);
+}
+
+TEST_CASE("Trade city-state envoys pay into the one treasury") {
+    // Until 2026-09-10 this bonus was credited to PlayerEconomyComponent's
+    // own `treasury`, a third account nothing could spend from, so every
+    // envoy sent to a Trade city-state bought nothing.
+    aoc::test::World w   = aoc::test::makeWorld(2);
+    aoc::game::Player& p = *w.gameState.player(PlayerId{0});
+    p.setTreasury(0);
+
+    aoc::sim::CityStateComponent cs{};
+    cs.type      = aoc::sim::CityStateType::Trade;
+    cs.envoys[0] = 3; // second tier: magnitude 2, paid x3
+    w.gameState.cityStates().push_back(cs);
+
+    aoc::sim::processCityStateBonuses(w.gameState, PlayerId{0});
+    CHECK(p.treasury() == 6);
 }
 
 TEST_CASE("a turn does not discard monetary credits") {

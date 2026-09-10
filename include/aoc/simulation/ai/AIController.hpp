@@ -73,8 +73,7 @@ public:
                      const aoc::map::FogOfWar* fogOfWar,
                      DiplomacyManager& diplomacy,
                      const Market& market,
-                     aoc::Random& rng,
-                     GlobalDealTracker* dealTracker = nullptr);
+                     aoc::Random& rng);
 
     [[nodiscard]] PlayerId player() const { return this->m_player; }
 

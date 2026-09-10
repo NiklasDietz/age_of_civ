@@ -33,6 +33,8 @@
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
+#include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/simulation/tech/EurekaBoost.hpp"
@@ -167,6 +169,8 @@ constexpr std::size_t MAX_RESOLUTION_RECORDS = 256;
 constexpr std::size_t MAX_EMBARGOED_GOODS    = 1024;
 constexpr std::size_t MAX_PENDING_PROPOSALS  = 64;
 constexpr std::size_t MAX_DEAL_TERMS         = 16;
+constexpr std::size_t MAX_ACTIVE_DEALS       = 256;
+constexpr std::size_t MAX_TRADER_CARGO       = 64;
 constexpr std::size_t MAX_RESEARCH_QUEUE     = 128;
 constexpr std::size_t MAX_CITY_WONDERS           = 256;
 constexpr std::size_t MAX_CITY_GREAT_WORKS       = 64;
@@ -465,6 +469,127 @@ void writeRandomSection(WriteBuffer& out, const aoc::Random& rng) {
  * This pool ordering is used by later sections (production queues, districts, etc.)
  * which reference cities by their index in write order.
  */
+// ----------------------------------------------------------------------------
+// v34: the trade route on a unit record
+// ----------------------------------------------------------------------------
+
+void writeTradeCargo(WriteBuffer& section, const std::vector<aoc::sim::TradeCargo>& cargo) {
+    section.writeU16(static_cast<uint16_t>(cargo.size()));
+    for (const aoc::sim::TradeCargo& c : cargo) {
+        section.writeU16(c.goodId);
+        section.writeI32(c.amount);
+    }
+}
+
+[[nodiscard]] bool readTradeCargo(ReadBuffer& buf, std::vector<aoc::sim::TradeCargo>& out) {
+    const uint16_t count = buf.readU16();
+    if (count > MAX_TRADER_CARGO || !buf.canReadRecords(count, 6)) {
+        LOG_ERROR("Serializer: trader cargo count %u out of range", static_cast<unsigned>(count));
+        return false;
+    }
+    out.clear();
+    out.reserve(count);
+    for (uint16_t i = 0; i < count && !buf.isCorrupt(); ++i) {
+        aoc::sim::TradeCargo c{};
+        c.goodId = buf.readU16();
+        c.amount = buf.readI32();
+        if (c.goodId >= aoc::sim::goods::GOOD_COUNT || c.amount < 0) {
+            LOG_ERROR("Serializer: trader cargo good %u / amount %d out of range",
+                      static_cast<unsigned>(c.goodId), c.amount);
+            return false;
+        }
+        out.push_back(c);
+    }
+    return !buf.isCorrupt();
+}
+
+/// Per-turn scratch (goldEarnedThisTurn, tollPaidThisTurn) is not written:
+/// the next turn overwrites it before anything reads it.
+void writeTraderRecord(WriteBuffer& section, const aoc::sim::TraderComponent& t) {
+    section.writeU8(t.owner);
+    section.writeI32(t.originCityLocation.q);
+    section.writeI32(t.originCityLocation.r);
+    section.writeI32(t.destCityLocation.q);
+    section.writeI32(t.destCityLocation.r);
+    section.writeU8(t.destOwner);
+    section.writeU8(static_cast<uint8_t>(t.routeType));
+    writeTradeCargo(section, t.cargo);
+    writeTradeCargo(section, t.pendingPickupCargo);
+    section.writeI32(t.pickupCityLocation.q);
+    section.writeI32(t.pickupCityLocation.r);
+    section.writeU16(static_cast<uint16_t>(t.path.size()));
+    for (const aoc::hex::AxialCoord& c : t.path) {
+        section.writeI32(c.q);
+        section.writeI32(c.r);
+    }
+    section.writeI32(t.pathIndex);
+    section.writeU8(t.isReturning ? uint8_t{1} : uint8_t{0});
+    section.writeI32(t.completedTrips);
+    section.writeI32(t.turnsActive);
+    section.writeI32(t.maxTrips);
+    section.writeI64(t.carriedGold);
+    section.writeU8(t.carriedMedium);
+    section.writeU16(t.fuelGoodId);
+    section.writeI32(t.fuelOnBoard);
+    section.writeF32(t.fuelPerTile);
+    section.writeI32(t.idleTurnsNoFuel);
+    section.writeF32(t.scienceSpread);
+    section.writeF32(t.cultureSpread);
+}
+
+[[nodiscard]] bool readTraderRecord(ReadBuffer& buf, aoc::sim::TraderComponent& t) {
+    t.owner              = buf.readU8();
+    t.originCityLocation = {buf.readI32(), buf.readI32()};
+    t.destCityLocation   = {buf.readI32(), buf.readI32()};
+    t.destOwner          = buf.readU8();
+    const uint8_t routeType = buf.readU8();
+    if (routeType > static_cast<uint8_t>(aoc::sim::TradeRouteType::Air)) {
+        LOG_ERROR("Serializer: trade route type %u out of range", static_cast<unsigned>(routeType));
+        return false;
+    }
+    t.routeType = static_cast<aoc::sim::TradeRouteType>(routeType);
+    if (!readTradeCargo(buf, t.cargo) || !readTradeCargo(buf, t.pendingPickupCargo)) {
+        return false;
+    }
+    t.pickupCityLocation = {buf.readI32(), buf.readI32()};
+    const uint16_t pathSize = buf.readU16();
+    if (pathSize > MAX_PATH || !buf.canReadRecords(pathSize, 8)) {
+        LOG_ERROR("Serializer: trader path size %u out of range", static_cast<unsigned>(pathSize));
+        return false;
+    }
+    t.path.clear();
+    t.path.reserve(pathSize);
+    for (uint16_t i = 0; i < pathSize && !buf.isCorrupt(); ++i) {
+        t.path.push_back({buf.readI32(), buf.readI32()});
+    }
+    t.pathIndex = buf.readI32();
+    if (t.pathIndex < 0 || t.pathIndex > static_cast<int32_t>(pathSize)) {
+        LOG_ERROR("Serializer: trader path index %d out of range", t.pathIndex);
+        return false;
+    }
+    t.isReturning    = buf.readU8() != 0;
+    t.completedTrips = buf.readI32();
+    t.turnsActive    = buf.readI32();
+    t.maxTrips       = buf.readI32();
+    t.carriedGold    = buf.readI64();
+    t.carriedMedium  = buf.readU8();
+    if (t.carriedMedium > 1) {
+        LOG_ERROR("Serializer: carried medium %u out of range", static_cast<unsigned>(t.carriedMedium));
+        return false;
+    }
+    t.fuelGoodId = buf.readU16();
+    if (t.fuelGoodId != 0 && t.fuelGoodId >= aoc::sim::goods::GOOD_COUNT) {
+        LOG_ERROR("Serializer: trader fuel good %u out of range", static_cast<unsigned>(t.fuelGoodId));
+        return false;
+    }
+    t.fuelOnBoard     = buf.readI32();
+    t.fuelPerTile     = buf.readF32();
+    t.idleTurnsNoFuel = buf.readI32();
+    t.scienceSpread   = buf.readF32();
+    t.cultureSpread   = buf.readF32();
+    return !buf.isCorrupt();
+}
+
 void writeEntitySection(WriteBuffer& out, const aoc::game::GameState& gameState) {
     WriteBuffer section;
 
@@ -524,6 +649,11 @@ void writeEntitySection(WriteBuffer& out, const aoc::game::GameState& gameState)
             section.writeI32(gp.position.q);
             section.writeI32(gp.position.r);
             section.writeU8(gp.isActivated ? uint8_t{1} : uint8_t{0});
+            // v34: the trade route rides on the unit record. A loaded Trader
+            // used to come back idle: cargo, carried coin, path and the goods
+            // reserved for it at the pickup city were all lost.
+            writeTraderRecord(section, unit->trader());
+            section.writeU8(unit->autoRenewRoute ? uint8_t{1} : uint8_t{0});
         }
     }
 
@@ -865,6 +995,11 @@ void writeMonetarySection(WriteBuffer& out, const aoc::game::GameState& gameStat
         const aoc::sim::CurrencyExchangeComponent& fx = player->currencyExchange();
         section.writeF32(fx.exchangeRate);
         section.writeI64(fx.foreignReserves);
+        // v34: the private money pools and the coinage metal the civ chose.
+        section.writeI64(m.privateSpecie);
+        section.writeI64(m.privateNotes);
+        section.writeI64(m.bullion);
+        section.writeU8(static_cast<uint8_t>(m.coinageStandard));
     }
 
     writeSection(out, SectionId::MonetaryState, section);
@@ -1009,15 +1144,6 @@ void writePlayerStateSection(WriteBuffer& out, const aoc::game::GameState& gameS
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
         section.writeU8(static_cast<uint8_t>(player->id()));
         section.writeU16(player->era().currentEra.value);
-    }
-
-    // --- PlayerEconomyComponent ---
-    section.writeU32(playerCount);
-    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
-        const aoc::sim::PlayerEconomyComponent& econ = player->economy();
-        section.writeU8(static_cast<uint8_t>(player->id()));
-        section.writeI64(econ.treasury);
-        section.writeI64(econ.incomePerTurn);
     }
 
     // --- PlayerGreatPeopleComponent ---
@@ -1408,10 +1534,89 @@ void writeCityStatesSection(WriteBuffer& out, const aoc::game::GameState& gameSt
     writeSection(out, SectionId::CityStates, section);
 }
 
-/// v17: the global religion tracker and per-player faith. City pressure rides
-/// on the Entities city record.
-/// v22: deal proposals waiting for the human. cityEntity is never written; every
-/// constructed CedeCity term names its city by tileCoord.
+// ----------------------------------------------------------------------------
+// Deals: one term and one deal, shared by the inbox (v22) and the deals in
+// force (v34). cityEntity is never written; every constructed CedeCity term
+// names its city by tileCoord.
+// ----------------------------------------------------------------------------
+
+constexpr std::size_t DEAL_TERM_BYTES   = 37;
+constexpr std::size_t DEAL_HEADER_BYTES = 12;
+
+void writeDealTerm(WriteBuffer& section, const aoc::sim::DealTerm& t) {
+    section.writeU8(static_cast<uint8_t>(t.type));
+    section.writeU8(t.fromPlayer);
+    section.writeU8(t.toPlayer);
+    section.writeI32(t.tileCoord.q);
+    section.writeI32(t.tileCoord.r);
+    section.writeI32(t.goldPerTurn);
+    section.writeI32(t.goldLump);
+    section.writeI32(t.duration);
+    section.writeU16(t.goodId);
+    section.writeI32(t.goodAmount);
+    section.writeI32(t.zoneRadius);
+    section.writeI32(t.maxMilitaryUnits);
+}
+
+[[nodiscard]] bool readDealTerm(ReadBuffer& buf, aoc::sim::DealTerm& term) {
+    const uint8_t type = buf.readU8();
+    if (type >= static_cast<uint8_t>(aoc::sim::DealTermType::Count)) {
+        LOG_ERROR("Serializer: deal term type %u out of range", static_cast<unsigned>(type));
+        return false;
+    }
+    term.type             = static_cast<aoc::sim::DealTermType>(type);
+    term.fromPlayer       = buf.readU8();
+    term.toPlayer         = buf.readU8();
+    term.tileCoord        = {buf.readI32(), buf.readI32()};
+    term.goldPerTurn      = buf.readI32();
+    term.goldLump         = buf.readI32();
+    term.duration         = buf.readI32();
+    term.goodId           = buf.readU16();
+    term.goodAmount       = buf.readI32();
+    term.zoneRadius       = buf.readI32();
+    term.maxMilitaryUnits = buf.readI32();
+    return !buf.isCorrupt();
+}
+
+void writeDeal(WriteBuffer& section, const aoc::sim::DiplomaticDeal& deal) {
+    section.writeU8(deal.playerA);
+    section.writeU8(deal.playerB);
+    section.writeI32(deal.turnsRemaining);
+    section.writeU8(deal.isAccepted ? uint8_t{1} : uint8_t{0});
+    section.writeU8(deal.isBroken ? uint8_t{1} : uint8_t{0});
+    section.writeU32(static_cast<uint32_t>(deal.terms.size()));
+    for (const aoc::sim::DealTerm& t : deal.terms) {
+        writeDealTerm(section, t);
+    }
+}
+
+[[nodiscard]] bool readDeal(ReadBuffer& buf, aoc::sim::DiplomaticDeal& deal) {
+    deal.playerA        = buf.readU8();
+    deal.playerB        = buf.readU8();
+    deal.turnsRemaining = buf.readI32();
+    deal.isAccepted     = buf.readU8() != 0;
+    deal.isBroken       = buf.readU8() != 0;
+    const uint32_t termCount = buf.readU32();
+    if (termCount > MAX_DEAL_TERMS || !buf.canReadRecords(termCount, DEAL_TERM_BYTES)) {
+        LOG_ERROR("Serializer: deal term count %u out of range", termCount);
+        return false;
+    }
+    deal.terms.clear();
+    for (uint32_t t = 0; t < termCount && !buf.isCorrupt(); ++t) {
+        aoc::sim::DealTerm term{};
+        if (!readDealTerm(buf, term)) {
+            return false;
+        }
+        deal.terms.push_back(term);
+    }
+    if (deal.playerA >= MAX_PLAYERS || deal.playerB >= MAX_PLAYERS) {
+        LOG_ERROR("Serializer: deal parties out of range");
+        return false;
+    }
+    return !buf.isCorrupt();
+}
+
+/// v22: deal proposals waiting for the human.
 void writeDealProposalsSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
     WriteBuffer section;
     const std::vector<aoc::sim::PendingProposal>& inbox = gameState.pendingProposals();
@@ -1421,28 +1626,21 @@ void writeDealProposalsSection(WriteBuffer& out, const aoc::game::GameState& gam
         section.writeU8(p.to);
         section.writeI32(p.proposedTurn);
         section.writeI32(p.expiresTurn);
-        section.writeU8(p.deal.playerA);
-        section.writeU8(p.deal.playerB);
-        section.writeI32(p.deal.turnsRemaining);
-        section.writeU8(p.deal.isAccepted ? uint8_t{1} : uint8_t{0});
-        section.writeU8(p.deal.isBroken ? uint8_t{1} : uint8_t{0});
-        section.writeU32(static_cast<uint32_t>(p.deal.terms.size()));
-        for (const aoc::sim::DealTerm& t : p.deal.terms) {
-            section.writeU8(static_cast<uint8_t>(t.type));
-            section.writeU8(t.fromPlayer);
-            section.writeU8(t.toPlayer);
-            section.writeI32(t.tileCoord.q);
-            section.writeI32(t.tileCoord.r);
-            section.writeI32(t.goldPerTurn);
-            section.writeI32(t.goldLump);
-            section.writeI32(t.duration);
-            section.writeU16(t.goodId);
-            section.writeI32(t.goodAmount);
-            section.writeI32(t.zoneRadius);
-            section.writeI32(t.maxMilitaryUnits);
-        }
+        writeDeal(section, p.deal);
     }
     writeSection(out, SectionId::DealProposals, section);
+}
+
+/// v34: the deals in force. Broken deals are kept too: processDeals leaves
+/// them in the list, and dropping them on load would forget who broke what.
+void writeActiveDealsSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
+    WriteBuffer section;
+    const std::vector<aoc::sim::DiplomaticDeal>& deals = gameState.deals().activeDeals;
+    section.writeU32(static_cast<uint32_t>(deals.size()));
+    for (const aoc::sim::DiplomaticDeal& deal : deals) {
+        writeDeal(section, deal);
+    }
+    writeSection(out, SectionId::ActiveDeals, section);
 }
 
 void writeReligionSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
@@ -1968,6 +2166,7 @@ ErrorCode saveGame(const std::string& filepath, const aoc::game::GameState& game
     writeCityStatesSection(buf, gameState);
     writeReligionSection(buf, gameState);
     writeDealProposalsSection(buf, gameState);
+    writeActiveDealsSection(buf, gameState);
     writeWorldCongressSection(buf, gameState);
     writeMiscEntitiesSection(buf, gameState);
     writeCurrencyTrustSection(buf, gameState);
@@ -2244,6 +2443,8 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 uint8_t formation;   // v15
                 aoc::sim::SpyComponent spy;                 // v17
                 aoc::sim::GreatPersonComponent greatPerson; // v17
+                aoc::sim::TraderComponent trader;           // v34
+                bool autoRenewRoute;                        // v34
             };
             std::vector<UnitData> unitDataList;
             unitDataList.reserve(unitCount);
@@ -2310,6 +2511,10 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                     ud.greatPerson.position    = {buf.readI32(), buf.readI32()};
                     ud.greatPerson.isActivated = buf.readU8() != 0;
                 }
+                if (!readTraderRecord(buf, ud.trader)) {   // v34
+                    return ErrorCode::SaveCorrupted;
+                }
+                ud.autoRenewRoute = buf.readU8() != 0;
                 if (ud.owner > maxOwner) {
                     maxOwner = ud.owner;
                 }
@@ -2529,6 +2734,8 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 unit.setFormationLevel(static_cast<aoc::sim::FormationLevel>(ud.formation));
                 unit.spy()         = ud.spy;           // v17
                 unit.greatPerson() = ud.greatPerson;   // v17
+                unit.trader()      = ud.trader;        // v34
+                unit.autoRenewRoute = ud.autoRenewRoute;
                 loadedUnits.push_back(&unit);
             }
             break;
@@ -2769,6 +2976,16 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 m.reserveStressTurns              = buf.readI32();
                 const float          fxRate     = buf.readF32();  // v33
                 const CurrencyAmount fxReserves = buf.readI64();  // v33
+                m.privateSpecie = buf.readI64();                  // v34
+                m.privateNotes  = buf.readI64();
+                m.bullion       = buf.readI64();
+                const uint8_t standard = buf.readU8();
+                if (standard >= static_cast<uint8_t>(aoc::sim::CoinTier::Count)) {
+                    LOG_ERROR("Serializer: coinage standard %u out of range",
+                              static_cast<unsigned>(standard));
+                    return ErrorCode::SaveCorrupted;
+                }
+                m.coinageStandard = static_cast<aoc::sim::CoinTier>(standard);
                 if (player != nullptr) {
                     player->monetary() = std::move(m);
                     aoc::sim::CurrencyExchangeComponent& fx = player->currencyExchange();
@@ -2921,19 +3138,6 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 aoc::game::Player* player = gameState.player(owner);
                 if (player != nullptr) {
                     player->era().currentEra = eraId;
-                }
-            }
-
-            // --- PlayerEconomyComponent ---
-            uint32_t econCount = buf.readU32();
-            for (uint32_t i = 0; i < econCount; ++i) {
-                PlayerId owner            = buf.readU8();
-                int64_t treasury          = buf.readI64();
-                int64_t incomePerTurn     = buf.readI64();
-                aoc::game::Player* player = gameState.player(owner);
-                if (player != nullptr) {
-                    player->economy().treasury      = treasury;
-                    player->economy().incomePerTurn = incomePerTurn;
                 }
             }
 
@@ -3208,41 +3412,31 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 p.to                  = buf.readU8();
                 p.proposedTurn        = buf.readI32();
                 p.expiresTurn         = buf.readI32();
-                p.deal.playerA        = buf.readU8();
-                p.deal.playerB        = buf.readU8();
-                p.deal.turnsRemaining = buf.readI32();
-                p.deal.isAccepted     = buf.readU8() != 0;
-                p.deal.isBroken       = buf.readU8() != 0;
-                const uint32_t termCount = buf.readU32();
-                if (termCount > MAX_DEAL_TERMS || !buf.canReadRecords(termCount, 37)) {
-                    LOG_ERROR("Serializer: deal term count %u out of range", termCount);
+                if (!readDeal(buf, p.deal)) {
                     return ErrorCode::SaveCorrupted;
-                }
-                for (uint32_t t = 0; t < termCount && !buf.isCorrupt(); ++t) {
-                    aoc::sim::DealTerm term{};
-                    const uint8_t type = buf.readU8();
-                    if (type >= static_cast<uint8_t>(aoc::sim::DealTermType::Count)) {
-                        LOG_ERROR("Serializer: deal term type %u out of range", type);
-                        return ErrorCode::SaveCorrupted;
-                    }
-                    term.type             = static_cast<aoc::sim::DealTermType>(type);
-                    term.fromPlayer       = buf.readU8();
-                    term.toPlayer         = buf.readU8();
-                    term.tileCoord        = {buf.readI32(), buf.readI32()};
-                    term.goldPerTurn      = buf.readI32();
-                    term.goldLump         = buf.readI32();
-                    term.duration         = buf.readI32();
-                    term.goodId           = buf.readU16();
-                    term.goodAmount       = buf.readI32();
-                    term.zoneRadius       = buf.readI32();
-                    term.maxMilitaryUnits = buf.readI32();
-                    p.deal.terms.push_back(term);
                 }
                 if (p.from >= MAX_PLAYERS || p.to >= MAX_PLAYERS) {
                     LOG_ERROR("Serializer: pending proposal parties out of range");
                     return ErrorCode::SaveCorrupted;
                 }
                 inbox.push_back(std::move(p));
+            }
+            break;
+        }
+        case SectionId::ActiveDeals: {
+            std::vector<aoc::sim::DiplomaticDeal>& deals = gameState.deals().activeDeals;
+            deals.clear();
+            const uint32_t count = buf.readU32();
+            if (count > MAX_ACTIVE_DEALS || !buf.canReadRecords(count, DEAL_HEADER_BYTES)) {
+                LOG_ERROR("Serializer: active deal count %u out of range", count);
+                return ErrorCode::SaveCorrupted;
+            }
+            for (uint32_t i = 0; i < count && !buf.isCorrupt(); ++i) {
+                aoc::sim::DiplomaticDeal deal;
+                if (!readDeal(buf, deal)) {
+                    return ErrorCode::SaveCorrupted;
+                }
+                deals.push_back(std::move(deal));
             }
             break;
         }
