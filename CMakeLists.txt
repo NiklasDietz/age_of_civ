@@ -1054,6 +1054,7 @@ if(AOC_BUILD_TESTS)
         test_barter_science
         test_trader_no_ship_fuel
         test_income_breakdown_parity
+        test_trade_measurability
         test_resource_curse_is_emergent
         test_deal_proposals
         test_natural_disasters

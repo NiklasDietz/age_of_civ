@@ -573,7 +573,7 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
             LOG_INFO("Trade route rejected: player %u -> player %u (no benefit / hostile)",
                      static_cast<unsigned>(traderUnit->owner()),
                      static_cast<unsigned>(destCity->owner()));
-            return ErrorCode::InvalidArgument;
+            return ErrorCode::TradeRouteRefusedConsent;
         }
     }
 
@@ -620,7 +620,7 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
         if (activeRoutes >= cap) {
             LOG_INFO("Trade route rejected: player %u at cap %d (active %d)",
                      static_cast<unsigned>(traderUnit->owner()), cap, activeRoutes);
-            return ErrorCode::InvalidArgument;
+            return ErrorCode::TradeRouteCapReached;
         }
     }
     
@@ -807,7 +807,7 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
                          (trader.routeType == TradeRouteType::Land ? "land" :
                           trader.routeType == TradeRouteType::Sea  ? "sea"  : "air"),
                          longestSegment, maxRange);
-                return ErrorCode::InvalidArgument;
+                return ErrorCode::TradeRouteOutOfRange;
             }
         }
     }
@@ -871,7 +871,7 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
                 if (drained > 0 && originCity != nullptr) {
                     originCity->stockpile().addGoods(fs.goodId, drained);
                 }
-                return ErrorCode::InvalidArgument;
+                return ErrorCode::TradeRouteNoFuel;
             }
             trader.fuelOnBoard = drained;
         }

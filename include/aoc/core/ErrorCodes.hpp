@@ -55,6 +55,11 @@ enum class ErrorCode : uint16_t {
     InsufficientResources      = 600,
     TradeRouteInvalid          = 601,
     MarketPriceOverflow        = 602,
+    TradeRouteRefusedConsent   = 603,  ///< The destination's owner sees no benefit or is hostile
+    TradeRouteCapReached       = 604,  ///< Every trade slot already carries a route
+    TradeRouteOutOfRange       = 605,  ///< A leg of the path exceeds the trade range
+    TradeRouteNoFuel           = 606,  ///< The origin cannot fuel the ship or aircraft
+    TradeRouteNoDestination    = 607,  ///< No city an idle AI Trader may go to
 
     // -- Simulation (700-799) --
     InvalidUnitAction          = 700,
@@ -106,6 +111,11 @@ enum class ErrorCode : uint16_t {
         case ErrorCode::InsufficientResources:       return "Not enough resources for this action";
         case ErrorCode::TradeRouteInvalid:           return "Trade route cannot be established";
         case ErrorCode::MarketPriceOverflow:         return "Market price calculation overflow";
+        case ErrorCode::TradeRouteRefusedConsent:    return "Destination refuses the trade";
+        case ErrorCode::TradeRouteCapReached:        return "No free trade route slot";
+        case ErrorCode::TradeRouteOutOfRange:        return "Destination beyond trade range";
+        case ErrorCode::TradeRouteNoFuel:            return "No fuel for the voyage";
+        case ErrorCode::TradeRouteNoDestination:     return "No city to trade with";
 
         case ErrorCode::InvalidUnitAction:           return "Unit cannot perform this action";
         case ErrorCode::InvalidCityAction:           return "City cannot perform this action";

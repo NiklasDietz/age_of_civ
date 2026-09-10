@@ -1408,6 +1408,9 @@ void processTurn(TurnContext& turnContext) {
     turnContext.gameState->setCurrentTurn(static_cast<int32_t>(turnContext.currentTurn));
 
     TurnEventLog* eventLog = turnContext.eventLog;
+    if (turnContext.diplomacy != nullptr) {
+        turnContext.diplomacy->setEventLog(eventLog);
+    }
 
     // Snapshot pre-turn state for event detection.
     // The atWar matrix is indexed by the opponent's slot, so its width must

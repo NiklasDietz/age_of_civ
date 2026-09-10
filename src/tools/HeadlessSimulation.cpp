@@ -57,6 +57,8 @@
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
+#include "aoc/core/ErrorCodes.hpp"
 #include "aoc/simulation/diplomacy/AllianceObligations.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
@@ -83,6 +85,7 @@
 #include <fstream>
 #include <string>
 #include <unordered_map>
+#include <map>
 #include <unordered_set>
 #include <vector>
 
@@ -142,6 +145,9 @@ struct PlayerSnapshot {
     int32_t famineCities = 0;      ///< Cities currently below break-even
     float scienceDiffusion = 0.0f; ///< Cumulative science-spread bonus from our traders
     float cultureDiffusion = 0.0f; ///< Cumulative culture-spread bonus from our traders
+    int32_t activeRoutes = 0;      ///< Traders with a route right now
+    int32_t dealsActive = 0;       ///< Accepted, unbroken deals this player is party to
+    int32_t luxuryTypesHeld = 0;   ///< Distinct raw luxury goods in any of its stockpiles
 };
 
 /**
@@ -171,6 +177,26 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
     // Cities and population
     snap.cities = player->ownedCityCount();
     snap.population = player->totalPopulation();
+    snap.activeRoutes = player->activeTradeRouteCount();
+    for (const aoc::sim::DiplomaticDeal& deal : gameState.deals().activeDeals) {
+        if (deal.isAccepted && !deal.isBroken
+            && (deal.playerA == playerId || deal.playerB == playerId)) {
+            ++snap.dealsActive;
+        }
+    }
+    {
+        std::unordered_set<uint16_t> luxuries;
+        for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
+            for (const std::pair<const uint16_t, int32_t>& entry : city->stockpile().goods) {
+                if (entry.second > 0
+                    && aoc::sim::goodDef(entry.first).category
+                           == aoc::sim::GoodCategory::RawLuxury) {
+                    luxuries.insert(entry.first);
+                }
+            }
+        }
+        snap.luxuryTypesHeld = static_cast<int32_t>(luxuries.size());
+    }
 
     // Happiness: average across all cities with a happiness component
     {
@@ -352,7 +378,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         << "IncomeGoodsEcon,TotalIncome,EffectiveIncome,"
         << "ExpenseUnits,ExpenseBuildings,TotalExpense,NetFlow,GoodsStockpiled,"
         << "FoodPerTurn,FamineCities,ScienceDiffusion,CultureDiffusion,BarbarianUnits,"
-        << "IncomeMoneyTax,IncomeTradeRoutes,ExpenseScience\n";
+        << "IncomeMoneyTax,IncomeTradeRoutes,ExpenseScience,"
+        << "ActiveRoutes,DealsActive,LuxuryTypesHeld\n";
 
     aoc::map::HexGrid grid;
     // 2026-05-03: honour --seed CLI/yaml override so audit_matrix.sh sims are
@@ -677,6 +704,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     if (eventCsv.is_open()) {
         eventCsv << "Turn,SubStep,EventType,Player,OtherPlayer,Value1,Value2,Detail\n";
     }
+    // Why idle AI Traders found no route, by reason, over the whole run.
+    std::map<int32_t, int32_t> routeRejections;
 
     // === Main simulation loop ===
     for (int32_t turn = 1; turn <= maxTurns; ++turn) {
@@ -712,6 +741,11 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         }
 
         // Flush mid-turn events to event CSV
+        for (const aoc::sim::TurnEvent& evt : eventLog.events()) {
+            if (evt.type == aoc::sim::TurnEventType::TradeRouteRejected) {
+                ++routeRejections[evt.value1];
+            }
+        }
         if (eventCsv.is_open()) {
             for (const aoc::sim::TurnEvent& evt : eventLog.events()) {
                 eventCsv << turn << ","
@@ -920,6 +954,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 << "," << snap.barbarianUnits;
             csv << "," << bd.incomeMoneyTax << "," << bd.incomeTradeRoutes << ","
                 << bd.expenseScience;
+            csv << "," << snap.activeRoutes << "," << snap.dealsActive << ","
+                << snap.luxuryTypesHeld;
             csv << "\n";
         }
 
@@ -947,6 +983,16 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     }
 
     csv.close();
+
+    {
+        std::string summary;
+        for (const std::pair<const int32_t, int32_t>& entry : routeRejections) {
+            summary += "\n    " + std::to_string(entry.second) + " x "
+                     + std::string(aoc::describeError(static_cast<aoc::ErrorCode>(entry.first)));
+        }
+        std::fprintf(stderr, "\n  Trade route rejections (idle AI Traders, whole run):%s\n",
+                     summary.empty() ? " none" : summary.c_str());
+    }
 
     // WP-L1: tile snapshot dump for AI / analysis tooling. One row per
     // tile with ownership + improvement + resource + reserves. Pairs with

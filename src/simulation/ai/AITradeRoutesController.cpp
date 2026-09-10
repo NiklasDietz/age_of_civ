@@ -17,6 +17,7 @@
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/tech/TechGating.hpp"
+#include "aoc/simulation/turn/TurnEventLog.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/core/Log.hpp"
@@ -25,6 +26,22 @@
 #include <unordered_map>
 
 namespace aoc::sim::ai {
+
+namespace {
+
+/// The rejection tally the headless tool prints per run. Which rule keeps
+/// trade partners at one is the question the money programme's Phase 1 asks
+/// before it touches geography.
+void noteRouteRejection(const DiplomacyManager& diplomacy, PlayerId player, PlayerId destOwner,
+                        ErrorCode why) {
+    TurnEventLog* log = diplomacy.eventLog();
+    if (log != nullptr) {
+        log->record(TurnEventType::TradeRouteRejected, player, destOwner,
+                    static_cast<int32_t>(why), 0, std::string(describeError(why)));
+    }
+}
+
+} // namespace
 
 void AIController::manageTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                                       const Market& market, const DiplomacyManager& diplomacy) {
@@ -55,7 +72,11 @@ void AIController::manageTradeRoutes(aoc::game::GameState& gameState, aoc::map::
             if (u->trader().owner == INVALID_PLAYER) { continue; }
             ++activeRoutes;
         }
-        if (activeRoutes >= cap) { return; }
+        if (activeRoutes >= cap) {
+            noteRouteRejection(diplomacy, this->m_player, INVALID_PLAYER,
+                               ErrorCode::TradeRouteCapReached);
+            return;
+        }
     }
 
     const aoc::sim::PlayerEconomyComponent& myEcon = gsPlayer->economy();
@@ -144,7 +165,12 @@ void AIController::manageTradeRoutes(aoc::game::GameState& gameState, aoc::map::
                          bestCity->name().c_str(),
                          static_cast<unsigned>(bestCity->owner()),
                          static_cast<double>(bestScore));
+            } else {
+                noteRouteRejection(diplomacy, this->m_player, bestCity->owner(), result);
             }
+        } else {
+            noteRouteRejection(diplomacy, this->m_player, INVALID_PLAYER,
+                               ErrorCode::TradeRouteNoDestination);
         }
     }
 }

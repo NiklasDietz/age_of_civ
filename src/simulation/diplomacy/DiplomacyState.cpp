@@ -570,6 +570,10 @@ void DiplomacyManager::setEmbargo(PlayerId embargoer, PlayerId target, bool emba
         RelationModifier embargoMod{"Trade Embargo", -15, 20};
         relAB.modifiers.push_back(embargoMod);
         relBA.modifiers.push_back(embargoMod);
+        if (this->m_eventLog != nullptr) {
+            this->m_eventLog->record(TurnEventType::EmbargoDeclared, embargoer, target, -1, 0,
+                                     "Trade embargo");
+        }
 
         LOG_INFO("Player %u embargoed Player %u",
                  static_cast<unsigned>(embargoer), static_cast<unsigned>(target));
@@ -612,6 +616,10 @@ void DiplomacyManager::setResourceEmbargo(PlayerId a, PlayerId b,
         // Add to both directions (symmetric)
         relAB.embargoedGoods.push_back(goodId);
         relBA.embargoedGoods.push_back(goodId);
+        if (this->m_eventLog != nullptr) {
+            this->m_eventLog->record(TurnEventType::EmbargoDeclared, a, b,
+                                     static_cast<int32_t>(goodId), 0, "Resource embargo");
+        }
         LOG_INFO("Resource embargo set: Player %u <-> Player %u, good %u",
                  static_cast<unsigned>(a), static_cast<unsigned>(b),
                  static_cast<unsigned>(goodId));

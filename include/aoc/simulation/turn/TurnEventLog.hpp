@@ -43,6 +43,9 @@ enum class TurnEventType : uint8_t {
     NaturalDisaster,     ///< Volcano, flood, etc.
     BarbarianCampSpawned, ///< A barbarian encampment appeared (value1/value2 = q/r)
     BarbarianCampCleared, ///< A player overran an encampment (value1 = gold reward)
+    DealAccepted,        ///< A deal came into force (otherPlayer = counterparty, value1 = term count)
+    EmbargoDeclared,     ///< player embargoed otherPlayer (value1 = good id, -1 for all trade)
+    TradeRouteRejected,  ///< An idle AI Trader found no route (value1 = ErrorCode, otherPlayer = destination owner)
 };
 
 /// A single mid-turn event.
@@ -112,6 +115,9 @@ public:
             case TurnEventType::NaturalDisaster:     return "NaturalDisaster";
             case TurnEventType::BarbarianCampSpawned: return "BarbarianCampSpawned";
             case TurnEventType::BarbarianCampCleared: return "BarbarianCampCleared";
+            case TurnEventType::DealAccepted:        return "DealAccepted";
+            case TurnEventType::EmbargoDeclared:     return "EmbargoDeclared";
+            case TurnEventType::TradeRouteRejected:  return "TradeRouteRejected";
         }
         return "Unknown";
     }

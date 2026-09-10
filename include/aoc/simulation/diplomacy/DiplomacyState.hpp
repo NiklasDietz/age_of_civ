@@ -228,6 +228,12 @@ public:
      */
     void initialize(uint8_t playerCount);
 
+    /// Non-owning sink for diplomacy events (deals accepted, embargoes,
+    /// refused routes). processTurn points it at the turn's log; it is null
+    /// outside a turn and in tests that do not ask for events.
+    void setEventLog(TurnEventLog* log) { this->m_eventLog = log; }
+    [[nodiscard]] TurnEventLog* eventLog() const { return this->m_eventLog; }
+
     /// Get the relation between two players. The matrix is directional --
     /// relation(a, b) and relation(b, a) are different objects -- and most
     /// fields are kept symmetric by writing both. The border and naval
@@ -358,6 +364,7 @@ private:
     std::vector<PairwiseRelation> m_relations;
     uint8_t m_playerCount                        = 0;
     AllianceObligationTracker* m_allianceTracker = nullptr;
+    TurnEventLog* m_eventLog                     = nullptr;
 };
 
 /// Two major players meet when any unit or city of one is within this many

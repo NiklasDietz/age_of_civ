@@ -8,6 +8,7 @@
  */
 
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
+#include "aoc/simulation/turn/TurnEventLog.hpp"
 
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -269,6 +270,11 @@ ErrorCode acceptDeal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
     }
 
     deal.isAccepted = true;
+    if (diplomacy != nullptr && diplomacy->eventLog() != nullptr) {
+        diplomacy->eventLog()->record(TurnEventType::DealAccepted, deal.playerA, deal.playerB,
+                                      static_cast<int32_t>(deal.terms.size()), 0,
+                                      "Deal accepted");
+    }
 
     for (const DealTerm& term : deal.terms) {
         switch (term.type) {
