@@ -26,6 +26,7 @@
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/city/CityActions.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/monetary/FiscalPolicy.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
@@ -2069,10 +2070,7 @@ void EconomyScreen::open(UIManager& ui) {
             if (p == nullptr) {
                 return;
             }
-            p->monetary().taxRate -= 0.05f;
-            if (p->monetary().taxRate < 0.0f) {
-                p->monetary().taxRate = 0.0f;
-            }
+            aoc::sim::setTaxRate(p->monetary(), p->monetary().taxRate - 0.05f);
             LOG_INFO("Tax rate: %d%%", static_cast<int>(p->monetary().taxRate * 100.0f));
         };
 
@@ -2089,10 +2087,7 @@ void EconomyScreen::open(UIManager& ui) {
             if (p == nullptr) {
                 return;
             }
-            p->monetary().taxRate += 0.05f;
-            if (p->monetary().taxRate > 1.0f) {
-                p->monetary().taxRate = 1.0f;
-            }
+            aoc::sim::setTaxRate(p->monetary(), p->monetary().taxRate + 0.05f);
             LOG_INFO("Tax rate: %d%%", static_cast<int>(p->monetary().taxRate * 100.0f));
         };
 

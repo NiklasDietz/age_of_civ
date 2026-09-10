@@ -478,18 +478,7 @@ void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
                 if (moonLanded) {
                     // He3 already added in outer lunar block; nothing to do.
                 } else {
-                    bool isCoastal = false;
-                    std::array<aoc::hex::AxialCoord, 6> neighbors =
-                        aoc::hex::neighbors(cityPtr->location());
-                    for (const aoc::hex::AxialCoord& nbr : neighbors) {
-                        if (grid.isValid(nbr)) {
-                            int32_t nbrIdx = grid.toIndex(nbr);
-                            if (aoc::map::isWater(grid.terrain(nbrIdx))) {
-                                isCoastal = true;
-                                break;
-                            }
-                        }
-                    }
+                    bool isCoastal = grid.isCoastal(cityPtr->location());
                     if (isCoastal) {
                         stockpile.addGoods(goods::DEUTERIUM, 1);
                     }
@@ -1648,15 +1637,12 @@ void EconomySimulation::updateCoinReservesFromStockpiles(aoc::game::GameState& g
         // This fixes the critical bug where treasury was overwritten each turn,
         // undoing all income and expense calculations from the previous turn.
         //
-        // In BARTER mode (no coins): treasury is forced to 0 (no spending power).
+        // In BARTER mode the treasury is left alone: no income accrues without
+        // coins (Maintenance.cpp gates it), and gold a Barter civ does receive
+        // -- a deal, plunder, a ruin -- is the metal it will adopt coinage
+        // with, not something to zero every turn.
         // In COMMODITY/GOLD/FIAT: moneySupply tracks coin pool, treasury accumulates.
-        if (state.system == MonetarySystemType::Barter) {
-            if (state.totalCoinCount() == 0) {
-                playerPtr->setTreasury(0);
-                state.treasury = 0;
-            }
-            // Once coins exist (transition just happened), let treasury accumulate.
-        } else {
+        if (state.system != MonetarySystemType::Barter) {
             // Update money supply for display, trade efficiency, and inflation.
             // CommodityMoney: moneySupply = physical coins
             // GoldStandard: moneySupply = coins + paper notes

@@ -867,7 +867,7 @@ void Application::updateHUD() {
         std::string goldText, sciText, culText, faithText, tourismText;
         if (humanHud != nullptr) {
             CurrencyAmount goldTreasury = humanHud->treasury();
-            CurrencyAmount goldIncome   = humanHud->incomePerTurn();
+            CurrencyAmount goldIncome   = humanHud->netGoldLastTurn(); // net, not gross
             goldText = std::to_string(goldTreasury) + (goldIncome >= 0 ? "  (+" : "  (") +
                        std::to_string(goldIncome) + ")";
             // Same formulas the turn uses (TurnProcessor), not the worked-tile

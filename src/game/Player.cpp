@@ -11,6 +11,7 @@
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <functional>
 #include <utility>
 
@@ -62,7 +63,6 @@ Player::Player(PlayerId id) : m_id(id) {
     this->m_humanCapital.owner        = id;
     this->m_supplyChain.owner         = id;
     this->m_industrial.owner          = id;
-    this->m_banking.owner             = id;
     this->m_grievances.owner          = id;
     this->m_currencyTrust.owner       = id;
     this->m_currencyExchange.owner    = id;
@@ -293,6 +293,30 @@ CurrencyAmount Player::goldIncome(const aoc::map::HexGrid& grid) const {
     // Civilization ability: gold multiplier.
     const float goldMult = aoc::sim::civDef(this->m_civId).modifiers.goldMultiplier;
     return static_cast<CurrencyAmount>(static_cast<float>(total) * goldMult);
+}
+
+const City* Player::nearestCity(const aoc::map::HexGrid& grid, hex::AxialCoord at,
+                                int32_t* distOut) const {
+    const City* best = nullptr;
+    int32_t bestDist = std::numeric_limits<int32_t>::max();
+    for (const std::unique_ptr<City>& city : this->m_cities) {
+        if (city == nullptr || city->owner() != this->m_id) {
+            continue;
+        }
+        const int32_t d = grid.distance(city->location(), at);
+        if (d < bestDist) {
+            bestDist = d;
+            best     = city.get();
+        }
+    }
+    if (distOut != nullptr) {
+        *distOut = bestDist;
+    }
+    return best;
+}
+
+City* Player::nearestCity(const aoc::map::HexGrid& grid, hex::AxialCoord at, int32_t* distOut) {
+    return const_cast<City*>(std::as_const(*this).nearestCity(grid, at, distOut));
 }
 
 } // namespace aoc::game

@@ -33,50 +33,6 @@ ErrorCode printMoney(MonetaryStateComponent& state, CurrencyAmount amount) {
     return ErrorCode::Ok;
 }
 
-ErrorCode buyGold(MonetaryStateComponent& state,
-                   CurrencyAmount goldAmount,
-                   CurrencyAmount goldPrice) {
-    CurrencyAmount totalCost = goldAmount * goldPrice;
-    if (state.treasury < totalCost) {
-        return ErrorCode::InsufficientResources;
-    }
-
-    state.goldBarReserves += static_cast<int32_t>(goldAmount);
-    state.treasury     -= totalCost;
-    adjustMoneySupply(state, -totalCost, "buyGold");  // Currency removed from circulation
-
-    // Recalculate backing ratio if on gold standard
-    if (state.system == MonetarySystemType::GoldStandard && state.moneySupply > 0) {
-        state.goldBackingRatio = static_cast<float>(state.goldBarReserves)
-                               / static_cast<float>(state.moneySupply);
-    }
-
-    state.updateCoinTier();
-    return ErrorCode::Ok;
-}
-
-ErrorCode sellGold(MonetaryStateComponent& state,
-                    CurrencyAmount goldAmount,
-                    CurrencyAmount goldPrice) {
-    if (state.goldBarReserves < static_cast<int32_t>(goldAmount)) {
-        return ErrorCode::InsufficientResources;
-    }
-
-    CurrencyAmount currencyGained = goldAmount * goldPrice;
-    state.goldBarReserves -= static_cast<int32_t>(goldAmount);
-    state.treasury     += currencyGained;
-    adjustMoneySupply(state, currencyGained, "sellGold");  // Currency enters circulation
-
-    // Recalculate backing ratio
-    if (state.system == MonetarySystemType::GoldStandard && state.moneySupply > 0) {
-        state.goldBackingRatio = static_cast<float>(state.goldBarReserves)
-                               / static_cast<float>(state.moneySupply);
-    }
-
-    state.updateCoinTier();
-    return ErrorCode::Ok;
-}
-
 float moneyMultiplier(const MonetaryStateComponent& state) {
     if (state.reserveRequirement <= 0.001f) {
         return 100.0f;  // Cap at 100x to prevent infinity

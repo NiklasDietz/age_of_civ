@@ -11,6 +11,4 @@ output_file: marathon_test.csv
 show_progress: true
 log_interval: 100
 score_victory_turn: 2000
-starting_gold: 100
-starting_population: 3
 game_length: Eternal

@@ -466,16 +466,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
             // WP-A3: if nearest owned city has a Research Lab (BuildingId 12),
             // start a 20-turn sustained science pulse (+8/turn) instead of a
             // one-shot jolt. Otherwise fall back to +50% of current research.
-            aoc::game::City* nearestCity = nullptr;
-            int32_t bestDist = std::numeric_limits<int32_t>::max();
-            for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
-                if (cityPtr == nullptr) { continue; }
-                const int32_t dist = grid.distance(gp.position, cityPtr->location());
-                if (dist < bestDist) {
-                    bestDist    = dist;
-                    nearestCity = cityPtr.get();
-                }
-            }
+            aoc::game::City* nearestCity = playerObj->nearestCity(grid, gp.position);
             // WP-A3: pulse triggers in any city with a science-focused
             // building (Library 7, University 19, Research Lab 12).
             // Audit 2026-04: Research-Lab-only gate never fired in 1000t
@@ -507,18 +498,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
             // WP-A3: find nearest owned city, grant +100 production. Additionally,
             // if the city has no Industrial district yet, create one at no cost
             // — "Renaissance Man" unlocks industry.
-            aoc::game::City* nearestCity = nullptr;
-            int32_t bestDist = std::numeric_limits<int32_t>::max();
-            for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
-                if (cityPtr == nullptr) {
-                    continue;
-                }
-                const int32_t dist = grid.distance(gp.position, cityPtr->location());
-                if (dist < bestDist) {
-                    bestDist    = dist;
-                    nearestCity = cityPtr.get();
-                }
-            }
+            aoc::game::City* nearestCity = playerObj->nearestCity(grid, gp.position);
             if (nearestCity != nullptr) {
                 if (!nearestCity->production().isEmpty()) {
                     nearestCity->production().queue.front().progress += def.production * scale;

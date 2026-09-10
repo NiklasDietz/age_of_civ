@@ -292,57 +292,7 @@ float computeInfrastructureBonus(const aoc::game::GameState& gameState,
     return std::min(bonus, MAX_BONUS);
 }
 
-// ============================================================================
-// Credit / Banking
-// ============================================================================
 
-void PlayerBankingComponent::takeLoan(CurrencyAmount amount) {
-    if (amount <= 0) {
-        return;
-    }
-    this->totalLoans       += amount;
-    this->turnsUntilPayment = 5;
-    LOG_INFO("Player %u took loan of %lld (total debt: %lld)",
-             static_cast<unsigned>(this->owner),
-             static_cast<long long>(amount),
-             static_cast<long long>(this->totalLoans));
-}
-
-void PlayerBankingComponent::processPayments(CurrencyAmount& treasury, CurrencyAmount gdp) {
-    if (this->totalLoans <= 0) {
-        this->hasBankingCrisis      = false;
-        this->crisisTurnsRemaining  = 0;
-        return;
-    }
-
-    const CurrencyAmount interest = this->totalLoans * this->loanInterestRate / 100;
-    treasury -= interest;
-
-    LOG_DEBUG("Player %u pays %lld interest on %lld debt",
-              static_cast<unsigned>(this->owner),
-              static_cast<long long>(interest),
-              static_cast<long long>(this->totalLoans));
-
-    if (gdp > 0 && this->totalLoans > 2 * gdp) {
-        if (!this->hasBankingCrisis) {
-            this->hasBankingCrisis     = true;
-            this->crisisTurnsRemaining = 10;
-            LOG_ERROR("Player %u enters banking crisis! Debt %lld > 2 * GDP %lld",
-                      static_cast<unsigned>(this->owner),
-                      static_cast<long long>(this->totalLoans),
-                      static_cast<long long>(gdp));
-        }
-    }
-
-    if (this->hasBankingCrisis) {
-        --this->crisisTurnsRemaining;
-        if (this->crisisTurnsRemaining <= 0) {
-            this->hasBankingCrisis     = false;
-            this->crisisTurnsRemaining = 0;
-            LOG_INFO("Player %u banking crisis resolved", static_cast<unsigned>(this->owner));
-        }
-    }
-}
 
 // ============================================================================
 // Currency Exchange
@@ -388,62 +338,16 @@ float computeExchangeRate(const aoc::game::GameState& gameState,
     return 0.8f;
 }
 
-// ============================================================================
-// Debt Crisis
-// ============================================================================
-
-bool checkDebtCrisis(aoc::game::GameState& gameState, PlayerId player) {
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
-        return false;
-    }
-
-    MonetaryStateComponent& state = playerObj->monetary();
-    if (state.gdp <= 0) {
-        return false;
-    }
-
-    const bool inCrisis = (state.governmentDebt > 2 * state.gdp);
-    if (!inCrisis) {
-        return false;
-    }
-
-    LOG_INFO("Debt crisis for player %u: debt %lld > 2 * GDP %lld",
-             static_cast<unsigned>(player),
-             static_cast<long long>(state.governmentDebt),
-             static_cast<long long>(state.gdp));
-
-    PlayerBankingComponent& bank = playerObj->banking();
-    if (!bank.hasBankingCrisis) {
-        bank.hasBankingCrisis     = true;
-        bank.crisisTurnsRemaining = 10;
-    }
-
-    return true;
-}
 
 // ============================================================================
 // Master function
 // ============================================================================
 
-void processAdvancedEconomics(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
-                              PlayerId player, Market& /*market*/) {
+void processAdvancedEconomics(aoc::game::GameState& gameState, const aoc::map::HexGrid& /*grid*/,
+                              PlayerId /*player*/, Market& /*market*/) {
+    // Loans and the debt crisis went with them: takeLoan never had a caller,
+    // so interest never fired and the crisis never triggered.
     processTechSpillover(gameState);
-
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj != nullptr) {
-        PlayerBankingComponent& bank = playerObj->banking();
-        CurrencyAmount gdp           = playerObj->monetary().gdp;
-        // monetary().treasury is the authoritative spending account; economy().
-        // treasury is a non-authoritative tracking field, so debiting it left
-        // loan interest invisible to the real treasury.
-        bank.processPayments(playerObj->monetary().treasury, gdp);
-    }
-
-    [[maybe_unused]] const bool inDebtCrisis = checkDebtCrisis(gameState, player);
-
-    // Infrastructure bonus is applied per-city during production processing; skip here.
-    (void)grid;
 }
 
 } // namespace aoc::sim

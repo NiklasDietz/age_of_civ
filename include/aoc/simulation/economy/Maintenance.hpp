@@ -5,9 +5,9 @@
  * @brief Gold income, unit maintenance, and building maintenance processing.
  *
  * All functions operate on the GameState object model (Player/City/Unit).
- * Per-unit maintenance scales with era. Building maintenance includes
- * district and per-city sprawl costs. If treasury drops below -20,
- * the most expensive military unit is disbanded.
+ * Per-unit maintenance scales with era (era/2 + 1). Building maintenance
+ * includes the per-city sprawl cost. Below the -500 hard floor, or after five
+ * turns below -200, the most expensive military unit is disbanded.
  */
 
 #include "aoc/core/Types.hpp"
@@ -52,7 +52,7 @@ struct EconomicBreakdown {
     CurrencyAmount incomeIndustrial  = 0;  ///< Industrial revolution per-citizen bonus
     CurrencyAmount incomeTileGold    = 0;  ///< Gold from worked tiles
     CurrencyAmount incomeGoodsEcon   = 0;  ///< Taxable economic activity from goods stockpiles
-    CurrencyAmount incomeCapital     = 0;  ///< Palace bonus (+5)
+    CurrencyAmount incomeCapital     = 0;  ///< Palace bonus (+10)
     CurrencyAmount totalIncome       = 0;  ///< Sum of all income (before goldAllocation split)
     CurrencyAmount effectiveIncome   = 0;  ///< After goldAllocation (what goes to treasury)
 
@@ -78,8 +78,8 @@ struct EconomicBreakdown {
 /**
  * @brief Compute gold income for a player from their cities and add to treasury.
  *
- * Income sources: capital Palace bonus (+5), worked tile gold yields,
- * Commercial Hub (+4) and Harbor (+2) district bonuses, building gold bonuses.
+ * Income sources: capital Palace bonus (+10), worked tile gold yields,
+ * Commercial Hub (+3) and Harbor (+2) district bonuses, building gold bonuses.
  *
  * @return The total gold income added.
  */
@@ -89,9 +89,10 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
 /**
  * @brief Deduct unit maintenance from a player's treasury.
  *
- * Each military unit costs gold per turn based on its era (Ancient=1 .. Information=8).
+ * Each military unit costs era/2 + 1 gold per turn (Ancient 1 .. Information 4).
  * Civilian units (settlers, builders, traders, scouts) are free.
- * Disbands the most expensive unit if treasury falls below -20.
+ * Disbands the most expensive unit below the -500 hard floor or after five
+ * turns below -200.
  */
 void processUnitMaintenance(aoc::game::Player& player);
 

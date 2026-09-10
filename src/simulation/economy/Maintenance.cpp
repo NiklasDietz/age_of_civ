@@ -12,6 +12,7 @@
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/monetary/FiscalPolicy.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
@@ -525,17 +526,17 @@ void processUnitMaintenance(aoc::game::Player& player) {
     constexpr CurrencyAmount TREASURY_DEFICIT_LIMIT = 0;
     // Minimum garrison we never disband below.
     constexpr int32_t MIN_GARRISON = 2;
-    // Maximum tax rate applied automatically when bankrupt to boost income.
-    constexpr float MAX_TAX_RATE = 0.40f;
+    // Tax rate forced when bankrupt to boost income (below the global ceiling).
+    constexpr float BANKRUPT_TAX_RATE = 0.40f;
 
     // When deeply bankrupt, force maximum tax rate to maximise income recovery.
     if (player.treasury() < TREASURY_HARD_FLOOR) {
-        if (player.monetary().taxRate < MAX_TAX_RATE) {
-            player.monetary().taxRate = MAX_TAX_RATE;
+        if (player.monetary().taxRate < BANKRUPT_TAX_RATE) {
+            setTaxRate(player.monetary(), BANKRUPT_TAX_RATE);
             LOG_WARN("Player %u [Maintenance.cpp:processUnitMaintenance] treasury %lld "
                      "below hard floor -- tax rate forced to %.2f",
                      static_cast<unsigned>(player.id()), static_cast<long long>(player.treasury()),
-                     static_cast<double>(MAX_TAX_RATE));
+                     static_cast<double>(BANKRUPT_TAX_RATE));
         }
     }
 

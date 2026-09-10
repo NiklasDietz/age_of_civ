@@ -156,15 +156,7 @@ GoodyHutReward checkAndClaimGoodyHut(GoodyHutState& state,
 
         case GoodyHutReward::Population: {
             // +1 population in nearest city
-            aoc::game::City* nearestCity = nullptr;
-            int32_t bestDist = std::numeric_limits<int32_t>::max();
-            for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
-                const int32_t dist = aoc::hex::distance(unitPosition, city->location());
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    nearestCity = city.get();
-                }
-            }
+            aoc::game::City* nearestCity = player.nearestCity(grid, unitPosition);
             if (nearestCity != nullptr) {
                 nearestCity->setPopulation(nearestCity->population() + 1);
                 LOG_INFO("Goody hut: P%u gained +1 pop in %s",

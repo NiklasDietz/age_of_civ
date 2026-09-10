@@ -233,6 +233,17 @@ public:
     }
 
     /// Distance between two axial coordinates, accounting for wrapping.
+    /// True when any neighbour of `at` is water: the coastal test that trade
+    /// routes and the economy used to spell out inline, three times.
+    [[nodiscard]] bool isCoastal(hex::AxialCoord at) const {
+        for (const hex::AxialCoord& nbr : hex::neighbors(at)) {
+            if (this->isValid(nbr) && isWater(this->terrain(this->toIndex(nbr)))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// Use this instead of hex::distance() for gameplay logic.
     [[nodiscard]] int32_t distance(hex::AxialCoord a, hex::AxialCoord b) const {
         if (this->m_topology == MapTopology::Cylindrical) {
@@ -796,8 +807,9 @@ public:
     [[nodiscard]] const std::vector<uint8_t>& rockType() const { return this->m_rockType; }
     void setRockType(std::vector<uint8_t> v) { this->m_rockType = std::move(v); }
 
-    /// Per-tile margin classification: 0 = interior, 1 = passive margin
-    /// (sediment-rich, wide shelf), 2 = active margin (arc/trench, narrow).
+    /// Per-tile margin classification: 0 = interior, 1 = active margin
+    /// (arc/trench, narrow shelf), 2 = passive margin (sediment-rich, wide
+    /// shelf). PostSim.cpp writes nearConvergent ? 1 : 2.
     [[nodiscard]] const std::vector<uint8_t>& marginType() const { return this->m_marginType; }
     void setMarginType(std::vector<uint8_t> v) { this->m_marginType = std::move(v); }
 

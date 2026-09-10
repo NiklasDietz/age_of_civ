@@ -37,10 +37,3 @@ log_interval: 25
 # --- Victory ---
 # Turn limit for score victory (0 = no limit, runs until max_turns)
 score_victory_turn: 300
-
-# --- Optional Overrides ---
-# Starting gold per player
-starting_gold: 100
-
-# Starting population per city
-starting_population: 3

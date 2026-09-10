@@ -120,36 +120,18 @@ static aoc::game::Unit* findNearestTargetOf(const aoc::game::GameState& gameStat
 /// Barbarians could not attack a city at all: the raid loop only ever looked
 /// for units, and neither resolveAttackOnCity nor pressIntoCity was named
 /// anywhere in this file. A camp beside an undefended town simply ignored it.
-static aoc::game::City* findNearestCityTarget(const aoc::game::GameState& gameState,
+static aoc::game::City* findNearestCityTarget(aoc::game::GameState& gameState,
                                               const aoc::map::HexGrid& grid,
                                               hex::AxialCoord position, int32_t range,
                                               int32_t& bestDistOut) {
-    aoc::game::City* closest = nullptr;
-    bestDistOut              = range + 1;
-
-    auto scan = [&](const aoc::game::Player* player) {
-        if (player == nullptr || player->id() == BARBARIAN_PLAYER) {
-            return;
-        }
-        for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
-            if (city == nullptr) {
-                continue;
-            }
-            const int32_t dist = grid.distance(city->location(), position);
-            if (dist <= range && dist < bestDistOut) {
-                bestDistOut = dist;
-                closest     = city.get();
-            }
-        }
-    };
-
-    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
-        scan(player.get());
+    int32_t dist          = 0;
+    aoc::game::City* city = gameState.nearestCity(grid, position, &dist);
+    if (city == nullptr || dist > range) {
+        bestDistOut = range + 1;
+        return nullptr;
     }
-    for (const std::unique_ptr<aoc::game::Player>& cityState : gameState.cityStatePlayers()) {
-        scan(cityState.get());
-    }
-    return closest;
+    bestDistOut = dist;
+    return city;
 }
 
 /// H5.7: highest era reached by any non-barbarian player.

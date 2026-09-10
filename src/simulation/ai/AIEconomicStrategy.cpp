@@ -9,6 +9,7 @@
 #include "aoc/simulation/economy/MonopolyPricing.hpp"
 #include "aoc/simulation/ai/AIEconomicStrategy.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/monetary/FiscalPolicy.hpp"
 #include "aoc/simulation/monetary/CentralBank.hpp"
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
 #include "aoc/simulation/monetary/CurrencyWar.hpp"
@@ -60,7 +61,8 @@ static void aiBondStrategy(aoc::game::GameState& gameState, PlayerId player,
     const PlayerBondComponent& myBonds = myPlayer->bonds();
 
     for (const std::unique_ptr<aoc::game::Player>& otherPtr : gameState.players()) {
-        if (otherPtr == nullptr || otherPtr->id() == player) { continue; }
+        // A bond issue needs the issuer's consent, and a human gets no prompt here.
+        if (otherPtr == nullptr || otherPtr->id() == player || otherPtr->isHuman()) { continue; }
 
         // Limit total bond holdings to 3 per player pair to prevent
         // the AI from accumulating unlimited leverage over a single civ.
@@ -211,7 +213,7 @@ void aiCrisisResponse(aoc::game::GameState& gameState, PlayerId player) {
     switch (crisis.activeCrisis) {
         case CrisisType::BankRun:
             // Raise taxes, cut spending
-            myState.taxRate = std::min(0.40f, myState.taxRate + 0.05f);
+            setTaxRate(myState, std::min(0.40f, myState.taxRate + 0.05f));
             myState.governmentSpending = myState.governmentSpending * 3 / 4;
             LOG_INFO("AI player %u: crisis response - raising taxes, cutting spending",
                      static_cast<unsigned>(player));
@@ -228,7 +230,7 @@ void aiCrisisResponse(aoc::game::GameState& gameState, PlayerId player) {
         case CrisisType::SovereignDefault:
             // Cut spending to minimum, raise taxes
             myState.governmentSpending = 0;
-            myState.taxRate = std::min(0.50f, myState.taxRate + 0.10f);
+            setTaxRate(myState, std::min(0.50f, myState.taxRate + 0.10f));
             LOG_INFO("AI player %u: crisis response - austerity measures",
                      static_cast<unsigned>(player));
             break;

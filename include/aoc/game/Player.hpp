@@ -152,6 +152,13 @@ public:
     [[nodiscard]] CurrencyAmount incomePerTurn() const { return this->m_incomePerTurn; }
     void setIncomePerTurn(CurrencyAmount income) { this->m_incomePerTurn = income; }
 
+    /// What the last processed turn did to the treasury, netted: income after
+    /// the allocation split, maintenance, science funding, tolls, deals and
+    /// route coin. incomePerTurn() is gross income before any of that, which
+    /// is why the HUD read "+100" while the treasury fell. Transient.
+    [[nodiscard]] CurrencyAmount netGoldLastTurn() const { return this->m_netGoldLastTurn; }
+    void setNetGoldLastTurn(CurrencyAmount net) { this->m_netGoldLastTurn = net; }
+
     [[nodiscard]] aoc::sim::MonetaryStateComponent& monetary() { return this->m_monetary; }
     [[nodiscard]] const aoc::sim::MonetaryStateComponent& monetary() const {
         return this->m_monetary;
@@ -315,10 +322,6 @@ public:
         return this->m_industrial;
     }
 
-    [[nodiscard]] aoc::sim::PlayerBankingComponent& banking() { return this->m_banking; }
-    [[nodiscard]] const aoc::sim::PlayerBankingComponent& banking() const {
-        return this->m_banking;
-    }
 
     // ========================================================================
     // Diplomacy (extended)
@@ -406,6 +409,13 @@ public:
     // Cities
     // ========================================================================
 
+    /// This player's nearest own city to `at` by wrap-aware grid distance, or
+    /// nullptr when it has none; `distOut` receives that distance. Cities in
+    /// the vector that belong to nobody (freed cities) do not count.
+    [[nodiscard]] const City* nearestCity(const aoc::map::HexGrid& grid, hex::AxialCoord at,
+                                          int32_t* distOut = nullptr) const;
+    [[nodiscard]] City* nearestCity(const aoc::map::HexGrid& grid, hex::AxialCoord at,
+                                    int32_t* distOut = nullptr);
     [[nodiscard]] std::vector<std::unique_ptr<City>>& cities() { return this->m_cities; }
     [[nodiscard]] const std::vector<std::unique_ptr<City>>& cities() const {
         return this->m_cities;
@@ -552,6 +562,7 @@ private:
     // MonetaryStateComponent::treasury (Serializer.cpp writes the monetary
     // block), and this account IS that field.
     CurrencyAmount m_incomePerTurn = 0;
+    CurrencyAmount m_netGoldLastTurn = 0; ///< Not saved; processTurn recomputes it
     aoc::sim::MonetaryStateComponent m_monetary;
 
     // Government
@@ -593,7 +604,6 @@ private:
     aoc::sim::PlayerHumanCapitalComponent m_humanCapital;
     aoc::sim::PlayerSupplyChainComponent m_supplyChain;
     aoc::sim::PlayerIndustrialComponent m_industrial;
-    aoc::sim::PlayerBankingComponent m_banking;
 
     // Diplomacy (extended)
     aoc::sim::PlayerGrievanceComponent m_grievances;

@@ -19,6 +19,7 @@
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/monetary/FiscalPolicy.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
@@ -534,10 +535,9 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
                              static_cast<int>(cmd.player), static_cast<int>(player));
                     return;
                 }
-                const float clampedRate     = std::clamp(cmd.rate, 0.0f, 1.0f);
                 aoc::game::Player* gsPlayer = this->m_gameState.player(cmd.player);
                 if (gsPlayer != nullptr) {
-                    gsPlayer->monetary().taxRate = clampedRate;
+                    aoc::sim::setTaxRate(gsPlayer->monetary(), cmd.rate);
                 }
             } else if constexpr (std::is_same_v<T, TransitionMonetaryCommand>) {
                 // Monetary transition -- validate and execute

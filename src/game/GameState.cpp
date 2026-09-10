@@ -8,9 +8,11 @@
 #include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/game/Player.hpp"
+#include "aoc/map/HexGrid.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <cassert>
 
 namespace aoc::game {
@@ -169,6 +171,39 @@ void GameState::setHumanPlayerId(PlayerId id) {
         next->setHuman(true);
     }
     this->m_humanPlayerId = id;
+}
+
+const City* GameState::nearestCity(const aoc::map::HexGrid& grid, hex::AxialCoord at,
+                                   int32_t* distOut) const {
+    const City* best = nullptr;
+    int32_t bestDist = std::numeric_limits<int32_t>::max();
+    auto scan = [&](const std::vector<std::unique_ptr<Player>>& seats) {
+        for (const std::unique_ptr<Player>& seat : seats) {
+            if (seat == nullptr) {
+                continue;
+            }
+            for (const std::unique_ptr<City>& city : seat->cities()) {
+                if (city == nullptr) {
+                    continue;
+                }
+                const int32_t d = grid.distance(city->location(), at);
+                if (d < bestDist) {
+                    bestDist = d;
+                    best     = city.get();
+                }
+            }
+        }
+    };
+    scan(this->m_players);
+    scan(this->m_cityStatePlayers);
+    if (distOut != nullptr) {
+        *distOut = bestDist;
+    }
+    return best;
+}
+
+City* GameState::nearestCity(const aoc::map::HexGrid& grid, hex::AxialCoord at, int32_t* distOut) {
+    return const_cast<City*>(std::as_const(*this).nearestCity(grid, at, distOut));
 }
 
 } // namespace aoc::game

@@ -155,26 +155,6 @@ struct CityLaborComponent {
                                                aoc::hex::AxialCoord cityLocation);
 
 // ============================================================================
-// Credit / Banking
-// ============================================================================
-
-/// Per-player banking state.
-struct PlayerBankingComponent {
-    PlayerId owner = INVALID_PLAYER;
-    CurrencyAmount totalLoans = 0;           ///< Outstanding loan principal
-    CurrencyAmount loanInterestRate = 5;     ///< Annual interest rate (5 = 5%)
-    int32_t turnsUntilPayment = 0;           ///< Turns until next interest payment
-    bool hasBankingCrisis = false;           ///< True if over-leveraged
-    int32_t crisisTurnsRemaining = 0;
-
-    /// Take a loan. Adds to treasury immediately, adds to totalLoans.
-    void takeLoan(CurrencyAmount amount);
-
-    /// Process interest payments and crisis checks.
-    void processPayments(CurrencyAmount& treasury, CurrencyAmount gdp);
-};
-
-// ============================================================================
 // Currency Exchange
 // ============================================================================
 
@@ -182,14 +162,6 @@ struct PlayerBankingComponent {
 /// Players on gold standard trade at 1:1. Fiat vs gold has variable rate.
 [[nodiscard]] float computeExchangeRate(const aoc::game::GameState& gameState,
                                         PlayerId playerA, PlayerId playerB);
-
-// ============================================================================
-// Debt Crisis
-// ============================================================================
-
-/// Check if a player is in a debt crisis (debt > 2x GDP).
-/// Returns true and applies penalties: -20% production, -10% science, -3 amenities.
-[[nodiscard]] bool checkDebtCrisis(aoc::game::GameState& gameState, PlayerId player);
 
 // ============================================================================
 // Master function: process all advanced economics per turn.

@@ -23,7 +23,6 @@
 #include "aoc/simulation/monetary/Bonds.hpp"
 #include "aoc/simulation/monetary/CurrencyWar.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
-#include "aoc/simulation/economy/NavalTrade.hpp"
 #include "aoc/simulation/empire/CommunicationSpeed.hpp"
 #include "aoc/simulation/production/PowerGrid.hpp"
 #include "aoc/simulation/production/QualityTier.hpp"
@@ -108,18 +107,6 @@ static void buildUnitEntries(std::vector<WikiEntry>& entries) {
 
         if (aoc::sim::isNaval(u.unitClass)) {
             entry.body = "Naval unit. Can traverse coast and ocean tiles.";
-            // Check if it's a merchant ship
-            for (const aoc::sim::MerchantShipDef& ms : aoc::sim::MERCHANT_SHIP_DEFS) {
-                if (ms.unitTypeId == u.id) {
-                    entry.body += "\nMERCHANT VESSEL: Cargo capacity " + std::to_string(ms.cargoCapacity);
-                    if (ms.canTraverseOcean) { entry.body += ", ocean-capable"; }
-                    if (ms.canTraverseRiver) { entry.body += ", river-capable"; }
-                    if (ms.fuelGoodId != 0xFFFF) {
-                        entry.body += "\nFuel: " + std::to_string(ms.fuelPerTurn) + "/turn";
-                    }
-                    break;
-                }
-            }
         } else if (aoc::sim::isMilitary(u.unitClass)) {
             entry.body = "Military unit. Can attack enemy units and cities.";
         } else {

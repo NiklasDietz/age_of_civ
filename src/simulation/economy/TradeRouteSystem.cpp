@@ -654,19 +654,8 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     bool originHasAirport = originDistricts.hasBuilding(BuildingId{14});
     bool destHasAirport   = destDistricts.hasBuilding(BuildingId{14});
 
-    // Coastal check: at least one neighbor tile is water.
-    // auto required: lambda type is unnameable.
-    auto isCityCoastal = [&grid](const aoc::game::City* city) -> bool {
-        std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(city->location());
-        for (const aoc::hex::AxialCoord& nbr : nbrs) {
-            if (grid.isValid(nbr) && aoc::map::isWater(grid.terrain(grid.toIndex(nbr)))) {
-                return true;
-            }
-        }
-        return false;
-    };
-    bool originIsCoastal = isCityCoastal(originCity);
-    bool destIsCoastal   = isCityCoastal(destCity);
+    bool originIsCoastal = grid.isCoastal(originCity->location());
+    bool destIsCoastal   = grid.isCoastal(destCity->location());
 
     // 2026-05-02: Harbor district no longer required for Sea routes.
     // Caravans/traders can hire boats out of any coastal city even before
@@ -1893,26 +1882,8 @@ TradeRouteEstimate estimateTradeRouteIncome(
     bool originHasAirport = originCity->districts().hasBuilding(BuildingId{14});
     bool destHasAirport   = destCity.districts().hasBuilding(BuildingId{14});
 
-    bool originIsCoastal = false;
-    bool destIsCoastal   = false;
-    {
-        std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(originCity->location());
-        for (const aoc::hex::AxialCoord& nbr : nbrs) {
-            if (grid.isValid(nbr) && aoc::map::isWater(grid.terrain(grid.toIndex(nbr)))) {
-                originIsCoastal = true;
-                break;
-            }
-        }
-    }
-    {
-        std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(destCity.location());
-        for (const aoc::hex::AxialCoord& nbr : nbrs) {
-            if (grid.isValid(nbr) && aoc::map::isWater(grid.terrain(grid.toIndex(nbr)))) {
-                destIsCoastal = true;
-                break;
-            }
-        }
-    }
+    bool originIsCoastal = grid.isCoastal(originCity->location());
+    bool destIsCoastal   = grid.isCoastal(destCity.location());
 
     // 2026-05-02: Harbor no longer required (mirrors actual establishTradeRoute).
     if (ownerHasAviation && originHasAirport && destHasAirport) {

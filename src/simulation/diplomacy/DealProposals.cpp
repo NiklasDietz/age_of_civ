@@ -13,6 +13,8 @@
 #include "aoc/simulation/diplomacy/DiplomacyActions.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/event/GameNotifications.hpp"
+#include "aoc/simulation/resource/ResourceComponent.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 
 #include <algorithm>
 #include <memory>
@@ -407,6 +409,67 @@ bool aiOfferOpenBorders(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     term.duration   = OPEN_BORDERS_TURNS;
     deal.terms.push_back(term);
     return requestProposeDeal(gameState, grid, tracker, diplomacy, deal, currentTurn) == ErrorCode::Ok;
+}
+
+namespace {
+
+/// Units of `goodId` across every city `player` owns.
+[[nodiscard]] int32_t goodsHeld(const aoc::game::Player& player, uint16_t goodId) {
+    int32_t held = 0;
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        if (city != nullptr && city->owner() == player.id()) {
+            held += city->stockpile().getAmount(goodId);
+        }
+    }
+    return held;
+}
+
+} // namespace
+
+bool aiOfferToBuy(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
+                  DiplomacyManager& diplomacy, PlayerId buyer, uint16_t goodId, int32_t qty,
+                  int32_t currentTurn) {
+    const aoc::game::Player* buyerPtr = gameState.player(buyer);
+    if (buyerPtr == nullptr || qty <= 0 || goodId >= goods::GOOD_COUNT) {
+        return false;
+    }
+    const int32_t unitPrice = std::max(1, static_cast<int32_t>(goodDef(goodId).basePrice));
+    const int32_t offer     = (qty * unitPrice * GOODS_DEAL_PREMIUM_PCT) / 100;
+    if (buyerPtr->treasury() < offer) {
+        return false;
+    }
+    for (const std::unique_ptr<aoc::game::Player>& sellerPtr : gameState.players()) {
+        if (sellerPtr == nullptr || sellerPtr->id() == buyer) {
+            continue;
+        }
+        const PlayerId seller       = sellerPtr->id();
+        const PairwiseRelation& rel = diplomacy.relation(buyer, seller);
+        if (!rel.hasMet || rel.isAtWar || goodsHeld(*sellerPtr, goodId) < qty) {
+            continue;
+        }
+        DiplomaticDeal deal;
+        deal.playerA        = buyer;
+        deal.playerB        = seller;
+        deal.turnsRemaining = 0; // both terms settle on acceptance
+        DealTerm shipment{};
+        shipment.type       = DealTermType::GoodsExchange;
+        shipment.fromPlayer = seller;
+        shipment.toPlayer   = buyer;
+        shipment.goodId     = goodId;
+        shipment.goodAmount = qty;
+        DealTerm payment{};
+        payment.type       = DealTermType::GoldLump;
+        payment.fromPlayer = buyer;
+        payment.toPlayer   = seller;
+        payment.goldLump   = offer;
+        deal.terms         = {shipment, payment};
+        if (requestProposeDeal(gameState, grid, tracker, diplomacy, deal, currentTurn) == ErrorCode::Ok) {
+            LOG_INFO("AI %u offers %d gold for %d of good %u to player %u", static_cast<unsigned>(buyer),
+                     offer, qty, static_cast<unsigned>(goodId), static_cast<unsigned>(seller));
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace aoc::sim

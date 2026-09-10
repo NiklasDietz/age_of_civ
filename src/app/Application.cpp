@@ -7653,7 +7653,6 @@ void Application::spawnStartingEntities(aoc::sim::CivId civId, hex::AxialCoord s
 
         humanPlayer->greatPeople().owner = 0;
         humanPlayer->eureka().owner      = 0;
-        humanPlayer->banking().owner     = 0;
 
         // Spawn starting units. Try each adjacent neighbour in turn so
         // the warrior never overlaps the settler tile. Fall back to the
@@ -7811,7 +7810,6 @@ void Application::spawnAIPlayer(PlayerId player, aoc::sim::CivId civId, hex::Axi
 
         aiPlayer->greatPeople().owner = player;
         aiPlayer->eureka().owner      = player;
-        aiPlayer->banking().owner     = player;
 
         // Spawn settler (AI will auto-found city on first turn) and warrior
         aiPlayer->addUnit(UnitTypeId{3}, settlerPos);

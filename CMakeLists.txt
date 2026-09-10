@@ -405,7 +405,6 @@ set(AOC_LIB_SOURCES
     src/simulation/economy/IndustrialRevolution.cpp
     src/simulation/economy/EconomicDepth.cpp
     src/simulation/economy/CommodityExchange.cpp
-    src/simulation/economy/NavalTrade.cpp
     src/simulation/economy/EnergyDependency.cpp
     src/simulation/economy/StockMarket.cpp
     src/simulation/economy/TradeAgreement.cpp
@@ -1048,6 +1047,12 @@ if(AOC_BUILD_TESTS)
         test_amphibious_path
         test_monetary_actions
         test_one_treasury
+        test_tax_rate_clamp
+        test_ai_goods_purchase
+        test_map_helpers
+        test_income_display
+        test_barter_science
+        test_trader_no_ship_fuel
         test_resource_curse_is_emergent
         test_deal_proposals
         test_natural_disasters

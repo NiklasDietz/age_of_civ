@@ -22,6 +22,7 @@
  */
 
 #include "aoc/core/Types.hpp"
+#include "aoc/map/HexCoord.hpp"
 #include "aoc/simulation/climate/Climate.hpp"
 #include "aoc/simulation/economy/EnergyDependency.hpp"
 #include "aoc/simulation/economy/MonopolyPricing.hpp"
@@ -118,6 +119,13 @@ public:
     [[nodiscard]] std::vector<std::unique_ptr<Player>>& cityStatePlayers() {
         return this->m_cityStatePlayers;
     }
+    /// The city nearest to `at` across every seat (majors and city-states,
+    /// freed cities included), or nullptr when the map has no city yet;
+    /// `distOut` receives the wrap-aware distance.
+    [[nodiscard]] const City* nearestCity(const aoc::map::HexGrid& grid, hex::AxialCoord at,
+                                          int32_t* distOut = nullptr) const;
+    [[nodiscard]] City* nearestCity(const aoc::map::HexGrid& grid, hex::AxialCoord at,
+                                    int32_t* distOut = nullptr);
 
     /// Number of active players.
     [[nodiscard]] int32_t playerCount() const {

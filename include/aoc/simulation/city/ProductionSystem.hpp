@@ -52,7 +52,7 @@ void processProductionQueues(aoc::game::GameState& gameState,
  * @brief Purchase a unit or building instantly with gold.
  *
  * Deducts gold from the player's treasury and creates the item immediately.
- * In Civ 6, purchasing costs 4x the production cost.
+ * The price is purchaseCost(): 100 + 8 x the production cost.
  *
  * @return ErrorCode::Ok on success, InsufficientResources if not enough gold.
  */

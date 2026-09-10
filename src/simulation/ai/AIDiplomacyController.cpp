@@ -38,15 +38,6 @@
 
 namespace aoc::sim::ai {
 
-/// Cap on a single negotiated shipment. A deal is a shipment, not a standing
-/// supply contract -- that is what ExclusiveAccess is for.
-constexpr int32_t GOODS_DEAL_MAX_UNITS = 20;
-
-/// What the buyer offers as a percentage of the goods' base value. A seller
-/// values them AT base price, so an offer that merely matches it gives them no
-/// reason to agree; the premium is what makes the trade worth doing.
-constexpr int32_t GOODS_DEAL_PREMIUM_PCT = 140;
-
 void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                                            DiplomacyManager& diplomacy, const Market& market,
                                            aoc::Random& rng, GlobalDealTracker* dealTracker) {
@@ -898,66 +889,12 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
                     wantedGood = need.first;
                 }
             }
-
             if (wantedGood != 0xFFFFu && wantedQty > 0) {
-                const int32_t askQty = std::min(wantedQty, GOODS_DEAL_MAX_UNITS);
-                const int32_t unitPrice =
-                    std::max(1, static_cast<int32_t>(aoc::sim::goodDef(wantedGood).basePrice));
-                // Offer over the odds: a seller values the goods at base price,
-                // so matching it exactly gives them no reason to agree.
-                const int32_t offer = (askQty * unitPrice * GOODS_DEAL_PREMIUM_PCT) / 100;
-
-                for (const std::unique_ptr<aoc::game::Player>& sellerPtr : gameState.players()) {
-                    if (sellerPtr == nullptr || sellerPtr->id() == this->m_player) { continue; }
-                    const PlayerId seller = sellerPtr->id();
-                    const PairwiseRelation& srel = diplomacy.relation(this->m_player, seller);
-                    if (!srel.hasMet || srel.isAtWar) { continue; }
-                    if (buyer->treasury() < offer) { break; } // cannot pay anyone
-
-                    // Only ask for what they can actually spare.
-                    int32_t theirStock = 0;
-                    for (const std::unique_ptr<aoc::game::City>& c : sellerPtr->cities()) {
-                        if (c == nullptr || c->owner() != seller) { continue; }
-                        theirStock += c->stockpile().getAmount(wantedGood);
-                    }
-                    if (theirStock < askQty) { continue; }
-
-                    DiplomaticDeal deal{};
-                    deal.playerA        = this->m_player;
-                    deal.playerB        = seller;
-                    deal.turnsRemaining = 0;
-
-                    DealTerm goods{};
-                    goods.type       = DealTermType::GoodsExchange;
-                    goods.fromPlayer = seller;
-                    goods.toPlayer   = this->m_player;
-                    goods.goodId     = wantedGood;
-                    goods.goodAmount = askQty;
-                    deal.terms.push_back(goods);
-
-                    DealTerm payment{};
-                    payment.type       = DealTermType::GoldLump;
-                    payment.fromPlayer = this->m_player;
-                    payment.toPlayer   = seller;
-                    payment.goldLump   = offer;
-                    deal.terms.push_back(payment);
-
-                    if (!aoc::sim::aiAcceptsDeal(gameState, diplomacy, seller, deal)) { continue; }
-
-                    const std::size_t idx = dealTracker->activeDeals.size();
-                    if (aoc::sim::proposeDeal(gameState, *dealTracker, deal) != ErrorCode::Ok) {
-                        continue;
-                    }
-                    if (aoc::sim::acceptDeal(gameState, grid, *dealTracker,
-                                             static_cast<int32_t>(idx), &diplomacy)
-                        == ErrorCode::Ok) {
-                        LOG_INFO("AI %u bought %d of good %u from player %u for %d gold",
-                                 static_cast<unsigned>(this->m_player), askQty,
-                                 static_cast<unsigned>(wantedGood),
-                                 static_cast<unsigned>(seller), offer);
-                        break; // one purchase per turn
-                    }
-                }
+                // Through the request layer: a human seller gets the offer in
+                // the inbox instead of having goods lifted from its cities.
+                aoc::sim::aiOfferToBuy(gameState, grid, *dealTracker, diplomacy, this->m_player,
+                                       wantedGood, std::min(wantedQty, GOODS_DEAL_MAX_UNITS),
+                                       gameState.currentTurn());
             }
         }
     }

@@ -37,32 +37,6 @@ void setReserveRequirement(MonetaryStateComponent& state, Percentage ratio);
 [[nodiscard]] ErrorCode printMoney(MonetaryStateComponent& state, CurrencyAmount amount);
 
 /**
- * @brief Buy gold with currency (increase reserves, decrease money supply).
- *
- * Only meaningful in GoldStandard. In Fiat, gold is just a commodity.
- *
- * @param state  Player's monetary state.
- * @param goldAmount Amount of gold to purchase.
- * @param goldPrice  Current market price of gold.
- * @return Ok if successful, InsufficientResources if not enough currency.
- */
-[[nodiscard]] ErrorCode buyGold(MonetaryStateComponent& state,
-                                 CurrencyAmount goldAmount,
-                                 CurrencyAmount goldPrice);
-
-/**
- * @brief Sell gold for currency (decrease reserves, increase money supply).
- *
- * @param state  Player's monetary state.
- * @param goldAmount Amount of gold to sell.
- * @param goldPrice  Current market price of gold.
- * @return Ok if successful, InsufficientResources if not enough gold.
- */
-[[nodiscard]] ErrorCode sellGold(MonetaryStateComponent& state,
-                                  CurrencyAmount goldAmount,
-                                  CurrencyAmount goldPrice);
-
-/**
  * @brief Compute the money multiplier from reserve requirement.
  *
  * In fractional reserve banking: multiplier = 1 / reserveRequirement

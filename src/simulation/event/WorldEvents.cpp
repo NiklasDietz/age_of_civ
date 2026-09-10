@@ -209,10 +209,7 @@ ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, in
     // game without a counterparty. Negative gold passes through unchanged
     // because wealth destruction is a valid one-sided event outcome.
     //
-    // Gold must go through Player::addGold (the authoritative treasury
-    // account), not monetary().treasury directly -- TurnProcessor overwrites
-    // monetary().treasury from treasury() every turn, so a direct write here
-    // would be silently discarded before it ever reached the player.
+    // Gold goes through Player::addGold, the one treasury.
     if (chosen.goldChange > 0) {
         const int64_t gain = static_cast<int64_t>(chosen.goldChange) / 2;
         playerObj->addGold(gain);

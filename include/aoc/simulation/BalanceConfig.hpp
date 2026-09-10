@@ -78,14 +78,6 @@ inline constexpr int32_t ANARCHY_AMENITY_PENALTY = 3;
 inline constexpr float   MAX_CORRUPTION_RATE = 0.30f;
 
 // ============================================================================
-// Trade
-// ============================================================================
-inline constexpr float   SEA_TRADE_MULTIPLIER = 10.0f;
-inline constexpr float   RIVER_TRADE_MULTIPLIER = 5.0f;
-inline constexpr float   SEA_TRANSPORT_COST_MULT = 0.30f;
-inline constexpr float   RIVER_TRANSPORT_COST_MULT = 0.40f;
-
-// ============================================================================
 // Victory / CSI
 // ============================================================================
 inline constexpr int32_t ERA_EVALUATION_INTERVAL = 30;

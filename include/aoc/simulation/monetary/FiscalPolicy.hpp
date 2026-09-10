@@ -23,7 +23,11 @@
 
 namespace aoc::sim {
 
-/// Set the tax rate. Clamped to [0.0, 0.60].
+/// The one ceiling on the tax rate. Every writer (UI, AI, bankruptcy, net)
+/// goes through setTaxRate; four different clamps used to disagree.
+inline constexpr Percentage MAX_TAX_RATE = 0.60f;
+
+/// Set the tax rate. Clamped to [0.0, MAX_TAX_RATE].
 void setTaxRate(MonetaryStateComponent& state, Percentage rate);
 
 /// Set per-turn government spending.

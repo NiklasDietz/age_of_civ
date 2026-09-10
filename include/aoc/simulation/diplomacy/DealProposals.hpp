@@ -81,6 +81,24 @@ bool aiOfferPeace(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, Glob
 bool aiOfferOpenBorders(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
                         DiplomacyManager& diplomacy, PlayerId ai, PlayerId other, int32_t currentTurn);
 
+/// Cap on a single negotiated shipment. A deal is a shipment, not a standing
+/// supply contract.
+inline constexpr int32_t GOODS_DEAL_MAX_UNITS = 20;
+
+/// What a buyer offers as a percentage of the goods' base value. A seller
+/// values them AT base price, so an offer that merely matches it gives them no
+/// reason to agree; the premium is what makes the trade worth doing.
+inline constexpr int32_t GOODS_DEAL_PREMIUM_PCT = 140;
+
+/// `buyer` offers gold for `qty` of `goodId` to the first met, peaceful seller
+/// that holds the stock and agrees. A human seller finds the offer in the
+/// inbox; an AI seller answers by its own valuation. The AI used to call
+/// proposeDeal and acceptDeal itself, which lifted goods out of a human's
+/// cities without a prompt. True when a proposal was delivered or applied.
+bool aiOfferToBuy(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
+                  DiplomacyManager& diplomacy, PlayerId buyer, uint16_t goodId, int32_t qty,
+                  int32_t currentTurn);
+
 /// Drop proposals whose expiresTurn has come. Runs once per turn.
 void expireProposals(aoc::game::GameState& gameState, int32_t currentTurn);
 

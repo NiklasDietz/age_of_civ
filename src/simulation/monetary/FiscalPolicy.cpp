@@ -11,7 +11,7 @@
 namespace aoc::sim {
 
 void setTaxRate(MonetaryStateComponent& state, Percentage rate) {
-    state.taxRate = std::clamp(rate, 0.0f, 0.60f);
+    state.taxRate = std::clamp(rate, 0.0f, MAX_TAX_RATE);
 }
 
 void setGovernmentSpending(MonetaryStateComponent& state, CurrencyAmount amount) {

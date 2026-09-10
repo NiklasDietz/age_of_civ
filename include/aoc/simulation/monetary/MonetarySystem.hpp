@@ -227,7 +227,8 @@ inline constexpr std::array<MonetaryTransitionReq, 4> MONETARY_TRANSITIONS = {{
     // 20 copper coins (strength 20) or 4 silver coins is achievable before
     // copper ore depletes (~80 turns of mining at 1 ore/turn).
     {MonetarySystemType::GoldStandard,   TechId{9}, 20,   2, 0, 0, 1.0f},
-    // Gold Standard -> Fiat: Printing (TechId{9}) or Economics (TechId{13}).
+    // Gold Standard -> Fiat: Banking (TechId{9}). Printing is TechId{55} and
+    // Economics TechId{13}; neither is checked by this row.
     // Lowered currency strength requirement. Needs 3+ trade partners (the trade
     // volume that makes metal coins impractical, like Song Dynasty Sichuan).
     // Max inflation 15%: must demonstrate monetary discipline first.
@@ -728,7 +729,7 @@ struct MonetaryStateComponent {
  * @brief Single chokepoint for all money supply changes. Applies the delta
  *        and enforces the MONEY_SUPPLY_FLOOR for monetized systems.
  *
- * Every path that creates or destroys money (printMoney, sellGold, buyGold,
+ * Every path that creates or destroys money (printMoney, remintCurrency,
  * monetizeDebt, counterfeit, currency war, crisis devaluation) must route
  * through this function. Direct `state.moneySupply +=` writes bypass the
  * floor and can leave the supply at 0 or negative, breaking inflation and

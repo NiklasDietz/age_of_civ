@@ -53,19 +53,9 @@ aoc::game::Unit* builderAt(aoc::game::GameState& gameState, PlayerId player, hex
 /// The owner's nearest city within BUILDER_YIELD_RANGE of `at`, or null.
 aoc::game::City* nearestCity(aoc::game::Player& owner, const aoc::map::HexGrid& grid,
                              hex::AxialCoord at) {
-    aoc::game::City* best = nullptr;
-    int32_t bestDist      = std::numeric_limits<int32_t>::max();
-    for (const std::unique_ptr<aoc::game::City>& city : owner.cities()) {
-        if (city == nullptr || city->owner() != owner.id()) {
-            continue;
-        }
-        const int32_t d = grid.distance(city->location(), at);
-        if (d <= BUILDER_YIELD_RANGE && d < bestDist) {
-            bestDist = d;
-            best     = city.get();
-        }
-    }
-    return best;
+    int32_t dist          = 0;
+    aoc::game::City* city = owner.nearestCity(grid, at, &dist);
+    return (city != nullptr && dist <= BUILDER_YIELD_RANGE) ? city : nullptr;
 }
 
 } // namespace

@@ -40,7 +40,6 @@
 #include "aoc/simulation/ai/AICommodityHoarding.hpp"
 #include "aoc/simulation/economy/CommodityExchange.hpp"
 #include "aoc/simulation/economy/Market.hpp"
-#include "aoc/simulation/economy/NavalTrade.hpp"
 
 // Tech
 #include "aoc/simulation/tech/TechTree.hpp"
@@ -176,16 +175,7 @@ namespace aoc::sim {
 static int32_t nearestCityDistance(const aoc::game::GameState& gameState,
                                    const aoc::map::HexGrid& grid, aoc::hex::AxialCoord location) {
     int32_t best = std::numeric_limits<int32_t>::max();
-    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
-        for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
-            best = std::min(best, grid.distance(location, city->location()));
-        }
-    }
-    for (const std::unique_ptr<aoc::game::Player>& seat : gameState.cityStatePlayers()) {
-        for (const std::unique_ptr<aoc::game::City>& city : seat->cities()) {
-            best = std::min(best, grid.distance(location, city->location()));
-        }
-    }
+    [[maybe_unused]] const aoc::game::City* nearest = gameState.nearestCity(grid, location, &best);
     return best;
 }
 
@@ -690,8 +680,13 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
 
         // Science funding cost: 0.2 gold per science point
         constexpr float SCIENCE_FUNDING_COST = 0.2f;
+        // A Barter civ with no coins has no money to fund research with and
+        // no way to earn any; charging it drove every such civ to the 50%
+        // floor for the half of a game most of them spend in Barter.
+        const bool moneyless = gsPlayer->monetary().system == MonetarySystemType::Barter
+                            && gsPlayer->monetary().totalCoinCount() == 0;
         const CurrencyAmount fundingCost =
-            static_cast<CurrencyAmount>(science * SCIENCE_FUNDING_COST);
+            moneyless ? 0 : static_cast<CurrencyAmount>(science * SCIENCE_FUNDING_COST);
         if (fundingCost > 0) {
             if (gsPlayer->treasury() >= fundingCost) {
                 gsPlayer->addGold(-fundingCost);
@@ -1100,9 +1095,6 @@ void processGlobalSystems(TurnContext& turnContext) {
     // Insurance premium payments
     processInsurancePremiums(gameState);
 
-    // Merchant ship fuel consumption (stalls ships lacking fuel).
-    processMerchantShipFuel(gameState);
-
     // AI futures trading (gene-driven) before settlement
     processAIFuturesTrading(gameState, turnContext.economy->market());
 
@@ -1426,6 +1418,7 @@ void processTurn(TurnContext& turnContext) {
         int32_t cities          = 0;
         int32_t units           = 0;
         int32_t military        = 0;
+        CurrencyAmount treasury = 0;
         bool atWar[MAX_PLAYERS] = {};
     };
     static_assert(sizeof(PlayerPre::atWar) / sizeof(PlayerPre::atWar[0]) == MAX_PLAYERS,
@@ -1462,6 +1455,7 @@ void processTurn(TurnContext& turnContext) {
         preState[i].cities   = p->cityCount();
         preState[i].units    = static_cast<int32_t>(p->units().size());
         preState[i].military = p->militaryUnitCount();
+        preState[i].treasury = p->treasury();
         if (turnContext.diplomacy != nullptr && i < atWarCount) {
             for (std::size_t j = 0; j < atWarCount; ++j) {
                 if (i != j) {
@@ -1724,6 +1718,14 @@ void processTurn(TurnContext& turnContext) {
     turnContext.lastVictoryResult = checkVictoryConditions(
         *turnContext.gameState, turnContext.currentTurn, turnContext.maxTurns,
         turnContext.victoryTypeMask, turnContext.diplomacy);
+
+    // What this turn did to each treasury, for the HUD's (+N) readout.
+    for (std::size_t i = 0; i < turnContext.allPlayers.size(); ++i) {
+        aoc::game::Player* p = turnContext.gameState->player(turnContext.allPlayers[i]);
+        if (p != nullptr) {
+            p->setNetGoldLastTurn(p->treasury() - preState[i].treasury);
+        }
+    }
 
     ++turnContext.currentTurn;
 }
