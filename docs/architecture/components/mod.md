@@ -26,3 +26,6 @@ Lua-based mod scripting is handled by the **scripting** subsystem; `LuaEngine` l
 Single file pair. The actual implementation is deferred pending a decision on which JSON
 library to add (see `DEPENDENCIES.txt` — there is currently no JSON parser dependency
 beyond `SimpleYaml` from `core`).
+
+<!-- arch-doc: class-diagram=skipped; a single class in this component -->
+<!-- arch-doc: state-machines=none; no transitioned enum found -->

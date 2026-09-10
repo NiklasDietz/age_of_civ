@@ -25,3 +25,6 @@ infrastructure is in place but the integration is not yet complete.
 Single file pair. The miniaudio integration is stubbed out with `#ifdef AOC_AUDIO_ENABLED`
 guards. No CMake target currently enables this flag; it is prepared for a future work
 package.
+
+<!-- arch-doc: class-diagram=skipped; a single class in this component -->
+<!-- arch-doc: state-machines=none; no transitioned enum found -->

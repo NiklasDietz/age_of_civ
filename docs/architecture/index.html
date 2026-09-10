@@ -1,0 +1,819 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Age of Civilization architecture</title>
+<style>
+:root{--bg:#0b0f14;--bg2:#111823;--bg3:#161f2c;--line:#233044;--fg:#dbe4f0;--fg-dim:#8ba0bd;--fg-faint:#5d738f;--accent:#f5a524;--green:#3fb950;--red:#f85149;--blue:#58a6ff;--mono:ui-monospace,Menlo,Consolas,monospace;--sans:system-ui,-apple-system,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.65 var(--sans)}
+.wrap{display:grid;grid-template-columns:264px minmax(0,1fr);min-height:100vh}
+aside{position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--bg2);border-right:1px solid var(--line)}
+nav{padding:1rem 0}
+nav .grp{padding:.9rem 1.25rem .3rem;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-faint)}
+nav a{display:block;padding:.35rem 1.25rem;color:var(--fg-dim);font-size:.85rem;border-left:2px solid transparent;text-decoration:none}
+nav a.active{color:var(--accent);border-left-color:var(--accent)}
+main{padding:2.5rem 3rem 6rem;max-width:1180px}
+section{margin-bottom:3.5rem;padding-top:.5rem}
+h1{font-size:1.9rem;margin:.2rem 0 .4rem}
+h2{font-size:1.45rem;margin:2.2rem 0 .8rem;padding-bottom:.35rem;border-bottom:1px solid var(--line)}
+h3{font-size:1.1rem;margin:1.6rem 0 .5rem;color:var(--accent)}
+h4{font-size:.95rem;margin:1.2rem 0 .4rem;color:var(--fg-dim)}
+a{color:var(--blue)}
+.band{display:flex;gap:1rem;flex-wrap:wrap;margin:1rem 0 2rem}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:11px;padding:1.1rem 1.25rem;min-width:180px;flex:1}
+.card .v{font-size:1.6rem;font-weight:600}
+.card .k{font-family:var(--mono);font-size:.72rem;color:var(--fg-faint);display:block;margin-top:.6rem;padding-top:.6rem;border-top:1px solid var(--line)}
+.diagram{background:var(--bg2);border:1px solid var(--line);border-radius:11px;padding:1.5rem;overflow-x:auto;margin:1rem 0}
+.tablewrap{overflow-x:auto;margin:1rem 0}
+table{border-collapse:collapse;width:100%;font-size:.83rem}
+th,td{padding:.55rem .85rem;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--fg-dim);font-weight:600}
+code{font-family:var(--mono);font-size:.855em;background:var(--bg3);padding:.12em .4em;border-radius:4px;border:1px solid var(--line)}
+pre{background:var(--bg2);border:1px solid var(--line);border-radius:11px;padding:1rem;overflow-x:auto}
+pre code{background:none;border:0;padding:0}
+p.anchors{font-family:var(--mono);font-size:.75rem;color:var(--fg-faint)}
+ul{padding-left:1.3rem}
+li{margin:.3rem 0}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}aside{position:static;height:auto}main{padding:1.5rem}}
+</style></head><body><div class="wrap">
+<aside><nav id="nav"><a href="#overview">Overview</a><div class="grp">Components</div><a href="#component-app">app</a><a href="#component-audio">audio</a><a href="#component-balance-ml">balance-ml</a><a href="#component-core">core</a><a href="#component-debug">debug</a><a href="#component-game">game</a><a href="#component-map">map</a><a href="#component-mod">mod</a><a href="#component-net">net</a><a href="#component-render">render</a><a href="#component-replay">replay</a><a href="#component-save">save</a><a href="#component-scripting">scripting</a><a href="#component-simulation">simulation</a><a href="#component-tools">tools</a><a href="#component-ui">ui</a><div class="grp">Runtime</div><a href="#interactions">Interactions</a><a href="#data-model">Data model</a><a href="#dependencies">Dependencies</a></nav></aside>
+<main>
+<h1>Age of Civilization architecture</h1>
+<p class="anchors">Rendered from <code>docs/architecture/</code> at source commit <code>90fb00e864f0</code>. The markdown is the source of truth; this page restates it.</p>
+<div class="band">
+<div class="card"><div class="v">16</div>components<span class="k">docs/architecture/components/</span></div>
+<div class="card"><div class="v">19</div>entry-point rows<span class="k">interactions.md</span></div>
+<div class="card"><div class="v">5</div>sequence flows<span class="k">interactions.md</span></div>
+<div class="card"><div class="v">17</div>mermaid diagrams<span class="k">all markdown files</span></div>
+</div>
+<section id="overview">
+<!-- arch-doc: src=overview.md -->
+<h2 id="overview-age-of-civilization-architecture-overview">Age of Civilization — Architecture Overview</h2>
+<p>Age of Civilization is a C++20 4X strategy game (hex map, plate-tectonics worldgen, deep economy/AI simulation) built as a single static library <code>aoc_lib</code> with five executables: <code>age_of_civ</code> (interactive, Vulkan + GLFW), <code>aoc_simulate</code> (headless turn simulation), <code>aoc_trace_dump</code> (AI decision-log converter), <code>aoc_mapgen</code> (standalone map generator with a loopback HTTP inspector), and <code>aoc_font_bake</code> (build-time glyph-atlas baker). The CMake <code>-DAOC_HEADLESS=ON</code> flag strips Vulkan/GLFW from the library so the headless tools build without a display. The balance tuner <code>aoc_evolve</code> (<code>ml/cpp/</code>) links <code>aoc_lib</code> separately.</p>
+<p><strong>core</strong> provides the foundational vocabulary the rest of the codebase shares: strong entity and type identifiers, a deterministic PRNG, structured logging, a compact binary decision log for AI tracing, JSON string escaping, order-independent reductions over hash-ordered containers, and the <code>Selectable</code> interface for map objects.</p>
+<p><strong>game</strong> owns the top-level runtime entity objects — <code>GameState</code>, <code>Player</code>, <code>City</code>, <code>Unit</code> — that simulation, rendering, saving and the debug API all read and write through typed accessors, plus zone-of-control queries. Since save v34 <code>GameState</code> also owns the deals in force, so the turn processor, the AI, the UI and the save file see one list.</p>
+<p><strong>map</strong> stores the hex tile grid as parallel SoA arrays and provides coordinate math, terrain definitions, fog of war, pathfinding, start placement shared by the game and the headless tool, and a physics-first plate-tectonics map generator: a 720×360 lat/lon raster simulation (rigid-plate advection, terranes riding their plates on a prescribed Wilson-cycle schedule, subduction fronts, continental docking, plate-contiguity enforcement, Airy isostasy with oceanic thermal subsidence, and a fixed-ocean-volume sea level) projected onto the hex grid and refined by margin, relief, climate, river, lake and resource placement passes.</p>
+<p><strong>simulation</strong> is the game's domain layer: 24 sub-modules covering AI decision-making, economy/trade, diplomacy, city management, unit combat and orders, technology, religion, culture, government, production chains, monetary policy, barbarians, city-states, climate, victory conditions, and the authoritative <code>TurnProcessor</code> that sequences them each turn. A request layer (<code>CityActions</code>, <code>UnitOrders</code>, <code>AttackRequest</code>, <code>BuilderActions</code>, <code>DiplomacyActions</code>, <code>DealProposals</code>, <code>MonetaryActions</code>) validates every mutation once, so the human UI, the AI, the REST API and the MCP tools share one code path.</p>
+<p><strong>render</strong> drives Vulkan rendering via the <code>vulkan_renderer</code> submodule and produces all visual output: the hex map, unit sprites, combat animations, globe view, minimap, overlays and per-player colours. It is excluded entirely in headless builds.</p>
+<p><strong>ui</strong> owns the widget tree, all in-game screens, the baked-font text renderer (no TrueType parser at runtime), procedural vector icons, theme tokens, notifications, the debug console and the screen lifecycle registry. Interactive only.</p>
+<p><strong>net</strong> defines a server/client split (<code>GameServer</code>, <code>GameClient</code>, <code>ITransport</code>, <code>LocalTransport</code>) that no executable currently instantiates: the interactive game and the headless tool both drive <code>TurnProcessor</code> directly. It also hosts the Linux D-Bus desktop integration (<code>GameDBus</code>).</p>
+<p><strong>save</strong> serializes the complete game state to a versioned binary format (currently v34 with 44 section ids), written atomically and loaded only on an exact version match (no migration chain). It also owns the <code>.aocmap</code> map-cache file format and the save-slot naming.</p>
+<p><strong>scripting</strong> wraps LuaJIT (or Lua 5.4) to let Lua scripts define victory conditions, world events, AI overrides, and map rules. Compiles to a no-op stub when Lua is absent.</p>
+<p><strong>debug</strong> provides the loopback HTTP server (cpp-httplib) and the typed game-control and UI-control command vocabulary behind it: 62 REST routes that read a per-player <code>GameSnapshot</code> or enqueue validated commands for the main thread, wrapped by <code>tools/mcp_server.py</code> as 60 MCP tools.</p>
+<p><strong>tools</strong> holds the four non-interactive executables: the headless simulator, the map generator CLI, the decision-log converter and the font baker.</p>
+<p><strong>app</strong> is the interactive entry point: GLFW window lifetime, the main loop, input and unit selection, the REST command queues drained on the main thread, spectator mode, and the <code>MainMenu</code>/<code>InGame</code> application state.</p>
+<p><strong>audio</strong> is a stub backend wired to miniaudio when <code>AOC_AUDIO_ENABLED</code> is defined; currently a no-op.</p>
+<p><strong>balance/ml</strong> exposes tunable game constants (<code>BalanceParams</code>) as a float genome and provides a genetic algorithm in <code>ml/cpp/</code> that runs embedded headless simulations in parallel to tune those constants and leader personalities, scored through <code>BalanceMetrics</code>.</p>
+<p><strong>mod</strong> is a placeholder <code>ModLoader</code> that will load mod JSON definitions; all methods currently log a warning and return false.</p>
+<p><strong>replay</strong> records per-turn per-player snapshots (score, population, military, techs) for post-game analysis.</p>
+<!-- arch-doc: layers=flat; no layering declared in directory or manifest naming (dependency graph is layered de-facto but the code names no layers) -->
+<div class="diagram"><pre class="mermaid">graph TD
+  app --&gt; audio
+  app --&gt; core
+  app --&gt; debug
+  app --&gt; game
+  app --&gt; map
+  app --&gt; net
+  app --&gt; render
+  app --&gt; replay
+  app --&gt; save
+  app --&gt; simulation
+  app --&gt; ui
+  tools --&gt; core
+  tools --&gt; debug
+  tools --&gt; game
+  tools --&gt; map
+  tools --&gt; save
+  tools --&gt; simulation
+  tools --&gt; ui
+  render --&gt; app
+  render --&gt; core
+  render --&gt; game
+  render --&gt; map
+  render --&gt; simulation
+  render --&gt; ui
+  ui --&gt; core
+  ui --&gt; game
+  ui --&gt; map
+  ui --&gt; render
+  ui --&gt; save
+  ui --&gt; simulation
+  debug --&gt; core
+  debug --&gt; game
+  debug --&gt; map
+  debug --&gt; simulation
+  debug --&gt; ui
+  net --&gt; core
+  net --&gt; game
+  net --&gt; map
+  net --&gt; simulation
+  save --&gt; core
+  save --&gt; game
+  save --&gt; map
+  save --&gt; simulation
+  scripting --&gt; core
+  scripting --&gt; game
+  scripting --&gt; map
+  replay --&gt; core
+  replay --&gt; game
+  replay --&gt; simulation
+  simulation --&gt; balance
+  simulation --&gt; core
+  simulation --&gt; game
+  simulation --&gt; map
+  simulation --&gt; ui
+  game --&gt; core
+  game --&gt; map
+  game --&gt; simulation
+  map --&gt; core
+  map --&gt; game
+  map --&gt; simulation
+  core --&gt; map
+  audio --&gt; core
+  mod --&gt; core
+  balance --&gt; core</pre></div>
+<p>Edges are the <code>#include "aoc/&lt;subsystem&gt;/"</code> relations present in <code>src/</code> and <code>include/</code> today, drawn as they exist. The cross-layer ones: <code>core → map</code> through <code>include/aoc/core/Selectable.hpp:13</code>; <code>map → game</code> through <code>src/map/Pathfinding.cpp:8</code> and <code>src/map/RiverGameplay.cpp:7</code>; <code>render → app</code> through <code>src/render/CameraController.cpp:7</code>; <code>simulation → ui</code> through the three AI controller headers that include <code>aoc/ui/MainMenu.hpp</code> (<code>include/aoc/simulation/ai/AIBuilderController.hpp:9</code>); <code>ui → render</code> through <code>src/ui/Tooltip.cpp:18</code>; <code>ui → save</code> through <code>include/aoc/ui/LoadGameMenu.hpp:8</code>; <code>simulation → balance</code> through <code>src/simulation/city/CityLoyalty.cpp:9</code>.</p>
+</section>
+<section id="component-app">
+<!-- arch-doc: src=components/app.md -->
+<h2 id="components-app-component-app">Component: app</h2>
+<h3 id="components-app-responsibility">Responsibility</h3>
+<p>The interactive entry point. Creates the GLFW window, manages Vulkan context lifetime, runs the main game loop, handles all user input, routes unit selection, drains the debug-server command queues on the main thread, and drives the turn processor and the render pipeline. Built only when <code>AOC_HEADLESS=OFF</code>.</p>
+<h3 id="components-app-key-files">Key files</h3>
+<ul><li><a href="../../include/aoc/app/Application.hpp">include/aoc/app/Application.hpp</a> / <code>src/app/Application.cpp</code> — <code>Application</code>: owns <code>Window</code>, <code>GameState</code>, <code>HexGrid</code>, <code>EconomySimulation</code>, <code>DiplomacyManager</code>, <code>TurnManager</code>, the <code>AIController</code> vector, <code>BarbarianController</code>, <code>AllianceObligationTracker</code>, <code>GameRenderer</code>, <code>UIManager</code>, <code>ScreenRegistry</code>, the optional <code>DebugServer</code>, <code>ReplayRecorder</code>, <code>MusicManager</code> and the game RNG. It does not use <code>GameServer</code> or <code>GameClient</code>. <code>run()</code> (<a href="../../src/app/Application.cpp#L4660">src/app/Application.cpp:4660</a>) is the main loop: drain UI and game-control command queues (<a href="../../src/app/Application.cpp#L4714">:4714</a>) → per-frame logic → <code>GameRenderer::render()</code> (<a href="../../src/app/Application.cpp#L5886">:5886</a>) → <code>glfwPollEvents()</code>. <code>startGame</code> (<a href="../../src/app/Application.cpp#L2044">:2044</a>) generates the map, places starts and spawns players; <code>handleEndTurn</code> (<a href="../../src/app/Application.cpp#L7111">:7111</a>) calls <code>processTurn</code> (<a href="../../src/app/Application.cpp#L7214">:7214</a>); <code>spectatorAdvanceTurn</code> (<a href="../../src/app/Application.cpp#L2410">:2410</a>) does the same for AI-only games.</li><li><code>src/app/Application_CityControl.cpp</code> — the REST game-control handlers: 23 route registrations (from <a href="../../src/app/Application_CityControl.cpp#L81">:81</a>) and the <code>executeGameControlCommand</code> overloads that turn a validated command into a request-layer call.</li><li><code>src/app/Application_HUD.cpp</code> — HUD construction and per-frame label updates (top bar, unit panel, city panel) split from <code>Application.cpp</code> for file-size management.</li><li><code>src/app/ApplicationHelpers.hpp</code> — small shared helpers for the three translation units.</li><li><code>src/app/Window.cpp</code> — GLFW window creation, Vulkan surface setup, swapchain resize.</li><li><code>src/app/InputManager.cpp</code> / <a href="../../include/aoc/app/InputActions.hpp">include/aoc/app/InputActions.hpp</a> — mouse and keyboard to named input actions; click-to-tile conversion via <code>CameraController</code>.</li><li><code>src/app/UnitSelection.cpp</code> — the selected unit/city and its move-preview overlay.</li><li><code>src/app/DebugCommandFile.cpp</code> — reads a text file of debug commands at startup.</li><li><code>src/app/ScreenshotEncoder.cpp</code> — framebuffer capture to PNG via <code>stb_image_write</code>.</li></ul>
+<h3 id="components-app-public-surface">Public surface</h3>
+<p><code>Application</code> is instantiated from <code>src/main.cpp:38</code> (the <code>age_of_civ</code> executable), which parses <code>--spectate</code>, <code>--enable-debug-server</code>, <code>--players</code> and <code>--turns</code>, then calls <code>initialize(config)</code> and <code>run()</code>. All other subsystems are created and owned by <code>Application</code>; the dependency arrow is strictly outward, with one exception: <code>render</code>'s <code>CameraController.cpp</code> includes <code>InputManager.hpp</code> for the action vocabulary.</p>
+<h3 id="components-app-internal-structure">Internal structure</h3>
+<p>Flat directory. <code>Application.cpp</code> is deliberately large (the main loop is a single translation unit) and delegates HUD work to <code>Application_HUD.cpp</code> and the REST handlers to <code>Application_CityControl.cpp</code>. Commands arriving from the debug server thread are queued under a mutex and executed only from <code>drainPendingCommands</code> (<a href="../../src/app/Application.cpp#L2996">src/app/Application.cpp:2996</a>) and <code>drainPendingUiCommands</code> (<a href="../../src/app/Application.cpp#L3026">:3026</a>) on the main thread.</p>
+<!-- arch-doc: class-diagram=skipped; one orchestrator class whose owned types belong to other components -->
+<h3 id="components-app-state-machine">State machine</h3>
+<p><code>AppState</code> (<a href="../../include/aoc/app/Application.hpp#L93">include/aoc/app/Application.hpp:93</a>) has two states. <code>initialize</code> starts in <code>MainMenu</code> (<code>src/app/Application.cpp:1980</code>); <code>startGame</code> (<code>:2286</code>) and a successful load (<code>:4602</code>) enter <code>InGame</code>; returning to the menu (<code>:6164</code>) goes back. <code>drainPendingCommands</code> ignores game commands outside <code>InGame</code>.</p>
+<div class="diagram"><pre class="mermaid">stateDiagram-v2
+  [*] --&gt; MainMenu
+  MainMenu --&gt; InGame : startGame() / loadGame()
+  InGame --&gt; MainMenu : return to main menu</pre></div>
+<p class="anchors">Anchors: <code>include/aoc/app/Application.hpp</code>, <code>src/app/Application.cpp</code></p>
+</section>
+<section id="component-audio">
+<!-- arch-doc: src=components/audio.md -->
+<h2 id="components-audio-component-audio">Component: audio</h2>
+<h3 id="components-audio-responsibility">Responsibility</h3>
+<p>Audio playback backend. Currently a stub that logs its disabled/enabled state. When the build defines <code>AOC_AUDIO_ENABLED</code> and <code>miniaudio.h</code> is present, the implementation would initialize an <code>ma_engine</code> and provide <code>playSound()</code> / <code>playMusic()</code> functions; the infrastructure is in place but the integration is not yet complete.</p>
+<h3 id="components-audio-key-files">Key files</h3>
+<ul><li><code>src/audio/AudioBackend.cpp</code> / <a href="../../include/aoc/audio/AudioBackend.hpp">include/aoc/audio/AudioBackend.hpp</a> — <code>aoc::audio::initialize()</code>, <code>shutdown()</code>, <code>playSound(name)</code>, <code>playMusic(name)</code>. All functions are no-ops when <code>AOC_AUDIO_ENABLED</code> is not defined.</li></ul>
+<h3 id="components-audio-public-surface">Public surface</h3>
+<ul><li><code>aoc::audio::initialize()</code> — called by <code>Application::run()</code> during startup.</li><li><code>aoc::audio::playSound(name)</code> / <code>playMusic(name)</code> — called from UI and simulation event handlers.</li></ul>
+<h3 id="components-audio-internal-structure">Internal structure</h3>
+<p>Single file pair. The miniaudio integration is stubbed out with <code>#ifdef AOC_AUDIO_ENABLED</code> guards. No CMake target currently enables this flag; it is prepared for a future work package.</p>
+<!-- arch-doc: class-diagram=skipped; a single class in this component -->
+<!-- arch-doc: state-machines=none; no transitioned enum found -->
+</section>
+<section id="component-balance-ml">
+<!-- arch-doc: src=components/balance-ml.md -->
+<h2 id="components-balance-ml-component-balance-ml">Component: balance / ml</h2>
+<h3 id="components-balance-ml-responsibility">Responsibility</h3>
+<p>Exposes all tunable game constants as a flat float genome and provides a genetic algorithm that runs embedded headless simulations in parallel to discover good parameter values and leader personalities automatically.</p>
+<h3 id="components-balance-ml-key-files">Key files</h3>
+<h4 id="components-balance-ml-src-balance-runtime-balance-parameters"><code>src/balance/</code> — runtime balance parameters</h4>
+<ul><li><a href="../../include/aoc/balance/BalanceParams.hpp#L29">include/aoc/balance/BalanceParams.hpp:29</a> / <code>src/balance/BalanceParams.cpp</code> — <code>BalanceParams</code>: the struct of tunable floats and ints (loyalty, culture victory threshold, religion dominance, production chain multipliers, stockpile caps, …); <code>aoc::balance::params()</code> returns the process-global singleton. <code>BalanceGenome</code> (<a href="../../include/aoc/balance/BalanceParams.hpp#L152">:152</a>) is the same values packed as a flat <code>std::array&lt;float&gt;</code> for GA operators, with <code>toParams()</code> / <code>fromParams()</code>.</li></ul>
+<h4 id="components-balance-ml-ml-cpp-genetic-algorithm-tuner-separate-cmake-target-aoc-evolve"><code>ml/cpp/</code> — genetic algorithm tuner (separate CMake target <code>aoc_evolve</code>)</h4>
+<ul><li><code>ml/cpp/GeneticAlgorithm.hpp</code> / <code>.cpp</code> — <code>Individual</code> (<a href="../../ml/cpp/GeneticAlgorithm.hpp#L73">:73</a>), <code>GAConfig</code> (<a href="../../ml/cpp/GeneticAlgorithm.hpp#L124">:124</a>), <code>ParamBounds</code>, <code>DifficultyTiers</code>; real-valued selection, crossover and Gaussian mutation over the genome vector.</li><li><code>ml/cpp/FitnessEvaluator.hpp</code> / <code>.cpp</code> — <code>runSimulation</code> (<a href="../../ml/cpp/FitnessEvaluator.cpp#L75">ml/cpp/FitnessEvaluator.cpp:75</a>) runs an <strong>embedded</strong> headless game linked from <code>aoc_lib</code> (it does not shell out to <code>aoc_simulate</code> nor use <code>GameServer</code>) and returns a <code>SimulationResult</code> (<a href="../../ml/cpp/FitnessEvaluator.hpp#L27">:27</a>).</li><li><code>ml/cpp/BalanceMetrics.hpp</code> — the per-run health metrics a result is scored on.</li><li><code>ml/cpp/BalanceTuner.hpp</code> / <code>.cpp</code> — <code>BalanceHealth</code>, <code>BalanceIndividual</code>, <code>BalanceGAConfig</code> (<a href="../../ml/cpp/BalanceTuner.hpp#L44">:44-61</a>) and the driver that initialises the population, runs generations, and writes the best genome to a plain-text summary (<code>evolved_balance.txt</code>, plus a paste-ready block on stderr).</li><li><code>ml/cpp/ThreadPool.hpp:28</code> — fixed-size thread pool running one embedded simulation per thread.</li><li><code>ml/cpp/main.cpp:420</code> — the <code>aoc_evolve</code> entry point.</li></ul>
+<h3 id="components-balance-ml-public-surface">Public surface</h3>
+<ul><li><code>aoc::balance::params()</code> — read by <code>TurnProcessor</code> and simulation sub-modules as a runtime override on top of the compile-time constants in <code>BalanceConfig.hpp</code>.</li><li><code>aoc_evolve</code> writes plain-text summaries (<code>evolved_balance.txt</code> for balance, <code>evolved_summary.txt</code> for AI leaders). Feedback into the game is manual: values are pasted into <code>BalanceParams</code> defaults / the <code>LEADER_PERSONALITIES</code> table, or loaded for a run through <code>simulation/ai/TunedLeaderIO</code>. <code>BalanceParams</code> loads no file at startup.</li></ul>
+<h3 id="components-balance-ml-internal-structure">Internal structure</h3>
+<p><code>src/balance/</code> is a single file pair linked into <code>aoc_lib</code>. <code>ml/cpp/</code> has its own <code>CMakeLists.txt</code> and builds separately as <code>aoc_evolve</code>. The GA operates purely through embedded headless simulation, never touching rendering or UI; its include edges are <code>simulation</code>, <code>map</code>, <code>game</code>, <code>core</code> and <code>balance</code>.</p>
+<!-- arch-doc: class-diagram=skipped; plain GA records plus the BalanceParams/BalanceGenome conversion pair -->
+<!-- arch-doc: state-machines=none; no transitioned enum found -->
+</section>
+<section id="component-core">
+<!-- arch-doc: src=components/core.md -->
+<h2 id="components-core-component-core">Component: core</h2>
+<h3 id="components-core-responsibility">Responsibility</h3>
+<p>Provides the foundational types, utilities, and services shared by every other subsystem: entity identifiers, domain type aliases, a deterministic PRNG, structured logging, a compact binary AI decision log, JSON escaping, order-independent reductions, and a handful of RAII helpers.</p>
+<h3 id="components-core-key-files">Key files</h3>
+<ul><li><a href="../../include/aoc/core/Types.hpp">include/aoc/core/Types.hpp</a> — <code>EntityId</code> (20-bit index + 12-bit generation), <code>PlayerId</code>, <code>TurnNumber</code>, <code>StrongId&lt;Tag&gt;</code> for all 16-bit domain IDs, <code>NULL_ENTITY</code> sentinel.</li><li><a href="../../include/aoc/core/Random.hpp">include/aoc/core/Random.hpp</a> — <code>aoc::Random</code>: xoshiro256** seeded via SplitMix64, with <code>fork()</code> for independent sub-streams.</li><li><a href="../../include/aoc/core/Log.hpp">include/aoc/core/Log.hpp</a> — <code>LOG_DEBUG/INFO/WARN/ ERROR/FATAL</code> macros. Single <code>fprintf</code> per call; runtime severity gate (<code>aoc::log::g_minSeverity</code>); DEBUG stripped in NDEBUG builds.</li><li><a href="../../include/aoc/core/DecisionLog.hpp">include/aoc/core/DecisionLog.hpp</a> — <code>DecisionLog</code>: compact binary log of AI production/research decisions and per-turn summaries; reader via <code>readDecisionLog()</code>; a thread-local <code>currentDecisionLog()</code> pointer lets AI call sites reach it without threading a pointer everywhere.</li><li><a href="../../include/aoc/core/ErrorCodes.hpp">include/aoc/core/ErrorCodes.hpp</a> — <code>ErrorCode</code> enum used as return values by the save/load path and the request layer.</li><li><a href="../../include/aoc/core/PathGuard.hpp">include/aoc/core/PathGuard.hpp</a> — <code>PathGuard</code>: validates and normalizes a filesystem path on construction.</li><li><a href="../../include/aoc/core/SimpleYaml.hpp">include/aoc/core/SimpleYaml.hpp</a> — minimal YAML reader used for the headless configuration files.</li><li><a href="../../include/aoc/core/JsonUtil.hpp">include/aoc/core/JsonUtil.hpp</a> — escaping of <code>"</code>, <code>\</code> and control characters for strings embedded in the debug server's JSON.</li><li><a href="../../include/aoc/core/Deterministic.hpp">include/aoc/core/Deterministic.hpp</a> — order-independent reductions over hash-ordered associative containers, so iteration order cannot leak into the simulation.</li><li><a href="../../include/aoc/core/Selectable.hpp">include/aoc/core/Selectable.hpp</a> — the interface for selectable map objects (units, cities, tiles); includes <code>map/HexCoord.hpp</code>, which is the one <code>core → map</code> edge.</li></ul>
+<h3 id="components-core-public-surface">Public surface</h3>
+<p>Every subsystem depends on <code>core</code>. The types used most widely:</p>
+<ul><li><code>aoc::EntityId</code>, <code>aoc::PlayerId</code>, <code>aoc::TurnNumber</code> — entity, player and turn indexing</li><li><code>aoc::ResourceId</code>, <code>aoc::TechId</code>, <code>aoc::BuildingId</code>, … (all <code>StrongId&lt;Tag&gt;</code> specializations)</li><li><code>aoc::Random</code> — the game PRNG; instances live in <code>Application</code> and <code>HeadlessSimulation</code> and are saved alongside game state for determinism</li><li><code>LOG_*</code> macros — used at every severity level across all subsystems</li><li><code>aoc::core::DecisionLog</code> / <code>currentDecisionLog()</code> — AI trace capture from <code>TurnProcessor</code> and the AI controllers</li></ul>
+<h3 id="components-core-internal-structure">Internal structure</h3>
+<p><code>core</code> has no sub-directories. The ten headers are independent of one another (except <code>DecisionLog.hpp</code> → <code>ErrorCodes.hpp</code>); five have sources under <code>src/core/</code>.</p>
+<!-- arch-doc: class-diagram=skipped; independent utility headers, no interrelated core types -->
+<!-- arch-doc: state-machines=none; no transitioned enum found -->
+</section>
+<section id="component-debug">
+<!-- arch-doc: src=components/debug.md -->
+<h2 id="components-debug-component-debug">Component: debug</h2>
+<h3 id="components-debug-responsibility">Responsibility</h3>
+<p>Provides the loopback HTTP debug server and the typed command and snapshot vocabulary behind it: the game-control API used by tests and by the MCP wrapper, and the UI-control API that drives the widget tree from outside the process.</p>
+<h3 id="components-debug-key-files">Key files</h3>
+<ul><li><a href="../../include/aoc/debug/DebugServer.hpp#L68">include/aoc/debug/DebugServer.hpp:68</a> / <code>src/debug/DebugServer.cpp</code> — <code>DebugServer</code>: wraps <code>cpp-httplib</code>'s <code>httplib::Server</code>. Binds to <code>127.0.0.1</code> only, with a pre-routing <code>Host</code>-header allowlist so it cannot be reached by DNS rebinding. <code>routeJson(Method, path, handler)</code> (<code>Method</code> at <a href="../../include/aoc/debug/DebugServer.hpp#L73">:73</a>) registers a route; every response string passes through JSON escaping. Off by default; enabled with <code>--enable-debug-server</code>, port 9876.</li><li><a href="../../include/aoc/debug/GameControlCommand.hpp">include/aoc/debug/GameControlCommand.hpp</a> — the typed command structs (<code>MoveUnitCommand</code> <a href="../../include/aoc/debug/GameControlCommand.hpp#L21">:21</a>, <code>AttackUnitCommand</code>, <code>FoundCityCommand</code>, <code>SetProductionCommand</code>, <code>SetResearchCommand</code>, <code>EndTurnCommand</code>, …) and the <code>GameControlCommand</code> variant (<a href="../../include/aoc/debug/GameControlCommand.hpp#L321">:321</a>) the server enqueues for the main thread.</li><li><a href="../../include/aoc/debug/GameControlValidation.hpp">include/aoc/debug/GameControlValidation.hpp</a> / <code>src/debug/GameControlValidation.cpp</code> — validates a command against the live <code>GameState</code> before it is queued (player, unit, city and range checks), so a bad request is refused on the request thread.</li><li><a href="../../include/aoc/debug/GameSnapshot.hpp#L58">include/aoc/debug/GameSnapshot.hpp:58</a> / <code>src/debug/GameSnapshot.cpp</code> — <code>GameSnapshot</code>: the per-player JSON view (treasury, cities, units, research, diplomacy) served by <code>GET /game/state</code> and friends.</li><li><a href="../../include/aoc/debug/UiControlCommand.hpp">include/aoc/debug/UiControlCommand.hpp</a> — <code>ClickWidgetCommand</code>, <code>ClickAtCommand</code>, <code>ScrollAtCommand</code>, <code>TakeScreenshotCommand</code> and their variant (<a href="../../include/aoc/debug/UiControlCommand.hpp#L45">:45</a>), behind <code>GET /ui/tree</code>, <code>POST /ui/click</code>, <code>/ui/click-at</code>, <code>/ui/scroll</code>, <code>/debug/screenshot</code>.</li></ul>
+<h3 id="components-debug-public-surface">Public surface</h3>
+<ul><li><code>DebugServer::start()</code> / <code>stop()</code> / <code>routeJson(...)</code> — <code>Application</code> creates the server (<a href="../../src/app/Application.cpp#L582">src/app/Application.cpp:582</a>) and registers 62 routes (<code>src/app/Application.cpp:602</code> onward, <code>src/app/Application_CityControl.cpp:81</code> onward); <code>aoc_mapgen</code> registers its own inspector routes (<code>src/tools/MapGenCli.cpp:749-965</code>). The full route inventory is in <a href="#interactions">interactions.md</a>.</li><li><code>tools/mcp_server.py</code> wraps the routes as 60 <code>aoc_*</code> MCP tools for an LLM client; <code>tools/mcp_e2e_test.py</code> exercises them end to end.</li></ul>
+<h3 id="components-debug-internal-structure">Internal structure</h3>
+<p><code>src/debug/</code> holds the server and the two value-type translation units; the routes themselves are registered by the consumers (<code>app</code>, <code>tools</code>). Commands never mutate game state on the request thread: they are validated, queued, and drained by <code>Application</code>.</p>
+<!-- arch-doc: class-diagram=skipped; one server class plus independent command and snapshot value types -->
+<!-- arch-doc: state-machines=none; no transitioned enum found -->
+</section>
+<section id="component-game">
+<!-- arch-doc: src=components/game.md -->
+<h2 id="components-game-component-game">Component: game</h2>
+<h3 id="components-game-responsibility">Responsibility</h3>
+<p>Owns the runtime entity graph that all other subsystems read and write: the top-level <code>GameState</code> container, <code>Player</code>, <code>City</code>, and <code>Unit</code> objects, plus zone-of-control queries. This is the single source of truth for "what is currently happening in the game."</p>
+<h3 id="components-game-key-files">Key files</h3>
+<ul><li><a href="../../include/aoc/game/GameState.hpp#L64">include/aoc/game/GameState.hpp:64</a> — <code>GameState</code>: the root container. Owns <code>std::vector&lt;unique_ptr&lt;Player&gt;&gt;</code> for major players and a separate vector for city-state seats, plus the barbarian seat. Holds the global singletons (<code>GlobalClimateComponent</code>, <code>GlobalMonopolyComponent</code>, <code>GlobalSanctionTracker</code>, <code>GlobalWonderTracker</code>, <code>WorldCongressComponent</code>, <code>GlobalReligionTracker</code>, <code>VisibilityEventBus</code>) and the global collections: commodity hoards, barbarian clans, city states, electricity agreements, encampment supply buffers, the deal inbox (<code>pendingProposals()</code>) and, since v34, the deals in force (<code>deals()</code>).</li><li><a href="../../include/aoc/game/Player.hpp#L79">include/aoc/game/Player.hpp:79</a> — <code>Player</code>: owns its cities (<a href="../../include/aoc/game/Player.hpp#L409">:409</a>) and units (<a href="../../include/aoc/game/Player.hpp#L481">:481</a>), research state, the economy ledgers, government, religion and monetary components, and the <code>isHuman</code> flag. The one treasury is <code>monetary().treasury</code>, reached through <code>treasury()</code> / <code>addGold()</code> / <code>spendGold()</code>.</li><li><a href="../../include/aoc/game/City.hpp#L72">include/aoc/game/City.hpp:72</a> — <code>City</code>: owns production queue, citizens, districts and buildings, stockpiles, governor, loyalty and siege state.</li><li><a href="../../include/aoc/game/Unit.hpp#L34">include/aoc/game/Unit.hpp:34</a> — <code>Unit</code>: movement points, hit points, state, pending path, and the per-role components it carries (<code>trader()</code>, <code>spy()</code>, <code>greatPerson()</code>, <code>airUnit()</code>, experience) plus automation flags such as <code>autoRenewRoute</code>.</li><li><a href="../../include/aoc/game/ZoneOfControl.hpp#L23">include/aoc/game/ZoneOfControl.hpp:23</a> — <code>isInEnemyZoneOfControl(gameState, tile, player)</code>: the ZoC query, moved here from <code>simulation/unit</code>.</li></ul>
+<h3 id="components-game-public-surface">Public surface</h3>
+<p><code>GameState</code> is passed by reference to nearly every simulation function, the serializer and the debug snapshot builder. Key access patterns:</p>
+<ul><li><code>gameState.player(PlayerId)</code> — look up a player by ID (major, city-state or barbarian seat)</li><li><code>gameState.humanPlayer()</code> / <code>setHumanPlayerId()</code> — which player the UI follows</li><li><code>gameState.players()</code> — iterate all major players (turn loop, victory check)</li><li><code>gameState.climate()</code>, <code>.worldCongress()</code>, <code>.religionTracker()</code>, <code>.monopoly()</code> — singletons</li><li><code>gameState.deals()</code>, <code>.pendingProposals()</code>, <code>.cityStates()</code>, <code>.barbarianClans()</code> — collections</li><li><code>gameState.recordTileEvent()</code> — the lightweight per-tile event stream</li></ul>
+<h3 id="components-game-internal-structure">Internal structure</h3>
+<p>Four entity types plus the ZoC query. Each entity type has one header and one source. <code>GameState</code> aggregates all global state that has no natural owner among the player objects — the "table" rather than any single chair. Fog of war lives in <code>map</code> (<code>include/aoc/map/FogOfWar.hpp</code>), not here.</p>
+<h3 id="components-game-core-types">Core types</h3>
+<p><code>GameState</code> — <a href="../../include/aoc/game/GameState.hpp#L64">include/aoc/game/GameState.hpp:64</a>; <code>Player</code> — <a href="../../include/aoc/game/Player.hpp#L79">include/aoc/game/Player.hpp:79</a>; <code>City</code> — <a href="../../include/aoc/game/City.hpp#L72">include/aoc/game/City.hpp:72</a>; <code>Unit</code> — <a href="../../include/aoc/game/Unit.hpp#L34">include/aoc/game/Unit.hpp:34</a>.</p>
+<div class="diagram"><pre class="mermaid">classDiagram
+  class GameState {
+    +players()
+    +cityStatePlayers()
+    +player(PlayerId)
+    +deals()
+    +pendingProposals()
+  }
+  class Player {
+    +cities()
+    +units()
+    +treasury()
+    +addGold(amount)
+    +monetary()
+  }
+  class City {
+    +production()
+    +districts()
+    +stockpile()
+    +governor()
+  }
+  class Unit {
+    +position()
+    +setState(UnitState)
+    +pendingPath()
+    +trader()
+  }
+  GameState "1" *-- "*" Player
+  Player "1" *-- "*" City
+  Player "1" *-- "*" Unit</pre></div>
+<!-- arch-doc: state-machines=none; UnitState is owned by simulation/unit and diagrammed there -->
+</section>
+<section id="component-map">
+<!-- arch-doc: src=components/map.md -->
+<h2 id="components-map-component-map">Component: map</h2>
+<h3 id="components-map-responsibility">Responsibility</h3>
+<p>Stores the hex tile grid and provides all geometry, terrain, pathfinding, fog of war, start placement, and the full procedural map generator — a physics-first plate-tectonics simulation on a global lat/lon raster, projected onto the hex grid and refined by climate/river/lake/resource passes.</p>
+<h3 id="components-map-key-files">Key files</h3>
+<ul><li><a href="../../include/aoc/map/HexGrid.hpp">include/aoc/map/HexGrid.hpp</a> — <code>HexGrid</code>: flat SoA arrays indexed by <code>row * width + col</code> (odd-r offset coords); one contiguous <code>std::vector</code> per property. Two topologies: <code>Flat</code> and <code>Cylindrical</code> (east-west wrap). Carries worldgen output layers consumed downstream, including per-tile <code>plateId</code> and the plate-boundary classification <code>boundaryTypeTile</code> (<a href="../../include/aoc/map/HexGrid.hpp#L749">:749</a>, 0 none / 1 convergent / 2 divergent / 3 transform) that drives margin classification, resource geology, and the renderer's plate-boundary overlay.</li><li><a href="../../include/aoc/map/HexGridLayers.hpp">include/aoc/map/HexGridLayers.hpp</a> — <code>HexGrid::visitLayers()</code>: every container layer of the grid by name; the save format and the <code>.aocmap</code> cache iterate it instead of naming layers by hand.</li><li><a href="../../include/aoc/map/StartPlacement.hpp">include/aoc/map/StartPlacement.hpp</a> — <code>chooseStartPositions(grid, playerCount, rng)</code>: the start-position picker shared by the graphical game (<code>src/app/Application.cpp:2177</code>) and the headless simulator (<code>src/tools/HeadlessSimulation.cpp:455</code>).</li><li><a href="../../include/aoc/map/HexCoord.hpp">include/aoc/map/HexCoord.hpp</a> — offset/axial conversion, neighbor enumeration, distance, rings.</li><li><a href="../../include/aoc/map/Terrain.hpp">include/aoc/map/Terrain.hpp</a> — <code>TerrainType</code> enum and per-terrain yield tables.</li><li><a href="../../include/aoc/map/MapGenerator.hpp">include/aoc/map/MapGenerator.hpp</a> — <code>MapGenerator</code>: top-level entry point. <code>Config</code> holds width/height/seed/<code>MapType</code> (only <code>Continents</code> is live)/<code>MapSize</code>/topology/projection/<code>tectonicTotalMy</code>/ <code>seaLevelDelta</code>/<code>climatePhase</code>/<code>ResourcePlacementMode</code> (Realistic, Fair, Random). Sea level is not a config ratio — it is solved physically (below).</li><li><a href="../../include/aoc/map/LandmassMetrics.hpp#L33">include/aoc/map/LandmassMetrics.hpp:33</a> — <code>computeLandmassSizes()</code>: per-tile connected-land-component sizes used by start placement to keep capitals off sub-settleable islets.</li><li><a href="../../include/aoc/map/Pathfinding.hpp">include/aoc/map/Pathfinding.hpp</a> — A* over the hex grid (reads <code>GameState</code> for ownership, hence the <code>map → game</code> include edge).</li><li><a href="../../include/aoc/map/FogOfWar.hpp">include/aoc/map/FogOfWar.hpp</a> — per-player visibility/explored bitsets.</li><li><a href="../../include/aoc/map/RiverGameplay.hpp">include/aoc/map/RiverGameplay.hpp</a> — river adjacency combat effects.</li></ul>
+<h4 id="components-map-tectonic-core-spherefield-raster">Tectonic core (<code>SphereField</code> raster)</h4>
+<p>Authoritative worldgen state is <code>SphereField</code> (<a href="../../include/aoc/map/gen/SphereField.hpp#L116">include/aoc/map/gen/SphereField.hpp:116</a>): a 720×360 (0.5°) lat/lon SoA raster — elevation, crust thickness, continental fraction, <code>plateId</code>, convergence rate, crust and thermal ages, suture contact, boundary type — plus the solved scalar sea level and the conserved ocean-volume budget. Plates (<a href="../../include/aoc/map/gen/Plate.hpp">include/aoc/map/gen/Plate.hpp</a>) are rigid-motion parameterisations (Euler pole + angular velocity) whose footprints live in the raster's <code>plateId</code>. Continental crust additionally rides as rigid terranes (<a href="../../include/aoc/map/gen/Terrane.hpp">include/aoc/map/gen/Terrane.hpp</a>) on a prescribed Wilson-cycle schedule (<a href="../../include/aoc/map/gen/WilsonSchedule.hpp">include/aoc/map/gen/WilsonSchedule.hpp</a>).</p>
+<p>Per-epoch physics pass (<code>stepSpherePhysicsEpoch</code>, <a href="../../src/map/gen/SphereFieldPhysics.cpp#L4525">src/map/gen/SphereFieldPhysics.cpp:4525</a>), in order: plate-ownership advection (<code>advectPlateOwnership</code>, <a href="../../src/map/gen/SphereFieldPhysics.cpp#L1183">:1183</a>); boundary detection and closing rate; convergent thickening; arc volcanism; terrane accretion (<code>accreteToNeighbours</code>, <a href="../../src/map/gen/SphereFieldPhysics.cpp#L2189">:2189</a>); subduction as a budget-propagating front (<code>applySubduction</code>, <a href="../../src/map/gen/SphereFieldPhysics.cpp#L2832">:2832</a>); ridge crust reset; continental docking (<code>applyContinentalDocking</code>, <a href="../../src/map/gen/SphereFieldPhysics.cpp#L3192">:3192</a>); slab-pull feedback; Wilson rifting and plate-contiguity enforcement (same file); Airy isostasy with thermal subsidence (<code>recomputeIsostaticElevationOnRaster</code>, <a href="../../src/map/gen/SphereFieldPhysics.cpp#L3401">:3401</a>); the fixed-volume sea level (<code>solveSeaLevelFixedVolume</code>, <a href="../../src/map/gen/SphereFieldPhysics.cpp#L3848">:3848</a>); surface erosion; plate-list compaction. Per-tile passes run under OpenMP when available.</p>
+<h4 id="components-map-generator-pipeline-src-map-mapgenerator-cpp-src-map-gen">Generator pipeline (<code>src/map/MapGenerator.cpp</code> + <code>src/map/gen/</code>)</h4>
+<p>Craton seeding → initial plate ownership → physics epochs (above) → hex projection (bilinear elevation relative to the solved sea level, sub-grid coastal noise via <a href="../../include/aoc/map/gen/Noise.hpp">include/aoc/map/gen/Noise.hpp</a>, footprint-mode <code>boundaryTypeTile</code>) → <code>PostSim</code> (sediment, active/passive margins) → <code>Thresholds</code> (<a href="../../src/map/gen/Thresholds.cpp#L19">src/map/gen/Thresholds.cpp:19</a>, land/water cut at solved sea level, shiftable by <code>seaLevelDelta</code>) → <code>Relief</code> → <code>ClimateBiome</code>/Köppen and the biogeography layers → rivers → <code>Lakes</code> (endorheic basins) → features → island/lake purges and coastal erosion → resources (<code>Resources.cpp</code>: geology-clustered placement, a strategic backstop, and the Fair-mode quadrant balance) → chokepoints.</p>
+<h3 id="components-map-public-surface">Public surface</h3>
+<ul><li><code>MapGenerator::generate(config, outGrid)</code> — called by <code>Application::startGame</code>, <code>HeadlessSimulation</code>, and <code>aoc_mapgen</code>.</li><li><code>chooseStartPositions(grid, n, rng)</code> — the game and the headless tool.</li><li><code>HexGrid</code> accessors and <code>visitLayers</code> — read/written by simulation, render, save, debug.</li><li><code>computeLandmassSizes(grid)</code>, <code>Pathfinding::findPath(...)</code>, <code>HexCoord</code>/<code>AxialCoord</code> utilities.</li></ul>
+<h3 id="components-map-internal-structure">Internal structure</h3>
+<p>Top-level files own grid storage/geometry/gameplay; <code>gen/</code> holds the worldgen pipeline as one header/source pair per stage (33 sources) sharing a <code>MapGenContext</code>. Verification tooling: <code>AOC_SPHEREPHYS_TRACE</code>, <code>AOC_DUMP_THRESHOLD</code>, <code>AOC_DUMP_MARGINS</code>, <code>AOC_DUMP_OROGENY</code> env diagnostics; <code>tools/mapgen_metrics.py</code> with committed per-phase baselines under <code>tools/mapgen_baselines/</code>.</p>
+<h3 id="components-map-core-types">Core types</h3>
+<p><code>MapGenerator</code> — <a href="../../include/aoc/map/MapGenerator.hpp">include/aoc/map/MapGenerator.hpp</a>; <code>SphereField</code> — <a href="../../include/aoc/map/gen/SphereField.hpp#L116">include/aoc/map/gen/SphereField.hpp:116</a>; <code>Plate</code> — <a href="../../include/aoc/map/gen/Plate.hpp">include/aoc/map/gen/Plate.hpp</a>; <code>HexGrid</code> — <a href="../../include/aoc/map/HexGrid.hpp">include/aoc/map/HexGrid.hpp</a>.</p>
+<div class="diagram"><pre class="mermaid">classDiagram
+  class MapGenerator {
+    +generate(Config, HexGrid)
+  }
+  class SphereField {
+    +surfaceElevationM
+    +continentalFraction
+    +plateId
+    +seaLevelM
+    +bilinearSample()
+    +peakSample()
+    +boundaryTypeMode()
+  }
+  class Plate {
+    +eulerPoleLatDeg
+    +angularVelDeg
+    +mergesAbsorbed
+  }
+  class HexGrid {
+    +terrain(idx)
+    +plateId(idx)
+    +boundaryTypeTile(idx)
+    +visitLayers(fn)
+  }
+  MapGenerator --&gt; SphereField : simulates
+  MapGenerator --&gt; Plate : moves via Euler poles
+  MapGenerator --&gt; HexGrid : projects onto
+  SphereField --&gt; Plate : plateId indexes</pre></div>
+<!-- arch-doc: state-machines=none; ResourcePlacementMode and BrushMode are configuration enums, never transitioned -->
+</section>
+<section id="component-mod">
+<!-- arch-doc: src=components/mod.md -->
+<h2 id="components-mod-component-mod">Component: mod</h2>
+<h3 id="components-mod-responsibility">Responsibility</h3>
+<p>Placeholder loader for mod JSON definitions (unit types, buildings, techs, civilizations). All methods currently log a warning and return false; the system is scaffolded but not yet implemented.</p>
+<h3 id="components-mod-key-files">Key files</h3>
+<ul><li><code>src/mod/ModLoader.cpp</code> / <a href="../../include/aoc/mod/ModLoader.hpp">include/aoc/mod/ModLoader.hpp</a> — <code>ModLoader</code>: four methods (<code>loadUnitDefs</code>, <code>loadBuildingDefs</code>, <code>loadTechDefs</code>, <code>loadCivDefs</code>) each accepting a filepath. Each logs <code>"JSON parsing not yet implemented"</code> and returns false.</li></ul>
+<p>Lua-based mod scripting is handled by the <strong>scripting</strong> subsystem; <code>LuaEngine</code> loads <code>data/mods/{modname}/init.lua</code> when mod loading is active.</p>
+<h3 id="components-mod-public-surface">Public surface</h3>
+<ul><li><code>ModLoader::loadUnitDefs(path)</code> etc. — intended to be called from <code>Application</code> at startup, to overlay mod definitions on top of the base game's constexpr tables.</li></ul>
+<h3 id="components-mod-internal-structure">Internal structure</h3>
+<p>Single file pair. The actual implementation is deferred pending a decision on which JSON library to add (see <code>DEPENDENCIES.txt</code> — there is currently no JSON parser dependency beyond <code>SimpleYaml</code> from <code>core</code>).</p>
+<!-- arch-doc: class-diagram=skipped; a single class in this component -->
+<!-- arch-doc: state-machines=none; no transitioned enum found -->
+</section>
+<section id="component-net">
+<!-- arch-doc: src=components/net.md -->
+<h2 id="components-net-component-net">Component: net</h2>
+<h3 id="components-net-responsibility">Responsibility</h3>
+<p>Defines a server/client game architecture and the transport layer that would connect them, plus the Linux D-Bus desktop integration. The server/client path is compiled into <code>aoc_lib</code> but no executable instantiates it today: <code>Application</code> and <code>HeadlessSimulation</code> both drive <code>TurnProcessor</code> directly.</p>
+<h3 id="components-net-key-files">Key files</h3>
+<ul><li><a href="../../include/aoc/net/GameServer.hpp#L51">include/aoc/net/GameServer.hpp:51</a> — <code>GameServer</code>: owns <code>GameState</code>, <code>HexGrid</code>, <code>EconomySimulation</code>, <code>DiplomacyManager</code>, <code>TurnManager</code>, <code>Random</code>, and the <code>AIController</code> vector; <code>tick()</code> consumes pending commands from <code>ITransport</code>, validates them, and — when all human players have sent <code>EndTurn</code> — calls <code>processTurn()</code>, then broadcasts per-player <code>GameStateSnapshot</code>s.</li><li><a href="../../include/aoc/net/GameClient.hpp#L26">include/aoc/net/GameClient.hpp:26</a> — <code>GameClient</code>: typed <code>sendCommand()</code> helpers and snapshot/update polling.</li><li><a href="../../include/aoc/net/Transport.hpp#L55">include/aoc/net/Transport.hpp:55</a> — <code>ITransport</code> abstract interface (commands → server, state updates → clients, snapshots → one client); <code>LocalTransport</code> (<a href="../../include/aoc/net/Transport.hpp#L92">:92</a>) implements it with in-process vectors and asserts single-thread ownership in debug builds.</li><li><a href="../../include/aoc/net/NetInterface.hpp#L28">include/aoc/net/NetInterface.hpp:28</a> — <code>NetInterface</code> (older abstract interface) and the <code>NetworkMode</code> enum.</li><li><a href="../../include/aoc/net/CommandBuffer.hpp">include/aoc/net/CommandBuffer.hpp</a>, <a href="../../include/aoc/net/StateUpdate.hpp">StateUpdate.hpp</a>, <a href="../../include/aoc/net/GameStateSnapshot.hpp">GameStateSnapshot.hpp</a> — the command variant, the per-action delta message, and the per-player full-state view.</li><li><a href="../../include/aoc/net/GameDBus.hpp">include/aoc/net/GameDBus.hpp</a> / <code>src/net/GameDBus.cpp</code> — D-Bus IPC for Linux desktop integration (taskbar progress, rich presence); compiled only when sdbus-cpp is detected; owned by <code>Application</code>.</li></ul>
+<h3 id="components-net-public-surface">Public surface</h3>
+<ul><li><code>GameServer::initialize(config)</code> / <code>tick()</code> and <code>GameClient</code> — declared and implemented, referenced outside <code>src/net/</code> only by a comment in <code>src/simulation/turn/TurnProcessor.cpp:1721</code>. The interactive end-turn path is <code>src/app/Application.cpp:7214</code> and the headless one <code>src/tools/HeadlessSimulation.cpp:685</code>, both calling <code>processTurn</code> without a transport.</li><li><code>GameDBus</code> — used by <code>Application</code>.</li></ul>
+<h3 id="components-net-internal-structure">Internal structure</h3>
+<p>Flat directory. The server/client split mirrors what a multiplayer server would need; the in-process <code>LocalTransport</code> is its only implementation.</p>
+<h3 id="components-net-core-types">Core types</h3>
+<p><code>GameServer</code> — <a href="../../include/aoc/net/GameServer.hpp#L51">include/aoc/net/GameServer.hpp:51</a>; <code>GameClient</code> — <a href="../../include/aoc/net/GameClient.hpp#L26">include/aoc/net/GameClient.hpp:26</a>; <code>ITransport</code> — <a href="../../include/aoc/net/Transport.hpp#L55">include/aoc/net/Transport.hpp:55</a>; <code>LocalTransport</code> — <a href="../../include/aoc/net/Transport.hpp#L92">include/aoc/net/Transport.hpp:92</a>.</p>
+<div class="diagram"><pre class="mermaid">classDiagram
+  class GameServer {
+    +initialize(config)
+    +tick()
+  }
+  class GameClient {
+    +sendCommand(cmd)
+    +pollSnapshot()
+  }
+  class ITransport {
+    &lt;&lt;interface&gt;&gt;
+    +sendCommand()
+    +broadcastUpdate()
+    +sendSnapshot()
+  }
+  class LocalTransport
+  ITransport &lt;|.. LocalTransport
+  GameServer --&gt; ITransport
+  GameClient --&gt; ITransport</pre></div>
+<!-- arch-doc: state-machines=none; NetworkMode is a configuration enum, never transitioned -->
+</section>
+<section id="component-render">
+<!-- arch-doc: src=components/render.md -->
+<h2 id="components-render-component-render">Component: render</h2>
+<h3 id="components-render-responsibility">Responsibility</h3>
+<p>Drives all Vulkan rendering: the hex map, unit sprites, combat animations, globe view, minimap, overlays, per-player colours, and the 2D sprite/particle layer. Excluded entirely in headless builds (<code>AOC_HEADLESS=ON</code>).</p>
+<h3 id="components-render-key-files">Key files</h3>
+<ul><li><a href="../../include/aoc/render/GameRenderer.hpp#L60">include/aoc/render/GameRenderer.hpp:60</a> — <code>GameRenderer</code>: top-level orchestrator owning <code>MapRenderer</code>, <code>UnitRenderer</code>, <code>Minimap</code>, <code>CombatAnimator</code>, <code>ParticleSystem</code> and the <code>TooltipManager</code> (<a href="../../include/aoc/render/GameRenderer.hpp#L81">:81-86</a>). <code>render()</code> takes a <code>VkCommandBuffer</code>, <code>CameraController</code>, <code>HexGrid</code>, <code>GameState</code> and <code>FogOfWar</code> and sequences the sub-renderers.</li><li><a href="../../include/aoc/render/MapRenderer.hpp#L26">include/aoc/render/MapRenderer.hpp:26</a> — per-tile terrain, feature, improvement and district rendering from <code>HexGrid</code>.</li><li><a href="../../include/aoc/render/UnitRenderer.hpp#L31">include/aoc/render/UnitRenderer.hpp:31</a> — unit sprites at their tile positions with move/attack highlights.</li><li><a href="../../include/aoc/render/MapOverlays.hpp#L47">include/aoc/render/MapOverlays.hpp:47</a> — <code>OverlayState</code>: yields, political borders, appeal, religion, climate and trade-route overlays.</li><li><a href="../../include/aoc/render/Minimap.hpp#L28">include/aoc/render/Minimap.hpp:28</a> — minimap in a framed corner widget; updates on territory and fog changes.</li><li><a href="../../include/aoc/render/CombatAnimation.hpp#L27">include/aoc/render/CombatAnimation.hpp:27</a> — <code>CombatAnimator</code>: interpolates positions and hit flashes during combat resolution.</li><li><a href="../../include/aoc/render/Particles.hpp#L33">include/aoc/render/Particles.hpp:33</a> — <code>ParticleSystem</code>: CPU particles (smoke, sparks, banners).</li><li><a href="../../include/aoc/render/PlayerColors.hpp">include/aoc/render/PlayerColors.hpp</a> — the per-player colour table shared by map, minimap and UI.</li><li><a href="../../include/aoc/render/GlobeRenderer.hpp">include/aoc/render/GlobeRenderer.hpp</a>, <a href="../../include/aoc/render/SpriteRenderer.hpp">SpriteRenderer.hpp</a>, <a href="../../include/aoc/render/TextureAtlas.hpp">TextureAtlas.hpp</a>, <a href="../../include/aoc/render/DrawCommandBuffer.hpp">DrawCommandBuffer.hpp</a> — globe view, 2D sprite batching, the single GPU texture atlas, and draw-call batching.</li><li><a href="../../include/aoc/render/CameraController.hpp#L19">include/aoc/render/CameraController.hpp:19</a> — pan/zoom state and screen-to-hex conversion; its source includes <code>app/InputManager.hpp</code> for the action vocabulary (the <code>render → app</code> edge).</li></ul>
+<h3 id="components-render-public-surface">Public surface</h3>
+<ul><li><code>GameRenderer::initialize(pipeline, renderer2d)</code> — called once by <code>Application</code> (<code>src/app/Application.cpp:365</code>).</li><li><code>GameRenderer::render(...)</code> — called every frame (<code>src/app/Application.cpp:5886</code>).</li><li><code>CameraController</code> — read by <code>GameRenderer</code>, <code>InputManager</code> and <code>ui/Tooltip</code>.</li><li><code>PlayerColors</code> — read by <code>ui</code>.</li></ul>
+<h3 id="components-render-internal-structure">Internal structure</h3>
+<p>Flat directory: one class per file. All rendering goes through <code>vulkan_app::RenderPipeline</code> and <code>vulkan_app::renderer::Renderer2D</code> from the <code>vulkan_renderer</code> submodule. The render subsystem reads <code>HexGrid</code> and <code>GameState</code> as const references; it never writes game data.</p>
+<h3 id="components-render-core-types">Core types</h3>
+<p><code>GameRenderer</code> — <a href="../../include/aoc/render/GameRenderer.hpp#L60">include/aoc/render/GameRenderer.hpp:60</a>; <code>MapRenderer</code> — <a href="../../include/aoc/render/MapRenderer.hpp#L26">include/aoc/render/MapRenderer.hpp:26</a>; <code>UnitRenderer</code> — <a href="../../include/aoc/render/UnitRenderer.hpp#L31">include/aoc/render/UnitRenderer.hpp:31</a>; <code>Minimap</code> — <a href="../../include/aoc/render/Minimap.hpp#L28">include/aoc/render/Minimap.hpp:28</a>; <code>CombatAnimator</code> — <a href="../../include/aoc/render/CombatAnimation.hpp#L27">include/aoc/render/CombatAnimation.hpp:27</a>; <code>ParticleSystem</code> — <a href="../../include/aoc/render/Particles.hpp#L33">include/aoc/render/Particles.hpp:33</a>; <code>CameraController</code> — <a href="../../include/aoc/render/CameraController.hpp#L19">include/aoc/render/CameraController.hpp:19</a>.</p>
+<div class="diagram"><pre class="mermaid">classDiagram
+  class GameRenderer {
+    +initialize(pipeline, renderer2d)
+    +render(...)
+  }
+  class MapRenderer
+  class UnitRenderer
+  class Minimap
+  class CombatAnimator
+  class ParticleSystem
+  class CameraController {
+    +screenToHex()
+  }
+  GameRenderer *-- MapRenderer
+  GameRenderer *-- UnitRenderer
+  GameRenderer *-- Minimap
+  GameRenderer *-- CombatAnimator
+  GameRenderer *-- ParticleSystem
+  GameRenderer --&gt; CameraController : reads</pre></div>
+<!-- arch-doc: state-machines=none; no transitioned enum found -->
+</section>
+<section id="component-replay">
+<!-- arch-doc: src=components/replay.md -->
+<h2 id="components-replay-component-replay">Component: replay</h2>
+<h3 id="components-replay-responsibility">Responsibility</h3>
+<p>Records per-turn per-player game snapshots for post-game analysis and replay viewing. Each frame captures military unit count, territory (city count), population, techs researched, and a composite score.</p>
+<h3 id="components-replay-key-files">Key files</h3>
+<ul><li><code>src/replay/ReplayRecorder.cpp</code> / <a href="../../include/aoc/replay/ReplayRecorder.hpp">include/aoc/replay/ReplayRecorder.hpp</a> — <code>ReplayRecorder</code>: holds a <code>std::vector&lt;ReplayFrame&gt;</code>. <code>recordFrame(gameState, turn)</code> iterates all major players and records a <code>ReplayFrame::PlayerSnapshot</code> per player. Score formula: <code>military * 5 + territory * 20 + population * 2 + techs * 10</code>.</li></ul>
+<h3 id="components-replay-public-surface">Public surface</h3>
+<ul><li><code>ReplayRecorder::recordFrame(gameState, turn)</code> — called from <code>TurnProcessor</code> at the end of each turn when a recorder is attached to <code>TurnContext</code>.</li><li><code>ReplayRecorder::frames()</code> — read by the score screen and future replay viewer.</li></ul>
+<h3 id="components-replay-internal-structure">Internal structure</h3>
+<p>Single file pair. The recorder holds frames in memory; serialization to disk is not yet implemented. Players with zero military and zero territory are skipped (inactive/ eliminated players).</p>
+<!-- arch-doc: class-diagram=skipped; a single class in this component -->
+<!-- arch-doc: state-machines=none; no transitioned enum found -->
+</section>
+<section id="component-save">
+<!-- arch-doc: src=components/save.md -->
+<h2 id="components-save-component-save">Component: save</h2>
+<h3 id="components-save-responsibility">Responsibility</h3>
+<p>Serializes and deserializes the complete game state to a versioned binary file format, written atomically and loaded only on an exact version match; also owns the <code>.aocmap</code> map-cache format and save-slot naming.</p>
+<h3 id="components-save-key-files">Key files</h3>
+<ul><li><a href="../../include/aoc/save/Serializer.hpp">include/aoc/save/Serializer.hpp</a> — <code>saveGame()</code> / <code>loadGame()</code>: free functions that write/read the entire game. Format: <code>[Header: magic "AOC\0" + version(4) + flags(4) + dataSize(4)]</code> followed by self-describing sections (<code>sectionId(2) + sectionSize(4) + data</code>). 44 named <code>SectionId</code> values; <code>saveGame</code> calls 41 section writers. Current version: <code>CURRENT_SAVE_VERSION = 34</code> (v34: <code>ActiveDeals</code> carries the deals in force, <code>MonetaryState</code> carries the private money pools and coinage metal, each unit record carries its <code>TraderComponent</code>, and the dead <code>PlayerEconomyComponent::treasury</code> is gone).</li></ul>
+<p><code>ReadBuffer</code> is bounds-checked with a sticky corrupt flag — once any read trips an underflow, all subsequent reads are no-ops returning zero/empty. <code>canReadRecords(count, minBytes)</code> guards large-reserve loops before allocation, and every enum read is range-checked. Writes go to <code>path.tmp</code>, are fsynced, renamed over the target, and the directory is fsynced (<a href="../../src/save/Serializer.cpp#L2191">src/save/Serializer.cpp:2191-2267</a>).</p>
+<ul><li><a href="../../include/aoc/save/SaveVersioning.hpp">include/aoc/save/SaveVersioning.hpp</a> — <code>CURRENT_SAVE_VERSION</code>, the per-version changelog, and the no-migration policy: a file loads only when its header version equals the current one (<a href="../../src/save/Serializer.cpp#L2329">src/save/Serializer.cpp:2329-2337</a>). Unknown sections are skipped via their stored <code>sectionSize</code>; a known section that decodes to a different length is rejected as <code>SaveCorrupted</code>.</li><li><a href="../../include/aoc/save/MapFile.hpp">include/aoc/save/MapFile.hpp</a> — the <code>.aocmap</code> cache written and read by the headless simulator (<code>saveMapFile</code> <a href="../../include/aoc/save/MapFile.hpp#L62">:62</a>, <code>loadMapFile</code> <a href="../../include/aoc/save/MapFile.hpp#L66">:66</a>); <code>isGameGridLayer</code> (<a href="../../include/aoc/save/MapFile.hpp#L44">:44</a>) names the grid layers a game save carries versus the worldgen-only layers that stay in the cache.</li><li><a href="../../include/aoc/save/SaveSlots.hpp">include/aoc/save/SaveSlots.hpp</a> — numbered save-slot naming shared by every load/save UI path and <code>QUICKSAVE_FILENAME</code> (<a href="../../include/aoc/save/SaveSlots.hpp#L17">:17</a>).</li></ul>
+<h3 id="components-save-public-surface">Public surface</h3>
+<ul><li><code>saveGame(filepath, gameState, grid, turnManager, economy, diplomacy, fogOfWar, rng)</code> — returns <code>ErrorCode::Ok</code> or <code>ErrorCode::SaveFailed</code>.</li><li><code>loadGame(filepath, gameState, grid, turnManager, economy, diplomacy, fogOfWar, rng)</code> — returns <code>ErrorCode::Ok</code>, <code>LoadFailed</code>, <code>SaveVersionMismatch</code>, or <code>SaveCorrupted</code>.</li><li><code>saveMapFile</code> / <code>loadMapFile</code> — the headless map cache.</li></ul>
+<p>Callers: <code>Application</code> (manual save/load, slots, quicksave and spectator restore: <code>src/app/Application.cpp:4389</code>, <code>:4424</code>, <code>:4566</code>, <code>:4617</code>, <code>:4632</code>, <code>:5366</code>), <code>HeadlessSimulation</code> (map cache), the <code>LoadGameMenu</code> screen (slot listing).</p>
+<h3 id="components-save-internal-structure">Internal structure</h3>
+<p>Two source files: <code>Serializer.cpp</code> (format, read/write primitives, one writer and one reader case per section) and <code>MapFile.cpp</code>. The save path calls into every simulation subsystem to serialize its state; the load path reconstructs those subsystems in section order (Entities before the sections that reference cities and units). Section IDs are stable — never renumbered, only extended. The known-good corpus under <code>tests/data/saves/</code> is regenerated on every version bump.</p>
+<!-- arch-doc: class-diagram=skipped; two buffer types plus free functions, not interrelated -->
+<!-- arch-doc: state-machines=none; no transitioned enum found -->
+</section>
+<section id="component-scripting">
+<!-- arch-doc: src=components/scripting.md -->
+<h2 id="components-scripting-component-scripting">Component: scripting</h2>
+<h3 id="components-scripting-responsibility">Responsibility</h3>
+<p>Embeds a Lua scripting engine (LuaJIT preferred, Lua 5.4 fallback) for moddable game logic: custom victory conditions, world events, AI personality overrides, building/unit special effects, and map generation rules. Compiles to a no-op stub when neither LuaJIT nor Lua is found.</p>
+<h3 id="components-scripting-key-files">Key files</h3>
+<ul><li><a href="../../include/aoc/scripting/LuaEngine.hpp">include/aoc/scripting/LuaEngine.hpp</a> — <code>LuaEngine</code>: PIMPL wrapper around <code>lua_State</code>. Key methods: - <code>initialize(scriptsPath)</code> — creates the Lua state and loads <code>data/scripts/init.lua</code>, then event and victory scripts. - <code>bindGameState(gameState, grid)</code> — exposes game state as read-only Lua tables. - <code>executeFile(path)</code> / <code>executeString(code)</code> — script loading. - <code>callFunction(funcName)</code> — event trigger and victory check dispatch. - <code>registerFunction(name, func)</code> — C++ → Lua function registration.</li></ul>
+<p>When <code>AOC_HAS_LUA</code> is not defined, all methods are no-ops and <code>isAvailable()</code> returns false.</p>
+<h3 id="components-scripting-script-loading-order">Script loading order</h3>
+<p>1. <code>data/scripts/init.lua</code> — core setup and game API registration 2. <code>data/scripts/events/{name}.lua</code> — world event definitions 3. <code>data/scripts/victory/{name}.lua</code> — custom victory conditions 4. <code>data/mods/{modname}/init.lua</code> — per-mod scripts (when mod loading is active)</p>
+<h3 id="components-scripting-public-surface">Public surface</h3>
+<ul><li><code>LuaEngine::initialize()</code> — called once by <code>GameServer::initialize()</code>.</li><li><code>LuaEngine::callFunction("onTurnEnd")</code> / <code>callFunctionWithPlayer(…)</code> / <code>callFunctionWithTurn(…)</code> — called from <code>TurnProcessor</code> at the world-events and victory-check phases.</li><li><code>LuaEngine::bindGameState()</code> — re-bound after save/load restores a new <code>GameState</code>.</li></ul>
+<h3 id="components-scripting-internal-structure">Internal structure</h3>
+<p>Single file pair (<code>LuaEngine.hpp</code> / <code>src/scripting/LuaEngine.cpp</code>). The <code>Impl</code> PIMPL struct holds the raw <code>lua_State*</code> and the binding tables; it is conditionally compiled via <code>#ifdef AOC_HAS_LUA</code>.</p>
+<!-- arch-doc: class-diagram=skipped; a single class in this component -->
+<!-- arch-doc: state-machines=none; no transitioned enum found -->
+</section>
+<section id="component-simulation">
+<!-- arch-doc: src=components/simulation.md -->
+<h2 id="components-simulation-component-simulation">Component: simulation</h2>
+<h3 id="components-simulation-responsibility">Responsibility</h3>
+<p>The game's domain layer. Contains all rules that advance game state from one turn to the next: AI decisions, economic production, diplomacy, city and unit mechanics, technology, religion, culture, government, monetary policy, victory evaluation, and the <code>TurnProcessor</code> that sequences them all.</p>
+<h3 id="components-simulation-key-files">Key files</h3>
+<ul><li><a href="../../include/aoc/simulation/turn/TurnProcessor.hpp#L172">include/aoc/simulation/turn/TurnProcessor.hpp:172</a> — <code>processTurn(TurnContext&amp;)</code>: the single function called by <code>Application</code> (<code>src/app/Application.cpp:7214</code>) and <code>HeadlessSimulation</code> (<code>src/tools/HeadlessSimulation.cpp:685</code>) to advance one turn. <code>TurnContext</code> (<a href="../../include/aoc/simulation/turn/TurnProcessor.hpp#L77">:77</a>) carries pointers to the grid, optional fog, <code>EconomySimulation</code>, <code>DiplomacyManager</code>, <code>BarbarianController</code>, <code>AllianceObligationTracker</code>, RNG, <code>GameState</code>, the AI controllers, the seat list, an optional <code>TurnEventLog</code> and an optional <code>DecisionLog</code>. The deals in force are read from <code>GameState::deals()</code> (v34), not from the context.</li><li><a href="../../include/aoc/simulation/resource/EconomySimulation.hpp#L32">include/aoc/simulation/resource/EconomySimulation.hpp:32</a> — <code>EconomySimulation::executeTurn()</code>: harvest raw resources → depletion → internal trade → building fuel → production recipes in DAG order → market report → needs → prices → monetary policy. Owns the global <code>Market</code> (<a href="../../include/aoc/simulation/economy/Market.hpp#L22">include/aoc/simulation/economy/Market.hpp:22</a>).</li><li><a href="../../include/aoc/simulation/diplomacy/DiplomacyState.hpp#L224">include/aoc/simulation/diplomacy/DiplomacyState.hpp:224</a> — <code>DiplomacyManager</code>: NxN relation-score matrix with decaying <code>RelationModifier</code> records, directional embargoes, and <code>DiplomaticStance</code> derived from score bands.</li><li><a href="../../include/aoc/simulation/BalanceConfig.hpp">include/aoc/simulation/BalanceConfig.hpp</a> — <code>aoc::sim::balance</code> namespace: compile-time balance constants grouped by system. Overridden at runtime by <code>BalanceParams</code> from the balance/ml subsystem.</li><li>Request layer — one validated entry per mutation, shared by the human UI, the AI, the REST API and the MCP tools: <code>city/CityActions.hpp</code>, <code>unit/UnitOrders.hpp</code>, <code>unit/AttackRequest.hpp</code>, <code>unit/BuilderActions.hpp</code>, <code>diplomacy/DiplomacyActions.hpp</code>, <code>diplomacy/DealProposals.hpp</code>, <code>monetary/MonetaryActions.hpp</code>.</li></ul>
+<h4 id="components-simulation-sub-module-index">Sub-module index</h4>
+<div class="tablewrap"><table><thead><tr><th>Sub-module</th><th>Key files</th><th>What it does</th></tr></thead><tbody><tr><td><code>ai/</code></td><td><code>AIController.cpp</code>, <code>AIDiplomacyController.cpp</code>, <code>AIMilitaryController.cpp</code>, <code>AISettlerController.cpp</code>, <code>AITradeRoutesController.cpp</code>, <code>AIEconomicStrategy.cpp</code>, <code>LeaderPersonality.cpp</code>, <code>TunedLeaderIO.cpp</code>, <code>UtilityScoring.cpp</code>, … (18 files)</td><td>One <code>AIController</code> per AI seat orchestrating focused controllers via utility scoring; tuned leader genomes read through <code>TunedLeaderIO</code></td></tr><tr><td><code>economy/</code></td><td><code>Market.cpp</code>, <code>TradeRouteSystem.cpp</code>, <code>Maintenance.cpp</code>, <code>InternalTrade.cpp</code>, <code>TradeAgreement.cpp</code>, <code>MonopolyPricing.cpp</code>, <code>Sanctions.cpp</code>, <code>SpeculationBubble.cpp</code>, <code>DomesticCourier.cpp</code>, <code>EnergyDependency.cpp</code>, … (23 files)</td><td>Global commodity market, physical Trader routes with cargo, tolls and coin, gold income and maintenance, sanctions, monopolies, bubbles, energy</td></tr><tr><td><code>diplomacy/</code></td><td><code>DiplomacyState.cpp</code>, <code>DiplomacyActions.cpp</code>, <code>DealTerms.cpp</code>, <code>DealProposals.cpp</code>, <code>EspionageSystem.cpp</code>, <code>WorldCongress.cpp</code>, <code>Grievance.cpp</code>, <code>WarWeariness.cpp</code>, <code>AllianceObligations.cpp</code>, <code>DiplomaticFavor.cpp</code>, <code>NavalPassage.cpp</code>, <code>BorderViolation.cpp</code></td><td>Pairwise relations, deal terms and the human inbox, espionage, World Congress, grievances, alliances</td></tr><tr><td><code>city/</code></td><td><code>CityGrowth.cpp</code>, <code>CityScience.cpp</code>, <code>CityLoyalty.cpp</code>, <code>CitySiege.cpp</code>, <code>CityActions.cpp</code>, <code>DistrictPlacement.cpp</code>, <code>DistrictAdjacency.cpp</code>, <code>ProductionSystem.cpp</code>, <code>Governor.cpp</code>, <code>Happiness.cpp</code>, <code>BorderExpansion.cpp</code>, <code>CityConnection.cpp</code>, <code>Secession.cpp</code>, <code>CityBombardment.cpp</code></td><td>City lifecycle: growth, science, loyalty, siege, districts on real tiles, production queue, governors, amenities</td></tr><tr><td><code>unit/</code></td><td><code>Combat.cpp</code>, <code>Movement.cpp</code>, <code>UnitOrders.cpp</code>, <code>AttackRequest.cpp</code>, <code>BuilderActions.cpp</code>, <code>UnitTransport.cpp</code>, <code>Naval.cpp</code>, <code>Promotion.cpp</code>, <code>UnitUpgrade.cpp</code>, <code>SupplyLines.cpp</code>, <code>CombatExtensions.cpp</code></td><td>Combat resolution, movement, orders, builder actions, embark/transport, promotions, upgrades, supply</td></tr><tr><td><code>tech/</code></td><td><code>TechTree.cpp</code>, <code>CivicTree.cpp</code>, <code>CivicEffects.cpp</code>, <code>EurekaBoost.cpp</code>, <code>TechGating.cpp</code>, <code>EraScore.cpp</code></td><td>Research and civic trees, civic effects, Eureka triggers, era score, tech-gated unlocks</td></tr><tr><td><code>religion/</code></td><td><code>Religion.cpp</code></td><td>Faith, pantheons, founding and spread, beliefs, theological combat</td></tr><tr><td><code>culture/</code></td><td><code>Tourism.cpp</code>, <code>GreatWorks.cpp</code></td><td>Tourism and the culture victory counter; great works and their housing</td></tr><tr><td><code>government/</code></td><td><code>Government.cpp</code></td><td>Policy slots, anarchy, government-type modifiers</td></tr><tr><td><code>production/</code></td><td><code>Automation.cpp</code>, <code>PowerGrid.cpp</code>, <code>QualityTier.cpp</code>, <code>Waste.cpp</code></td><td>Robot workers, electricity grid and plant fuel, quality tiers, waste</td></tr><tr><td><code>resource/</code></td><td><code>EconomySimulation.cpp</code>, <code>ProductionChain.cpp</code>, <code>ResourceTypes.cpp</code></td><td>The per-turn economy driver, recipe DAG, 167 goods</td></tr><tr><td><code>monetary/</code></td><td><code>MonetaryActions.cpp</code>, <code>Inflation.cpp</code>, <code>CentralBank.cpp</code>, <code>FiscalPolicy.cpp</code>, <code>CurrencyTrust.cpp</code>, <code>CurrencyCrisis.cpp</code>, <code>CurrencyWar.cpp</code>, <code>ForexMarket.cpp</code>, <code>Bonds.cpp</code></td><td>The monetary-regime ladder, inflation, trust, crises, forex, bonds; <code>MonetarySystem.hpp</code> is header-only</td></tr><tr><td><code>barbarian/</code></td><td><code>BarbarianClans.cpp</code>, <code>BarbarianController.cpp</code></td><td>Clans, camps, raids</td></tr><tr><td><code>citystate/</code></td><td><code>CityState.cpp</code> (+ <code>Envoys.hpp</code>)</td><td>City-state types, envoys, suzerainty, quests</td></tr><tr><td><code>climate/</code></td><td><code>Climate.cpp</code>, <code>NaturalDisasters.cpp</code></td><td>CO₂, temperature, disasters</td></tr><tr><td><code>event/</code></td><td><code>VisibilityEvents.cpp</code>, <code>GameNotifications.cpp</code>, <code>WorldEvents.cpp</code></td><td>Visibility bus, notifications, world events</td></tr><tr><td><code>wonder/</code></td><td><code>Wonder.cpp</code></td><td>Wonder tracking and effects</td></tr><tr><td><code>victory/</code></td><td><code>VictoryCondition.cpp</code>, <code>Prestige.cpp</code>, <code>SpaceRace.cpp</code></td><td>Victory evaluation</td></tr><tr><td><code>greatpeople/</code></td><td><code>GreatPeople.cpp</code>, <code>GreatPeopleExpanded.cpp</code></td><td>Great person points, recruitment, activation</td></tr><tr><td><code>map/</code></td><td><code>Improvement.cpp</code>, <code>TerrainModification.cpp</code>, <code>Chokepoint.cpp</code>, <code>GoodyHuts.cpp</code></td><td>Improvements, terrain projects, chokepoints, ruins</td></tr><tr><td><code>empire/</code></td><td><code>CommunicationSpeed.cpp</code></td><td>Empire-scale communication delay</td></tr><tr><td><code>turn/</code></td><td><code>TurnProcessor.cpp</code>, <code>TurnManager.cpp</code></td><td>Turn sequencing; <code>TurnManager</code> holds the turn counter and end-turn readiness</td></tr><tr><td><code>automation/</code></td><td><code>Automation.cpp</code></td><td>Auto-renewed trade routes and other standing automation</td></tr></tbody></table></div>
+<h3 id="components-simulation-public-surface">Public surface</h3>
+<p>All sub-modules are called from <code>processTurn()</code>. External callers:</p>
+<ul><li><code>Application</code> and <code>HeadlessSimulation</code> — call <code>processTurn()</code>; the UI reads <code>Market</code> prices, stances, research and production state through the request layer's query side.</li><li><code>save/Serializer</code> — serializes every simulation state struct to binary sections.</li><li><code>debug</code> / <code>tools/mcp_server.py</code> — every mutation route ends in one request-layer function.</li></ul>
+<h3 id="components-simulation-internal-structure">Internal structure</h3>
+<p>Each sub-module is a directory under <code>src/simulation/</code> mirrored in <code>include/aoc/simulation/</code>. Dependencies flow inward (sub-modules read <code>game::GameState</code> and <code>map::HexGrid</code>); the exception is three AI controller headers that include <code>aoc/ui/MainMenu.hpp</code> for its setup types. <code>turn/TurnProcessor</code> is the single integration point that orchestrates the others in the documented order.</p>
+<h3 id="components-simulation-core-types">Core types</h3>
+<p><code>TurnContext</code> — <a href="../../include/aoc/simulation/turn/TurnProcessor.hpp#L77">include/aoc/simulation/turn/TurnProcessor.hpp:77</a>; <code>EconomySimulation</code> — <a href="../../include/aoc/simulation/resource/EconomySimulation.hpp#L32">include/aoc/simulation/resource/EconomySimulation.hpp:32</a>; <code>Market</code> — <a href="../../include/aoc/simulation/economy/Market.hpp#L22">include/aoc/simulation/economy/Market.hpp:22</a>; <code>DiplomacyManager</code> — <a href="../../include/aoc/simulation/diplomacy/DiplomacyState.hpp#L224">include/aoc/simulation/diplomacy/DiplomacyState.hpp:224</a>; <code>AIController</code> — <a href="../../include/aoc/simulation/ai/AIController.hpp#L57">include/aoc/simulation/ai/AIController.hpp:57</a>; <code>BarbarianController</code> — <a href="../../include/aoc/simulation/barbarian/BarbarianController.hpp#L44">include/aoc/simulation/barbarian/BarbarianController.hpp:44</a>; <code>TurnManager</code> — <a href="../../include/aoc/simulation/turn/TurnManager.hpp#L29">include/aoc/simulation/turn/TurnManager.hpp:29</a>; <code>TurnEventLog</code> — <a href="../../include/aoc/simulation/turn/TurnEventLog.hpp#L65">include/aoc/simulation/turn/TurnEventLog.hpp:65</a>.</p>
+<div class="diagram"><pre class="mermaid">classDiagram
+  class TurnContext {
+    +HexGrid* grid
+    +EconomySimulation* economy
+    +DiplomacyManager* diplomacy
+    +BarbarianController* barbarians
+    +GameState* gameState
+    +vector~AIController*~ aiControllers
+    +TurnEventLog* eventLog
+  }
+  class EconomySimulation {
+    +executeTurn(GameState, HexGrid)
+    +market() Market
+  }
+  class Market {
+    +price(goodId)
+    +updatePrices()
+  }
+  class DiplomacyManager {
+    +relation(a, b)
+    +setEmbargo(a, b, on)
+  }
+  class AIController {
+    +executeTurn(...)
+  }
+  class BarbarianController {
+    +executeTurn(...)
+  }
+  class TurnManager {
+    +submitEndTurn(player)
+    +allPlayersReady()
+  }
+  TurnContext --&gt; EconomySimulation
+  TurnContext --&gt; DiplomacyManager
+  TurnContext --&gt; BarbarianController
+  TurnContext --&gt; AIController
+  EconomySimulation *-- Market</pre></div>
+<h3 id="components-simulation-state-machines">State machines</h3>
+<p><strong>Monetary regime</strong> — <code>MonetarySystemType</code> (<a href="../../include/aoc/simulation/monetary/MonetarySystem.hpp#L50">include/aoc/simulation/monetary/MonetarySystem.hpp:50</a>). The ladder is gated by the <code>MONETARY_TRANSITIONS</code> table (<a href="../../include/aoc/simulation/monetary/MonetarySystem.hpp#L223">:223</a>) through <code>canTransition</code> (<a href="../../include/aoc/simulation/monetary/MonetarySystem.hpp#L533">:533</a>) and <code>transitionTo</code> (<a href="../../include/aoc/simulation/monetary/MonetarySystem.hpp#L593">:593</a>). Callers: the per-turn ladder in <code>src/simulation/resource/EconomySimulation.cpp:1422</code>, the AI's own advance in <code>src/simulation/ai/AIController.cpp:2212</code>, and the forced suspension of convertibility in <code>src/simulation/monetary/CurrencyCrisis.cpp:328</code>.</p>
+<div class="diagram"><pre class="mermaid">stateDiagram-v2
+  [*] --&gt; Barter
+  Barter --&gt; CommodityMoney : transitionTo (coins minted)
+  CommodityMoney --&gt; GoldStandard : transitionTo (Banking, reserves)
+  GoldStandard --&gt; FiatMoney : transitionTo (ladder)
+  GoldStandard --&gt; FiatMoney : reserve stress (CurrencyCrisis)
+  FiatMoney --&gt; Digital : transitionTo (Computers)</pre></div>
+<p class="anchors">Anchors: <code>include/aoc/simulation/monetary/MonetarySystem.hpp</code>, <code>src/simulation/resource/EconomySimulation.cpp</code>, <code>src/simulation/ai/AIController.cpp</code>, <code>src/simulation/monetary/CurrencyCrisis.cpp</code></p>
+<p><strong>Unit state</strong> — <code>UnitState</code> (<a href="../../include/aoc/simulation/unit/UnitTypes.hpp#L39">include/aoc/simulation/unit/UnitTypes.hpp:39</a>), set unconditionally through <code>Unit::setState</code>. Sites: <code>Moving</code> in <code>src/simulation/unit/Movement.cpp:329</code>; <code>Embarked</code> in <code>src/simulation/unit/Naval.cpp:54</code> and <code>src/simulation/unit/UnitTransport.cpp:128</code>, back to <code>Idle</code> at <code>Naval.cpp:81</code> and <code>UnitTransport.cpp:163</code>; <code>Sleeping</code> in <code>src/simulation/unit/UnitOrders.cpp:132</code> and <code>src/app/Application_HUD.cpp:1281</code>, woken at <code>src/app/Application.cpp:7485</code>; <code>Fortified</code> in <code>src/simulation/ai/AIMilitaryController.cpp:737</code>, <code>src/app/UnitSelection.cpp:113</code> and <code>src/app/Application_HUD.cpp:1306</code>; <code>Idle</code> after arrival or automation in <code>src/app/Application.cpp:7103</code> and <code>src/simulation/automation/Automation.cpp:123</code>.</p>
+<div class="diagram"><pre class="mermaid">stateDiagram-v2
+  [*] --&gt; Idle
+  Idle --&gt; Moving : executeMovement
+  Moving --&gt; Idle : arrival
+  Idle --&gt; Fortified : fortify order
+  Fortified --&gt; Idle : new order
+  Idle --&gt; Sleeping : sleep order
+  Sleeping --&gt; Idle : wake
+  Idle --&gt; Embarked : embark / board transport
+  Embarked --&gt; Idle : disembark</pre></div>
+<p class="anchors">Anchors: <code>include/aoc/simulation/unit/UnitTypes.hpp</code>, <code>src/simulation/unit/Movement.cpp</code>, <code>src/simulation/unit/Naval.cpp</code>, <code>src/simulation/unit/UnitTransport.cpp</code>, <code>src/simulation/unit/UnitOrders.cpp</code>, <code>src/simulation/automation/Automation.cpp</code>, <code>src/simulation/ai/AIMilitaryController.cpp</code>, <code>src/app/Application.cpp</code>, <code>src/app/Application_HUD.cpp</code>, <code>src/app/UnitSelection.cpp</code></p>
+<p><strong>Logistics supply cycle</strong> — <code>LogisticsState</code> (<a href="../../include/aoc/simulation/economy/LogisticsComponent.hpp#L18">include/aoc/simulation/economy/LogisticsComponent.hpp:18</a>), advanced by the switch in <code>src/simulation/economy/TradeRouteSystem.cpp:1745-1845</code> (<code>EnRouteToCity</code> at <code>:1760</code>, <code>LoadingAtCity</code> at <code>:1767</code>, <code>EnRouteToDepot</code> at <code>:1806</code>, <code>UnloadingAtDepot</code> at <code>:1813</code>, back to <code>AssigningTask</code> at <code>:1780</code> and <code>:1839</code>).</p>
+<div class="diagram"><pre class="mermaid">stateDiagram-v2
+  [*] --&gt; AssigningTask
+  AssigningTask --&gt; EnRouteToCity : encampment needs supply
+  EnRouteToCity --&gt; LoadingAtCity : at home city
+  LoadingAtCity --&gt; EnRouteToDepot : cargo loaded
+  LoadingAtCity --&gt; AssigningTask : home city lost
+  EnRouteToDepot --&gt; UnloadingAtDepot : at encampment
+  UnloadingAtDepot --&gt; AssigningTask : cargo dumped</pre></div>
+<p class="anchors">Anchors: <code>include/aoc/simulation/economy/LogisticsComponent.hpp</code>, <code>src/simulation/economy/TradeRouteSystem.cpp</code></p>
+<p><strong>Speculation bubble</strong> — <code>BubblePhase</code> (<a href="../../include/aoc/simulation/economy/SpeculationBubble.hpp#L35">include/aoc/simulation/economy/SpeculationBubble.hpp:35</a>), advanced by the switch in <code>src/simulation/economy/SpeculationBubble.cpp:29-144</code> (<code>Formation</code> at <code>:39</code>, <code>Inflation</code> at <code>:59</code>, <code>Euphoria</code> at <code>:86</code>, <code>Crash</code> at <code>:95</code> and <code>:117</code>, <code>Recovery</code> at <code>:133</code>, <code>None</code> at <code>:68</code> and <code>:144</code>).</p>
+<div class="diagram"><pre class="mermaid">stateDiagram-v2
+  [*] --&gt; None
+  None --&gt; Formation : 10-turn growth streak, low rates
+  Formation --&gt; Inflation : 5 turns
+  Formation --&gt; None : streak breaks
+  Inflation --&gt; Euphoria : magnitude &gt;= 1.5
+  Inflation --&gt; Crash : shock
+  Euphoria --&gt; Crash : pop
+  Crash --&gt; Recovery : 8 turns
+  Recovery --&gt; None : 15 turns</pre></div>
+<p class="anchors">Anchors: <code>include/aoc/simulation/economy/SpeculationBubble.hpp</code>, <code>src/simulation/economy/SpeculationBubble.cpp</code></p>
+<p><code>TurnPhase</code> (<code>include/aoc/simulation/turn/TurnPhases.hpp:15</code>) declares ten phases but the only writers are the reset in <code>src/simulation/turn/TurnManager.cpp:68</code> and the loader (<code>src/save/Serializer.cpp:2397</code>); nothing advances through them, so it is a flag, not a machine. <code>LoyaltyStatus</code> is derived from a float by <code>loyaltyToStatus</code> and never transitioned.</p>
+</section>
+<section id="component-tools">
+<!-- arch-doc: src=components/tools.md -->
+<h2 id="components-tools-component-tools">Component: tools</h2>
+<h3 id="components-tools-responsibility">Responsibility</h3>
+<p>The four non-interactive executables built from <code>src/tools/</code>: the headless turn simulator, the map generator CLI with its loopback inspector, the decision-log converter, and the build-time font baker.</p>
+<h3 id="components-tools-key-files">Key files</h3>
+<ul><li><code>src/tools/HeadlessSimulation.cpp</code> (built as <code>aoc_simulate</code>) — <code>main</code> (<a href="../../src/tools/HeadlessSimulation.cpp#L1044">:1044</a>) parses <code>--turns</code>, <code>--players</code>, <code>--seed</code>, <code>--output</code>, <code>--map-size</code>, <code>--map-cache</code>, <code>--trace-file</code>, <code>--victory-types</code>, <code>--placement</code>, <code>--log-level</code> or a YAML config, then <code>runHeadlessSimulation</code> (<a href="../../src/tools/HeadlessSimulation.cpp#L322">:322</a>) generates or loads the cached map (<a href="../../src/tools/HeadlessSimulation.cpp#L395">:395-410</a>), places starts (<a href="../../src/tools/HeadlessSimulation.cpp#L455">:455</a>), founds a city per player (<a href="../../src/tools/HeadlessSimulation.cpp#L475">:475</a>) and loops <code>processTurn</code> (<a href="../../src/tools/HeadlessSimulation.cpp#L685">:685</a>). Output: one CSV row per player per turn, a <code>_events.csv</code> from the <code>TurnEventLog</code>, a <code>_tiles.csv</code>, and an optional binary <code>DecisionLog</code>. Used by CI smoke tests, the golden and determinism gates, and <code>scripts/sim_health.py</code>.</li><li><code>src/tools/MapGenCli.cpp</code> (built as <code>aoc_mapgen</code>) — <code>main</code> (<a href="../../src/tools/MapGenCli.cpp#L279">:279</a>): seed, size, topology and physics flags; calls <code>MapGenerator::generate()</code> and exports the <code>HexGrid</code> as CSV/PNG. With the server flag it serves <code>GET /ping</code>, <code>/info</code>, <code>/plates</code>, <code>/tile</code> and <code>POST /dump/*</code>, <code>/sim/*</code>, <code>/quit</code> (<a href="../../src/tools/MapGenCli.cpp#L749">:749-965</a>) through <code>DebugServer</code> for the creator tooling and <code>tools/mapgen_metrics.py</code>.</li><li><code>src/tools/TraceDump.cpp</code> (built as <code>aoc_trace_dump</code>) — <code>main</code> (<a href="../../src/tools/TraceDump.cpp#L103">:103</a>) reads a binary <code>DecisionLog</code> and writes CSV or JSON via <code>readDecisionLog()</code> from <code>core</code>.</li><li><code>src/tools/FontBake.cpp</code> (built as <code>aoc_font_bake</code>) — <code>main</code> (<a href="../../src/tools/FontBake.cpp#L84">:84</a>) rasterises the bundled fonts with <code>stb_truetype</code> into the atlas blob described by <code>include/aoc/ui/FontAtlasFormat.hpp</code>; the only target that links the TrueType parser.</li></ul>
+<h3 id="components-tools-public-surface">Public surface</h3>
+<p>None: each file is a <code>main()</code> over <code>aoc_lib</code>. <code>ml/cpp/FitnessEvaluator.cpp</code> runs its own embedded simulation (<code>runSimulation</code>, <code>ml/cpp/FitnessEvaluator.cpp:75</code>) rather than shelling out to <code>aoc_simulate</code>.</p>
+<h3 id="components-tools-internal-structure">Internal structure</h3>
+<p>Four independent translation units. Include edges: <code>tools → core, debug, game, map, save, simulation, ui</code> (the headless tool reads <code>GameSetupConfig</code> from <code>ui</code> for its setup types).</p>
+<!-- arch-doc: class-diagram=skipped; four main() translation units, no shared types -->
+<!-- arch-doc: state-machines=none; no transitioned enum found -->
+</section>
+<section id="component-ui">
+<!-- arch-doc: src=components/ui.md -->
+<h2 id="components-ui-component-ui">Component: ui</h2>
+<h3 id="components-ui-responsibility">Responsibility</h3>
+<p>Owns the entire UI widget tree, all in-game screens, the baked-font text renderer, procedural icons, theme tokens, notifications, the debug console and the screen lifecycle registry. Interactive only; not compiled in headless builds.</p>
+<h3 id="components-ui-key-files">Key files</h3>
+<ul><li><a href="../../include/aoc/ui/UIManager.hpp#L28">include/aoc/ui/UIManager.hpp:28</a> — <code>UIManager</code>: manages the widget tree stored as a flat vector with parent/children index links. Creates panels, buttons, labels, scroll lists, tab bars, progress bars, sliders, icons, rich text, portraits, and markdown widgets. Layout is computed top-down and drawn back-to-front; input is routed to focused widgets.</li><li><a href="../../include/aoc/ui/Widget.hpp#L367">include/aoc/ui/Widget.hpp:367</a> — <code>Widget</code>: type tag, bounds <code>Rect</code>, per-type data, children indices, enabled/visible flags.</li><li><a href="../../include/aoc/ui/IScreen.hpp#L22">include/aoc/ui/IScreen.hpp:22</a> — <code>IScreen</code>: the contract every modal screen or menu implements (<code>isOpen</code>, <code>close</code>, <code>onResize</code>, optional <code>themeOverride</code>). <code>ScreenBase</code> (<a href="../../include/aoc/ui/GameScreens.hpp#L29">include/aoc/ui/GameScreens.hpp:29</a>) supplies the defaults for in-game screens.</li><li><a href="../../include/aoc/ui/ScreenRegistry.hpp#L28">include/aoc/ui/ScreenRegistry.hpp:28</a> — <code>ScreenRegistry</code>: the one list of registered <code>IScreen</code>s. <code>anyOpen</code> gates game input, <code>onlyOpen(screen)</code> is the exclusivity test for the non-blocking city panel, <code>closeAll</code> backs Esc, <code>onResize</code> fans out viewport changes; a small modal stack remembers the back path.</li><li><a href="../../include/aoc/ui/BitmapFont.hpp">include/aoc/ui/BitmapFont.hpp</a> / <a href="../../include/aoc/ui/FontAtlasFormat.hpp">FontAtlasFormat.hpp</a> — text rendering from the pre-baked, bounds-checked glyph atlas produced by <code>aoc_font_bake</code>; the game binary contains no TrueType parser.</li><li><a href="../../include/aoc/ui/IconPainter.hpp">include/aoc/ui/IconPainter.hpp</a> / <a href="../../include/aoc/ui/IconAtlas.hpp">IconAtlas.hpp</a> — procedural vector icons for yields, units, buildings and resources.</li><li><a href="../../include/aoc/ui/Theme.hpp">include/aoc/ui/Theme.hpp</a> / <a href="../../include/aoc/ui/StyleTokens.hpp">StyleTokens.hpp</a> / <a href="../../include/aoc/ui/Color.hpp">Color.hpp</a> — palette, spacing and font-scale tokens consumed by all widget draw paths; <code>MainMenuTheme.hpp</code> overrides them for the menu.</li><li><a href="../../include/aoc/ui/Tooltip.hpp">include/aoc/ui/Tooltip.hpp</a>, <a href="../../include/aoc/ui/EventLog.hpp">EventLog.hpp</a>, <a href="../../include/aoc/ui/Notifications.hpp">Notifications.hpp</a>, <a href="../../include/aoc/ui/DebugConsole.hpp">DebugConsole.hpp</a>, <a href="../../include/aoc/ui/WidgetInspector.hpp">WidgetInspector.hpp</a> — hover tooltips, the event feed, transient banners, the in-game console and the development widget inspector.</li></ul>
+<h4 id="components-ui-screen-classes">Screen classes</h4>
+<p>All in <code>src/ui/</code> and <code>include/aoc/ui/</code>: <code>MainMenu</code>, <code>LoadingScreen</code>, <code>LoadGameMenu</code>, <code>SettingsMenu</code>, <code>PauseMenu</code>, <code>GameScreens</code> (the in-game HUD screens), <code>CityDetailTabs</code>, <code>CityListScreen</code>, <code>UnitListScreen</code>, <code>DiplomacyScreen</code>, <code>TradeScreen</code>, <code>TradeRouteSetupScreen</code>, <code>ReligionScreen</code>, <code>EspionageScreen</code>, <code>GreatPeopleScreen</code>, <code>GreatWorksScreen</code>, <code>HistoricMomentsScreen</code>, <code>DemographicsScreen</code>, <code>WorldCongressScreen</code>, <code>CityStatesScreen</code>, <code>ClimateScreen</code>, <code>ScoreScreen</code>, <code>Encyclopedia</code>, <code>SpectatorHUD</code>, <code>Tutorial</code>.</p>
+<h3 id="components-ui-public-surface">Public surface</h3>
+<ul><li><code>UIManager</code> — created by <code>Application</code>; widgets added by each <code>IScreen</code> on open.</li><li><code>ScreenRegistry</code> — driven by <code>Application</code> for screen transitions.</li><li><code>GET /ui/tree</code> and the <code>POST /ui/*</code> routes expose the widget tree and clicks to the debug server through <code>UiControlCommand</code>.</li></ul>
+<h3 id="components-ui-internal-structure">Internal structure</h3>
+<p>Flat directory. Screens are registered in <code>ScreenRegistry</code>; each builds its widget subtree via <code>UIManager</code> calls on open and tears it down on close. Widgets are value types stored contiguously; <code>UIManager</code> is the allocator and lifetime owner. Two outward edges exist: <code>Tooltip.cpp</code> reads <code>render/CameraController</code>, and <code>LoadGameMenu.hpp</code> reads <code>save/SaveSlots</code>.</p>
+<h3 id="components-ui-core-types">Core types</h3>
+<p><code>UIManager</code> — <a href="../../include/aoc/ui/UIManager.hpp#L28">include/aoc/ui/UIManager.hpp:28</a>; <code>Widget</code> — <a href="../../include/aoc/ui/Widget.hpp#L367">include/aoc/ui/Widget.hpp:367</a>; <code>IScreen</code> — <a href="../../include/aoc/ui/IScreen.hpp#L22">include/aoc/ui/IScreen.hpp:22</a>; <code>ScreenBase</code> — <a href="../../include/aoc/ui/GameScreens.hpp#L29">include/aoc/ui/GameScreens.hpp:29</a>; <code>ScreenRegistry</code> — <a href="../../include/aoc/ui/ScreenRegistry.hpp#L28">include/aoc/ui/ScreenRegistry.hpp:28</a>.</p>
+<div class="diagram"><pre class="mermaid">classDiagram
+  class UIManager {
+    +createPanel()
+    +createButton()
+    +setVisible(id, on)
+    +layout()
+  }
+  class Widget {
+    +type
+    +bounds Rect
+    +children
+  }
+  class IScreen {
+    &lt;&lt;interface&gt;&gt;
+    +isOpen()
+    +close()
+    +onResize()
+  }
+  class ScreenBase
+  class ScreenRegistry {
+    +anyOpen()
+    +onlyOpen(screen)
+    +closeAll()
+    +pushModal()
+  }
+  UIManager "1" *-- "*" Widget
+  IScreen &lt;|-- ScreenBase
+  ScreenRegistry o-- IScreen
+  ScreenBase --&gt; UIManager : builds widgets in</pre></div>
+<!-- arch-doc: state-machines=none; no transitioned enum found -->
+</section>
+<section id="interactions">
+<!-- arch-doc: src=interactions.md -->
+<h2 id="interactions-runtime-interaction-diagrams">Runtime Interaction Diagrams</h2>
+<h3 id="interactions-entry-points">Entry points</h3>
+<p>Everything invocable from outside the process. <code>Kind</code> vocabulary: HTTP | CLI | queue | scheduled | main | hook. This project has no queue consumers or scheduled jobs.</p>
+<div class="tablewrap"><table><thead><tr><th>Entry point</th><th>Kind</th><th>Defined at</th><th>Diagrammed</th></tr></thead><tbody><tr><td><code>age_of_civ</code> (interactive game; <code>--spectate</code>, <code>--enable-debug-server</code>, <code>--players</code>, <code>--turns</code>)</td><td>main</td><td>src/main.cpp:38</td><td>yes -- "1. Interactive startup"</td></tr><tr><td><code>aoc_simulate</code> (headless sim; <code>--turns</code>, <code>--players</code>, <code>--seed</code>, <code>--output</code>, <code>--map-cache</code>, <code>--trace-file</code>, …)</td><td>main</td><td>src/tools/HeadlessSimulation.cpp:1044</td><td>yes -- "4. Headless simulation"</td></tr><tr><td><code>aoc_mapgen</code> (map generator CLI)</td><td>main</td><td>src/tools/MapGenCli.cpp:279</td><td>no -- single-shot MapGenerator::generate() + file writers</td></tr><tr><td><code>aoc_trace_dump</code> (decision-log converter)</td><td>main</td><td>src/tools/TraceDump.cpp:103</td><td>no -- linear file transform, one component</td></tr><tr><td><code>aoc_font_bake</code> (glyph-atlas baker)</td><td>main</td><td>src/tools/FontBake.cpp:84</td><td>no -- one-shot build-time rasteriser</td></tr><tr><td><code>aoc_evolve</code> (balance GA)</td><td>main</td><td>ml/cpp/main.cpp:420</td><td>no -- batch driver over embedded <code>runSimulation</code> runs</td></tr><tr><td>GET /ping, /info, /plates, /tile (aoc_mapgen inspector)</td><td>HTTP</td><td>src/tools/MapGenCli.cpp:749</td><td>no -- read-only JSON views of the generated HexGrid</td></tr><tr><td>POST /dump/grid, /dump/plates (aoc_mapgen)</td><td>HTTP</td><td>src/tools/MapGenCli.cpp:814</td><td>no -- file writers over the same grid state</td></tr><tr><td>POST /sim/re-roll, /sim/step, /sim/set-creator-time, /quit (aoc_mapgen)</td><td>HTTP</td><td>src/tools/MapGenCli.cpp:912</td><td>no -- thin mutators re-invoking MapGenerator::generate()</td></tr><tr><td>GET /schema, /constants, /game/state, /game/player, /game/units, /game/cities, /game/diplomacy, /game/deals, /game/citystates, /game/city/district/sites (debug server)</td><td>HTTP</td><td>src/app/Application.cpp:602 (first of 39 routes); src/app/Application_CityControl.cpp:81 (first of 23)</td><td>no -- read-only JSON built from <code>GameSnapshot</code> and the live <code>GameState</code></td></tr><tr><td>POST /game/turn/end</td><td>HTTP</td><td>src/app/Application.cpp:602 ff.</td><td>yes -- "2. End turn" (enqueues <code>EndTurnCommand</code>)</td></tr><tr><td>POST /game/unit/{move,attack,found-city,promote,alert,merge,nuke}</td><td>HTTP</td><td>src/app/Application.cpp:602 ff.</td><td>yes -- "3. Unit move order" (the <code>move</code> route; the rest follow the same queue)</td></tr><tr><td>POST /game/city/{production,purchase,focus,lock-tile,queue/remove,project,disposition,district/place}, /game/builder/{improve,chop,harvest}, /game/research, /game/policy/slot, /game/government/change, /game/governor/{assign,promote}, /game/greatperson/{activate,retire}, /game/greatwork/move, /game/religion/{pantheon,found}, /game/spy/mission, /game/congress/{vote,propose}, /game/deal/{propose,respond}</td><td>HTTP</td><td>src/app/Application.cpp:602 ff.; src/app/Application_CityControl.cpp:81 ff.</td><td>no -- each validates through <code>GameControlValidation</code> and enqueues one <code>GameControlCommand</code>; the drain is flow 2</td></tr><tr><td>GET /ui/tree; POST /ui/click, /ui/click-at, /ui/scroll, /debug/screenshot</td><td>HTTP</td><td>src/app/Application.cpp:602 ff.</td><td>no -- <code>UiControlCommand</code> queue drained every frame</td></tr><tr><td><code>aoc_*</code> MCP tools (60)</td><td>hook</td><td>tools/mcp_server.py:128</td><td>no -- each is a thin HTTP client for one route above</td></tr><tr><td><code>mcp_server.py</code> (stdio MCP server)</td><td>main</td><td>tools/mcp_server.py:709</td><td>no -- wraps the debug server for an LLM client</td></tr><tr><td><code>sim_health.py</code></td><td>CLI</td><td>scripts/sim_health.py:346</td><td>no -- offline checks over an <code>aoc_simulate</code> CSV</td></tr><tr><td><code>mapgen_metrics.py</code>, <code>mapgen_render.py</code>, <code>earth_reference.py</code></td><td>CLI</td><td>tools/mapgen_metrics.py:1545, tools/mapgen_render.py:164, tools/earth_reference.py:160</td><td>no -- offline worldgen analysis over <code>aoc_mapgen</code> output</td></tr><tr><td><code>mcp_e2e_test.py</code>, <code>check_grid_layers.py</code></td><td>CLI</td><td>tools/mcp_e2e_test.py:382, scripts/check_grid_layers.py:105</td><td>no -- test drivers</td></tr></tbody></table></div>
+<h3 id="interactions-flows">Flows</h3>
+<h3 id="interactions-1-interactive-startup">1. Interactive startup</h3>
+<div class="diagram"><pre class="mermaid">sequenceDiagram
+  participant main as main.cpp
+  participant app
+  participant render
+  participant debug
+  participant ui
+  participant map
+  participant simulation
+  participant game
+
+  main-&gt;&gt;app: initialize(config)
+  app-&gt;&gt;render: GameRenderer::initialize(pipeline, renderer2d)
+  app-&gt;&gt;debug: DebugServer(9876) + routeJson(...) x62
+  app-&gt;&gt;ui: MainMenu
+  ui-&gt;&gt;app: startGame(GameSetupConfig)
+  app-&gt;&gt;map: MapGenerator::generate(mapConfig, grid)
+  app-&gt;&gt;map: chooseStartPositions(grid, playerCount, rng)
+  app-&gt;&gt;game: GameState::initialize(playerCount)
+  app-&gt;&gt;simulation: foundCity(...) per start (spawnStartingEntities / spawnAIPlayer)
+  app-&gt;&gt;simulation: AIController per AI seat
+  app-&gt;&gt;ui: buildHUD()
+  app-&gt;&gt;app: m_appState = AppState::InGame
+  main-&gt;&gt;app: run()</pre></div>
+<p class="anchors">Anchors: <code>src/main.cpp</code>, <code>src/app/Application.cpp</code></p>
+<p><code>main</code> parses flags and calls <code>Application::initialize</code> (<code>src/main.cpp:73</code>) then <code>run</code> (<code>:90</code>). <code>initialize</code> (<code>src/app/Application.cpp:307</code>) sets up the window and renderer (<code>:365</code>) and, with <code>--enable-debug-server</code>, creates the server (<code>:582</code>) and registers its routes (<code>:602</code> onward). <code>startGame</code> (<code>:2044</code>) generates the map (<code>:2129</code>), picks starts (<code>:2177</code>), spawns the human (<code>:2189</code>) and one <code>AIController</code> per AI seat, builds the HUD and enters <code>InGame</code> (<code>:2286</code>).</p>
+<h3 id="interactions-2-end-turn">2. End turn</h3>
+<div class="diagram"><pre class="mermaid">sequenceDiagram
+  actor Human
+  actor Client
+  participant ui
+  participant debug
+  participant app
+  participant simulation
+  participant game
+
+  Human-&gt;&gt;ui: End Turn button
+  Client-&gt;&gt;debug: POST /game/turn/end
+  debug-&gt;&gt;app: enqueue EndTurnCommand
+  app-&gt;&gt;app: drainPendingCommands() -&gt; handleEndTurn()
+  app-&gt;&gt;simulation: executeMovement(human)
+  app-&gt;&gt;simulation: TurnManager submitEndTurn / allPlayersReady
+  app-&gt;&gt;simulation: TurnManager::executeTurn(gameState)
+  app-&gt;&gt;simulation: processTurn(TurnContext)
+  Note over simulation,game: AI -&gt; economy -&gt; per-player -&gt; global, mutating GameState
+  app-&gt;&gt;simulation: executeMovement(ai) per AI
+  app-&gt;&gt;ui: notifications (techs, ruins, war)</pre></div>
+<p class="anchors">Anchors: <code>src/app/Application.cpp</code>, <code>src/simulation/turn/TurnProcessor.cpp</code></p>
+<p>The REST route and the HUD button meet in <code>drainPendingCommands</code> (<code>src/app/Application.cpp:2996</code>), which runs on the main thread and calls <code>handleEndTurn</code> (<code>:7111</code>). That moves the human's units (<code>:7161</code>), submits end-turn to the <code>TurnManager</code>, and when every seat is ready calls <code>processTurn</code> (<code>:7214</code>) followed by AI movement (<code>:7218</code>). There is no server or transport in this path; the same <code>TurnContext</code> shape is built for spectator games (<code>:2410</code>).</p>
+<h3 id="interactions-3-unit-move-order">3. Unit move order</h3>
+<div class="diagram"><pre class="mermaid">sequenceDiagram
+  actor Human
+  actor Client
+  participant app
+  participant debug
+  participant simulation
+  participant game
+  participant render
+
+  Human-&gt;&gt;app: right-click tile (handleContextAction)
+  Client-&gt;&gt;debug: POST /game/unit/move
+  debug-&gt;&gt;debug: GameControlValidation
+  debug-&gt;&gt;app: enqueue MoveUnitCommand
+  app-&gt;&gt;simulation: orderUnitMove(unit, target, grid)
+  simulation-&gt;&gt;game: Unit::pendingPath()
+  app-&gt;&gt;simulation: executeMovement(...) at end turn
+  simulation-&gt;&gt;game: setState(UnitState::Moving), position update
+  render-&gt;&gt;game: read unit positions</pre></div>
+<p class="anchors">Anchors: <code>src/app/Application.cpp</code>, <code>src/simulation/unit/UnitOrders.cpp</code>, <code>src/simulation/unit/Movement.cpp</code></p>
+<p>The click path lives in <code>handleContextAction</code> (<code>src/app/Application.cpp:6683</code>, the order at <code>:7067</code>); the REST path arrives as a <code>MoveUnitCommand</code> executed at <code>:2708</code>. Both call <code>orderUnitMove</code>, which stores a path on the <code>Unit</code>; <code>executeMovement</code> (<code>src/simulation/unit/Movement.cpp:329</code> marks the unit <code>Moving</code>) walks it when the turn ends.</p>
+<h3 id="interactions-4-headless-simulation">4. Headless simulation</h3>
+<div class="diagram"><pre class="mermaid">sequenceDiagram
+  participant tools as tools (HeadlessSimulation)
+  participant save
+  participant map
+  participant simulation
+  participant core
+  participant fs as Filesystem
+
+  tools-&gt;&gt;tools: main() parses flags -&gt; runHeadlessSimulation()
+  alt --map-cache hit
+    tools-&gt;&gt;save: loadMapFile(cachePath, grid)
+  else
+    tools-&gt;&gt;map: MapGenerator::generate(mapConfig, grid)
+    tools-&gt;&gt;save: saveMapFile(cachePath, grid, info)
+  end
+  tools-&gt;&gt;map: chooseStartPositions(grid, playerCount, rng)
+  tools-&gt;&gt;simulation: foundCity(...) per player
+  tools-&gt;&gt;core: DecisionLog::open(tracePath) (optional)
+  loop for each turn
+    tools-&gt;&gt;simulation: processTurn(TurnContext with TurnEventLog, DecisionLog)
+    tools-&gt;&gt;fs: per-player CSV row + _events.csv rows
+  end
+  tools-&gt;&gt;fs: _tiles.csv, close DecisionLog</pre></div>
+<p class="anchors">Anchors: <code>src/tools/HeadlessSimulation.cpp</code></p>
+<p><code>main</code> (<code>src/tools/HeadlessSimulation.cpp:1044</code>) calls <code>runHeadlessSimulation</code> (<code>:322</code>), which reuses a cached <code>.aocmap</code> or generates and caches the map (<code>:395-410</code>), places starts (<code>:455</code>), founds one city per player (<code>:475</code>), optionally opens the decision trace (<code>:651</code>), and loops <code>processTurn</code> (<code>:685</code>). No <code>GameServer</code> is involved.</p>
+<h3 id="interactions-5-save-and-load">5. Save and load</h3>
+<div class="diagram"><pre class="mermaid">sequenceDiagram
+  participant app
+  participant save
+  participant fs as Filesystem
+
+  app-&gt;&gt;save: saveGame(path, gameState, grid, turnManager, economy, diplomacy, fog, rng)
+  save-&gt;&gt;save: header (magic, CURRENT_SAVE_VERSION = 34)
+  save-&gt;&gt;save: 41 write*Section() calls (44 SectionId values)
+  save-&gt;&gt;fs: write path.tmp, fsync
+  save-&gt;&gt;fs: rename(path.tmp, path), fsync(dir)
+  save--&gt;&gt;app: ErrorCode::Ok
+
+  app-&gt;&gt;save: loadGame(path, ...)
+  save-&gt;&gt;fs: read whole file
+  save-&gt;&gt;save: check magic; version must equal CURRENT_SAVE_VERSION (no migration)
+  loop for each section
+    save-&gt;&gt;save: read sectionId + sectionSize
+    alt known section
+      save-&gt;&gt;save: decode; size mismatch -&gt; SaveCorrupted
+    else unknown
+      save-&gt;&gt;save: skip sectionSize bytes
+    end
+  end
+  save--&gt;&gt;app: Ok | SaveVersionMismatch | SaveCorrupted</pre></div>
+<p class="anchors">Anchors: <code>src/save/Serializer.cpp</code>, <code>src/app/Application.cpp</code></p>
+<p>Callers: manual save/load and slot menus (<code>src/app/Application.cpp:4389</code>, <code>:4424</code>, <code>:4617</code>, <code>:4632</code>) and quicksave (<code>:5366</code>). The atomic write is <code>src/save/Serializer.cpp:2191-2267</code>; the version gate is <code>:2329-2337</code>.</p>
+</section>
+<section id="data-model">
+<!-- arch-doc: src=data-model.md -->
+<h2 id="data-model-data-model">Data model</h2>
+<p>No database persistence layer. Checked: migration directories (<code>migrations/</code>, <code>db/migrate/</code>, <code>alembic/</code>, <code>prisma/</code>), ORM markers, and <code>CREATE TABLE</code> in <code>*.sql</code> / <code>schema.prisma</code> / <code>schema.rb</code> — none found. Game state persists through the custom versioned binary save format documented in <a href="#component-save">components/save.md</a> (<code>src/save/Serializer.cpp</code>), which is a serialization surface, not a queryable data model.</p>
+<!-- arch-doc: data-model=none; no migrations/ORM/CREATE TABLE found -->
+</section>
+<section id="dependencies">
+<!-- arch-doc: src=dependencies.md -->
+<h2 id="dependencies-third-party-dependencies">Third-Party Dependencies</h2>
+<p>All confirmed by tracing import sites in the source tree. Listed in order: system libraries, vendored libraries, the Vulkan submodule, and the Python tooling.</p>
+<p>---</p>
+<h3 id="dependencies-luajit-2-1-preferred-lua-5-4-fallback">LuaJIT 2.1+ (preferred) / Lua 5.4 (fallback)</h3>
+<p><strong>What the code uses:</strong> <code>lua_State</code> lifetime via <code>LuaEngine</code> PIMPL; <code>lua_pcall</code> / <code>luaL_loadfile</code> / <code>lua_pushlstring</code> / <code>lua_register</code> for script execution and C-function registration. The engine also calls <code>lua_newtable</code> and <code>lua_setfield</code> to build the read-only game-state table exposed to scripts.</p>
+<p><strong>Why pulled in:</strong> Moddable game logic — victory conditions, world events, AI personality overrides, building/unit special effects, and map generation rules are authored in Lua and loaded at runtime. LuaJIT is preferred for ~10-50× faster script execution over stock Lua 5.4.</p>
+<p><strong>Compile guard:</strong> <code>AOC_HAS_LUA</code> defined by CMake when either LuaJIT or Lua 5.4 headers are found. <code>LuaEngine</code> is a no-op stub when the define is absent.</p>
+<p>Import site: <a href="../../src/scripting/LuaEngine.cpp">src/scripting/LuaEngine.cpp</a> — the only file that references <code>LuaEngine</code>; no executable constructs one today.</p>
+<p>---</p>
+<h3 id="dependencies-vulkan-loader-headers">Vulkan loader + headers</h3>
+<p><strong>What the code uses:</strong> <code>VkCommandBuffer</code>, <code>VkDevice</code>, <code>VkSwapchainKHR</code>, <code>vkCreateBuffer</code>, <code>vkQueueSubmit</code>, and the full Vulkan 1.3 API via <code>&lt;vulkan/vulkan.h&gt;</code>. Usage is concentrated in <code>third_party/vulkan_renderer/</code> (the submodule) and in <code>src/render/DrawCommandBuffer.cpp</code>, <code>src/app/Window.cpp</code>.</p>
+<p><strong>Why pulled in:</strong> The sole graphics API for all platforms (MoltenVK on macOS).</p>
+<p><strong>Guard:</strong> <code>NOT AOC_HEADLESS</code> — the entire render subsystem is excluded from headless builds. <code>find_package(Vulkan REQUIRED)</code> at <code>CMakeLists.txt:135</code>.</p>
+<p>---</p>
+<h3 id="dependencies-glfw-3-x">GLFW 3.x</h3>
+<p><strong>What the code uses:</strong> <code>glfwCreateWindow</code>, <code>glfwPollEvents</code>, <code>glfwGetFramebufferSize</code>, <code>glfwSetKeyCallback</code> / <code>glfwSetMouseButtonCallback</code> / <code>glfwSetScrollCallback</code>, <code>glfwCreateWindowSurface</code> (Vulkan surface creation).</p>
+<p><strong>Why pulled in:</strong> Cross-platform window creation and input event loop.</p>
+<p><strong>Guard:</strong> <code>NOT AOC_HEADLESS</code>; <code>find_package(glfw3 REQUIRED)</code> at <code>CMakeLists.txt:165</code>. Import site: <a href="../../src/app/Window.cpp">src/app/Window.cpp</a></p>
+<p>---</p>
+<h3 id="dependencies-openmp-optional">OpenMP (optional)</h3>
+<p><strong>What the code uses:</strong> <code>#pragma omp parallel for</code> over per-tile passes.</p>
+<p><strong>Why pulled in:</strong> Parallel per-tile work in the map generator's post-processing and physics passes; without OpenMP the same loops run serially.</p>
+<p><strong>Guard:</strong> <code>find_package(OpenMP)</code> at <code>CMakeLists.txt:618</code>; when found, <code>aoc_lib</code> links <code>OpenMP::OpenMP_CXX</code> and defines <code>AOC_HAS_OPENMP=1</code>.</p>
+<p>Import sites: <a href="../../src/map/MapGenerator.cpp">src/map/MapGenerator.cpp</a>, <a href="../../src/map/gen/SphereFieldPhysics.cpp">src/map/gen/SphereFieldPhysics.cpp</a>, <a href="../../src/map/gen/PostSim.cpp">src/map/gen/PostSim.cpp</a>, <a href="../../src/map/gen/Features.cpp">src/map/gen/Features.cpp</a>, <a href="../../src/tools/MapGenCli.cpp">src/tools/MapGenCli.cpp</a></p>
+<p>---</p>
+<h3 id="dependencies-pthreads-system">pthreads (system)</h3>
+<p><strong>What the code uses:</strong> <code>std::thread</code> (C++ stdlib wraps pthreads on Linux/macOS). Used in <code>LocalTransport</code> (owner-thread assertion via <code>std::this_thread::get_id()</code>), <code>aoc::log::g_minSeverity</code> (atomic), the debug server's request thread, and the ML thread pool. <code>find_package(Threads REQUIRED)</code> at <code>CMakeLists.txt:612</code>.</p>
+<p><strong>Why pulled in:</strong> System library; required for any multi-threaded code.</p>
+<p>---</p>
+<h3 id="dependencies-cpp-httplib-0-18-5-vendored-pinned">cpp-httplib 0.18.5 (vendored, pinned)</h3>
+<p><strong>What the code uses:</strong> <code>httplib::Server::Get()</code> / <code>Post()</code>, <code>set_pre_routing_handler</code>, <code>bind_to_port</code>, <code>listen_after_bind</code>, <code>stop</code>.</p>
+<p><strong>Why pulled in:</strong> The development debug server (<code>DebugServer</code>) that exposes game state and the game-control API via HTTP on localhost, and the <code>aoc_mapgen</code> inspector. Pinned to 0.18.5 deliberately: the server binds <code>127.0.0.1</code> only with a Host-header allowlist and is off by default, so the server-side CVEs patched in newer releases (all untrusted-network-client class) are out of reach in this deployment.</p>
+<p>Import site: <a href="../../src/debug/DebugServer.cpp">src/debug/DebugServer.cpp</a></p>
+<p>---</p>
+<h3 id="dependencies-stb-truetype-v1-26-vendored-build-time-only">stb_truetype v1.26 (vendored, build-time only)</h3>
+<p><strong>What the code uses:</strong> <code>stbtt_InitFont</code>, <code>stbtt_GetCodepointBitmap</code>, <code>stbtt_GetCodepointHMetrics</code> — rasterisation of the bundled fonts into the glyph atlas.</p>
+<p><strong>Why pulled in:</strong> Font rasterisation. Since the atlas bake it is linked exclusively by the <code>aoc_font_bake</code> target (<code>CMakeLists.txt:900</code>); the game binary contains no TrueType parser and reads the baked, bounds-checked blob described by <code>FontAtlasFormat.hpp</code> instead.</p>
+<p><strong>Security note:</strong> Unpatched CVE-2026-5314 OOB read on hostile font files. The baker's font path list is a fixed set of trusted system paths; never feed it mod or user-supplied fonts. Verify the runtime has no parser with <code>nm build/release/libaoc_lib.a | grep -c stbtt</code> (expect 0), per <code>DEPENDENCIES.txt</code>.</p>
+<p>Import site: <a href="../../src/tools/FontBake.cpp">src/tools/FontBake.cpp</a>; runtime reader <a href="../../src/ui/BitmapFont.cpp">src/ui/BitmapFont.cpp</a></p>
+<p>---</p>
+<h3 id="dependencies-stb-image-write-v1-16-vendored">stb_image_write v1.16 (vendored)</h3>
+<p><strong>What the code uses:</strong> <code>stbi_write_png_to_func</code> — encodes a framebuffer capture to PNG.</p>
+<p><strong>Why pulled in:</strong> Screenshot export (<code>ScreenshotEncoder</code>, also reachable through <code>POST /debug/screenshot</code>).</p>
+<p>Import site: <a href="../../src/app/ScreenshotEncoder.cpp">src/app/ScreenshotEncoder.cpp</a></p>
+<p>---</p>
+<h3 id="dependencies-doctest-v2-4-12-vendored-test-only">doctest v2.4.12 (vendored, test-only)</h3>
+<p><strong>What the code uses:</strong> <code>DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN</code>, <code>TEST_CASE</code>, <code>REQUIRE</code>, <code>CHECK</code> macros.</p>
+<p><strong>Why pulled in:</strong> Unit test harness for all <code>tests/*.cpp</code> test files.</p>
+<p>Import site: test sources under <a href="../../tests/">tests/</a></p>
+<p>---</p>
+<h3 id="dependencies-vulkan-renderer-git-submodule">vulkan_renderer (git submodule)</h3>
+<p><strong>What the code uses:</strong> <code>vulkan_app::RenderPipeline</code>, <code>vulkan_app::renderer::Renderer2D</code>, <code>vulkan_app::GraphicsDevice</code> — the complete Vulkan abstraction layer providing pipeline management, 2D sprite batching, and frame synchronization.</p>
+<p><strong>Why pulled in:</strong> Encapsulates the Vulkan boilerplate (swapchain, render passes, command pool, descriptor sets) so <code>render/</code> and <code>app/</code> work at a higher abstraction level.</p>
+<p>Location: <code>third_party/vulkan_renderer/</code> (git submodule). Import site: <a href="../../src/app/Application.cpp">src/app/Application.cpp</a>, <a href="../../src/render/GameRenderer.cpp">src/render/GameRenderer.cpp</a></p>
+<p>---</p>
+<h3 id="dependencies-sdbus-cpp-optional-linux-only">sdbus-cpp (optional, Linux only)</h3>
+<p><strong>What the code uses:</strong> D-Bus object registration and signal emission for desktop integration (taskbar progress, Unity launcher rich presence).</p>
+<p><strong>Why pulled in:</strong> Linux-specific UX polish; compiled only when sdbus-cpp is detected. The feature is guarded by <code>AOC_HAS_SDBUS</code>.</p>
+<p>Import site: <a href="../../src/net/GameDBus.cpp">src/net/GameDBus.cpp</a></p>
+<p>---</p>
+<h3 id="dependencies-mcp-python-tooling-only">mcp (Python, tooling only)</h3>
+<p><strong>What the code uses:</strong> <code>mcp.server.MCPServer</code> (mcp 2.0 API; the older <code>FastMCP</code> import is gone) to register the 60 <code>aoc_*</code> tools and serve them over stdio; <code>mcp.ClientSession</code>, <code>StdioServerParameters</code> and <code>stdio_client</code> in the end-to-end test.</p>
+<p><strong>Why pulled in:</strong> Lets an LLM client drive a running game through the debug server's REST routes. Not part of the C++ build.</p>
+<p>Import sites: <a href="../../tools/mcp_server.py">tools/mcp_server.py</a>, <a href="../../tools/mcp_e2e_test.py">tools/mcp_e2e_test.py</a>. The other Python tools (<code>scripts/sim_health.py</code>, <code>tools/mapgen_metrics.py</code>, <code>tools/mapgen_render.py</code>, <code>tools/earth_reference.py</code>, <code>scripts/check_grid_layers.py</code>) use the standard library only.</p>
+<p>---</p>
+<h3 id="dependencies-ccache-build-time-optional">ccache (build-time, optional)</h3>
+<p>Used as <code>CMAKE_C_COMPILER_LAUNCHER</code> / <code>CMAKE_CXX_COMPILER_LAUNCHER</code> when found. No code imports; pure build-time acceleration.</p>
+</section>
+</main></div>
+<!-- Diagrams need network on first paint (mermaid via CDN); all other content is offline-safe. -->
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'base',securityLevel:'loose',
+  themeVariables:{darkMode:true,background:'#111823',primaryColor:'#161f2c',primaryTextColor:'#dbe4f0',primaryBorderColor:'#233044',lineColor:'#5d738f',actorBkg:'#161f2c',actorBorder:'#f5a524',noteBkgColor:'#2a2010',noteBorderColor:'#f5a524'},
+  flowchart:{curve:'basis',htmlLabels:true}});
+const links=[...document.querySelectorAll('#nav a')];
+const secs=links.map(a=>document.querySelector(a.getAttribute('href'))).filter(Boolean);
+const spy=()=>{const y=scrollY+120;let cur=secs[0];for(const s of secs) if(s.offsetTop<=y) cur=s;links.forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+cur.id))};
+addEventListener('scroll',spy,{passive:true});
+addEventListener('load',()=>setTimeout(spy,300));
+</script></body></html>

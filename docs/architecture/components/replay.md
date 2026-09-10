@@ -25,3 +25,6 @@ researched, and a composite score.
 Single file pair. The recorder holds frames in memory; serialization to disk is not yet
 implemented. Players with zero military and zero territory are skipped (inactive/
 eliminated players).
+
+<!-- arch-doc: class-diagram=skipped; a single class in this component -->
+<!-- arch-doc: state-machines=none; no transitioned enum found -->

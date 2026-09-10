@@ -2,61 +2,108 @@
 
 ## Responsibility
 
-Owns the entire UI widget tree, all in-game screens (menu, diplomacy, religion, trade,
-encyclopedia, map editor, …), font rendering, theme tokens, localization, and the
-screen lifecycle registry. Interactive only; not compiled in headless builds.
+Owns the entire UI widget tree, all in-game screens, the baked-font text renderer,
+procedural icons, theme tokens, notifications, the debug console and the screen lifecycle
+registry. Interactive only; not compiled in headless builds.
 
 ## Key files
 
-- [include/aoc/ui/UIManager.hpp](../../../include/aoc/ui/UIManager.hpp) — `UIManager`:
-  manages the widget tree stored as a flat vector with parent/children index links.
-  Creates panels, buttons, labels, scroll lists, tab bars, progress bars, sliders, icons,
-  rich text, portraits, and markdown widgets. Layout computed top-down; rendering
-  back-to-front. Routes mouse/keyboard input to focused widgets.
-- [include/aoc/ui/Widget.hpp](../../../include/aoc/ui/Widget.hpp) — `Widget` struct:
-  type tag, bounds `Rect`, per-type data union, children indices, enabled/visible flags.
-  `WidgetId` is an index into `UIManager`'s flat vector.
-- [include/aoc/ui/IScreen.hpp](../../../include/aoc/ui/IScreen.hpp) — `IScreen`:
+- [include/aoc/ui/UIManager.hpp:28](../../../include/aoc/ui/UIManager.hpp#L28) —
+  `UIManager`: manages the widget tree stored as a flat vector with parent/children index
+  links. Creates panels, buttons, labels, scroll lists, tab bars, progress bars, sliders,
+  icons, rich text, portraits, and markdown widgets. Layout is computed top-down and drawn
+  back-to-front; input is routed to focused widgets.
+- [include/aoc/ui/Widget.hpp:367](../../../include/aoc/ui/Widget.hpp#L367) — `Widget`:
+  type tag, bounds `Rect`, per-type data, children indices, enabled/visible flags.
+- [include/aoc/ui/IScreen.hpp:22](../../../include/aoc/ui/IScreen.hpp#L22) — `IScreen`:
   the contract every modal screen or menu implements (`isOpen`, `close`, `onResize`,
-  optional `themeOverride`). `ScreenBase` supplies the defaults for in-game screens.
-- [include/aoc/ui/ScreenRegistry.hpp](../../../include/aoc/ui/ScreenRegistry.hpp) —
-  `ScreenRegistry`: the one list of registered `IScreen`s. `anyOpen` gates game
-  input, `onlyOpen(screen)` is the exclusivity test for the non-blocking city panel,
-  `closeAll` backs Esc, `onResize` fans out viewport changes; a small modal stack
-  (`pushModal` / `popModal`) remembers the back path.
-- [include/aoc/ui/BitmapFont.hpp](../../../include/aoc/ui/BitmapFont.hpp) — Rasterizes
-  TrueType fonts to a bitmap atlas via `stb_truetype`. **Security note:** uses
-  stb_truetype v1.26 with unpatched CVE-2026-5314 OOB-read on hostile fonts; only
-  bundled system fonts are ever fed to it — never mod/user-supplied fonts.
+  optional `themeOverride`). `ScreenBase`
+  ([include/aoc/ui/GameScreens.hpp:29](../../../include/aoc/ui/GameScreens.hpp#L29))
+  supplies the defaults for in-game screens.
+- [include/aoc/ui/ScreenRegistry.hpp:28](../../../include/aoc/ui/ScreenRegistry.hpp#L28)
+  — `ScreenRegistry`: the one list of registered `IScreen`s. `anyOpen` gates game input,
+  `onlyOpen(screen)` is the exclusivity test for the non-blocking city panel, `closeAll`
+  backs Esc, `onResize` fans out viewport changes; a small modal stack remembers the back path.
+- [include/aoc/ui/BitmapFont.hpp](../../../include/aoc/ui/BitmapFont.hpp) /
+  [FontAtlasFormat.hpp](../../../include/aoc/ui/FontAtlasFormat.hpp) — text rendering from
+  the pre-baked, bounds-checked glyph atlas produced by `aoc_font_bake`; the game binary
+  contains no TrueType parser.
+- [include/aoc/ui/IconPainter.hpp](../../../include/aoc/ui/IconPainter.hpp) /
+  [IconAtlas.hpp](../../../include/aoc/ui/IconAtlas.hpp) — procedural vector icons for
+  yields, units, buildings and resources.
 - [include/aoc/ui/Theme.hpp](../../../include/aoc/ui/Theme.hpp) /
-  [StyleTokens.hpp](../../../include/aoc/ui/StyleTokens.hpp) — color palette and
-  spacing tokens consumed by all widget draw paths.
-- [include/aoc/ui/Tooltip.hpp](../../../include/aoc/ui/Tooltip.hpp) — Hover-delay popup
-  showing contextual info for map tiles, units, and buildings.
-- [include/aoc/ui/EventLog.hpp](../../../include/aoc/ui/EventLog.hpp) /
-  [Notifications.hpp](../../../include/aoc/ui/Notifications.hpp) — In-game event log
-  feed and transient notification banners (city founded, tech researched, etc.).
-- [WidgetInspector.hpp](../../../include/aoc/ui/WidgetInspector.hpp) — Development-only
-  widget inspection.
+  [StyleTokens.hpp](../../../include/aoc/ui/StyleTokens.hpp) /
+  [Color.hpp](../../../include/aoc/ui/Color.hpp) — palette, spacing and font-scale tokens
+  consumed by all widget draw paths; `MainMenuTheme.hpp` overrides them for the menu.
+- [include/aoc/ui/Tooltip.hpp](../../../include/aoc/ui/Tooltip.hpp),
+  [EventLog.hpp](../../../include/aoc/ui/EventLog.hpp),
+  [Notifications.hpp](../../../include/aoc/ui/Notifications.hpp),
+  [DebugConsole.hpp](../../../include/aoc/ui/DebugConsole.hpp),
+  [WidgetInspector.hpp](../../../include/aoc/ui/WidgetInspector.hpp) — hover tooltips, the
+  event feed, transient banners, the in-game console and the development widget inspector.
 
 ### Screen classes
 
-All located in `src/ui/` and `include/aoc/ui/`:
-
-`MainMenu`, `LoadingScreen`, `GameScreens` (in-game HUD), `PauseMenu`, `DiplomacyScreen`,
-`ReligionScreen`, `EspionageScreen` (read-only spies, missions, rival intel), `HistoricMomentsScreen` (age, era score, timeline of awards), `TradeScreen`, `TradeRouteSetupScreen`, `ScoreScreen`, `Encyclopedia`,
-`SettingsMenu`, `SpectatorHUD`, `Tutorial`,
-`CityDetailTabs`.
+All in `src/ui/` and `include/aoc/ui/`: `MainMenu`, `LoadingScreen`, `LoadGameMenu`,
+`SettingsMenu`, `PauseMenu`, `GameScreens` (the in-game HUD screens), `CityDetailTabs`,
+`CityListScreen`, `UnitListScreen`, `DiplomacyScreen`, `TradeScreen`,
+`TradeRouteSetupScreen`, `ReligionScreen`, `EspionageScreen`, `GreatPeopleScreen`,
+`GreatWorksScreen`, `HistoricMomentsScreen`, `DemographicsScreen`, `WorldCongressScreen`,
+`CityStatesScreen`, `ClimateScreen`, `ScoreScreen`, `Encyclopedia`, `SpectatorHUD`, `Tutorial`.
 
 ## Public surface
 
-- `UIManager` — created by `Application`; widgets added by each `IScreen` on enter.
+- `UIManager` — created by `Application`; widgets added by each `IScreen` on open.
 - `ScreenRegistry` — driven by `Application` for screen transitions.
-- `GameDBus` (in `src/ui/GameDBus.cpp`) — D-Bus IPC for Linux desktop integration
-  (taskbar progress, rich presence); compiled only when sdbus-cpp is found.
+- `GET /ui/tree` and the `POST /ui/*` routes expose the widget tree and clicks to the debug
+  server through `UiControlCommand`.
 
 ## Internal structure
 
-Flat directory. Screens are registered in `ScreenRegistry`; each screen builds its
-widget subtree via `UIManager` calls on `onEnter` and tears it down on `onExit`. Widgets
-are value types stored contiguously; `UIManager` is the allocator and lifetime owner.
+Flat directory. Screens are registered in `ScreenRegistry`; each builds its widget subtree
+via `UIManager` calls on open and tears it down on close. Widgets are value types stored
+contiguously; `UIManager` is the allocator and lifetime owner. Two outward edges exist:
+`Tooltip.cpp` reads `render/CameraController`, and `LoadGameMenu.hpp` reads
+`save/SaveSlots`.
+
+## Core types
+
+`UIManager` — [include/aoc/ui/UIManager.hpp:28](../../../include/aoc/ui/UIManager.hpp#L28);
+`Widget` — [include/aoc/ui/Widget.hpp:367](../../../include/aoc/ui/Widget.hpp#L367);
+`IScreen` — [include/aoc/ui/IScreen.hpp:22](../../../include/aoc/ui/IScreen.hpp#L22);
+`ScreenBase` — [include/aoc/ui/GameScreens.hpp:29](../../../include/aoc/ui/GameScreens.hpp#L29);
+`ScreenRegistry` — [include/aoc/ui/ScreenRegistry.hpp:28](../../../include/aoc/ui/ScreenRegistry.hpp#L28).
+
+```mermaid
+classDiagram
+  class UIManager {
+    +createPanel()
+    +createButton()
+    +setVisible(id, on)
+    +layout()
+  }
+  class Widget {
+    +type
+    +bounds Rect
+    +children
+  }
+  class IScreen {
+    <<interface>>
+    +isOpen()
+    +close()
+    +onResize()
+  }
+  class ScreenBase
+  class ScreenRegistry {
+    +anyOpen()
+    +onlyOpen(screen)
+    +closeAll()
+    +pushModal()
+  }
+  UIManager "1" *-- "*" Widget
+  IScreen <|-- ScreenBase
+  ScreenRegistry o-- IScreen
+  ScreenBase --> UIManager : builds widgets in
+```
+
+<!-- arch-doc: state-machines=none; no transitioned enum found -->

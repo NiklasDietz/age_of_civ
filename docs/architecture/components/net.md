@@ -2,58 +2,75 @@
 
 ## Responsibility
 
-Defines the server/client game architecture and the transport layer that connects them.
-`GameServer` is the single authority for game state; `GameClient` sends player commands.
-`LocalTransport` connects them in-process (single player, zero overhead). Future
-multiplayer replaces `LocalTransport` with a network adapter without changing the
-server or client.
+Defines a server/client game architecture and the transport layer that would connect
+them, plus the Linux D-Bus desktop integration. The server/client path is compiled into
+`aoc_lib` but no executable instantiates it today: `Application` and `HeadlessSimulation`
+both drive `TurnProcessor` directly.
 
 ## Key files
 
-- [include/aoc/net/GameServer.hpp](../../../include/aoc/net/GameServer.hpp) —
+- [include/aoc/net/GameServer.hpp:51](../../../include/aoc/net/GameServer.hpp#L51) —
   `GameServer`: owns `GameState`, `HexGrid`, `EconomySimulation`, `DiplomacyManager`,
-  `TurnManager`, `Random`, and the `AIController` vector. `tick()` consumes pending
+  `TurnManager`, `Random`, and the `AIController` vector; `tick()` consumes pending
   commands from `ITransport`, validates them, and — when all human players have sent
-  `EndTurn` — calls `TurnProcessor::processTurn()`, then broadcasts per-player
-  `GameStateSnapshot`s respecting fog of war.
-- [include/aoc/net/GameClient.hpp](../../../include/aoc/net/GameClient.hpp) —
-  `GameClient`: thin command sender and snapshot receiver. Provides typed `sendCommand()`
-  helpers (`moveUnit`, `foundCity`, `setProduction`, `setResearch`, …). Polls
-  `ITransport` for `StateUpdate`s (real-time per-action) and `GameStateSnapshot`s
-  (end-of-turn full state).
-- [include/aoc/net/Transport.hpp](../../../include/aoc/net/Transport.hpp) —
-  `ITransport` abstract interface (3 channels: commands → server, state updates → all
-  clients, snapshots → specific client). `LocalTransport` implements all channels with
-  unsynchronised in-process vectors; asserts single-thread ownership in debug builds.
-- [include/aoc/net/NetInterface.hpp](../../../include/aoc/net/NetInterface.hpp) —
-  `NetInterface` (older abstract interface, kept alongside `ITransport`); `NetworkMode`
-  enum: `LocalOnly`, `LAN`, `Online`.
-- [include/aoc/net/CommandBuffer.hpp](../../../include/aoc/net/CommandBuffer.hpp) —
-  `GameCommand` variant and typed command structs: `EndTurnCommand`, `MoveUnitCommand`,
-  `AttackUnitCommand`, `FoundCityCommand`, `SetProductionCommand`, `SetResearchCommand`,
-  `SetTaxRateCommand`.
-- [include/aoc/net/StateUpdate.hpp](../../../include/aoc/net/StateUpdate.hpp) —
-  `StateUpdate`: small delta message broadcast to all clients immediately after each
-  command executes (unit moved, combat result, etc.).
-- [include/aoc/net/GameStateSnapshot.hpp](../../../include/aoc/net/GameStateSnapshot.hpp)
-  — `GameStateSnapshot`: per-player full state view sent after the turn simulation tick,
-  filtered by fog of war.
-- `src/net/GameDBus.cpp` / [include/aoc/net/GameDBus.hpp](../../../include/aoc/net/GameDBus.hpp)
-  — D-Bus IPC for Linux desktop integration (taskbar progress bar, Unity launcher rich
-  presence). Compiled only when sdbus-cpp is detected by CMake.
+  `EndTurn` — calls `processTurn()`, then broadcasts per-player `GameStateSnapshot`s.
+- [include/aoc/net/GameClient.hpp:26](../../../include/aoc/net/GameClient.hpp#L26) —
+  `GameClient`: typed `sendCommand()` helpers and snapshot/update polling.
+- [include/aoc/net/Transport.hpp:55](../../../include/aoc/net/Transport.hpp#L55) —
+  `ITransport` abstract interface (commands → server, state updates → clients, snapshots →
+  one client); `LocalTransport`
+  ([:92](../../../include/aoc/net/Transport.hpp#L92)) implements it with in-process vectors
+  and asserts single-thread ownership in debug builds.
+- [include/aoc/net/NetInterface.hpp:28](../../../include/aoc/net/NetInterface.hpp#L28) —
+  `NetInterface` (older abstract interface) and the `NetworkMode` enum.
+- [include/aoc/net/CommandBuffer.hpp](../../../include/aoc/net/CommandBuffer.hpp),
+  [StateUpdate.hpp](../../../include/aoc/net/StateUpdate.hpp),
+  [GameStateSnapshot.hpp](../../../include/aoc/net/GameStateSnapshot.hpp) — the command
+  variant, the per-action delta message, and the per-player full-state view.
+- [include/aoc/net/GameDBus.hpp](../../../include/aoc/net/GameDBus.hpp) /
+  `src/net/GameDBus.cpp` — D-Bus IPC for Linux desktop integration (taskbar progress,
+  rich presence); compiled only when sdbus-cpp is detected; owned by `Application`.
 
 ## Public surface
 
-- `GameServer::initialize(config)` / `tick()` — called by `Application` (interactive)
-  and `HeadlessSimulation` (headless sim).
-- `GameServer::grid()` / `economy()` — read by `Application` for UI queries.
-- `GameClient::sendCommand(…)` / `pollUpdates()` / `pollSnapshot()` — used by
-  `Application` to send the human player's actions and receive turn results.
-- `LocalTransport` — wired between `GameServer` and `GameClient` by `Application`.
+- `GameServer::initialize(config)` / `tick()` and `GameClient` — declared and implemented,
+  referenced outside `src/net/` only by a comment in `src/simulation/turn/TurnProcessor.cpp:1721`.
+  The interactive end-turn path is `src/app/Application.cpp:7214` and the headless one
+  `src/tools/HeadlessSimulation.cpp:685`, both calling `processTurn` without a transport.
+- `GameDBus` — used by `Application`.
 
 ## Internal structure
 
-Flat directory. The architecture deliberately mirrors a client-server split even in
-single player: `Application` instantiates both `GameServer` and `GameClient`, connects
-them through `LocalTransport`, and drives the loop. This ensures the code path used for
-single player is identical to the code path a future multiplayer server would use.
+Flat directory. The server/client split mirrors what a multiplayer server would need; the
+in-process `LocalTransport` is its only implementation.
+
+## Core types
+
+`GameServer` — [include/aoc/net/GameServer.hpp:51](../../../include/aoc/net/GameServer.hpp#L51);
+`GameClient` — [include/aoc/net/GameClient.hpp:26](../../../include/aoc/net/GameClient.hpp#L26);
+`ITransport` — [include/aoc/net/Transport.hpp:55](../../../include/aoc/net/Transport.hpp#L55);
+`LocalTransport` — [include/aoc/net/Transport.hpp:92](../../../include/aoc/net/Transport.hpp#L92).
+
+```mermaid
+classDiagram
+  class GameServer {
+    +initialize(config)
+    +tick()
+  }
+  class GameClient {
+    +sendCommand(cmd)
+    +pollSnapshot()
+  }
+  class ITransport {
+    <<interface>>
+    +sendCommand()
+    +broadcastUpdate()
+    +sendSnapshot()
+  }
+  class LocalTransport
+  ITransport <|.. LocalTransport
+  GameServer --> ITransport
+  GameClient --> ITransport
+```
+
+<!-- arch-doc: state-machines=none; NetworkMode is a configuration enum, never transitioned -->

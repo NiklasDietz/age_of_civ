@@ -41,3 +41,6 @@ nor Lua is found.
 Single file pair (`LuaEngine.hpp` / `src/scripting/LuaEngine.cpp`). The `Impl` PIMPL
 struct holds the raw `lua_State*` and the binding tables; it is conditionally compiled
 via `#ifdef AOC_HAS_LUA`.
+
+<!-- arch-doc: class-diagram=skipped; a single class in this component -->
+<!-- arch-doc: state-machines=none; no transitioned enum found -->

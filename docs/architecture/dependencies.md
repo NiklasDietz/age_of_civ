@@ -1,7 +1,7 @@
 # Third-Party Dependencies
 
 All confirmed by tracing import sites in the source tree. Listed in order: system
-libraries, vendored libraries, and the Vulkan submodule.
+libraries, vendored libraries, the Vulkan submodule, and the Python tooling.
 
 ---
 
@@ -20,7 +20,8 @@ Lua 5.4.
 **Compile guard:** `AOC_HAS_LUA` defined by CMake when either LuaJIT or Lua 5.4 headers
 are found. `LuaEngine` is a no-op stub when the define is absent.
 
-Import site: [src/scripting/LuaEngine.cpp](../../src/scripting/LuaEngine.cpp)
+Import site: [src/scripting/LuaEngine.cpp](../../src/scripting/LuaEngine.cpp) — the only
+file that references `LuaEngine`; no executable constructs one today.
 
 ---
 
@@ -34,7 +35,7 @@ concentrated in `third_party/vulkan_renderer/` (the submodule) and in
 **Why pulled in:** The sole graphics API for all platforms (MoltenVK on macOS).
 
 **Guard:** `NOT AOC_HEADLESS` — the entire render subsystem is excluded from headless
-builds.
+builds. `find_package(Vulkan REQUIRED)` at `CMakeLists.txt:135`.
 
 ---
 
@@ -46,7 +47,26 @@ builds.
 
 **Why pulled in:** Cross-platform window creation and input event loop.
 
-**Guard:** `NOT AOC_HEADLESS`. Import site: [src/app/Window.cpp](../../src/app/Window.cpp)
+**Guard:** `NOT AOC_HEADLESS`; `find_package(glfw3 REQUIRED)` at `CMakeLists.txt:165`.
+Import site: [src/app/Window.cpp](../../src/app/Window.cpp)
+
+---
+
+## OpenMP (optional)
+
+**What the code uses:** `#pragma omp parallel for` over per-tile passes.
+
+**Why pulled in:** Parallel per-tile work in the map generator's post-processing and physics
+passes; without OpenMP the same loops run serially.
+
+**Guard:** `find_package(OpenMP)` at `CMakeLists.txt:618`; when found, `aoc_lib` links
+`OpenMP::OpenMP_CXX` and defines `AOC_HAS_OPENMP=1`.
+
+Import sites: [src/map/MapGenerator.cpp](../../src/map/MapGenerator.cpp),
+[src/map/gen/SphereFieldPhysics.cpp](../../src/map/gen/SphereFieldPhysics.cpp),
+[src/map/gen/PostSim.cpp](../../src/map/gen/PostSim.cpp),
+[src/map/gen/Features.cpp](../../src/map/gen/Features.cpp),
+[src/tools/MapGenCli.cpp](../../src/tools/MapGenCli.cpp)
 
 ---
 
@@ -54,7 +74,8 @@ builds.
 
 **What the code uses:** `std::thread` (C++ stdlib wraps pthreads on Linux/macOS).
 Used in `LocalTransport` (owner-thread assertion via `std::this_thread::get_id()`),
-`aoc::log::g_minSeverity` (atomic), and the ML thread pool.
+`aoc::log::g_minSeverity` (atomic), the debug server's request thread, and the ML thread
+pool. `find_package(Threads REQUIRED)` at `CMakeLists.txt:612`.
 
 **Why pulled in:** System library; required for any multi-threaded code.
 
@@ -65,27 +86,32 @@ Used in `LocalTransport` (owner-thread assertion via `std::this_thread::get_id()
 **What the code uses:** `httplib::Server::Get()` / `Post()`, `set_pre_routing_handler`,
 `bind_to_port`, `listen_after_bind`, `stop`.
 
-**Why pulled in:** The development debug server (`DebugServer`) that exposes game state
-via HTTP on localhost. Pinned to 0.18.5 deliberately: the server binds `127.0.0.1` only
-with a Host-header allowlist, so the server-side CVEs patched in newer releases (all
+**Why pulled in:** The development debug server (`DebugServer`) that exposes game state and
+the game-control API via HTTP on localhost, and the `aoc_mapgen` inspector. Pinned to
+0.18.5 deliberately: the server binds `127.0.0.1` only with a Host-header allowlist and is
+off by default, so the server-side CVEs patched in newer releases (all
 untrusted-network-client class) are out of reach in this deployment.
 
 Import site: [src/debug/DebugServer.cpp](../../src/debug/DebugServer.cpp)
 
 ---
 
-## stb_truetype v1.26 (vendored)
+## stb_truetype v1.26 (vendored, build-time only)
 
 **What the code uses:** `stbtt_InitFont`, `stbtt_GetCodepointBitmap`,
-`stbtt_GetCodepointHMetrics` — bitmap rasterization for the font atlas.
+`stbtt_GetCodepointHMetrics` — rasterisation of the bundled fonts into the glyph atlas.
 
-**Why pulled in:** Font rendering for `BitmapFont` (UI text).
+**Why pulled in:** Font rasterisation. Since the atlas bake it is linked exclusively by the
+`aoc_font_bake` target (`CMakeLists.txt:900`); the game binary contains no TrueType parser
+and reads the baked, bounds-checked blob described by `FontAtlasFormat.hpp` instead.
 
-**Security note:** Unpatched CVE-2026-5314 OOB read on hostile font files. The library
-is only ever called with bundled system fonts, never with mod or user-supplied fonts.
-This constraint is enforced in code and documented in `DEPENDENCIES.txt`.
+**Security note:** Unpatched CVE-2026-5314 OOB read on hostile font files. The baker's font
+path list is a fixed set of trusted system paths; never feed it mod or user-supplied fonts.
+Verify the runtime has no parser with `nm build/release/libaoc_lib.a | grep -c stbtt`
+(expect 0), per `DEPENDENCIES.txt`.
 
-Import site: [src/ui/BitmapFont.cpp](../../src/ui/BitmapFont.cpp)
+Import site: [src/tools/FontBake.cpp](../../src/tools/FontBake.cpp); runtime reader
+[src/ui/BitmapFont.cpp](../../src/ui/BitmapFont.cpp)
 
 ---
 
@@ -93,7 +119,8 @@ Import site: [src/ui/BitmapFont.cpp](../../src/ui/BitmapFont.cpp)
 
 **What the code uses:** `stbi_write_png_to_func` — encodes a framebuffer capture to PNG.
 
-**Why pulled in:** Screenshot export (`ScreenshotEncoder`).
+**Why pulled in:** Screenshot export (`ScreenshotEncoder`, also reachable through
+`POST /debug/screenshot`).
 
 Import site: [src/app/ScreenshotEncoder.cpp](../../src/app/ScreenshotEncoder.cpp)
 
@@ -134,7 +161,23 @@ integration (taskbar progress, Unity launcher rich presence).
 **Why pulled in:** Linux-specific UX polish; compiled only when sdbus-cpp is detected.
 The feature is guarded by `AOC_HAS_SDBUS`.
 
-Import site: [src/ui/GameDBus.cpp](../../src/ui/GameDBus.cpp)
+Import site: [src/net/GameDBus.cpp](../../src/net/GameDBus.cpp)
+
+---
+
+## mcp (Python, tooling only)
+
+**What the code uses:** `mcp.server.MCPServer` (mcp 2.0 API; the older `FastMCP` import is
+gone) to register the 60 `aoc_*` tools and serve them over stdio; `mcp.ClientSession`,
+`StdioServerParameters` and `stdio_client` in the end-to-end test.
+
+**Why pulled in:** Lets an LLM client drive a running game through the debug server's REST
+routes. Not part of the C++ build.
+
+Import sites: [tools/mcp_server.py](../../tools/mcp_server.py),
+[tools/mcp_e2e_test.py](../../tools/mcp_e2e_test.py). The other Python tools
+(`scripts/sim_health.py`, `tools/mapgen_metrics.py`, `tools/mapgen_render.py`,
+`tools/earth_reference.py`, `scripts/check_grid_layers.py`) use the standard library only.
 
 ---
 
