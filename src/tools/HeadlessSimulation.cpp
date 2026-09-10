@@ -351,7 +351,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         << "IncomeCapital,IncomeTax,IncomeCommercial,IncomeIndustrial,IncomeTileGold,"
         << "IncomeGoodsEcon,TotalIncome,EffectiveIncome,"
         << "ExpenseUnits,ExpenseBuildings,TotalExpense,NetFlow,GoodsStockpiled,"
-        << "FoodPerTurn,FamineCities,ScienceDiffusion,CultureDiffusion,BarbarianUnits\n";
+        << "FoodPerTurn,FamineCities,ScienceDiffusion,CultureDiffusion,BarbarianUnits,"
+        << "IncomeMoneyTax,IncomeTradeRoutes,ExpenseScience\n";
 
     aoc::map::HexGrid grid;
     // 2026-05-03: honour --seed CLI/yaml override so audit_matrix.sh sims are
@@ -902,23 +903,23 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 << static_cast<int>(snap.crisisType) << ","
                 << static_cast<int>(snap.industrialRev) << ","
                 << static_cast<int>(snap.governmentType) << ",";
-            // Economic breakdown columns
+            // Economic breakdown columns; an eliminated player reports zeros.
+            aoc::sim::EconomicBreakdown bd{};
             if (snapPlayer != nullptr) {
-                aoc::sim::EconomicBreakdown bd =
-                    aoc::sim::computeEconomicBreakdown(*snapPlayer, grid);
-                csv << bd.incomeCapital << "," << bd.incomeTax << "," << bd.incomeCommercial << ","
-                    << bd.incomeIndustrial << "," << bd.incomeTileGold << ","
-                    << bd.incomeGoodsEcon << "," << bd.totalIncome << ","
-                    << bd.effectiveIncome << ","
-                    << bd.expenseUnits << "," << bd.expenseBuildings << ","
-                    << bd.totalExpense << "," << bd.netFlow << ","
-                    << bd.goodsStockpiled;
-            } else {
-                csv << "0,0,0,0,0,0,0,0,0,0,0,0,0";
+                bd = aoc::sim::computeEconomicBreakdown(*snapPlayer, grid);
             }
+            csv << bd.incomeCapital << "," << bd.incomeTax << "," << bd.incomeCommercial << ","
+                << bd.incomeIndustrial << "," << bd.incomeTileGold << ","
+                << bd.incomeGoodsEcon << "," << bd.totalIncome << ","
+                << bd.effectiveIncome << ","
+                << bd.expenseUnits << "," << bd.expenseBuildings << ","
+                << bd.totalExpense << "," << bd.netFlow << ","
+                << bd.goodsStockpiled;
             csv << "," << snap.foodPerTurn << "," << snap.famineCities
                 << "," << snap.scienceDiffusion << "," << snap.cultureDiffusion
                 << "," << snap.barbarianUnits;
+            csv << "," << bd.incomeMoneyTax << "," << bd.incomeTradeRoutes << ","
+                << bd.expenseScience;
             csv << "\n";
         }
 

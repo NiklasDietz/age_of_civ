@@ -48,12 +48,16 @@ namespace aoc::sim {
 struct EconomicBreakdown {
     // Income sources
     CurrencyAmount incomeTax         = 0;  ///< Population-based taxation
-    CurrencyAmount incomeCommercial  = 0;  ///< Commercial districts + buildings (Market/Bank/etc)
+    CurrencyAmount incomeCommercial  = 0;  ///< Districts, buildings, adjacency, wonders, civ route bonus
     CurrencyAmount incomeIndustrial  = 0;  ///< Industrial revolution per-citizen bonus
     CurrencyAmount incomeTileGold    = 0;  ///< Gold from worked tiles
     CurrencyAmount incomeGoodsEcon   = 0;  ///< Taxable economic activity from goods stockpiles
     CurrencyAmount incomeCapital     = 0;  ///< Palace bonus (+10)
-    CurrencyAmount totalIncome       = 0;  ///< Sum of all income (before goldAllocation split)
+    CurrencyAmount incomeMoneyTax    = 0;  ///< Coin stock x taxable share x tax rate x collection efficiency
+    CurrencyAmount incomeTradeRoutes = 0;  ///< Coin the civ's Traders brought home this turn. Credited by
+                                           ///< the Trader system on arrival, so reported beside
+                                           ///< totalIncome, never inside it
+    CurrencyAmount totalIncome       = 0;  ///< Sum of the seven channels above (before goldAllocation split)
     CurrencyAmount effectiveIncome   = 0;  ///< After goldAllocation (what goes to treasury)
 
     // Expense sinks
@@ -71,18 +75,20 @@ struct EconomicBreakdown {
     int32_t goodsStockpiled  = 0;  ///< Total goods in all city stockpiles
 };
 
-/// Compute economic breakdown for a player (read-only, no side effects).
+/// Gold charged per point of science generated: the research budget.
+inline constexpr float SCIENCE_FUNDING_COST = 0.2f;
+
+/// The player's economy this turn, read-only. Every rule the treasury applies
+/// lives here (Palace, head tax, effective tile yields, districts, buildings,
+/// adjacency, wonders, goods, corruption, governor, money-supply tax,
+/// government multiplier, civ route bonus); processGoldIncome credits what
+/// this returns, so the HUD, the CSV and the treasury cannot disagree.
 [[nodiscard]] EconomicBreakdown computeEconomicBreakdown(
     const aoc::game::Player& player, const aoc::map::HexGrid& grid);
 
-/**
- * @brief Compute gold income for a player from their cities and add to treasury.
- *
- * Income sources: capital Palace bonus (+10), worked tile gold yields,
- * Commercial Hub (+3) and Harbor (+2) district bonuses, building gold bonuses.
- *
- * @return The total gold income added.
- */
+/// Credit the breakdown's effective income to the treasury and record the
+/// gross income for display. Returns the gross income (before the
+/// goldAllocation split), which is what the breakdown calls totalIncome.
 CurrencyAmount processGoldIncome(aoc::game::Player& player,
                                   const aoc::map::HexGrid& grid);
 

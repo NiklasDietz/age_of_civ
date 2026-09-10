@@ -678,8 +678,7 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
             }
         }
 
-        // Science funding cost: 0.2 gold per science point
-        constexpr float SCIENCE_FUNDING_COST = 0.2f;
+        // Science funding cost: SCIENCE_FUNDING_COST gold per science point.
         // A Barter civ with no coins has no money to fund research with and
         // no way to earn any; charging it drove every such civ to the 50%
         // floor for the half of a game most of them spend in Barter.

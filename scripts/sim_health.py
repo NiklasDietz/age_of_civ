@@ -191,10 +191,12 @@ def evaluate(rows: list[dict[str, str]], quiet: bool = False) -> int:
     )
 
     # H8  The income breakdown reconciles with its own total. The CSV used to
-    #     omit IncomeCapital, so the channels never summed to TotalIncome.
+    #     omit IncomeCapital, so the channels never summed to TotalIncome; the
+    #     money-supply tax was folded into IncomeCommercial until 2026-09-10.
     channels = (
         "IncomeCapital", "IncomeTax", "IncomeCommercial",
         "IncomeIndustrial", "IncomeTileGold", "IncomeGoodsEcon",
+        "IncomeMoneyTax",
     )
     mismatches = []
     for row in rows:
@@ -224,7 +226,7 @@ COLUMNS = [
     "Turn", "Player", "GDP", "Cities", "TechsResearched", "TradePartners",
     "EraVP", "Era", "Eliminated", "MetPlayersMask", "IncomeCapital",
     "IncomeTax", "IncomeCommercial", "IncomeIndustrial", "IncomeTileGold",
-    "IncomeGoodsEcon", "TotalIncome", "BarbarianUnits",
+    "IncomeGoodsEcon", "IncomeMoneyTax", "TotalIncome", "BarbarianUnits",
 ]
 
 
@@ -313,6 +315,13 @@ def selftest() -> int:
     for r in rows:
         r["TotalIncome"] = "99"
     cases.append(("income mismatch", rows))
+
+    # H8: the money-supply tax is a channel of its own; a total that leaves
+    # it out no longer reconciles.
+    rows = _healthy()
+    for r in rows:
+        r["IncomeMoneyTax"] = "7"
+    cases.append(("money tax left out of the total", rows))
 
     ok = True
     baseline = evaluate(_healthy(), quiet=True)

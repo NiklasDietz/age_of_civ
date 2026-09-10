@@ -902,8 +902,14 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     std::vector<aoc::game::Unit*> traderUnits;
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
         for (const std::unique_ptr<aoc::game::Unit>& u : p->units()) {
-            if (u->typeDef().unitClass == UnitClass::Trader
-                && u->trader().owner != INVALID_PLAYER) {
+            if (u->typeDef().unitClass != UnitClass::Trader) {
+                continue;
+            }
+            // Per-turn scratch, cleared for idle Traders too: the income
+            // breakdown sums it as this turn's route gold, and a Trader that
+            // came home and went idle would otherwise report its last sale forever.
+            u->trader().goldEarnedThisTurn = 0;
+            if (u->trader().owner != INVALID_PLAYER) {
                 traderUnits.push_back(u.get());
             }
         }
