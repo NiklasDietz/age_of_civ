@@ -1293,6 +1293,8 @@ def cmd_baseline(args):
             cmd += ["--projection", args.projection]
         if args.players:
             cmd += ["--players", args.players]
+        if args.placement:
+            cmd += ["--placement", args.placement]
         # The crust-budget numbers exist only on the generator's stderr, behind
         # these env gates. Before 2026-08-12 stderr was captured and then
         # DISCARDED on success, so half the gate set was silently uncomputed --
@@ -1632,6 +1634,10 @@ def main():
                             help="comma-separated player counts, e.g. 4,6: choose "
                                  "starts per count and record the resource "
                                  "geography around them (RESOURCE_GATES)")
+    p_baseline.add_argument("--placement", default=None,
+                            choices=["realistic", "fair", "random"],
+                            help="resource placement mode; fair and random run the "
+                                 "regional exclusivity pass once starts are chosen")
     p_baseline.add_argument("--gate", action="store_true",
                             help="check every metric against its Earth-reference "
                                  "band and EXIT NON-ZERO if any is missed or was "

@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace aoc::map {
 
@@ -54,6 +55,15 @@ enum class ResourcePlacementMode : uint8_t {
     Fair      = 1,
     Random    = 2,
 };
+
+/// Share of the luxury types each start region is denied under Fair and
+/// Random placement, so no civ has everything and neighbours complement.
+inline constexpr float REGION_DENIED_FRACTION = 0.4f;
+/// Tiles every luxury type keeps on the map after the regional pass.
+inline constexpr int32_t LUXURY_MIN_TILES = 2;
+/// Luxury types every start has within reach after the regional pass, so a
+/// civ starts with something to sell as well as something to lack.
+inline constexpr int32_t REGION_MIN_LUXURY_TYPES = 3;
 
 /// Get dimensions for a given MapSize preset.
 [[nodiscard]] constexpr std::pair<int32_t, int32_t> mapSizeDimensions(MapSize size) {
@@ -241,12 +251,24 @@ private:
     /// Uniform per-tile probability, geology-blind.  For Random placement mode.
     static void placeRandomResources(const Config& config, HexGrid& grid, aoc::Random& rng);
 
-    /// Re-distribute strategic resources so each large landmass quadrant gets
-    /// comparable coverage.  For Fair placement mode.  Applied on top of
-    /// geology placement: we keep the geology-selected positions but remove
-    /// surplus from over-served quadrants and add deficits to under-served
-    /// ones.
-    static void balanceResourcesFair(const Config& config, HexGrid& grid, aoc::Random& rng);
+public:
+    /// Regional exclusivity for Fair and Random placement, run once the
+    /// starts are known (they are chosen after generate). Land is split into
+    /// nearest-start regions; the six balanced strategics are spread so each
+    /// region holds a comparable share; each region is denied
+    /// REGION_DENIED_FRACTION of the luxury types (consecutive windows of one
+    /// shuffled order, so no type is denied everywhere and neighbouring
+    /// regions complement each other), its tiles of a denied type are swapped
+    /// to an allowed luxury of the same climate band or cleared, every type
+    /// keeps LUXURY_MIN_TILES tiles, and every start has REGION_MIN_LUXURY_TYPES
+    /// allowed types within RESOURCE_REACH_RADIUS. Realistic placement returns
+    /// at once: there, scarcity is worldgen's job.
+    static void balanceResourcesFair(HexGrid& grid, const std::vector<hex::AxialCoord>& starts,
+                                     ResourcePlacementMode placement, aoc::Random& rng);
+
+    /// Nearest start per tile (wrap-aware); -1 for water and impassable tiles.
+    [[nodiscard]] static std::vector<int32_t> startRegions(const HexGrid& grid,
+                                                           const std::vector<hex::AxialCoord>& starts);
 };
 
 } // namespace aoc::map

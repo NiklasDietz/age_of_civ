@@ -208,8 +208,8 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
 
     // Resource placement policy is orthogonal to terrain style.  Realistic
     // uses geology/basic rules keyed off mapType.  Random overrides with a
-    // uniform per-tile chance.  Fair runs the realistic pass then redistributes
-    // surplus to quadrants that ended up resource-starved.
+    // uniform per-tile chance.  Fair runs the realistic pass; the regional
+    // rebalance (balanceResourcesFair) runs later, once starts are chosen.
     // 2026-05-02: geology pass now runs for every map type, not just
     // LandWithSeas. Continent / Pangaea / Fractal / Realistic etc. were
     // falling back to placeBasicResources() which never seeded any of the
@@ -223,7 +223,6 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
         break;
     case ResourcePlacementMode::Fair:
         placeGeologyResources(config, outGrid, rng);
-        balanceResourcesFair(config, outGrid, rng);
         break;
     case ResourcePlacementMode::Realistic:
     default:

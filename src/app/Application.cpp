@@ -2190,6 +2190,10 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
             aoc::hex::offsetToAxial({this->m_hexGrid.width() / 2, this->m_hexGrid.height() / 2});
         starts.resize(config.playerCount, centre);
     }
+    // Fair and Random placement: spread the strategics and deny each start
+    // region a share of the luxuries. Realistic leaves scarcity to worldgen.
+    aoc::map::MapGenerator::balanceResourcesFair(this->m_hexGrid, starts, config.placement,
+                                                 this->m_gameRng);
 
     // Spawn human player (always slot 0)
     this->spawnStartingEntities(config.players[0].civId, starts[0]);

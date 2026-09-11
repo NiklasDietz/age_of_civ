@@ -471,6 +471,9 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     // game always has a land path between the rivals.
     const std::vector<aoc::hex::AxialCoord> chosenStarts =
         aoc::map::chooseStartPositions(grid, playerCount, rng);
+    // Fair and Random placement: spread the strategics and deny each start
+    // region a share of the luxuries. Realistic leaves scarcity to worldgen.
+    aoc::map::MapGenerator::balanceResourcesFair(grid, chosenStarts, placement, rng);
 
     // Spawn each AI player with a starting city and scout
     for (int32_t p = 0; p < playerCount; ++p) {

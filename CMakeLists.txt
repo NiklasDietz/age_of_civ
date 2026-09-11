@@ -1055,6 +1055,7 @@ if(AOC_BUILD_TESTS)
         test_income_breakdown_parity
         test_trade_measurability
         test_resource_geography
+        test_regional_exclusivity
         test_trader_readers
         test_luxury_demand
         test_goods_valuation

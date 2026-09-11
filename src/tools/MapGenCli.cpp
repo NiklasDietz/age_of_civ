@@ -247,6 +247,7 @@ void usage(const char* prog) {
                  "          [--projection lambert|mollweide|equirect|mercator|robinson]\n"
                  "          [--flat] [--frames] [--stop-epoch N] [--dump-plates PATH]\n"
                  "          [--serve-http [--port N]] [--players N[,N...]]\n"
+                 "          [--placement realistic|fair|random]\n"
                  "\n"
                  "Generates a single Continents map and writes it to disk for review.\n"
                  "Defaults: --seed 42 --width 140 --height 90 --output /tmp/map\n"
@@ -394,6 +395,11 @@ int main(int argc, char* argv[]) {
             dumpPlatesPath = argv[++i];
         } else if (arg == "--serve-http") {
             serveHttp = true;
+        } else if (arg == "--placement" && i + 1 < argc) {
+            const std::string mode = argv[++i];
+            config.placement       = mode == "fair"     ? aoc::map::ResourcePlacementMode::Fair
+                                     : mode == "random" ? aoc::map::ResourcePlacementMode::Random
+                                                        : aoc::map::ResourcePlacementMode::Realistic;
         } else if (arg == "--players" && i + 1 < argc) {
             std::string list = argv[++i];
             for (std::size_t pos = 0; pos <= list.size();) {
@@ -499,7 +505,11 @@ int main(int argc, char* argv[]) {
         aoc::Random startRng(config.seed);
         const std::vector<aoc::hex::AxialCoord> starts =
             aoc::map::chooseStartPositions(grid, count, startRng);
-        const aoc::map::ResourceGeography geo = aoc::map::measureResourceGeography(grid, starts);
+        // The regional pass depends on the starts, so measure a copy per count.
+        aoc::map::HexGrid regional = grid;
+        aoc::Random regionRng(config.seed ^ 0x5245474Eu); // "REGN"
+        aoc::map::MapGenerator::balanceResourcesFair(regional, starts, config.placement, regionRng);
+        const aoc::map::ResourceGeography geo = aoc::map::measureResourceGeography(regional, starts);
         std::fprintf(stderr,
                      "[resgeo] players=%d starts=%zu luxuries=%d A=%.3f B=%d C=%d D1=%d "
                      "D2=%.3f E=%.3f\n",

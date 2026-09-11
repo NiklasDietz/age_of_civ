@@ -8,13 +8,16 @@
 
 #include "aoc/map/MapGenerator.hpp"
 #include "aoc/map/HexCoord.hpp"
+#include "aoc/map/LandmassMetrics.hpp"
 #include "aoc/map/gen/Noise.hpp"
 #include "aoc/map/gen/PlateBoundary.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <numeric>
 #include <vector>
 
 namespace aoc::map {
@@ -1008,7 +1011,7 @@ void MapGenerator::placeRandomResources(const Config& config, HexGrid& grid, aoc
     // (0.006) so early-game maps still have chain variety without Lithium
     // saturating every civ.
     // WP-C2 cut GEMS + INCENSE (dead-end luxuries with no downstream).
-    const std::array<GoodChance, 19> pool = {{
+    std::vector<GoodChance> pool = {
         {aoc::sim::goods::IRON_ORE, 0.030f},   {aoc::sim::goods::COPPER_ORE, 0.030f},
         {aoc::sim::goods::COAL, 0.030f},       {aoc::sim::goods::OIL, 0.020f},
         {aoc::sim::goods::NITER, 0.010f},      {aoc::sim::goods::HORSES, 0.020f},
@@ -1019,7 +1022,16 @@ void MapGenerator::placeRandomResources(const Config& config, HexGrid& grid, aoc
         {aoc::sim::goods::FURS, 0.012f},       {aoc::sim::goods::GOLD_ORE, 0.008f},
         {aoc::sim::goods::SILVER_ORE, 0.010f}, {aoc::sim::goods::TIN, 0.010f},
         {aoc::sim::goods::LITHIUM, 0.006f},
-    }};
+    };
+    // Every luxury type is in the draw, so the regional pass has variety to
+    // deny and the world market has something for each civ to lack.
+    for (const uint16_t lux : aoc::sim::luxuryGoodIds()) {
+        const bool listed = std::any_of(pool.begin(), pool.end(),
+                                        [lux](const GoodChance& gc) { return gc.id == lux; });
+        if (!listed) {
+            pool.push_back({lux, 0.008f});
+        }
+    }
 
     int32_t totalPlaced = 0;
     for (int32_t row = 0; row < height; ++row) {
@@ -1105,124 +1117,282 @@ void MapGenerator::placeRandomResources(const Config& config, HexGrid& grid, aoc
 }
 
 // ============================================================================
-// Fair placement — redistribute strategic resources across quadrants
+// Regional exclusivity (Fair and Random placement): nearest-start regions,
+// balanced strategics, a denied share of the luxuries per region.
 // ============================================================================
 
-void MapGenerator::balanceResourcesFair(const Config& config, HexGrid& grid, aoc::Random& rng) {
-    const int32_t width  = grid.width();
-    const int32_t height = grid.height();
-    const int32_t midCol = width / 2;
-    const int32_t midRow = height / 2;
+namespace {
 
-    auto quadrantOf = [&](int32_t col, int32_t row) -> int32_t {
-        const int32_t qx = (col < midCol) ? 0 : 1;
-        const int32_t qy = (row < midRow) ? 0 : 1;
-        return qy * 2 + qx; // 0..3
-    };
+[[nodiscard]] bool canHoldResource(const HexGrid& grid, int32_t index) {
+    const TerrainType t = grid.terrain(index);
+    return !isWater(t) && !isImpassable(t) && t != TerrainType::Mountain &&
+           !grid.resource(index).isValid() && grid.naturalWonder(index) == NaturalWonderType::None;
+}
+
+[[nodiscard]] std::size_t pickOne(aoc::Random& rng, std::size_t count) {
+    return static_cast<std::size_t>(rng.nextInt(0, static_cast<int32_t>(count) - 1));
+}
+
+[[nodiscard]] std::vector<int32_t> openTilesIn(const HexGrid& grid, const std::vector<int32_t>& region,
+                                               int32_t which) {
+    std::vector<int32_t> out;
+    for (int32_t i = 0; i < grid.tileCount(); ++i) {
+        if (region[static_cast<std::size_t>(i)] == which && canHoldResource(grid, i)) {
+            out.push_back(i);
+        }
+    }
+    return out;
+}
+
+void putResource(HexGrid& grid, int32_t index, uint16_t goodId) {
+    grid.setResource(index, ResourceId{goodId});
+    grid.setReserves(index, aoc::sim::defaultReserves(goodId));
+}
+
+void clearResource(HexGrid& grid, int32_t index) {
+    grid.setResource(index, ResourceId{});
+    grid.setReserves(index, 0);
+}
+
+/// Spread one good so every region holds its quota (an even split, the
+/// remainder going to the lowest regions) while surplus lasts. Returns tiles moved.
+int32_t spreadAcrossRegions(HexGrid& grid, const std::vector<int32_t>& region, int32_t regions,
+                            uint16_t goodId, aoc::Random& rng) {
+    std::vector<std::vector<int32_t>> tiles(static_cast<std::size_t>(regions));
+    for (int32_t i = 0; i < grid.tileCount(); ++i) {
+        const ResourceId r = grid.resource(i);
+        const int32_t at   = region[static_cast<std::size_t>(i)];
+        if (r.isValid() && r.value == goodId && at >= 0) {
+            tiles[static_cast<std::size_t>(at)].push_back(i);
+        }
+    }
+    int32_t total = 0;
+    for (const std::vector<int32_t>& t : tiles) {
+        total += static_cast<int32_t>(t.size());
+    }
+    if (total == 0) {
+        return 0;
+    }
+    const int32_t base  = total / regions;
+    const int32_t extra = total % regions;
+    const auto quota    = [base, extra](int32_t r) { return base + (r < extra ? 1 : 0); };
+    int32_t surplus     = 0;
+    for (int32_t r = 0; r < regions; ++r) {
+        std::vector<int32_t>& t = tiles[static_cast<std::size_t>(r)];
+        while (static_cast<int32_t>(t.size()) > quota(r)) {
+            const std::size_t pick = pickOne(rng, t.size());
+            clearResource(grid, t[pick]);
+            t[pick] = t.back();
+            t.pop_back();
+            ++surplus;
+        }
+    }
+    int32_t moved = 0;
+    for (int32_t r = 0; r < regions && surplus > 0; ++r) {
+        for (int32_t have = static_cast<int32_t>(tiles[static_cast<std::size_t>(r)].size());
+             have < quota(r) && surplus > 0; ++have) {
+            const std::vector<int32_t> open = openTilesIn(grid, region, r);
+            if (open.empty()) {
+                break;
+            }
+            putResource(grid, open[pickOne(rng, open.size())], goodId);
+            --surplus;
+            ++moved;
+        }
+    }
+    return moved;
+}
+
+/// Which luxury types each region may hold. One shuffled order; region r is
+/// denied the window of REGION_DENIED_FRACTION types starting at r x window,
+/// cyclically. Consecutive windows are disjoint while two of them fit in the
+/// list, so no type is denied everywhere and neighbours complement.
+[[nodiscard]] std::vector<std::vector<bool>> luxuryAllowance(int32_t regions,
+                                                             const std::vector<uint16_t>& luxuries,
+                                                             aoc::Random& rng) {
+    const int32_t types  = static_cast<int32_t>(luxuries.size());
+    const int32_t window = std::min(types / 2, static_cast<int32_t>(std::lround(REGION_DENIED_FRACTION *
+                                                                                 static_cast<float>(types))));
+    std::vector<std::vector<bool>> allowed(static_cast<std::size_t>(regions),
+                                           std::vector<bool>(static_cast<std::size_t>(types), true));
+    if (types == 0 || regions < 2 || window <= 0) {
+        return allowed; // alone on the map, nothing to complement
+    }
+    std::vector<int32_t> order(static_cast<std::size_t>(types));
+    std::iota(order.begin(), order.end(), 0);
+    for (int32_t i = types - 1; i > 0; --i) {
+        std::swap(order[static_cast<std::size_t>(i)], order[static_cast<std::size_t>(rng.nextInt(0, i))]);
+    }
+    for (int32_t r = 0; r < regions; ++r) {
+        for (int32_t k = 0; k < window; ++k) {
+            const int32_t slot = (r * window + k) % types;
+            allowed[static_cast<std::size_t>(r)][static_cast<std::size_t>(order[static_cast<std::size_t>(slot)])] =
+                false;
+        }
+    }
+    return allowed;
+}
+
+[[nodiscard]] int32_t luxuryIndex(const std::vector<uint16_t>& luxuries, uint16_t goodId) {
+    const std::vector<uint16_t>::const_iterator it = std::find(luxuries.begin(), luxuries.end(), goodId);
+    return it == luxuries.end() ? -1 : static_cast<int32_t>(it - luxuries.begin());
+}
+
+/// A denied luxury tile becomes an allowed luxury of the same climate band
+/// when the region has one, else bare land. Returns tiles changed.
+int32_t enforceLuxuryAllowance(HexGrid& grid, const std::vector<int32_t>& region,
+                               const std::vector<std::vector<bool>>& allowed,
+                               const std::vector<uint16_t>& luxuries, aoc::Random& rng) {
+    int32_t changed = 0;
+    for (int32_t i = 0; i < grid.tileCount(); ++i) {
+        const ResourceId r = grid.resource(i);
+        const int32_t at   = region[static_cast<std::size_t>(i)];
+        if (!r.isValid() || at < 0) {
+            continue;
+        }
+        const int32_t type = luxuryIndex(luxuries, r.value);
+        if (type < 0 || allowed[static_cast<std::size_t>(at)][static_cast<std::size_t>(type)]) {
+            continue;
+        }
+        const aoc::sim::ClimateBand band = aoc::sim::goodDef(r.value).climateBand;
+        std::vector<uint16_t> options;
+        for (std::size_t k = 0; k < luxuries.size(); ++k) {
+            if (allowed[static_cast<std::size_t>(at)][k] && aoc::sim::goodDef(luxuries[k]).climateBand == band) {
+                options.push_back(luxuries[k]);
+            }
+        }
+        if (options.empty()) {
+            clearResource(grid, i);
+        } else {
+            putResource(grid, i, options[pickOne(rng, options.size())]);
+        }
+        ++changed;
+    }
+    return changed;
+}
+
+/// Every luxury type keeps LUXURY_MIN_TILES tiles, placed where it is allowed.
+int32_t keepEveryLuxury(HexGrid& grid, const std::vector<int32_t>& region,
+                        const std::vector<std::vector<bool>>& allowed, const std::vector<uint16_t>& luxuries,
+                        aoc::Random& rng) {
+    int32_t placed = 0;
+    for (std::size_t type = 0; type < luxuries.size(); ++type) {
+        int32_t have = 0;
+        for (int32_t i = 0; i < grid.tileCount(); ++i) {
+            const ResourceId r = grid.resource(i);
+            have += (r.isValid() && r.value == luxuries[type]) ? 1 : 0;
+        }
+        while (have < LUXURY_MIN_TILES) {
+            std::vector<int32_t> open;
+            for (int32_t i = 0; i < grid.tileCount(); ++i) {
+                const int32_t at = region[static_cast<std::size_t>(i)];
+                if (at >= 0 && allowed[static_cast<std::size_t>(at)][type] && canHoldResource(grid, i)) {
+                    open.push_back(i);
+                }
+            }
+            if (open.empty()) {
+                break;
+            }
+            putResource(grid, open[pickOne(rng, open.size())], luxuries[type]);
+            ++have;
+            ++placed;
+        }
+    }
+    return placed;
+}
+
+/// Every start has REGION_MIN_LUXURY_TYPES luxury types within reach, adding
+/// allowed types (lowest id first) on open tiles of its own region in reach.
+int32_t varietyNearStarts(HexGrid& grid, const std::vector<hex::AxialCoord>& starts,
+                          const std::vector<int32_t>& region, const std::vector<std::vector<bool>>& allowed,
+                          const std::vector<uint16_t>& luxuries, aoc::Random& rng) {
+    int32_t placed = 0;
+    for (std::size_t s = 0; s < starts.size(); ++s) {
+        std::vector<bool> near(luxuries.size(), false);
+        std::vector<int32_t> open;
+        for (int32_t i = 0; i < grid.tileCount(); ++i) {
+            if (grid.distance(grid.toAxial(i), starts[s]) > RESOURCE_REACH_RADIUS) {
+                continue;
+            }
+            const ResourceId r = grid.resource(i);
+            const int32_t type = r.isValid() ? luxuryIndex(luxuries, r.value) : -1;
+            if (type >= 0) {
+                near[static_cast<std::size_t>(type)] = true;
+            } else if (region[static_cast<std::size_t>(i)] == static_cast<int32_t>(s) && canHoldResource(grid, i)) {
+                open.push_back(i);
+            }
+        }
+        int32_t have = static_cast<int32_t>(std::count(near.begin(), near.end(), true));
+        for (std::size_t type = 0; type < luxuries.size() && have < REGION_MIN_LUXURY_TYPES && !open.empty();
+             ++type) {
+            if (near[type] || !allowed[s][type]) {
+                continue;
+            }
+            const std::size_t pick = pickOne(rng, open.size());
+            putResource(grid, open[pick], luxuries[type]);
+            open[pick] = open.back();
+            open.pop_back();
+            ++have;
+            ++placed;
+        }
+    }
+    return placed;
+}
+
+} // namespace
+
+std::vector<int32_t> MapGenerator::startRegions(const HexGrid& grid,
+                                                const std::vector<hex::AxialCoord>& starts) {
+    std::vector<int32_t> region(static_cast<std::size_t>(grid.tileCount()), -1);
+    if (starts.empty()) {
+        return region;
+    }
+    for (int32_t i = 0; i < grid.tileCount(); ++i) {
+        const TerrainType t = grid.terrain(i);
+        if (isWater(t) || isImpassable(t)) {
+            continue;
+        }
+        const hex::AxialCoord at = grid.toAxial(i);
+        int32_t best             = 0;
+        int32_t bestDist         = grid.distance(at, starts[0]);
+        for (std::size_t s = 1; s < starts.size(); ++s) {
+            const int32_t d = grid.distance(at, starts[s]);
+            if (d < bestDist) {
+                best     = static_cast<int32_t>(s);
+                bestDist = d;
+            }
+        }
+        region[static_cast<std::size_t>(i)] = best;
+    }
+    return region;
+}
+
+void MapGenerator::balanceResourcesFair(HexGrid& grid, const std::vector<hex::AxialCoord>& starts,
+                                        ResourcePlacementMode placement, aoc::Random& rng) {
+    if (placement == ResourcePlacementMode::Realistic || starts.empty()) {
+        return;
+    }
+    const std::vector<int32_t> region = startRegions(grid, starts);
+    const int32_t regions             = static_cast<int32_t>(starts.size());
 
     // Strategic goods that actually matter for industrial/military gates.
     const std::array<uint16_t, 6> balanced = {
         aoc::sim::goods::IRON_ORE, aoc::sim::goods::COPPER_ORE, aoc::sim::goods::COAL,
         aoc::sim::goods::OIL,      aoc::sim::goods::HORSES,     aoc::sim::goods::WHEAT,
     };
-
-    int32_t totalMoved = 0;
+    int32_t moved = 0;
     for (const uint16_t goodId : balanced) {
-        // Count + gather tile indices per quadrant.
-        std::array<std::vector<int32_t>, 4> tiles;
-        for (int32_t row = 0; row < height; ++row) {
-            for (int32_t col = 0; col < width; ++col) {
-                const int32_t index = row * width + col;
-                const ResourceId r  = grid.resource(index);
-                if (r.isValid() && r.value == goodId) {
-                    tiles[static_cast<size_t>(quadrantOf(col, row))].push_back(index);
-                }
-            }
-        }
-        const int32_t total = static_cast<int32_t>(tiles[0].size() + tiles[1].size() +
-                                                   tiles[2].size() + tiles[3].size());
-        if (total == 0) {
-            continue;
-        }
-        const int32_t target = total / 4;
-
-        // Pass 1: strip surplus from over-served quadrants.
-        std::vector<int32_t> surplus;
-        for (int32_t q = 0; q < 4; ++q) {
-            while (static_cast<int32_t>(tiles[static_cast<size_t>(q)].size()) > target + 1) {
-                const size_t n = tiles[static_cast<size_t>(q)].size();
-                const size_t pick =
-                    static_cast<size_t>(rng.nextInt(0, static_cast<int32_t>(n) - 1));
-                const int32_t idx                   = tiles[static_cast<size_t>(q)][pick];
-                tiles[static_cast<size_t>(q)][pick] = tiles[static_cast<size_t>(q)].back();
-                tiles[static_cast<size_t>(q)].pop_back();
-                grid.setResource(idx, ResourceId{});
-                grid.setReserves(idx, 0);
-                surplus.push_back(idx);
-            }
-        }
-
-        // Pass 2: place surplus on any suitable empty land tile in under-served
-        // quadrants.  "Suitable" = not water, not impassable, no existing
-        // resource, not a natural wonder.  Geology constraints are waived; Fair
-        // mode intentionally bulldozes realism to guarantee parity.
-        std::vector<int32_t> deficitQuadrants;
-        for (int32_t q = 0; q < 4; ++q) {
-            const int32_t have = static_cast<int32_t>(tiles[static_cast<size_t>(q)].size());
-            for (int32_t need = have; need < target; ++need) {
-                deficitQuadrants.push_back(q);
-            }
-        }
-
-        for (int32_t q : deficitQuadrants) {
-            if (surplus.empty()) {
-                break;
-            }
-
-            const int32_t colLo = (q % 2 == 0) ? 0 : midCol;
-            const int32_t colHi = (q % 2 == 0) ? midCol : width;
-            const int32_t rowLo = (q / 2 == 0) ? 0 : midRow;
-            const int32_t rowHi = (q / 2 == 0) ? midRow : height;
-
-            // Collect candidate empty land tiles within the quadrant.
-            std::vector<int32_t> candidates;
-            candidates.reserve(static_cast<size_t>((colHi - colLo) * (rowHi - rowLo)));
-            for (int32_t row = rowLo; row < rowHi; ++row) {
-                for (int32_t col = colLo; col < colHi; ++col) {
-                    const int32_t index = row * width + col;
-                    const TerrainType t = grid.terrain(index);
-                    if (isWater(t) || isImpassable(t)) {
-                        continue;
-                    }
-                    if (t == TerrainType::Mountain) {
-                        continue;
-                    }
-                    if (grid.resource(index).isValid()) {
-                        continue;
-                    }
-                    if (grid.naturalWonder(index) != NaturalWonderType::None) {
-                        continue;
-                    }
-                    candidates.push_back(index);
-                }
-            }
-            if (candidates.empty()) {
-                continue;
-            }
-
-            const size_t pick =
-                static_cast<size_t>(rng.nextInt(0, static_cast<int32_t>(candidates.size()) - 1));
-            const int32_t idx = candidates[pick];
-            grid.setResource(idx, ResourceId{goodId});
-            grid.setReserves(idx, aoc::sim::defaultReserves(goodId));
-            surplus.pop_back();
-            ++totalMoved;
-        }
+        moved += spreadAcrossRegions(grid, region, regions, goodId, rng);
     }
 
-    (void)config;
-    LOG_INFO("Fair-placement rebalance: %d strategic resources relocated across quadrants",
-             totalMoved);
+    const std::vector<uint16_t>& luxuries        = aoc::sim::luxuryGoodIds();
+    const std::vector<std::vector<bool>> allowed = luxuryAllowance(regions, luxuries, rng);
+    const int32_t swapped                        = enforceLuxuryAllowance(grid, region, allowed, luxuries, rng);
+    const int32_t kept                           = keepEveryLuxury(grid, region, allowed, luxuries, rng);
+    const int32_t nearby = varietyNearStarts(grid, starts, region, allowed, luxuries, rng);
+    LOG_INFO("Regional exclusivity: %d regions, %d strategic tiles moved, %d luxury tiles swapped or "
+             "cleared, %d placed so every type stays on the map, %d placed for variety near starts",
+             regions, moved, swapped, kept, nearby);
 }
 
 } // namespace aoc::map
