@@ -16,6 +16,7 @@
 
 namespace aoc::sim {
 class DiplomacyManager;
+class Market;
 struct GlobalDealTracker;
 struct AllianceObligationTracker;
 }
@@ -36,7 +37,8 @@ public:
                     aoc::sim::DiplomacyManager* diplomacy,
                     aoc::map::HexGrid* grid = nullptr,
                     aoc::sim::GlobalDealTracker* dealTracker = nullptr,
-                    aoc::sim::AllianceObligationTracker* obligations = nullptr);
+                    aoc::sim::AllianceObligationTracker* obligations = nullptr,
+                    const aoc::sim::Market* market = nullptr);
 
     void open(UIManager& ui) override;
     void close(UIManager& ui) override;
@@ -48,12 +50,20 @@ private:
     aoc::map::HexGrid*             m_grid        = nullptr;
     aoc::sim::GlobalDealTracker*   m_dealTracker = nullptr;
     aoc::sim::AllianceObligationTracker* m_obligations = nullptr;
+    const aoc::sim::Market*        m_market      = nullptr; ///< anchors goods valuations
     /// Civ whose casus belli picker is open (Declare War is a two-step choice).
     PlayerId                       m_warTarget   = INVALID_PLAYER;
     /// Civ whose deal composer is open, and the terms toggled so far.
     PlayerId                       m_composerTarget = INVALID_PLAYER;
     std::vector<aoc::sim::DealTerm> m_composerTerms;
-    void toggleComposerTerm(aoc::sim::DealTermType type, PlayerId from, PlayerId to, int32_t gold);
+    /// One slot per (type, parties, good): the same term again removes it,
+    /// a different amount in the same slot replaces it.
+    void toggleComposerTerm(const aoc::sim::DealTerm& term);
+    /// The composed deal as the counterpart will evaluate it.
+    [[nodiscard]] aoc::sim::DiplomaticDeal composerDeal(PlayerId counterparty) const;
+    /// Replace the gold legs with the one lump that makes the counterpart's
+    /// valuation zero, capped at what the payer holds.
+    void balanceComposerWithGold(PlayerId counterparty);
     PlayerId                       m_player      = INVALID_PLAYER;
     WidgetId                       m_playerList  = INVALID_WIDGET;
 };

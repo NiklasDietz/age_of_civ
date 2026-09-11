@@ -3,7 +3,10 @@
 #include "aoc/simulation/city/ProductionQueue.hpp" // ProductionItemType
 #include "aoc/simulation/tech/TechTree.hpp"        // PlayerTechComponent, techCount()
 
+#include "aoc/debug/GameControlCommand.hpp"           // ProposeDealCommand
+
 #include <cstdint>
+#include <string_view>
 
 namespace aoc::debug {
 
@@ -18,5 +21,11 @@ namespace aoc::debug {
 /// The bounds check runs first so `techDef()` is never called with an
 /// out-of-range value (techDef only asserts in debug builds, not release).
 [[nodiscard]] bool isResearchValid(const aoc::sim::PlayerTechComponent& tech, uint16_t techId);
+
+/// Why a ProposeDealCommand cannot be queued, or empty when its ranges are
+/// sound: parties distinct, gold non-negative, every good id below GOOD_COUNT,
+/// shipment and contract amounts positive, contract length within the cap.
+/// Whether the deal is acceptable is the simulation's call, not this one's.
+[[nodiscard]] std::string_view dealCommandError(const ProposeDealCommand& cmd);
 
 } // namespace aoc::debug

@@ -2,6 +2,8 @@
 #include "aoc/simulation/city/DistrictAdjacency.hpp"
 
 #include "aoc/simulation/city/District.hpp"  // BUILDING_DEFS, DISTRICT_TYPE_COUNT
+#include "aoc/simulation/diplomacy/DealTerms.hpp" // SUPPLY_CONTRACT_MAX_TURNS
+#include "aoc/simulation/resource/ResourceTypes.hpp" // GOOD_COUNT
 #include "aoc/simulation/unit/UnitTypes.hpp" // UNIT_TYPE_COUNT
 #include "aoc/simulation/wonder/Wonder.hpp"  // WONDER_COUNT
 
@@ -33,6 +35,43 @@ bool isResearchValid(const aoc::sim::PlayerTechComponent& tech, uint16_t techId)
         return false;
     }
     return tech.canResearch(aoc::TechId{techId});
+}
+
+namespace {
+
+/// -1 means "no such leg"; anything else must name a good.
+[[nodiscard]] bool goodLegValid(int32_t goodId) {
+    return goodId == -1 || (goodId >= 0 && goodId < aoc::sim::goods::GOOD_COUNT);
+}
+
+} // namespace
+
+std::string_view dealCommandError(const ProposeDealCommand& cmd) {
+    if (cmd.player == cmd.target) {
+        return "player and target must differ";
+    }
+    if (cmd.giveGold < 0 || cmd.askGold < 0) {
+        return "gold must not be negative";
+    }
+    if (!goodLegValid(cmd.goodId) || !goodLegValid(cmd.contractGood) ||
+        !goodLegValid(cmd.exclusiveGood)) {
+        return "good id out of range";
+    }
+    if (cmd.goodId >= 0 && cmd.goodAmount <= 0) {
+        return "goodAmount must be positive";
+    }
+    if (cmd.contractGood >= 0) {
+        if (cmd.contractPerTurn <= 0) {
+            return "contractPerTurn must be positive";
+        }
+        if (cmd.contractGold < 0) {
+            return "contractGold must not be negative";
+        }
+        if (cmd.contractTurns <= 0 || cmd.contractTurns > aoc::sim::SUPPLY_CONTRACT_MAX_TURNS) {
+            return "contractTurns out of range";
+        }
+    }
+    return {};
 }
 
 } // namespace aoc::debug

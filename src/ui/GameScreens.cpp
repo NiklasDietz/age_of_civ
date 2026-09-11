@@ -31,6 +31,7 @@
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/economy/Market.hpp"
+#include "aoc/simulation/diplomacy/DealProposals.hpp"
 #include "aoc/simulation/economy/DomesticCourier.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
@@ -2001,11 +2002,13 @@ void GovernmentScreen::refresh(UIManager& ui) {
 // ============================================================================
 
 void EconomyScreen::setContext(aoc::game::GameState* gameState, const aoc::map::HexGrid* grid,
-                               PlayerId player, const aoc::sim::Market* market) {
+                               PlayerId player, const aoc::sim::Market* market,
+                               const aoc::sim::DiplomacyManager* diplomacy) {
     this->m_gameState = gameState;
     this->m_grid      = grid;
     this->m_player    = player;
     this->m_market    = market;
+    this->m_diplomacy = diplomacy;
 }
 
 void EconomyScreen::open(UIManager& ui) {
@@ -2267,6 +2270,36 @@ void EconomyScreen::open(UIManager& ui) {
         (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 14.0f},
                              LabelData{std::move(detailLine), {0.7f, 0.75f, 0.8f, 1.0f}, 10.0f});
         ++detailCount;
+    }
+
+    // World market: who holds and who needs each good among the civs this
+    // player has met. The deal composer offers its rows from the same list.
+    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 14.0f},
+                         LabelData{"-- World Market (holders | wanted by) --", tokens::TEXT_DISABLED, 11.0f});
+    uint32_t marketRows = 0;
+    for (const aoc::sim::WorldMarketRow& row :
+         aoc::sim::worldMarketRows(*this->m_gameState, this->m_diplomacy, this->m_player)) {
+        if (marketRows >= 12) {
+            break;
+        }
+        std::string line = std::string(aoc::sim::goodDef(row.goodId).name) + ": ";
+        for (std::size_t h = 0; h < row.holders.size(); ++h) {
+            line += (h > 0 ? ", " : "") + aoc::sim::civName(*this->m_gameState, row.holders[h].first) + " x" +
+                    std::to_string(row.holders[h].second);
+        }
+        if (row.holders.empty()) {
+            line += "nobody";
+        }
+        line += " | wanted by ";
+        for (std::size_t s = 0; s < row.seekers.size(); ++s) {
+            line += (s > 0 ? ", " : "") + aoc::sim::civName(*this->m_gameState, row.seekers[s]);
+        }
+        if (row.seekers.empty()) {
+            line += "nobody";
+        }
+        (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 14.0f},
+                             LabelData{std::move(line), {0.7f, 0.75f, 0.8f, 1.0f}, 10.0f});
+        ++marketRows;
     }
 
     ui.layout();

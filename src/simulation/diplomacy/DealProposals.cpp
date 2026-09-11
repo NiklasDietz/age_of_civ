@@ -18,6 +18,7 @@
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 
 #include <algorithm>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -39,15 +40,6 @@ constexpr int32_t ARMS_LIMIT_COST     = -50;
 constexpr int32_t ZONE_COST           = -30;
 constexpr int32_t WAR_GUILT_BLAME     = -150;
 constexpr int32_t WAR_GUILT_GAIN      = 50;
-
-std::string civName(const aoc::game::GameState& gameState, PlayerId id) {
-    const aoc::game::Player* p = gameState.player(id);
-    if (p == nullptr) {
-        return "P" + std::to_string(static_cast<unsigned>(id));
-    }
-    const CivilizationDef& def = civDef(p->civId());
-    return def.name.empty() ? "P" + std::to_string(static_cast<unsigned>(id)) : std::string(def.name);
-}
 
 int32_t cityValueAt(const aoc::game::GameState& gameState, PlayerId owner, hex::AxialCoord at) {
     const aoc::game::Player* p = gameState.player(owner);
@@ -151,6 +143,15 @@ ErrorCode applyDeal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, Gl
 }
 
 } // namespace
+
+std::string civName(const aoc::game::GameState& gameState, PlayerId id) {
+    const aoc::game::Player* p = gameState.player(id);
+    if (p == nullptr) {
+        return "P" + std::to_string(static_cast<unsigned>(id));
+    }
+    const CivilizationDef& def = civDef(p->civId());
+    return def.name.empty() ? "P" + std::to_string(static_cast<unsigned>(id)) : std::string(def.name);
+}
 
 namespace {
 
@@ -376,14 +377,15 @@ std::string describeDealTerm(const aoc::game::GameState& gameState, const DealTe
         case DealTermType::WarGuilt:
             return from + " accepts war guilt";
         case DealTermType::GoodsExchange:
-            return std::to_string(term.goodAmount) + " of good " + std::to_string(term.goodId) + " (" + from
+            return std::to_string(term.goodAmount) + " " + std::string(goodDef(term.goodId).name) + " (" + from
                    + " -> " + to + ")";
         case DealTermType::MostFavoredNation:
             return "Most Favoured Nation";
         case DealTermType::ExclusiveAccess:
-            return "Exclusive access to good " + std::to_string(term.goodId);
+            return "Exclusive access to " + std::string(goodDef(term.goodId).name) + " (" + from + " -> " + to
+                   + ")";
         case DealTermType::SupplyContract:
-            return std::to_string(term.goodAmount) + " of good " + std::to_string(term.goodId)
+            return std::to_string(term.goodAmount) + " " + std::string(goodDef(term.goodId).name)
                    + " per turn for " + std::to_string(term.duration) + " turns at "
                    + std::to_string(term.goldPerTurn) + " gold per turn (" + from + " -> " + to + ")";
         default:
@@ -550,6 +552,54 @@ std::optional<PurchaseTarget> aiPurchaseTarget(const aoc::game::Player& buyer) {
         best->amount = std::min(best->amount, GOODS_DEAL_MAX_UNITS);
     }
     return best;
+}
+
+std::vector<WorldMarketRow> worldMarketRows(const aoc::game::GameState& gameState,
+                                            const DiplomacyManager* diplomacy, PlayerId viewer) {
+    std::map<uint16_t, WorldMarketRow> rows;
+    for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+        if (other == nullptr) {
+            continue;
+        }
+        const PlayerId id = other->id();
+        const bool known  = id == viewer || diplomacy == nullptr ||
+                           (viewer < diplomacy->playerCount() && id < diplomacy->playerCount() &&
+                            diplomacy->haveMet(viewer, id));
+        if (!known) {
+            continue;
+        }
+        std::map<uint16_t, int32_t> held;
+        for (const std::unique_ptr<aoc::game::City>& city : other->cities()) {
+            if (city == nullptr || city->owner() != id) {
+                continue;
+            }
+            for (const std::pair<const uint16_t, int32_t>& entry : city->stockpile().goods) {
+                if (entry.second > 0 && goodDef(entry.first).category != GoodCategory::Monetary) {
+                    held[entry.first] += entry.second;
+                }
+            }
+        }
+        for (const std::pair<const uint16_t, int32_t>& entry : held) {
+            WorldMarketRow& row = rows[entry.first];
+            row.goodId          = entry.first;
+            row.holders.emplace_back(id, entry.second);
+        }
+        for (const std::pair<const uint16_t, int32_t>& need : other->economy().totalNeeds) {
+            if (need.second > 0 && goodDef(need.first).category != GoodCategory::Monetary) {
+                WorldMarketRow& row = rows[need.first];
+                row.goodId          = need.first;
+                row.seekers.push_back(id);
+            }
+        }
+    }
+    std::vector<WorldMarketRow> out;
+    out.reserve(rows.size());
+    for (std::pair<const uint16_t, WorldMarketRow>& entry : rows) {
+        std::sort(entry.second.holders.begin(), entry.second.holders.end());
+        std::sort(entry.second.seekers.begin(), entry.second.seekers.end());
+        out.push_back(std::move(entry.second));
+    }
+    return out;
 }
 
 bool aiOfferToBuy(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,

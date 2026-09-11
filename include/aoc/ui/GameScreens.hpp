@@ -20,7 +20,7 @@
 
 namespace aoc::ui { class UIManager; }
 namespace aoc::map { class HexGrid; }
-namespace aoc::sim { class Market; class EconomySimulation; }
+namespace aoc::sim { class Market; class EconomySimulation; class DiplomacyManager; }
 namespace aoc::game { class GameState; }
 
 namespace aoc::ui {
@@ -154,7 +154,8 @@ private:
 class EconomyScreen final : public ScreenBase {
 public:
     void setContext(aoc::game::GameState* gameState, const aoc::map::HexGrid* grid,
-                    PlayerId player, const aoc::sim::Market* market = nullptr);
+                    PlayerId player, const aoc::sim::Market* market = nullptr,
+                    const aoc::sim::DiplomacyManager* diplomacy = nullptr);
     void open(UIManager& ui) override;
     void close(UIManager& ui) override;
     void refresh(UIManager& ui) override;
@@ -173,6 +174,7 @@ private:
     aoc::game::GameState* m_gameState = nullptr;
     const aoc::map::HexGrid* m_grid = nullptr;
     const aoc::sim::Market* m_market = nullptr;
+    const aoc::sim::DiplomacyManager* m_diplomacy = nullptr; ///< limits the world market to met civs
     PlayerId m_player = INVALID_PLAYER;
     WidgetId m_infoLabel = INVALID_WIDGET;
     WidgetId m_marketList = INVALID_WIDGET;

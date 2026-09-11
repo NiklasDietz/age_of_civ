@@ -10,7 +10,9 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/map/HexGrid.hpp"
+#include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/diplomacy/EspionageSystem.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 
 // ---------------------------------------------------------------------------
 // isProductionItemValid
@@ -158,4 +160,88 @@ TEST_CASE("processSpyMissions records one outcome per resolved mission, capped a
         w.gs.recordSpyMission(rec);
     }
     CHECK(w.gs.spyMissionRecords().size() == aoc::game::GameState::MAX_SPY_MISSION_RECORDS);
+}
+
+// ---------------------------------------------------------------------------
+// dealCommandError (POST /game/deal/propose)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// A sound command: five silk sold and a contract for one iron a turn.
+aoc::debug::ProposeDealCommand soundDeal() {
+    aoc::debug::ProposeDealCommand cmd{};
+    cmd.player          = aoc::PlayerId{0};
+    cmd.target          = aoc::PlayerId{1};
+    cmd.giveGold        = 0;
+    cmd.askGold         = 50;
+    cmd.goodId          = aoc::sim::goods::SILK;
+    cmd.goodAmount      = 5;
+    cmd.contractGood    = aoc::sim::goods::IRON_ORE;
+    cmd.contractPerTurn = 1;
+    cmd.contractGold    = 3;
+    cmd.contractTurns   = aoc::sim::SUPPLY_CONTRACT_MAX_TURNS;
+    cmd.exclusiveGood   = aoc::sim::goods::SILK;
+    return cmd;
+}
+
+} // namespace
+
+TEST_CASE("dealCommandError: a sound command, gold-only and with every goods leg, passes") {
+    CHECK(aoc::debug::dealCommandError(soundDeal()).empty());
+    aoc::debug::ProposeDealCommand goldOnly{};
+    goldOnly.player   = aoc::PlayerId{0};
+    goldOnly.target   = aoc::PlayerId{2};
+    goldOnly.giveGold = 100;
+    CHECK(aoc::debug::dealCommandError(goldOnly).empty());
+}
+
+TEST_CASE("dealCommandError: the parties must differ and gold must not be negative") {
+    aoc::debug::ProposeDealCommand cmd = soundDeal();
+    cmd.target                         = cmd.player;
+    CHECK(aoc::debug::dealCommandError(cmd) == "player and target must differ");
+    cmd          = soundDeal();
+    cmd.giveGold = -1;
+    CHECK(aoc::debug::dealCommandError(cmd) == "gold must not be negative");
+    cmd         = soundDeal();
+    cmd.askGold = -1;
+    CHECK(aoc::debug::dealCommandError(cmd) == "gold must not be negative");
+}
+
+TEST_CASE("dealCommandError: every good id must be below GOOD_COUNT or -1") {
+    for (const int32_t bad : {static_cast<int32_t>(aoc::sim::goods::GOOD_COUNT), -2}) {
+        aoc::debug::ProposeDealCommand cmd = soundDeal();
+        cmd.goodId                         = bad;
+        CHECK(aoc::debug::dealCommandError(cmd) == "good id out of range");
+        cmd              = soundDeal();
+        cmd.contractGood = bad;
+        CHECK(aoc::debug::dealCommandError(cmd) == "good id out of range");
+        cmd               = soundDeal();
+        cmd.exclusiveGood = bad;
+        CHECK(aoc::debug::dealCommandError(cmd) == "good id out of range");
+    }
+}
+
+TEST_CASE("dealCommandError: a shipment needs a positive amount") {
+    aoc::debug::ProposeDealCommand cmd = soundDeal();
+    cmd.goodAmount                     = 0;
+    CHECK(aoc::debug::dealCommandError(cmd) == "goodAmount must be positive");
+    cmd.goodId = -1; // no shipment: the amount is ignored
+    CHECK(aoc::debug::dealCommandError(cmd).empty());
+}
+
+TEST_CASE("dealCommandError: a contract needs a positive rate, non-negative gold and a length within the cap") {
+    aoc::debug::ProposeDealCommand cmd = soundDeal();
+    cmd.contractPerTurn                = 0;
+    CHECK(aoc::debug::dealCommandError(cmd) == "contractPerTurn must be positive");
+    cmd              = soundDeal();
+    cmd.contractGold = -5;
+    CHECK(aoc::debug::dealCommandError(cmd) == "contractGold must not be negative");
+    cmd               = soundDeal();
+    cmd.contractTurns = 0;
+    CHECK(aoc::debug::dealCommandError(cmd) == "contractTurns out of range");
+    cmd.contractTurns = aoc::sim::SUPPLY_CONTRACT_MAX_TURNS + 1;
+    CHECK(aoc::debug::dealCommandError(cmd) == "contractTurns out of range");
+    cmd.contractGood = -1; // no contract: its fields are ignored
+    CHECK(aoc::debug::dealCommandError(cmd).empty());
 }

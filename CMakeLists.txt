@@ -242,7 +242,6 @@ set(AOC_GFX_ONLY_SOURCES
     src/ui/Theme.cpp
     src/ui/Tooltip.cpp
     src/ui/TradeRouteSetupScreen.cpp
-    src/ui/TradeScreen.cpp
     src/ui/Tutorial.cpp
     src/ui/UIManager.cpp
 )
@@ -455,7 +454,6 @@ set(AOC_LIB_SOURCES
     src/ui/UIManager.cpp
     src/ui/GameScreens.cpp
     src/ui/CityDetailTabs.cpp
-    src/ui/TradeScreen.cpp
     src/ui/TradeRouteSetupScreen.cpp
     src/ui/DiplomacyScreen.cpp
     src/ui/EventLog.cpp
@@ -1060,6 +1058,7 @@ if(AOC_BUILD_TESTS)
         test_luxury_demand
         test_goods_valuation
         test_supply_contract
+        test_world_market
         test_resource_curse_is_emergent
         test_deal_proposals
         test_natural_disasters

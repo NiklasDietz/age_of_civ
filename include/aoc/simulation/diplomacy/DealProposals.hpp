@@ -24,6 +24,8 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace aoc::game {
 class GameState;
@@ -83,8 +85,11 @@ inline constexpr CurrencyAmount CASH_POOR_TREASURY = 50;
 [[nodiscard]] bool aiAcceptsDeal(const aoc::game::GameState& gameState, const DiplomacyManager& diplomacy,
                                  PlayerId ai, const DiplomaticDeal& deal, const Market* market = nullptr);
 
-/// "100 gold (Rome -> Egypt)", "Open Borders (30 turns)", ...
+/// "100 gold (Rome -> Egypt)", "Open Borders (30 turns)", "5 Silk (Rome -> Egypt)", ...
 [[nodiscard]] std::string describeDealTerm(const aoc::game::GameState& gameState, const DealTerm& term);
+
+/// The civ's display name, or "P<id>" for a seat without one.
+[[nodiscard]] std::string civName(const aoc::game::GameState& gameState, PlayerId id);
 
 /// EntityNotFound: bad or identical parties. InvalidState: not met, a pending
 /// proposal already waits between them, open borders offered at war, or the AI
@@ -150,6 +155,20 @@ struct PurchaseTarget {
 /// The old rule took the largest quantity, which a luxury need of one could
 /// never win.
 [[nodiscard]] std::optional<PurchaseTarget> aiPurchaseTarget(const aoc::game::Player& buyer);
+
+/// One good on the world market as `viewer` sees it: who holds how much and
+/// who wants it, among the civs the viewer has met plus the viewer. Coin
+/// goods are left out; the market view is about goods.
+struct WorldMarketRow {
+    uint16_t goodId = 0;
+    std::vector<std::pair<PlayerId, int32_t>> holders; ///< ascending by player
+    std::vector<PlayerId> seekers;                     ///< civs with an unmet need
+};
+
+/// Rows ascending by good id; a null diplomacy counts every civ as met.
+[[nodiscard]] std::vector<WorldMarketRow> worldMarketRows(const aoc::game::GameState& gameState,
+                                                          const DiplomacyManager* diplomacy,
+                                                          PlayerId viewer);
 
 /// Drop proposals whose expiresTurn has come. Runs once per turn.
 void expireProposals(aoc::game::GameState& gameState, int32_t currentTurn);

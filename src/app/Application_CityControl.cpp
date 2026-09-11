@@ -7,6 +7,8 @@
  */
 
 #include "aoc/app/Application.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
+#include "aoc/debug/GameControlValidation.hpp"
 
 #include "aoc/core/Log.hpp"
 #include "aoc/debug/DebugServer.hpp"
@@ -955,23 +957,45 @@ void Application::registerDealRoutes() {
             int32_t askGold       = 0;
             int32_t openBorders   = 0;
             int32_t nonAggression = 0;
+            aoc::debug::ProposeDealCommand cmd{};
+            int32_t goodSell = 1, contractSell = 1, exclusiveSell = 1;
             std::string err;
             if (!readIntParam(q, "player", player, err) ||
                 !readIntParam(q, "target", target, err) ||
                 !readOptionalInt(q, "giveGold", 0, giveGold, err) ||
                 !readOptionalInt(q, "askGold", 0, askGold, err) ||
                 !readOptionalInt(q, "openBorders", 0, openBorders, err) ||
-                !readOptionalInt(q, "nonAggression", 0, nonAggression, err)) {
+                !readOptionalInt(q, "nonAggression", 0, nonAggression, err) ||
+                !readOptionalInt(q, "goodId", -1, cmd.goodId, err) ||
+                !readOptionalInt(q, "goodAmount", 0, cmd.goodAmount, err) ||
+                !readOptionalInt(q, "goodSell", 1, goodSell, err) ||
+                !readOptionalInt(q, "contractGood", -1, cmd.contractGood, err) ||
+                !readOptionalInt(q, "contractPerTurn", 0, cmd.contractPerTurn, err) ||
+                !readOptionalInt(q, "contractGold", 0, cmd.contractGold, err) ||
+                !readOptionalInt(q, "contractTurns", 0, cmd.contractTurns, err) ||
+                !readOptionalInt(q, "contractSell", 1, contractSell, err) ||
+                !readOptionalInt(q, "exclusiveGood", -1, cmd.exclusiveGood, err) ||
+                !readOptionalInt(q, "exclusiveSell", 1, exclusiveSell, err)) {
                 return err;
             }
-            if (player < 0 || target < 0 || player >= MAX_PLAYERS || target >= MAX_PLAYERS ||
-                giveGold < 0 || askGold < 0) {
-                return std::string("{\"error\":\"player, target or gold out of range\"}");
+            if (player < 0 || target < 0 || player >= MAX_PLAYERS || target >= MAX_PLAYERS) {
+                return std::string("{\"error\":\"player or target out of range\"}");
+            }
+            cmd.player        = static_cast<aoc::PlayerId>(player);
+            cmd.target        = static_cast<aoc::PlayerId>(target);
+            cmd.giveGold      = giveGold;
+            cmd.askGold       = askGold;
+            cmd.openBorders   = openBorders != 0;
+            cmd.nonAggression = nonAggression != 0;
+            cmd.goodSell      = goodSell != 0;
+            cmd.contractSell  = contractSell != 0;
+            cmd.exclusiveSell = exclusiveSell != 0;
+            const std::string_view why = aoc::debug::dealCommandError(cmd);
+            if (!why.empty()) {
+                return "{\"error\":\"" + std::string(why) + "\"}";
             }
             std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
-            this->m_pendingCommands.push_back(aoc::debug::ProposeDealCommand{
-                static_cast<aoc::PlayerId>(player), static_cast<aoc::PlayerId>(target), giveGold,
-                askGold, openBorders != 0, nonAggression != 0});
+            this->m_pendingCommands.push_back(cmd);
             return std::string("{\"queued\":true}");
         });
 
@@ -1047,6 +1071,43 @@ void Application::registerDealRoutes() {
             json += "]}";
             return json;
         });
+    this->m_debugServer->routeJson(
+        DSM::Get, "/game/market", [this](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            std::string err;
+            if (!readIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (player < 0 || player >= MAX_PLAYERS) {
+                return std::string("{\"error\":\"player out of range\"}");
+            }
+            // Who holds and who needs each good, among the civs this player has met.
+            std::string json = "{\"rows\":[";
+            bool firstRow    = true;
+            for (const aoc::sim::WorldMarketRow& row : aoc::sim::worldMarketRows(
+                     this->m_gameState, &this->m_diplomacy, static_cast<aoc::PlayerId>(player))) {
+                if (!firstRow) {
+                    json += ",";
+                }
+                firstRow = false;
+                json += "{\"good\":" + std::to_string(row.goodId) + ",\"name\":\"" +
+                        std::string(aoc::sim::goodDef(row.goodId).name) + "\",\"holders\":[";
+                for (std::size_t h = 0; h < row.holders.size(); ++h) {
+                    json += (h > 0 ? "," : "") + std::string("{\"player\":") +
+                            std::to_string(static_cast<unsigned>(row.holders[h].first)) +
+                            ",\"amount\":" + std::to_string(row.holders[h].second) + "}";
+                }
+                json += "],\"seekers\":[";
+                for (std::size_t s = 0; s < row.seekers.size(); ++s) {
+                    json += (s > 0 ? "," : "") + std::to_string(static_cast<unsigned>(row.seekers[s]));
+                }
+                json += "]}";
+            }
+            return json + "]}";
+        });
 }
 
 void Application::executeGameControlCommand(const aoc::debug::ProposeDealCommand& cmd) {
@@ -1083,10 +1144,43 @@ void Application::executeGameControlCommand(const aoc::debug::ProposeDealCommand
         t.duration   = 30;
         deal.terms.push_back(t);
     }
+    // Goods legs: a shipment, a standing contract, exclusive access. Who
+    // supplies whom follows the *Sell flags; the AI answers by valuation.
+    const auto supplier = [&cmd](bool sell) { return sell ? cmd.player : cmd.target; };
+    const auto receiver = [&cmd](bool sell) { return sell ? cmd.target : cmd.player; };
+    if (cmd.goodId >= 0) {
+        aoc::sim::DealTerm t{};
+        t.type       = aoc::sim::DealTermType::GoodsExchange;
+        t.fromPlayer = supplier(cmd.goodSell);
+        t.toPlayer   = receiver(cmd.goodSell);
+        t.goodId     = static_cast<uint16_t>(cmd.goodId);
+        t.goodAmount = cmd.goodAmount;
+        deal.terms.push_back(t);
+    }
+    if (cmd.contractGood >= 0) {
+        aoc::sim::DealTerm t{};
+        t.type        = aoc::sim::DealTermType::SupplyContract;
+        t.fromPlayer  = supplier(cmd.contractSell);
+        t.toPlayer    = receiver(cmd.contractSell);
+        t.goodId      = static_cast<uint16_t>(cmd.contractGood);
+        t.goodAmount  = cmd.contractPerTurn;
+        t.goldPerTurn = cmd.contractGold;
+        t.duration    = cmd.contractTurns;
+        deal.terms.push_back(t);
+    }
+    if (cmd.exclusiveGood >= 0) {
+        aoc::sim::DealTerm t{};
+        t.type       = aoc::sim::DealTermType::ExclusiveAccess;
+        t.fromPlayer = supplier(cmd.exclusiveSell);
+        t.toPlayer   = receiver(cmd.exclusiveSell);
+        t.goodId     = static_cast<uint16_t>(cmd.exclusiveGood);
+        deal.terms.push_back(t);
+    }
     logDiplomacyResult("Deal proposal", cmd.player, cmd.target,
                        aoc::sim::requestProposeDeal(this->m_gameState, this->m_hexGrid,
                                                     this->m_gameState.deals(), this->m_diplomacy, deal,
-                                                    this->m_gameState.currentTurn()));
+                                                    this->m_gameState.currentTurn(),
+                                                    &this->m_economy.market()));
 }
 
 void Application::executeGameControlCommand(const aoc::debug::RespondProposalCommand& cmd) {

@@ -635,13 +635,33 @@ def aoc_list_deals(player: int) -> dict:
 
 @mcp.tool()
 def aoc_propose_deal(player: int, target: int, give_gold: int = 0, ask_gold: int = 0,
-                     open_borders: bool = False, non_aggression: bool = False) -> dict:
-    """Propose a deal to `target`: gold given, gold asked, open borders and/or a non-aggression pact
-    (30 turns). An AI answers at once by its gold-equivalent valuation (stance-aware); a human
-    recipient gets it in the inbox for 5 turns. Queues the request.
+                     open_borders: bool = False, non_aggression: bool = False,
+                     good_id: int = -1, good_amount: int = 0, good_sell: bool = True,
+                     contract_good: int = -1, contract_per_turn: int = 0, contract_gold: int = 0,
+                     contract_turns: int = 0, contract_sell: bool = True,
+                     exclusive_good: int = -1, exclusive_sell: bool = True) -> dict:
+    """Propose a deal to `target`. Legs: gold given, gold asked, open borders, a non-aggression pact
+    (30 turns), a shipment of `good_amount` of `good_id`, a supply contract of `contract_per_turn`
+    of `contract_good` per turn for `contract_gold` gold per turn over `contract_turns` turns (max
+    60), and exclusive access to `exclusive_good`. Each `*_sell` flag: True means `player` supplies
+    `target`, False means `player` asks `target` to supply. Good ids and holders come from
+    aoc_world_market. An AI answers at once by its valuation (need, stock, sole source, war, cash);
+    a human recipient gets it in the inbox for 5 turns. Queues the request.
     """
     return _post("/game/deal/propose", player=player, target=target, giveGold=give_gold, askGold=ask_gold,
-                 openBorders=1 if open_borders else 0, nonAggression=1 if non_aggression else 0)
+                 openBorders=1 if open_borders else 0, nonAggression=1 if non_aggression else 0,
+                 goodId=good_id, goodAmount=good_amount, goodSell=1 if good_sell else 0,
+                 contractGood=contract_good, contractPerTurn=contract_per_turn, contractGold=contract_gold,
+                 contractTurns=contract_turns, contractSell=1 if contract_sell else 0,
+                 exclusiveGood=exclusive_good, exclusiveSell=1 if exclusive_sell else 0)
+
+
+@mcp.tool()
+def aoc_world_market(player: int) -> dict:
+    """The world market as `player` sees it: for every good some met civ holds or needs, who holds
+    how much and who has an unmet need. The ids feed aoc_propose_deal's goods legs.
+    """
+    return _get("/game/market", player=player)
 
 
 @mcp.tool()

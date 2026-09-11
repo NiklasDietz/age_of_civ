@@ -266,20 +266,10 @@ void Application::buildHUD() {
     makeTopBtn(this->m_topBar, "Econ", aoc::ui::theme().scaled(50.0f), [this]() {
         if (!this->m_economyScreen.isOpen()) {
             this->m_economyScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0,
-                                             &this->m_economy.market());
+                                             &this->m_economy.market(), &this->m_diplomacy);
             this->m_economyScreen.open(this->m_uiManager);
         } else {
             this->m_economyScreen.close(this->m_uiManager);
-        }
-    });
-
-    makeTopBtn(this->m_topBar, "Trade", aoc::ui::theme().scaled(50.0f), [this]() {
-        if (!this->m_tradeScreen.isOpen()) {
-            this->m_tradeScreen.setContext(&this->m_gameState, 0, &this->m_economy.market(),
-                                           &this->m_diplomacy);
-            this->m_tradeScreen.open(this->m_uiManager);
-        } else {
-            this->m_tradeScreen.close(this->m_uiManager);
         }
     });
 
@@ -297,7 +287,7 @@ void Application::buildHUD() {
         if (!this->m_diplomacyScreen.isOpen()) {
             this->m_diplomacyScreen.setContext(&this->m_gameState, 0, &this->m_diplomacy,
                                                &this->m_hexGrid, &this->m_gameState.deals(),
-                                               &this->m_allianceTracker);
+                                               &this->m_allianceTracker, &this->m_economy.market());
             this->m_diplomacyScreen.open(this->m_uiManager);
         } else {
             this->m_diplomacyScreen.close(this->m_uiManager);
@@ -704,7 +694,8 @@ void Application::updateDiploStrip() {
                 if (!this->m_diplomacyScreen.isOpen()) {
                     this->m_diplomacyScreen.setContext(
                         &this->m_gameState, PlayerId{0}, &this->m_diplomacy, &this->m_hexGrid,
-                        &this->m_gameState.deals(), &this->m_allianceTracker);
+                        &this->m_gameState.deals(), &this->m_allianceTracker,
+                        &this->m_economy.market());
                     this->m_diplomacyScreen.open(this->m_uiManager);
                 }
             };
@@ -841,7 +832,6 @@ void Application::updateHUD() {
     this->m_techScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_governmentScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_economyScreen.setScreenSize(hudScreenW, hudScreenH);
-    this->m_tradeScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_diplomacyScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_religionScreen.setScreenSize(hudScreenW, hudScreenH);
     this->m_espionageScreen.setScreenSize(hudScreenW, hudScreenH);

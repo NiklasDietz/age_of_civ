@@ -1884,7 +1884,6 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_screenRegistry.add(&this->m_governmentScreen);
     this->m_screenRegistry.add(&this->m_economyScreen);
     this->m_screenRegistry.add(&this->m_cityDetailScreen);
-    this->m_screenRegistry.add(&this->m_tradeScreen);
     this->m_screenRegistry.add(&this->m_tradeRouteSetupScreen);
     this->m_screenRegistry.add(&this->m_diplomacyScreen);
     this->m_screenRegistry.add(&this->m_religionScreen);
@@ -5244,7 +5243,7 @@ void Application::run() {
         if (!this->m_spectatorMode &&
             this->m_inputManager.isActionPressed(InputAction::OpenEconomy)) {
             this->m_economyScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0,
-                                             &this->m_economy.market());
+                                             &this->m_economy.market(), &this->m_diplomacy);
             this->m_economyScreen.toggle(this->m_uiManager);
         }
         if (!this->m_spectatorMode &&
@@ -5653,7 +5652,6 @@ void Application::run() {
         this->m_governmentScreen.refresh(this->m_uiManager);
         this->m_economyScreen.refresh(this->m_uiManager);
         this->m_cityDetailScreen.refresh(this->m_uiManager);
-        this->m_tradeScreen.refresh(this->m_uiManager);
         this->m_tradeRouteSetupScreen.refresh(this->m_uiManager);
 
         // "Waiting for you" banner: show when human is last player still acting

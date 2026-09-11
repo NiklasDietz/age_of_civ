@@ -262,6 +262,18 @@ struct ProposeDealCommand {
     int32_t askGold;
     bool openBorders;
     bool nonAggression;
+    /// Goods legs, -1 for none. `*Sell` true: `player` supplies `target`;
+    /// false: `player` asks `target` to supply. Validated by dealCommandError.
+    int32_t goodId          = -1;
+    int32_t goodAmount      = 0;
+    bool goodSell           = true;
+    int32_t contractGood    = -1;
+    int32_t contractPerTurn = 0;
+    int32_t contractGold    = 0;
+    int32_t contractTurns   = 0;
+    bool contractSell       = true;
+    int32_t exclusiveGood   = -1;
+    bool exclusiveSell      = true;
 };
 /// Answer proposal `index` of the human's inbox.
 struct RespondProposalCommand {

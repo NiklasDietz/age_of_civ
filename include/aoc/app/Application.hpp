@@ -34,7 +34,6 @@
 #include "aoc/ui/PauseMenu.hpp"
 #include "aoc/ui/LoadGameMenu.hpp"
 #include "aoc/ui/GameScreens.hpp"
-#include "aoc/ui/TradeScreen.hpp"
 #include "aoc/ui/TradeRouteSetupScreen.hpp"
 #include "aoc/ui/DiplomacyScreen.hpp"
 #include "aoc/ui/ReligionScreen.hpp"
@@ -325,7 +324,6 @@ private:
     aoc::hex::AxialCoord m_pendingDistrictCity{0, 0};
     aoc::sim::DistrictType m_pendingDistrictType = aoc::sim::DistrictType::Campus;
     bool m_pendingDistrictActive                 = false;
-    aoc::ui::TradeScreen m_tradeScreen;
     aoc::ui::TradeRouteSetupScreen m_tradeRouteSetupScreen;
     aoc::ui::DiplomacyScreen m_diplomacyScreen;
     aoc::ui::ReligionScreen m_religionScreen;

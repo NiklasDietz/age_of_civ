@@ -18,10 +18,13 @@
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/diplomacy/DealProposals.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
+#include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/monetary/Bonds.hpp"
 #include "aoc/core/Log.hpp"
 
+#include <algorithm>
 #include <array>
 #include <climits>
 #include <functional>
@@ -34,40 +37,127 @@ void DiplomacyScreen::setContext(aoc::game::GameState* gameState, PlayerId human
                                   aoc::sim::DiplomacyManager* diplomacy,
                                   aoc::map::HexGrid* grid,
                                   aoc::sim::GlobalDealTracker* dealTracker,
-                                  aoc::sim::AllianceObligationTracker* obligations) {
+                                  aoc::sim::AllianceObligationTracker* obligations,
+                                  const aoc::sim::Market* market) {
     this->m_gameState   = gameState;
     this->m_player      = humanPlayer;
     this->m_diplomacy   = diplomacy;
     this->m_grid        = grid;
     this->m_dealTracker = dealTracker;
     this->m_obligations = obligations;
+    this->m_market      = market;
     this->m_warTarget   = INVALID_PLAYER;
     this->m_composerTarget = INVALID_PLAYER;
     this->m_composerTerms.clear();
 }
 
-void DiplomacyScreen::toggleComposerTerm(aoc::sim::DealTermType type, PlayerId from, PlayerId to, int32_t gold) {
-    // Gold: one lump per direction; the same amount again removes it.
+namespace {
+
+[[nodiscard]] bool sameSlot(const aoc::sim::DealTerm& a, const aoc::sim::DealTerm& b) {
+    return a.type == b.type && a.fromPlayer == b.fromPlayer && a.toPlayer == b.toPlayer && a.goodId == b.goodId;
+}
+
+[[nodiscard]] bool sameContent(const aoc::sim::DealTerm& a, const aoc::sim::DealTerm& b) {
+    return a.goldLump == b.goldLump && a.goodAmount == b.goodAmount && a.goldPerTurn == b.goldPerTurn &&
+           a.duration == b.duration;
+}
+
+[[nodiscard]] std::string signedGold(int32_t value) {
+    return (value >= 0 ? "+" : "") + std::to_string(value) + " gold";
+}
+
+[[nodiscard]] int32_t heldBy(const aoc::sim::WorldMarketRow& row, PlayerId who) {
+    for (const std::pair<PlayerId, int32_t>& holder : row.holders) {
+        if (holder.first == who) {
+            return holder.second;
+        }
+    }
+    return 0;
+}
+
+[[nodiscard]] bool seeks(const aoc::sim::WorldMarketRow& row, PlayerId who) {
+    return std::find(row.seekers.begin(), row.seekers.end(), who) != row.seekers.end();
+}
+
+/// A good one side holds, starred when the other side needs it.
+struct GoodsRow {
+    uint16_t goodId = 0;
+    int32_t held    = 0;
+    bool wanted     = false;
+};
+
+/// Wanted goods first, then the deepest stock, then the lowest id; at most `cap`.
+void rankGoodsRows(std::vector<GoodsRow>& rows, std::size_t cap) {
+    std::sort(rows.begin(), rows.end(), [](const GoodsRow& a, const GoodsRow& b) {
+        if (a.wanted != b.wanted) {
+            return a.wanted;
+        }
+        if (a.held != b.held) {
+            return a.held > b.held;
+        }
+        return a.goodId < b.goodId;
+    });
+    if (rows.size() > cap) {
+        rows.resize(cap);
+    }
+}
+
+constexpr std::size_t COMPOSER_GOODS_ROWS = 3;   ///< per side
+constexpr int32_t COMPOSER_SHIPMENT       = 5;   ///< units in a "Sell 5" / "Ask 5"
+constexpr int32_t COMPOSER_CONTRACT_TURNS = 30;
+
+} // namespace
+
+void DiplomacyScreen::toggleComposerTerm(const aoc::sim::DealTerm& term) {
     for (std::vector<aoc::sim::DealTerm>::iterator it = this->m_composerTerms.begin();
          it != this->m_composerTerms.end(); ++it) {
-        const bool sameSlot = it->type == type && it->fromPlayer == from && it->toPlayer == to;
-        if (!sameSlot) {
+        if (!sameSlot(*it, term)) {
             continue;
         }
-        const bool sameAmount = type != aoc::sim::DealTermType::GoldLump || it->goldLump == gold;
+        const bool remove = sameContent(*it, term);
         this->m_composerTerms.erase(it);
-        if (sameAmount) {
+        if (remove) {
             return;
         }
         break;
     }
-    aoc::sim::DealTerm term{};
-    term.type       = type;
-    term.fromPlayer = from;
-    term.toPlayer   = to;
-    term.goldLump   = gold;
-    term.duration   = 30;
     this->m_composerTerms.push_back(term);
+}
+
+aoc::sim::DiplomaticDeal DiplomacyScreen::composerDeal(PlayerId counterparty) const {
+    aoc::sim::DiplomaticDeal deal;
+    deal.playerA = this->m_player;
+    deal.playerB = counterparty;
+    deal.terms   = this->m_composerTerms;
+    return deal;
+}
+
+void DiplomacyScreen::balanceComposerWithGold(PlayerId counterparty) {
+    if (this->m_gameState == nullptr || this->m_diplomacy == nullptr) {
+        return;
+    }
+    std::erase_if(this->m_composerTerms, [](const aoc::sim::DealTerm& term) {
+        return term.type == aoc::sim::DealTermType::GoldLump;
+    });
+    const int32_t theirs = aoc::sim::dealValueFor(*this->m_gameState, *this->m_diplomacy, counterparty,
+                                                  this->composerDeal(counterparty), this->m_market);
+    if (theirs == 0) {
+        return;
+    }
+    // They gain: they pay me, up to what they hold. I gain: I pay them.
+    const PlayerId payer          = theirs > 0 ? counterparty : this->m_player;
+    const aoc::game::Player* who  = this->m_gameState->player(payer);
+    const int32_t owed            = theirs > 0 ? theirs : -theirs;
+    const int32_t affordable      = who != nullptr ? static_cast<int32_t>(std::min<CurrencyAmount>(who->treasury(), owed)) : owed;
+    if (affordable <= 0) {
+        return;
+    }
+    aoc::sim::DealTerm lump{};
+    lump.type       = aoc::sim::DealTermType::GoldLump;
+    lump.fromPlayer = payer;
+    lump.toPlayer   = payer == counterparty ? this->m_player : counterparty;
+    lump.goldLump   = affordable;
+    this->m_composerTerms.push_back(lump);
 }
 
 void DiplomacyScreen::open(UIManager& ui) {
@@ -448,55 +538,129 @@ void DiplomacyScreen::open(UIManager& ui) {
                 };
                 (void)ui.createButton(btnRow, {0.0f, 0.0f, 110.0f, 22.0f}, std::move(proposeBtn));
             } else {
+                if (ppWidget != nullptr) {
+                    ppWidget->autoHeight = true; // the composer adds rows
+                }
+                const aoc::sim::DiplomaticDeal draft = this->composerDeal(otherId);
                 std::string summary = "Proposal: ";
-                if (this->m_composerTerms.empty()) {
+                if (draft.terms.empty()) {
                     summary += "(nothing yet)";
                 }
-                for (std::size_t t = 0; t < this->m_composerTerms.size(); ++t) {
+                for (std::size_t t = 0; t < draft.terms.size(); ++t) {
                     if (t > 0) { summary += "; "; }
-                    summary += aoc::sim::describeDealTerm(*gsForActions, this->m_composerTerms[t]);
+                    summary += aoc::sim::describeDealTerm(*gsForActions, draft.terms[t]);
                 }
                 (void)ui.createLabel(playerPanel, {0.0f, 0.0f, 490.0f, 14.0f},
                                      LabelData{std::move(summary), tokens::TEXT_INK, 10.0f});
-                const WidgetId termRow = ui.createPanel(playerPanel, {0.0f, 0.0f, 490.0f, 26.0f},
+                // The counterpart's own valuation, so the human sees what would
+                // make the deal work before sending it.
+                const int32_t theirValue = draft.terms.empty() ? 0
+                    : aoc::sim::dealValueFor(*gsForActions, *diplomacy, otherId, draft, this->m_market);
+                (void)ui.createLabel(playerPanel, {0.0f, 0.0f, 490.0f, 14.0f},
+                                     LabelData{"Their view: " + signedGold(theirValue) +
+                                                   (theirValue >= 0 ? " (would accept)" : " (would refuse)"),
+                                               theirValue >= 0 ? tokens::STATE_SUCCESS : tokens::STATE_DANGER,
+                                               10.0f});
+                const auto makeRow = [&ui, playerPanel]() {
+                    const WidgetId row = ui.createPanel(playerPanel, {0.0f, 0.0f, 490.0f, 26.0f},
                                                         PanelData{Color{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
-                if (Widget* tr = ui.getWidget(termRow); tr != nullptr) {
-                    tr->layoutDirection = LayoutDirection::Horizontal;
-                    tr->childSpacing    = 4.0f;
-                }
-                struct Toggle {
-                    const char* label;
-                    aoc::sim::DealTermType type;
-                    bool give;
-                    int32_t gold;
+                    if (Widget* w = ui.getWidget(row); w != nullptr) {
+                        w->layoutDirection = LayoutDirection::Horizontal;
+                        w->childSpacing    = 4.0f;
+                    }
+                    return row;
                 };
-                const Toggle toggles[6] = {
-                    {"Give 100 gold", aoc::sim::DealTermType::GoldLump, true, 100},
-                    {"Give 500 gold", aoc::sim::DealTermType::GoldLump, true, 500},
-                    {"Ask 100 gold", aoc::sim::DealTermType::GoldLump, false, 100},
-                    {"Ask 500 gold", aoc::sim::DealTermType::GoldLump, false, 500},
-                    {"Open Borders", aoc::sim::DealTermType::OpenBorders, true, 0},
-                    {"Non-Aggression", aoc::sim::DealTermType::NonAggression, true, 0},
-                };
-                for (const Toggle& tg : toggles) {
+                const auto addToggle = [&ui, this](WidgetId row, std::string label, float width,
+                                                   aoc::sim::DealTerm term) {
                     ButtonData btn;
-                    btn.label        = tg.label;
+                    btn.label        = std::move(label);
                     btn.fontSize     = 10.0f;
                     btn.normalColor  = tokens::SURFACE_PARCHMENT_DIM;
                     btn.hoverColor   = tokens::BRONZE_LIGHT;
                     btn.pressedColor = tokens::STATE_PRESSED;
                     btn.cornerRadius = 3.0f;
-                    const aoc::sim::DealTermType type = tg.type;
-                    const PlayerId from = tg.give ? humanPlayer : otherId;
-                    const PlayerId to   = tg.give ? otherId : humanPlayer;
-                    const int32_t gold  = tg.gold;
-                    btn.onClick = [type, from, to, gold, &ui, this]() {
-                        this->toggleComposerTerm(type, from, to, gold);
+                    btn.onClick      = [term, &ui, this]() {
+                        this->toggleComposerTerm(term);
                         this->close(ui);
                         this->open(ui);
                     };
-                    (void)ui.createButton(termRow, {0.0f, 0.0f, 76.0f, 22.0f}, std::move(btn));
+                    (void)ui.createButton(row, {0.0f, 0.0f, width, 22.0f}, std::move(btn));
+                };
+                const auto term = [](aoc::sim::DealTermType type, PlayerId from, PlayerId to) {
+                    aoc::sim::DealTerm t{};
+                    t.type       = type;
+                    t.fromPlayer = from;
+                    t.toPlayer   = to;
+                    t.duration   = COMPOSER_CONTRACT_TURNS;
+                    return t;
+                };
+                const auto gold = [&term](PlayerId from, PlayerId to, int32_t amount) {
+                    aoc::sim::DealTerm t = term(aoc::sim::DealTermType::GoldLump, from, to);
+                    t.goldLump           = amount;
+                    return t;
+                };
+                const WidgetId presetRow = makeRow();
+                addToggle(presetRow, "Give 100 gold", 76.0f, gold(humanPlayer, otherId, 100));
+                addToggle(presetRow, "Give 500 gold", 76.0f, gold(humanPlayer, otherId, 500));
+                addToggle(presetRow, "Ask 100 gold", 76.0f, gold(otherId, humanPlayer, 100));
+                addToggle(presetRow, "Ask 500 gold", 76.0f, gold(otherId, humanPlayer, 500));
+                addToggle(presetRow, "Open Borders", 76.0f,
+                          term(aoc::sim::DealTermType::OpenBorders, humanPlayer, otherId));
+                addToggle(presetRow, "Non-Aggression", 76.0f,
+                          term(aoc::sim::DealTermType::NonAggression, humanPlayer, otherId));
+
+                // Goods rows from the world market: what I hold (starred when
+                // they need it) and what they hold (starred when I need it).
+                // A contract is priced per turn at the counterpart's break-even.
+                std::vector<GoodsRow> mine;
+                std::vector<GoodsRow> theirs;
+                for (const aoc::sim::WorldMarketRow& row :
+                     aoc::sim::worldMarketRows(*gsForActions, diplomacy, humanPlayer)) {
+                    if (const int32_t held = heldBy(row, humanPlayer); held > 0) {
+                        mine.push_back({row.goodId, held, seeks(row, otherId)});
+                    }
+                    if (const int32_t held = heldBy(row, otherId); held > 0) {
+                        theirs.push_back({row.goodId, held, seeks(row, humanPlayer)});
+                    }
                 }
+                rankGoodsRows(mine, COMPOSER_GOODS_ROWS);
+                rankGoodsRows(theirs, COMPOSER_GOODS_ROWS);
+                const auto contractAt = [&](PlayerId from, PlayerId to, uint16_t goodId) {
+                    aoc::sim::DealTerm t = term(aoc::sim::DealTermType::SupplyContract, from, to);
+                    t.goodId             = goodId;
+                    t.goodAmount         = 1;
+                    aoc::sim::DiplomaticDeal one;
+                    one.playerA = humanPlayer;
+                    one.playerB = otherId;
+                    one.terms.push_back(t);
+                    const int32_t worth = aoc::sim::dealValueFor(*gsForActions, *diplomacy, otherId, one, this->m_market);
+                    // They pay at most their gain per turn; they must be paid at least their loss.
+                    t.goldPerTurn = worth >= 0 ? worth / t.duration : (-worth + t.duration - 1) / t.duration;
+                    return t;
+                };
+                const auto goodsRows = [&](const std::vector<GoodsRow>& rows, bool selling) {
+                    for (const GoodsRow& g : rows) {
+                        const std::string name(aoc::sim::goodDef(g.goodId).name);
+                        const WidgetId row = makeRow();
+                        (void)ui.createLabel(row, {0.0f, 0.0f, 100.0f, 22.0f},
+                                             LabelData{name + " x" + std::to_string(g.held) + (g.wanted ? " *" : ""),
+                                                       tokens::TEXT_INK, 10.0f});
+                        const PlayerId from = selling ? humanPlayer : otherId;
+                        const PlayerId to   = selling ? otherId : humanPlayer;
+                        aoc::sim::DealTerm shipment = term(aoc::sim::DealTermType::GoodsExchange, from, to);
+                        shipment.goodId             = g.goodId;
+                        shipment.goodAmount         = std::min(COMPOSER_SHIPMENT, g.held);
+                        addToggle(row, (selling ? "Sell " : "Ask ") + std::to_string(shipment.goodAmount) + " " + name,
+                                  124.0f, shipment);
+                        addToggle(row, (selling ? "Supply 1 " : "Buy 1 ") + name + "/turn", 124.0f,
+                                  contractAt(from, to, g.goodId));
+                        aoc::sim::DealTerm exclusive = term(aoc::sim::DealTermType::ExclusiveAccess, from, to);
+                        exclusive.goodId             = g.goodId;
+                        addToggle(row, (selling ? "Exclusive " : "Ask exclusive ") + name, 124.0f, exclusive);
+                    }
+                };
+                goodsRows(mine, true);
+                goodsRows(theirs, false);
                 const WidgetId sendRow = ui.createPanel(playerPanel, {0.0f, 0.0f, 490.0f, 26.0f},
                                                         PanelData{Color{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
                 if (Widget* sr = ui.getWidget(sendRow); sr != nullptr) {
@@ -506,16 +670,26 @@ void DiplomacyScreen::open(UIManager& ui) {
                 aoc::sim::GlobalDealTracker* tracker = this->m_dealTracker;
                 aoc::map::HexGrid* grid              = this->m_grid;
                 addAction(sendRow, "Send Proposal", 120.0f, tokens::STATE_SUCCESS,
-                          [gsForActions, grid, tracker, diplomacy, humanPlayer, otherId, nowTurn, this]() {
-                              aoc::sim::DiplomaticDeal deal;
-                              deal.playerA = humanPlayer;
-                              deal.playerB = otherId;
-                              deal.terms   = this->m_composerTerms;
+                          [gsForActions, grid, tracker, diplomacy, otherId, nowTurn, this]() {
+                              const aoc::sim::DiplomaticDeal deal = this->composerDeal(otherId);
                               this->m_composerTarget = INVALID_PLAYER;
                               this->m_composerTerms.clear();
                               return aoc::sim::requestProposeDeal(*gsForActions, *grid, *tracker, *diplomacy, deal,
-                                                                  nowTurn);
+                                                                  nowTurn, this->m_market);
                           });
+                ButtonData balanceBtn;
+                balanceBtn.label        = "Balance with gold";
+                balanceBtn.fontSize     = 11.0f;
+                balanceBtn.normalColor  = tokens::BRONZE_BASE;
+                balanceBtn.hoverColor   = tokens::BRONZE_LIGHT;
+                balanceBtn.pressedColor = tokens::STATE_PRESSED;
+                balanceBtn.cornerRadius = 3.0f;
+                balanceBtn.onClick      = [otherId, &ui, this]() {
+                    this->balanceComposerWithGold(otherId);
+                    this->close(ui);
+                    this->open(ui);
+                };
+                (void)ui.createButton(sendRow, {0.0f, 0.0f, 120.0f, 22.0f}, std::move(balanceBtn));
                 ButtonData cancelDeal;
                 cancelDeal.label        = "Cancel";
                 cancelDeal.fontSize     = 11.0f;
@@ -739,15 +913,14 @@ void DiplomacyScreen::open(UIManager& ui) {
                         pay.toPlayer   = humanPlayer;
                         pay.goldLump   = price;
                         deal.terms.push_back(pay);
-                        const std::size_t idx = tracker->activeDeals.size();
-                        if (aoc::sim::proposeDeal(*gsState, *tracker, deal) == ErrorCode::Ok) {
-                            if (aoc::sim::acceptDeal(*gsState, *grid, *tracker,
-                                                     static_cast<int32_t>(idx)) == ErrorCode::Ok) {
-                                LOG_INFO("Human sold city %s to player %u for %d gold",
-                                         cityName.c_str(),
-                                         static_cast<unsigned>(otherId), price);
-                            }
-                        }
+                        // Through the request layer: the buyer's own valuation
+                        // answers, where it used to be forced to accept.
+                        const ErrorCode rc = aoc::sim::requestProposeDeal(
+                            *gsState, *grid, *tracker, *this->m_diplomacy, deal,
+                            gsState->currentTurn(), this->m_market);
+                        LOG_INFO("Human offered city %s to player %u for %d gold: %s",
+                                 cityName.c_str(), static_cast<unsigned>(otherId), price,
+                                 std::string(aoc::describeError(rc)).c_str());
                         this->close(ui);
                     };
                     (void)ui.createButton(btnRow, {0.0f, 0.0f, 160.0f, 22.0f}, std::move(scBtn));
@@ -801,15 +974,12 @@ void DiplomacyScreen::open(UIManager& ui) {
                         pay.toPlayer   = humanPlayer;
                         pay.goldLump   = 100;
                         deal.terms.push_back(pay);
-                        const std::size_t idx = tracker->activeDeals.size();
-                        if (aoc::sim::proposeDeal(*gsState, *tracker, deal) == ErrorCode::Ok) {
-                            if (aoc::sim::acceptDeal(*gsState, *grid, *tracker,
-                                                     static_cast<int32_t>(idx)) == ErrorCode::Ok) {
-                                LOG_INFO("Human ceded tile (%d,%d) to player %u for 100 gold",
-                                         foundTile.q, foundTile.r,
-                                         static_cast<unsigned>(otherId));
-                            }
-                        }
+                        const ErrorCode rc = aoc::sim::requestProposeDeal(
+                            *gsState, *grid, *tracker, *this->m_diplomacy, deal,
+                            gsState->currentTurn(), this->m_market);
+                        LOG_INFO("Human offered tile (%d,%d) to player %u for 100 gold: %s",
+                                 foundTile.q, foundTile.r, static_cast<unsigned>(otherId),
+                                 std::string(aoc::describeError(rc)).c_str());
                         this->close(ui);
                     };
                     (void)ui.createButton(btnRow, {0.0f, 0.0f, 120.0f, 22.0f}, std::move(ctBtn));
