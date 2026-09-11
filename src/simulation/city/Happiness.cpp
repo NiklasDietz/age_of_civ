@@ -9,6 +9,7 @@
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/city/District.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/monetary/Inflation.hpp"
@@ -26,6 +27,29 @@
 
 namespace aoc::sim {
 
+int32_t luxuryTypesHeld(const aoc::game::Player& player) {
+    int32_t held = 0;
+    for (const uint16_t luxId : luxuryGoodIds()) {
+        for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+            if (city->stockpile().getAmount(luxId) > 0) {
+                ++held;
+                break;
+            }
+        }
+    }
+    return held;
+}
+
+int32_t luxuryVarietyTarget(const aoc::game::Player& player) {
+    return 2 + static_cast<int32_t>(player.era().currentEra.value) + player.ownedCityCount() / 2;
+}
+
+float luxuryShortfallPenalty(int32_t held, int32_t target) {
+    const int32_t missing = std::max(0, target - held);
+    return std::min(LUXURY_SHORTFALL_PENALTY_CAP,
+                    static_cast<float>(missing) * LUXURY_SHORTFALL_PENALTY_PER_TYPE);
+}
+
 void computeCityHappiness(aoc::game::Player& player, const GlobalReligionTracker* tracker) {
     // War weariness penalty
     float warWearinessPenalty = warWearinessHappinessPenalty(player.warWeariness().weariness);
@@ -34,39 +58,21 @@ void computeCityHappiness(aoc::game::Player& player, const GlobalReligionTracker
     float inflationPenalty = inflationHappinessPenalty(player.monetary().inflationRate);
     float taxPenalty       = -taxHappinessModifier(player.monetary().taxRate);
 
-    // Gather unique luxury resource types across ALL player cities (deduplication).
-    constexpr uint16_t RAW_LUXURY_IDS[] = {
-        goods::WINE, goods::SPICES, goods::SILK,    goods::IVORY, goods::GEMS,
-        goods::DYES, goods::FURS,   goods::INCENSE, goods::SUGAR, goods::PEARLS,
-        goods::TEA,  goods::COFFEE, goods::TOBACCO};
-    int32_t uniqueLuxuryCount = 0;
-    // Monopoly bonus: holding >=3 units of any single luxury (across the
-    // whole empire) grants +1 extra unique-luxury-equivalent per type.
-    // Encourages specialization + trade of surplus.
-    int32_t monopolyBonusCount = 0;
-    for (uint16_t luxId : RAW_LUXURY_IDS) {
-        int32_t totalStock = 0;
-        for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
-            totalStock += city->stockpile().getAmount(luxId);
-        }
-        if (totalStock > 0) {
-            ++uniqueLuxuryCount;
-            if (totalStock >= 3) {
-                ++monopolyBonusCount;
-            }
-        }
-    }
-    uniqueLuxuryCount += monopolyBonusCount;
-
-    int32_t playerCityCount = player.ownedCityCount();
-
-    // Each unique luxury provides +1 amenity to each city, up to 4 cities per luxury.
-    float luxuryAmenityPerCity = 0.0f;
+    // Luxury variety. Each distinct luxury type the empire holds is one
+    // amenity per city (a type covers four cities), and a shortfall against
+    // what the era expects costs a little. Quantity buys nothing: three units
+    // of one type used to be worth a second type, so a one-off gift replaced
+    // a trading relationship.
+    const int32_t varietyHeld     = luxuryTypesHeld(player);
+    const int32_t playerCityCount = player.ownedCityCount();
+    float luxuryAmenityPerCity    = 0.0f;
     if (playerCityCount > 0) {
-        float totalPool      = static_cast<float>(uniqueLuxuryCount) * 4.0f;
-        luxuryAmenityPerCity = std::min(static_cast<float>(uniqueLuxuryCount),
-                                        totalPool / static_cast<float>(playerCityCount));
+        const float totalPool = static_cast<float>(varietyHeld) * LUXURY_CITIES_PER_TYPE;
+        luxuryAmenityPerCity  = std::min(static_cast<float>(varietyHeld),
+                                         totalPool / static_cast<float>(playerCityCount));
     }
+    const float varietyPenalty =
+        luxuryShortfallPenalty(varietyHeld, luxuryVarietyTarget(player));
 
     // Government data for empire size penalty and military unhappiness
     const GovernmentDef& gdef = governmentDef(player.government().government);
@@ -108,10 +114,10 @@ void computeCityHappiness(aoc::game::Player& player, const GlobalReligionTracker
         happiness.amenities = 1.0f;
 
         // Luxury allocation slider bonus
-        happiness.amenities += player.monetary().luxuryAllocation * 5.0f;
+        happiness.amenities += player.monetary().luxuryAllocation * LUXURY_SLIDER_AMENITIES;
 
         // Deduplicated luxury amenities
-        happiness.amenities += luxuryAmenityPerCity;
+        happiness.amenities += luxuryAmenityPerCity - varietyPenalty;
 
         // Processed goods happiness: having consumer goods, food, clothing, and
         // electronics in the city stockpile = citizens are well-supplied.

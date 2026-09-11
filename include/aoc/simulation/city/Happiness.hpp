@@ -35,6 +35,27 @@ inline constexpr float GOODS_AMENITY_CAP_MULTIPLE = 8.0f;
 /// reward and failing it is a penalty rather than merely the absence of one.
 inline constexpr float CONSUMER_SATISFACTION_AMENITIES = 2.0f;
 
+/// Luxury variety model (money and trade plan, B3). Each distinct luxury type
+/// is one amenity per city and covers LUXURY_CITIES_PER_TYPE cities; the era
+/// expects luxuryVarietyTarget() types and each missing one costs a little,
+/// capped. Quantity buys nothing, and every held type costs LUXURY_UPKEEP
+/// units a turn (EconomySimulation), so a one-off gift is no substitute for a
+/// standing supply.
+inline constexpr float LUXURY_CITIES_PER_TYPE          = 4.0f;
+inline constexpr float LUXURY_SHORTFALL_PENALTY_PER_TYPE = 0.25f;
+inline constexpr float LUXURY_SHORTFALL_PENALTY_CAP     = 2.0f;
+inline constexpr int32_t LUXURY_UPKEEP                 = 1;
+/// The luxury slider is worth this many amenities at 100%; it was 5, enough
+/// to substitute for trade entirely.
+inline constexpr float LUXURY_SLIDER_AMENITIES          = 2.0f;
+
+/// Distinct luxury types held anywhere in the empire.
+[[nodiscard]] int32_t luxuryTypesHeld(const aoc::game::Player& player);
+/// 2 + era + cities / 2.
+[[nodiscard]] int32_t luxuryVarietyTarget(const aoc::game::Player& player);
+/// Amenity penalty for holding `held` of `target` types.
+[[nodiscard]] float luxuryShortfallPenalty(int32_t held, int32_t target);
+
 struct CityHappinessComponent {
     float amenities       = 1.0f;   ///< From luxury resources, buildings, policies
     float demand          = 0.0f;   ///< Based on population (1 per 2 citizens)

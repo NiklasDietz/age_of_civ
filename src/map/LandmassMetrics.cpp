@@ -76,16 +76,6 @@ std::vector<int32_t> computeLandmassSizes(const HexGrid& grid) {
 
 namespace {
 
-[[nodiscard]] std::vector<uint16_t> luxuryGoodIds() {
-    std::vector<uint16_t> ids;
-    for (uint16_t id = 0; id < aoc::sim::goods::GOOD_COUNT; ++id) {
-        if (aoc::sim::goodDef(id).category == aoc::sim::GoodCategory::RawLuxury) {
-            ids.push_back(id);
-        }
-    }
-    return ids;
-}
-
 /// Resource ids on the tiles within `radius` of `center`.
 [[nodiscard]] std::set<uint16_t> resourcesWithin(const HexGrid& grid, hex::AxialCoord center,
                                                  int32_t radius) {
@@ -127,7 +117,7 @@ ResourceGeography measureResourceGeography(const HexGrid& grid,
                                            const std::vector<hex::AxialCoord>& starts,
                                            int32_t radius) {
     ResourceGeography out;
-    const std::vector<uint16_t> luxuries = luxuryGoodIds();
+    const std::vector<uint16_t>& luxuries = aoc::sim::luxuryGoodIds();
     out.luxuryTypes                      = static_cast<int32_t>(luxuries.size());
     if (starts.empty() || luxuries.empty()) {
         return out;

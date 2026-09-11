@@ -339,6 +339,14 @@ namespace goods {
 /// Total number of defined goods.
 [[nodiscard]] uint16_t goodCount();
 
+/// Whether the goods table files this good under RawLuxury.
+[[nodiscard]] bool isLuxuryGood(uint16_t goodId);
+
+/// Every RawLuxury good id, ascending: the one list the amenity model, the
+/// needs model and the resource-geography metric share. Two hand-kept copies
+/// used to disagree with the table (both listed SUGAR, neither SALT or MARBLE).
+[[nodiscard]] const std::vector<uint16_t>& luxuryGoodIds();
+
 // ============================================================================
 // Production recipe -- one transformation step in the chain
 // ============================================================================

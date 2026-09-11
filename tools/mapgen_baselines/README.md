@@ -54,7 +54,9 @@ discontinuity in the numbers at that point. Never compare across it.
 Not a shape baseline: the resource geography around chosen starts (plan
 `i-would-like-you-breezy-candy`, Part B3 and M8), five seeds (42-46) at 4 and
 6 players, produced by `tools/mapgen_metrics.py baseline --players 4,6` and
-checked against `RESOURCE_GATES`. Before Phase 1.7 every start reaches one or
-two of the fifteen luxury types (C = 1 on every seed), six luxuries never
-appear at all (B = 0), and only half to two thirds of start pairs each hold a
-luxury the other lacks (E 0.50-0.73). The `-post` file lands with 1.7.
+checked against `RESOURCE_GATES`, on the 17-type luxury list of Phase 1.1
+(SALT and MARBLE joined the fifteen). Before Phase 1.7 every start reaches one
+or two luxury types (C = 2 on nine of ten runs, 1 on the tenth), six luxuries
+never appear at all (B = 0), and half to all of the start pairs each hold a
+luxury the other lacks (E 0.50-1.00; salt and marble are common and differ
+from start to start). The `-post` file lands with 1.7.

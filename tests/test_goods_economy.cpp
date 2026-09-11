@@ -44,6 +44,10 @@ TEST_CASE("a city that met its consumer demand is happier than one that did not"
         aoc::test::World w                    = aoc::test::makeWorld(1);
         aoc::game::City& city                 = oneCity(w);
         aoc::game::Player& player             = *w.gameState.player(PlayerId{0});
+        // Enough base amenities that the starved twin stays above the zero
+        // floor: since the luxury variety model, a city with no luxuries
+        // carries a shortfall penalty and the slider is worth 2, not 5.
+        player.monetary().luxuryAllocation    = 1.0f;
         city.happiness().consumerSatisfaction = satisfaction;
         aoc::sim::computeCityHappiness(player);
         return city.happiness().amenities;

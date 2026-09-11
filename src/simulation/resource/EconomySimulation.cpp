@@ -44,6 +44,7 @@
 #include <cstdio>
 #include <set>
 #include <unordered_set>
+#include "aoc/simulation/city/Happiness.hpp"
 
 namespace aoc::sim {
 
@@ -497,7 +498,41 @@ void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
 // Step 1c: Compute per-player resource needs
 // ============================================================================
 
+/// The standing cost of a luxury: LUXURY_UPKEEP units a turn of each held
+/// type, taken from the city holding the most, so one delivered unit satisfies
+/// the need for exactly one turn and a supply has to keep flowing.
+static void consumeLuxuryUpkeep(aoc::game::Player& player, uint16_t luxId) {
+    aoc::game::City* richest = nullptr;
+    int32_t most             = 0;
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player.cities()) {
+        if (cityPtr == nullptr) { continue; }
+        const int32_t have = cityPtr->stockpile().getAmount(luxId);
+        if (have > most) {
+            most    = have;
+            richest = cityPtr.get();
+        }
+    }
+    if (richest != nullptr) {
+        (void)richest->stockpile().consumeGoods(luxId, std::min(most, LUXURY_UPKEEP));
+    }
+}
+
 void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
+    // A luxury nobody on the map holds is not a need: the AI would chase a
+    // good that does not exist and no Trader could ever fetch it.
+    std::unordered_set<uint16_t> luxuriesHeldByAnyone;
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) { continue; }
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+            if (cityPtr == nullptr) { continue; }
+            for (const uint16_t luxId : luxuryGoodIds()) {
+                if (cityPtr->stockpile().getAmount(luxId) > 0) {
+                    luxuriesHeldByAnyone.insert(luxId);
+                }
+            }
+        }
+    }
+
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         if (playerPtr == nullptr) { continue; }
 
@@ -634,18 +669,15 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
             }
         }
 
-        // Count unique luxuries
-        constexpr uint16_t RAW_LUXURY_IDS[] = {
-            goods::WINE, goods::SPICES, goods::SILK, goods::IVORY, goods::GEMS,
-            goods::DYES, goods::FURS, goods::INCENSE, goods::SUGAR,
-            goods::PEARLS, goods::TEA, goods::COFFEE, goods::TOBACCO
-        };
+        // Luxury variety: every held type pays its upkeep, every missing type
+        // that exists somewhere on the map is a need of one.
         int32_t uniqueCount = 0;
-        for (uint16_t luxId : RAW_LUXURY_IDS) {
+        for (const uint16_t luxId : luxuryGoodIds()) {
             std::unordered_map<uint16_t, int32_t>::iterator it = totalStock.find(luxId);
             if (it != totalStock.end() && it->second > 0) {
                 ++uniqueCount;
-            } else {
+                consumeLuxuryUpkeep(*playerPtr, luxId);
+            } else if (luxuriesHeldByAnyone.count(luxId) != 0) {
                 econ.totalNeeds[luxId] += 1;
             }
         }

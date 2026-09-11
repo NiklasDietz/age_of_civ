@@ -48,8 +48,8 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     defs[goods::DYES]       = {goods::DYES,        "Dyes",        GoodCategory::RawLuxury, 15, false, 0.7f, ClimateBand::Temperate};
     defs[goods::FURS]       = {goods::FURS,        "Furs",        GoodCategory::RawLuxury, 18, false, 0.7f, ClimateBand::Cold};
     defs[goods::INCENSE]    = {goods::INCENSE,     "Incense",     GoodCategory::RawLuxury, 14, false, 0.7f};
-    defs[goods::SALT]       = {goods::SALT,        "Salt",        GoodCategory::RawBonus,   8, false, 0.3f};
-    defs[goods::MARBLE]     = {goods::MARBLE,      "Marble",      GoodCategory::RawStrategic, 20, true, 0.4f};
+    defs[goods::SALT]       = {goods::SALT,        "Salt",        GoodCategory::RawLuxury,  8, false, 0.7f};
+    defs[goods::MARBLE]     = {goods::MARBLE,      "Marble",      GoodCategory::RawLuxury, 20, false, 0.7f};
     defs[goods::PEARLS]     = {goods::PEARLS,      "Pearls",      GoodCategory::RawLuxury, 28, false, 0.7f};
     defs[goods::TEA]        = {goods::TEA,         "Tea",         GoodCategory::RawLuxury, 16, false, 0.7f};
     defs[goods::COFFEE]     = {goods::COFFEE,      "Coffee",      GoodCategory::RawLuxury, 18, false, 0.7f};
@@ -765,6 +765,23 @@ const GoodDef& goodDef(uint16_t goodId) {
 
 uint16_t goodCount() {
     return goods::GOOD_COUNT;
+}
+
+bool isLuxuryGood(uint16_t goodId) {
+    return goodId < goods::GOOD_COUNT && goodDef(goodId).category == GoodCategory::RawLuxury;
+}
+
+const std::vector<uint16_t>& luxuryGoodIds() {
+    static const std::vector<uint16_t> ids = [] {
+        std::vector<uint16_t> out;
+        for (uint16_t id = 0; id < goods::GOOD_COUNT; ++id) {
+            if (goodDef(id).category == GoodCategory::RawLuxury) {
+                out.push_back(id);
+            }
+        }
+        return out;
+    }();
+    return ids;
 }
 
 const std::vector<ProductionRecipe>& allRecipes() {
