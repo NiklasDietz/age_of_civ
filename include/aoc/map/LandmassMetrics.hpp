@@ -11,6 +11,8 @@
  */
 
 #include <cstdint>
+#include "aoc/map/HexCoord.hpp"
+
 #include <vector>
 
 namespace aoc::map {
@@ -31,5 +33,27 @@ struct LandmassMap {
 /// tile; 0 for water tiles. Compute once per map and index by
 /// `row * width + col`.
 [[nodiscard]] std::vector<int32_t> computeLandmassSizes(const HexGrid& grid);
+
+/// Resource geography around a set of start positions: the measurement
+/// behind the scarcity design of the money and trade programme (plan Part
+/// B3). Does anyone lack anything, and does everyone hold something a
+/// neighbour lacks? "Within reach" is a hex radius around the start, wrap
+/// aware on cylindrical maps.
+struct ResourceGeography {
+    int32_t luxuryTypes = 0;          ///< Distinct luxury goods the goods table defines
+    float luxuryTypesAbsent = 0.0f;   ///< A: mean over starts of the share of luxury types not in reach
+    bool everyLuxuryOnMap = false;    ///< B: every luxury type occurs somewhere on the map
+    int32_t minLuxuryTypes = 0;       ///< C: fewest distinct luxury types in reach of any start
+    bool copperOrIronEveryStart = false; ///< D1: copper or iron in reach of every start
+    float horsesShare = 0.0f;         ///< D2: share of starts with horses in reach
+    float complementaryPairs = 0.0f;  ///< E: share of start pairs where each holds a luxury the other lacks
+};
+
+inline constexpr int32_t RESOURCE_REACH_RADIUS = 9;
+
+/// With no starts every field is zero or false; with one start E is 0.
+[[nodiscard]] ResourceGeography measureResourceGeography(
+    const HexGrid& grid, const std::vector<hex::AxialCoord>& starts,
+    int32_t radius = RESOURCE_REACH_RADIUS);
 
 } // namespace aoc::map

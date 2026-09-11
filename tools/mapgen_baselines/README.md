@@ -48,3 +48,13 @@ python3 tools/mapgen_metrics.py baseline \
 Once the projection switches to Lambert cylindrical equal-area, drop both
 projection flags (equal-area is the default) — and expect a second
 discontinuity in the numbers at that point. Never compare across it.
+
+## `resgeo-pre.json` (2026-09-11)
+
+Not a shape baseline: the resource geography around chosen starts (plan
+`i-would-like-you-breezy-candy`, Part B3 and M8), five seeds (42-46) at 4 and
+6 players, produced by `tools/mapgen_metrics.py baseline --players 4,6` and
+checked against `RESOURCE_GATES`. Before Phase 1.7 every start reaches one or
+two of the fifteen luxury types (C = 1 on every seed), six luxuries never
+appear at all (B = 0), and only half to two thirds of start pairs each hold a
+luxury the other lacks (E 0.50-0.73). The `-post` file lands with 1.7.

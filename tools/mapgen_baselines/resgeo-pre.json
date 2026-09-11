@@ -1,0 +1,113 @@
+{
+  "_about": "Resource geography within 9 tiles of each start, before the money and trade programme's Phase 1.7 touched placement. tools/mapgen_metrics.py baseline --seeds 42,43,44,45,46 --players 4,6 on 140x90 cylindrical Continents maps, 2026-09-11. Keys per seed and player count: see RESOURCE_GATES.",
+  "42": {
+    "4": {
+      "starts": 4,
+      "luxury_types": 15,
+      "luxury_types_absent": 0.883,
+      "every_luxury_on_map": 0,
+      "min_luxury_types": 1,
+      "copper_or_iron_every_start": 1,
+      "horses_share": 0.25,
+      "complementary_pairs": 0.5
+    },
+    "6": {
+      "starts": 6,
+      "luxury_types": 15,
+      "luxury_types_absent": 0.867,
+      "every_luxury_on_map": 0,
+      "min_luxury_types": 1,
+      "copper_or_iron_every_start": 1,
+      "horses_share": 0.5,
+      "complementary_pairs": 0.6
+    }
+  },
+  "43": {
+    "4": {
+      "starts": 4,
+      "luxury_types": 15,
+      "luxury_types_absent": 0.85,
+      "every_luxury_on_map": 0,
+      "min_luxury_types": 1,
+      "copper_or_iron_every_start": 1,
+      "horses_share": 0.5,
+      "complementary_pairs": 0.5
+    },
+    "6": {
+      "starts": 6,
+      "luxury_types": 15,
+      "luxury_types_absent": 0.856,
+      "every_luxury_on_map": 0,
+      "min_luxury_types": 1,
+      "copper_or_iron_every_start": 1,
+      "horses_share": 0.5,
+      "complementary_pairs": 0.533
+    }
+  },
+  "44": {
+    "4": {
+      "starts": 4,
+      "luxury_types": 15,
+      "luxury_types_absent": 0.867,
+      "every_luxury_on_map": 0,
+      "min_luxury_types": 1,
+      "copper_or_iron_every_start": 1,
+      "horses_share": 0.75,
+      "complementary_pairs": 0.667
+    },
+    "6": {
+      "starts": 6,
+      "luxury_types": 15,
+      "luxury_types_absent": 0.867,
+      "every_luxury_on_map": 0,
+      "min_luxury_types": 1,
+      "copper_or_iron_every_start": 1,
+      "horses_share": 0.5,
+      "complementary_pairs": 0.667
+    }
+  },
+  "45": {
+    "4": {
+      "starts": 4,
+      "luxury_types": 15,
+      "luxury_types_absent": 0.883,
+      "every_luxury_on_map": 0,
+      "min_luxury_types": 1,
+      "copper_or_iron_every_start": 1,
+      "horses_share": 0.5,
+      "complementary_pairs": 0.667
+    },
+    "6": {
+      "starts": 6,
+      "luxury_types": 15,
+      "luxury_types_absent": 0.856,
+      "every_luxury_on_map": 0,
+      "min_luxury_types": 1,
+      "copper_or_iron_every_start": 1,
+      "horses_share": 0.667,
+      "complementary_pairs": 0.6
+    }
+  },
+  "46": {
+    "4": {
+      "starts": 4,
+      "luxury_types": 15,
+      "luxury_types_absent": 0.867,
+      "every_luxury_on_map": 0,
+      "min_luxury_types": 1,
+      "copper_or_iron_every_start": 1,
+      "horses_share": 0.5,
+      "complementary_pairs": 0.5
+    },
+    "6": {
+      "starts": 6,
+      "luxury_types": 15,
+      "luxury_types_absent": 0.856,
+      "every_luxury_on_map": 0,
+      "min_luxury_types": 1,
+      "copper_or_iron_every_start": 1,
+      "horses_share": 0.5,
+      "complementary_pairs": 0.733
+    }
+  }
+}

@@ -1250,6 +1250,26 @@ def cmd_selftest(_args):
     ok &= _check("crust mask: two equal discs -> 2 components",
                  float(cs["crust_component_count"]), 2.0, 0.0)
 
+    print("resource geography parser:")
+    sample = ("[hypso] continental crust 41.0% of sphere, of which 30.0% submerged\n"
+              "[resgeo] players=4 starts=4 luxuries=15 A=0.450 B=1 C=3 D1=1 D2=0.500 E=0.833\n"
+              "[resgeo] players=6 starts=5 luxuries=15 A=0.300 B=0 C=1 D1=0 D2=0.200 E=0.400\n")
+    geo = parse_resource_geography(sample)
+    ok &= _check("player counts parsed", float(len(geo)), 2.0, 0.0)
+    four = geo.get("4", {})
+    ok &= _check("A parsed", four.get("luxury_types_absent"), 0.45, 1e-9)
+    ok &= _check("C parsed", four.get("min_luxury_types"), 3.0, 0.0)
+    ok &= _check("E parsed", four.get("complementary_pairs"), 0.833, 1e-9)
+    ok &= _check("six starts fewer than players", geo.get("6", {}).get("starts"), 5.0, 0.0)
+    ok &= _check("no line, no measurement", float(len(parse_resource_geography(""))), 0.0, 0.0)
+    passes = sum(1 for k, (lo, hi, _) in RESOURCE_GATES.items() if lo <= four[k] <= hi)
+    ok &= _check("4-player line passes every resource gate", float(passes),
+                 float(len(RESOURCE_GATES)), 0.0)
+    misses = sum(1 for k, (lo, hi, _) in RESOURCE_GATES.items()
+                 if not lo <= geo["6"][k] <= hi)
+    ok &= _check("6-player line misses every resource gate", float(misses),
+                 float(len(RESOURCE_GATES)), 0.0)
+
     print("\nSELFTEST", "PASSED" if ok else "FAILED")
     return 0 if ok else 1
 
@@ -1271,6 +1291,8 @@ def cmd_baseline(args):
             cmd.append("--cylindrical")
         if args.projection:
             cmd += ["--projection", args.projection]
+        if args.players:
+            cmd += ["--players", args.players]
         # The crust-budget numbers exist only on the generator's stderr, behind
         # these env gates. Before 2026-08-12 stderr was captured and then
         # DISCARDED on success, so half the gate set was silently uncomputed --
@@ -1287,6 +1309,13 @@ def cmd_baseline(args):
                                      wrap=not args.flat)
         res = results[str(seed)]
         res["crust_budget"] = parse_crust_budget(proc.stderr)
+        if args.players:
+            res["resource_geography"] = parse_resource_geography(proc.stderr)
+            for pc, geo in sorted(res["resource_geography"].items(), key=lambda kv: int(kv[0])):
+                print(f"seed {seed} [{pc} players]: A={geo['luxury_types_absent']:.2f} "
+                      f"B={geo['every_luxury_on_map']} C={geo['min_luxury_types']} "
+                      f"D1={geo['copper_or_iron_every_start']} "
+                      f"D2={geo['horses_share']:.2f} E={geo['complementary_pairs']:.2f}")
         print(f"seed {seed}: land={res['land_fraction']:.1%} "
               f"D={res['coast_box_dimension']} "
               f"components={res['n_land_components']} "
@@ -1296,7 +1325,12 @@ def cmd_baseline(args):
     metrics_path.write_text(json.dumps(results, indent=2) + "\n")
     print(f"wrote {metrics_path}")
     if args.gate:
-        return report_gates(results)
+        rc = report_gates(results)
+        if args.players:
+            rc = rc or (1 if report_resource_gates(results) else 0)
+        return rc
+    if args.players:
+        report_resource_gates(results)
     return 0
 
 
@@ -1416,6 +1450,75 @@ def parse_crust_budget(stderr):
     return out
 
 
+RESGEO_LINE = re.compile(
+    r"\[resgeo\] players=(\d+) starts=(\d+) luxuries=(\d+) A=([\d.]+) B=(\d) "
+    r"C=(\d+) D1=(\d) D2=([\d.]+) E=([\d.]+)")
+
+
+def parse_resource_geography(stderr):
+    """The [resgeo] lines aoc_mapgen --players prints, keyed by player count.
+
+    Missing lines yield an empty dict, deliberately: a generator that does
+    not print the line reads as "not measured" and fails RESOURCE_GATES.
+    """
+    out = {}
+    for m in RESGEO_LINE.finditer(stderr):
+        out[m.group(1)] = {
+            "starts": int(m.group(2)),
+            "luxury_types": int(m.group(3)),
+            "luxury_types_absent": float(m.group(4)),
+            "every_luxury_on_map": int(m.group(5)),
+            "min_luxury_types": int(m.group(6)),
+            "copper_or_iron_every_start": int(m.group(7)),
+            "horses_share": float(m.group(8)),
+            "complementary_pairs": float(m.group(9)),
+        }
+    return out
+
+
+# Resource geography gates (money and trade plan, Part B3 and M8), measured
+# within 9 tiles of each start for every player count passed to --players.
+# Kept apart from GATES: an unmeasured resource gate fails here and must never
+# dilute the shape score, and vice versa.
+RESOURCE_GATES = {
+    "luxury_types_absent":        (0.40, 1.00, "A luxury types absent per start"),
+    "every_luxury_on_map":        (1,    1,    "B every luxury on the map"),
+    "min_luxury_types":           (3,    99,   "C fewest luxury types at a start"),
+    "copper_or_iron_every_start": (1,    1,    "D1 copper or iron at every start"),
+    "horses_share":               (0.50, 1.00, "D2 starts with horses"),
+    "complementary_pairs":        (0.80, 1.00, "E complementary start pairs"),
+}
+
+
+def report_resource_gates(results):
+    """Per player count, the RESOURCE_GATES table over the seed sweep. Returns
+    the number of gates missed or unmeasured."""
+    counts = sorted({pc for r in results.values()
+                     for pc in (r.get("resource_geography") or {})}, key=int)
+    failed = 0
+    if not counts:
+        print("\nresource geography: NOT MEASURED (run baseline with --players)")
+        return len(RESOURCE_GATES)
+    for pc in counts:
+        print(f"\nresource gate ({pc} players)     median   band            seeds pass")
+        for key, (lo, hi, label) in RESOURCE_GATES.items():
+            vals = [(r.get("resource_geography") or {}).get(pc, {}).get(key)
+                    for r in results.values()]
+            present = sorted(v for v in vals if v is not None)
+            if not present:
+                print(f"  {label:<32} NOT MEASURED -- treating as failure")
+                failed += 1
+                continue
+            median = present[len(present) // 2]
+            npass = sum(1 for v in present if lo <= v <= hi)
+            ok = npass == len(present)
+            failed += 0 if ok else 1
+            print(f"  {'ok ' if ok else 'MISS'} {label:<30} {median:<8.3f} [{lo}, {hi}]"
+                  f"      {npass}/{len(present)}")
+    print(f"\n{'RESOURCE GATES PASSED' if failed == 0 else f'{failed} RESOURCE GATE(S) FAILED'}")
+    return failed
+
+
 def gate_values(res):
     """Flatten one seed's result into the scalars GATES names."""
     cb = res.get("crust_budget") or {}
@@ -1525,6 +1628,10 @@ def main():
                                  "(must match --projection)")
     p_baseline.add_argument("--flat", action="store_true",
                             help="generate Flat instead of Cylindrical")
+    p_baseline.add_argument("--players", default=None,
+                            help="comma-separated player counts, e.g. 4,6: choose "
+                                 "starts per count and record the resource "
+                                 "geography around them (RESOURCE_GATES)")
     p_baseline.add_argument("--gate", action="store_true",
                             help="check every metric against its Earth-reference "
                                  "band and EXIT NON-ZERO if any is missed or was "

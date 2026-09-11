@@ -79,6 +79,9 @@ std::string fingerprint(const aoc::map::HexGrid& g) {
         out.push_back(static_cast<char>(g.terrain(i)));
         out.push_back(static_cast<char>(g.feature(i)));
         out.push_back(static_cast<char>(g.elevation(i)));
+        const uint16_t res = g.resource(i).value;
+        out.push_back(static_cast<char>(res & 0xFFu));
+        out.push_back(static_cast<char>(res >> 8));
     }
     addBytes(g.rockType());
     addBytes(g.crustalThickness());

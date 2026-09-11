@@ -15,6 +15,9 @@
 #include "aoc/debug/DebugServer.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/MapGenerator.hpp"
+#include "aoc/core/Random.hpp"
+#include "aoc/map/StartPlacement.hpp"
+#include "aoc/map/LandmassMetrics.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/map/gen/SphereGeometry.hpp"
 
@@ -201,7 +204,7 @@ void writeCsv(const aoc::map::HexGrid& grid, const std::string& path) {
     // straight-coastline artifact -- `--dump-plates` only reports per-plate
     // aggregates (bbox, centroid), which cannot show WHERE a boundary runs.
     // 255 is the unowned sentinel (HexGrid stores plate id in a uint8).
-    out << "Index,Col,Row,Terrain,Feature,Improvement,Owner,RiverEdgeMask,PlateId\n";
+    out << "Index,Col,Row,Terrain,Feature,Improvement,Owner,RiverEdgeMask,PlateId,Resource\n";
 
     const int32_t width  = grid.width();
     const int32_t height = grid.height();
@@ -214,7 +217,9 @@ void writeCsv(const aoc::map::HexGrid& grid, const std::string& path) {
                 << static_cast<int>(grid.improvement(idx)) << ','
                 << static_cast<int>(grid.owner(idx)) << ','
                 << static_cast<int>(grid.riverEdges(idx)) << ','
-                << static_cast<int>(grid.plateId(idx)) << '\n';
+                << static_cast<int>(grid.plateId(idx)) << ','
+                << (grid.resource(idx).isValid() ? static_cast<int>(grid.resource(idx).value) : -1)
+                << '\n';
         }
     }
 }
@@ -241,7 +246,7 @@ void usage(const char* prog) {
                  "          [--tectonic-time-my N | --tectonic-time-gy N | --epochs N]\n"
                  "          [--projection lambert|mollweide|equirect|mercator|robinson]\n"
                  "          [--flat] [--frames] [--stop-epoch N] [--dump-plates PATH]\n"
-                 "          [--serve-http [--port N]]\n"
+                 "          [--serve-http [--port N]] [--players N[,N...]]\n"
                  "\n"
                  "Generates a single Continents map and writes it to disk for review.\n"
                  "Defaults: --seed 42 --width 140 --height 90 --output /tmp/map\n"
@@ -268,6 +273,12 @@ void usage(const char* prog) {
                  "                       (sea level is re-solved each epoch); plate\n"
                  "                       ownership and continental fraction are.\n"
                  "  --serve-http         HTTP inspection server on 127.0.0.1:<port>.\n"
+                 "  --players N[,N...]   for each player count, choose starts as the game\n"
+                 "                       does and print a [resgeo] line on stderr: the\n"
+                 "                       resource geography within 9 tiles of each start\n"
+                 "                       (A absent-luxury share, B every luxury on map,\n"
+                 "                       C fewest luxury types, D1 copper or iron at every\n"
+                 "                       start, D2 horses share, E complementary pairs).\n"
                  "\n"
                  "Trace env vars: AOC_SPHEREPHYS_TRACE, AOC_ADVECT_TRACE,\n"
                  "                AOC_DUMP_THRESHOLD, AOC_DUMP_MARGINS.\n",
@@ -310,6 +321,7 @@ int main(int argc, char* argv[]) {
     OutputFormat format = OutputFormat::Ascii;
     bool frameMode      = false;
     bool serveHttp      = false;
+    std::vector<int32_t> playerCounts;
     int32_t httpPort    = 9876;
 
     for (int i = 1; i < argc; ++i) {
@@ -382,6 +394,14 @@ int main(int argc, char* argv[]) {
             dumpPlatesPath = argv[++i];
         } else if (arg == "--serve-http") {
             serveHttp = true;
+        } else if (arg == "--players" && i + 1 < argc) {
+            std::string list = argv[++i];
+            for (std::size_t pos = 0; pos <= list.size();) {
+                const std::size_t comma = list.find(',', pos);
+                const std::size_t end   = comma == std::string::npos ? list.size() : comma;
+                playerCounts.push_back(std::atoi(list.substr(pos, end - pos).c_str()));
+                pos = end + 1;
+            }
         } else if (arg == "--port" && i + 1 < argc) {
             httpPort = std::atoi(argv[++i]);
         } else {
@@ -394,6 +414,12 @@ int main(int argc, char* argv[]) {
     if (config.width <= 0 || config.height <= 0) {
         std::fprintf(stderr, "error: width and height must be positive\n");
         return 2;
+    }
+    for (const int32_t count : playerCounts) {
+        if (count <= 0) {
+            std::fprintf(stderr, "error: --players wants positive counts\n");
+            return 2;
+        }
     }
 
     if (frameMode) {
@@ -468,6 +494,19 @@ int main(int argc, char* argv[]) {
         const std::string path = outputBase + ".csv";
         writeCsv(grid, path);
         std::printf("wrote %s (per-tile CSV)\n", path.c_str());
+    }
+    for (const int32_t count : playerCounts) {
+        aoc::Random startRng(config.seed);
+        const std::vector<aoc::hex::AxialCoord> starts =
+            aoc::map::chooseStartPositions(grid, count, startRng);
+        const aoc::map::ResourceGeography geo = aoc::map::measureResourceGeography(grid, starts);
+        std::fprintf(stderr,
+                     "[resgeo] players=%d starts=%zu luxuries=%d A=%.3f B=%d C=%d D1=%d "
+                     "D2=%.3f E=%.3f\n",
+                     count, starts.size(), geo.luxuryTypes, static_cast<double>(geo.luxuryTypesAbsent),
+                     geo.everyLuxuryOnMap ? 1 : 0, geo.minLuxuryTypes,
+                     geo.copperOrIronEveryStart ? 1 : 0, static_cast<double>(geo.horsesShare),
+                     static_cast<double>(geo.complementaryPairs));
     }
     // --dump-plates: per-plate diagnostic CSV. Writes one row per
     // plate id present on the final HexGrid: cell count, land
