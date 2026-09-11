@@ -159,6 +159,13 @@ public:
     void close(UIManager& ui) override;
     void refresh(UIManager& ui) override;
 
+    /// Opens the Routes screen, where a Trader is actually sent. The panel
+    /// used to append to a route list that nothing executed.
+    using OpenRouteSetupCallback = std::function<void()>;
+    void setOpenRouteSetupCallback(OpenRouteSetupCallback callback) {
+        this->m_onOpenRouteSetup = std::move(callback);
+    }
+
 private:
     /// Build the trade route creation sub-panel.
     void buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel);
@@ -171,10 +178,7 @@ private:
     WidgetId m_marketList = INVALID_WIDGET;
     WidgetId m_tradeRoutePanel = INVALID_WIDGET;
     /// Source and destination cities for trade route creation, stored as indices into their player's city list.
-    int32_t m_trSourcePlayerIdx = -1;
-    int32_t m_trSourceCityIdx   = -1;
-    int32_t m_trDestPlayerIdx   = -1;
-    int32_t m_trDestCityIdx     = -1;
+    OpenRouteSetupCallback m_onOpenRouteSetup;
 };
 
 /// Detailed city information screen (right-side panel, does not block map input).

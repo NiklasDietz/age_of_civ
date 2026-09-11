@@ -69,7 +69,6 @@
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
-#include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/simulation/tech/EurekaBoost.hpp"
 #include "aoc/game/GameState.hpp"
@@ -273,19 +272,10 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
         snap.famineCities  = famine;
     }
 
-    // Trade partners: count unique partner players from the GameState trade route list
+    // Trade partners: the destinations of this player's Traders, plus the
+    // science/culture diffusion already accrued by them.
     {
         std::unordered_set<aoc::PlayerId> partners;
-        for (const aoc::sim::TradeRouteComponent& route : gameState.tradeRoutes()) {
-            if (route.sourcePlayer == playerId && route.destPlayer != playerId) {
-                partners.insert(route.destPlayer);
-            }
-            if (route.destPlayer == playerId && route.sourcePlayer != playerId) {
-                partners.insert(route.sourcePlayer);
-            }
-        }
-        // Also count active trader units this player owns, and aggregate
-        // science/culture diffusion already accrued by our traders.
         float sciSpread = 0.0f;
         float culSpread = 0.0f;
         for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {

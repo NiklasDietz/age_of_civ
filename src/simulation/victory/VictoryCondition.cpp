@@ -20,11 +20,11 @@
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/city/CityLoyalty.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
 #include "aoc/simulation/monetary/Bonds.hpp"
-#include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
@@ -177,18 +177,28 @@ static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
         }
     }
 
-    // Trade routes: partner count and volume (global collection on GameState)
+    // Trade: partner count and cargo value from the Traders on the road.
+    // Only scored players count as partners, so a city-state destination
+    // neither joins the CSI table nor pads the partner list.
     {
         std::unordered_map<PlayerId, std::unordered_set<PlayerId>> partnerSets;
-        for (const TradeRouteComponent& route : gameState.tradeRoutes()) {
-            partnerSets[route.sourcePlayer].insert(route.destPlayer);
-            partnerSets[route.destPlayer].insert(route.sourcePlayer);
-
-            int32_t cargoValue = 0;
-            for (const TradeOffer& offer : route.cargo) {
-                cargoValue += offer.amountPerTurn * economy.market().price(offer.goodId);
+        for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
+            for (const std::unique_ptr<aoc::game::Unit>& unit : gsPlayer->units()) {
+                const TraderComponent& trader = unit->trader();
+                if (unit->typeDef().unitClass != UnitClass::Trader ||
+                    trader.owner == INVALID_PLAYER || stats.count(trader.owner) == 0) {
+                    continue;
+                }
+                if (trader.destOwner != trader.owner && stats.count(trader.destOwner) != 0) {
+                    partnerSets[trader.owner].insert(trader.destOwner);
+                    partnerSets[trader.destOwner].insert(trader.owner);
+                }
+                int32_t cargoValue = 0;
+                for (const TradeCargo& cargo : trader.cargo) {
+                    cargoValue += cargo.amount * economy.market().price(cargo.goodId);
+                }
+                stats[trader.owner].tradeVolume += cargoValue;
             }
-            stats[route.sourcePlayer].tradeVolume += cargoValue;
         }
         for (const std::pair<const PlayerId, std::unordered_set<PlayerId>>& entry : partnerSets) {
             stats[entry.first].tradePartnerCount =

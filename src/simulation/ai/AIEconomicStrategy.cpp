@@ -20,7 +20,6 @@
 #include "aoc/simulation/economy/EconomicDepth.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/simulation/economy/Market.hpp"
-#include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/production/PowerGrid.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"

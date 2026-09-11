@@ -8,7 +8,6 @@
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/economy/AdvancedEconomics.hpp"
 #include "aoc/simulation/economy/Market.hpp"
-#include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -45,143 +44,21 @@ float PlayerTariffComponent::effectiveCanalTollRate(PlayerId trader) const {
     return std::clamp(rate, 0.0f, 0.5f);
 }
 
-float applyTariffs(const PlayerTariffComponent& importer,
-                   PlayerId exporter, float baseValue) {
-    const float tariffRate  = importer.effectiveImportTariff(exporter);
-    const float clampedRate = std::clamp(tariffRate, 0.0f, 0.5f);
-    return baseValue * (1.0f - clampedRate);
-}
 
 // ============================================================================
 // Transport Costs
 // ============================================================================
 
-float computeTransportCost(const aoc::map::HexGrid& grid,
-                           hex::AxialCoord from, hex::AxialCoord to,
-                           float baseGoodValue) {
-    const int32_t dist = grid.distance(from, to);
-    float cost = static_cast<float>(dist) * 0.02f * baseGoodValue;
-
-    if (grid.isValid(from) && grid.isValid(to)) {
-        const int32_t fromIdx = grid.toIndex(from);
-        const int32_t toIdx   = grid.toIndex(to);
-
-        const bool fromCoastal = (grid.terrain(fromIdx) == aoc::map::TerrainType::Coast);
-        const bool toCoastal   = (grid.terrain(toIdx)   == aoc::map::TerrainType::Coast);
-        if (fromCoastal || toCoastal) {
-            cost *= 0.7f;
-        }
-
-        const bool fromRoad = grid.hasRoad(fromIdx);
-        const bool toRoad   = grid.hasRoad(toIdx);
-        if (fromRoad && toRoad) {
-            cost *= 0.5f;
-        }
-    }
-
-    return std::max(0.0f, cost);
-}
 
 // ============================================================================
 // Trade Blocs
 // ============================================================================
 
-bool GlobalTradeBlocTracker::areInSameBloc(PlayerId a, PlayerId b) const {
-    for (const TradeBloc& bloc : this->blocs) {
-        bool hasA = false;
-        bool hasB = false;
-        for (const PlayerId member : bloc.members) {
-            if (member == a) { hasA = true; }
-            if (member == b) { hasB = true; }
-        }
-        if (hasA && hasB) {
-            return true;
-        }
-    }
-    return false;
-}
-
-float GlobalTradeBlocTracker::effectiveTariff(PlayerId importer, PlayerId exporter) const {
-    for (const TradeBloc& bloc : this->blocs) {
-        bool hasImporter = false;
-        bool hasExporter = false;
-        for (const PlayerId member : bloc.members) {
-            if (member == importer) { hasImporter = true; }
-            if (member == exporter) { hasExporter = true; }
-        }
-        if (hasImporter && hasExporter) {
-            return bloc.internalTariff;
-        }
-        if (hasImporter && !hasExporter) {
-            return bloc.externalTariff;
-        }
-    }
-    return 0.0f;
-}
 
 // ============================================================================
 // Technology Spillover
 // ============================================================================
 
-float computeTechSpillover(const aoc::game::GameState& gameState,
-                           PlayerId player, PlayerId tradePartner) {
-    constexpr float SPILLOVER_RATE = 0.5f;
-
-    const aoc::game::Player* myPlayer      = gameState.player(player);
-    const aoc::game::Player* partnerPlayer = gameState.player(tradePartner);
-    if (myPlayer == nullptr || partnerPlayer == nullptr) {
-        return 0.0f;
-    }
-
-    int32_t myTechs      = 0;
-    int32_t partnerTechs = 0;
-
-    for (uint16_t t = 0; t < techCount(); ++t) {
-        if (myPlayer->tech().hasResearched(TechId{t})) {
-            ++myTechs;
-        }
-        if (partnerPlayer->tech().hasResearched(TechId{t})) {
-            ++partnerTechs;
-        }
-    }
-
-    const int32_t techDiff = partnerTechs - myTechs;
-    if (techDiff <= 0) {
-        return 0.0f;
-    }
-
-    return static_cast<float>(techDiff) * SPILLOVER_RATE;
-}
-
-void processTechSpillover(aoc::game::GameState& gameState) {
-    const std::vector<TradeRouteComponent>& tradeRoutes = gameState.tradeRoutes();
-
-    std::unordered_map<PlayerId, float> spilloverAccum;
-
-    for (const TradeRouteComponent& route : tradeRoutes) {
-        const float spilloverA = computeTechSpillover(gameState, route.sourcePlayer, route.destPlayer);
-        const float spilloverB = computeTechSpillover(gameState, route.destPlayer, route.sourcePlayer);
-
-        if (spilloverA > 0.0f) {
-            spilloverAccum[route.sourcePlayer] += spilloverA;
-        }
-        if (spilloverB > 0.0f) {
-            spilloverAccum[route.destPlayer] += spilloverB;
-        }
-    }
-
-    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
-        const std::unordered_map<PlayerId, float>::const_iterator it =
-            spilloverAccum.find(playerPtr->id());
-        if (it != spilloverAccum.end() && it->second > 0.0f) {
-            playerPtr->tech().researchProgress += it->second;
-            LOG_DEBUG("Tech spillover: player %u gains %.1f science from trade",
-                      static_cast<unsigned>(playerPtr->id()),
-                      static_cast<double>(it->second));
-        }
-    }
-}
 
 // ============================================================================
 // Labor Market
@@ -293,7 +170,6 @@ float computeInfrastructureBonus(const aoc::game::GameState& gameState,
 }
 
 
-
 // ============================================================================
 // Currency Exchange
 // ============================================================================
@@ -343,11 +219,5 @@ float computeExchangeRate(const aoc::game::GameState& gameState,
 // Master function
 // ============================================================================
 
-void processAdvancedEconomics(aoc::game::GameState& gameState, const aoc::map::HexGrid& /*grid*/,
-                              PlayerId /*player*/, Market& /*market*/) {
-    // Loans and the debt crisis went with them: takeLoan never had a caller,
-    // so interest never fired and the crisis never triggered.
-    processTechSpillover(gameState);
-}
 
 } // namespace aoc::sim

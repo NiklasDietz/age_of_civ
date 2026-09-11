@@ -28,7 +28,6 @@
 #include "aoc/simulation/economy/MonopolyPricing.hpp"
 #include "aoc/simulation/economy/Sanctions.hpp"
 #include "aoc/simulation/economy/Speculation.hpp"
-#include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/diplomacy/WorldCongress.hpp"
 #include "aoc/simulation/barbarian/BarbarianClans.hpp"
@@ -269,12 +268,6 @@ public:
     // Global collections
     // ========================================================================
 
-    [[nodiscard]] std::vector<aoc::sim::TradeRouteComponent>& tradeRoutes() {
-        return this->m_tradeRoutes;
-    }
-    [[nodiscard]] const std::vector<aoc::sim::TradeRouteComponent>& tradeRoutes() const {
-        return this->m_tradeRoutes;
-    }
 
     [[nodiscard]] std::vector<aoc::sim::CommodityHoardComponent>& commodityHoards() {
         return this->m_commodityHoards;
@@ -367,7 +360,6 @@ private:
     aoc::sim::VisibilityEventBus m_visibilityBus;
 
     // Global collections
-    std::vector<aoc::sim::TradeRouteComponent> m_tradeRoutes;
     std::vector<aoc::sim::CommodityHoardComponent> m_commodityHoards;
     std::vector<aoc::sim::BarbarianClanComponent> m_barbarianClans;
     std::vector<aoc::sim::CityStateComponent> m_cityStates;

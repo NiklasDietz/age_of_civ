@@ -64,8 +64,6 @@ private:
     void computePlayerNeeds(aoc::game::GameState& gameState);
     void applyResourceDepletion(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
     void reportToMarket(aoc::game::GameState& gameState);
-    void executeTradeRoutes(aoc::game::GameState& gameState);
-    void settleTradeInCoins(aoc::game::GameState& gameState);
     void updateCoinReservesFromStockpiles(aoc::game::GameState& gameState);
     void tickMonetaryMechanics(aoc::game::GameState& gameState);
     void executeMonetaryPolicy(aoc::game::GameState& gameState);

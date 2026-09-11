@@ -14,6 +14,7 @@
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/city/ProductionSystem.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
@@ -503,8 +504,9 @@ bool questCompleted(const aoc::game::GameState& gs,
         case CityStateQuestType::SendTradeRoute: {
             const PlayerId csPlayer =
                 static_cast<PlayerId>(CITY_STATE_PLAYER_BASE + csIndex);
-            for (const TradeRouteComponent& tr : gs.tradeRoutes()) {
-                if (tr.sourcePlayer == p->id() && tr.destPlayer == csPlayer) {
+            for (const std::unique_ptr<aoc::game::Unit>& unit : p->units()) {
+                const TraderComponent& trader = unit->trader();
+                if (trader.owner == p->id() && trader.destOwner == csPlayer) {
                     return true;
                 }
             }

@@ -556,7 +556,6 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     processCityConnections(*gsPlayer, grid);
 
     // Advanced economics (tariffs, banking, debt)
-    processAdvancedEconomics(*turnContext.gameState, grid, player, turnContext.economy->market());
 
     // War weariness
     processWarWeariness(*gsPlayer, *turnContext.diplomacy);

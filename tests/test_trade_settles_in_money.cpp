@@ -3,12 +3,12 @@
  * @brief The AI's trade consults the monetary system, and the exchange rate
  *        hears about the trade.
  *
- *        There are two trade systems in the tree. TradeRouteComponent, walked
- *        by EconomySimulation::executeTradeRoutes and settleTradeInCoins, is
- *        appended to in exactly one place -- the human's trade screen in
- *        GameScreens.cpp -- so gameState.tradeRoutes() is empty for every
- *        headless run. Trader UNITS, in TradeRouteSystem.cpp, are how the AI
- *        actually trades.
+ *        Until 2026-09-11 there were two trade systems in the tree. The
+ *        legacy TradeRouteComponent list, walked by executeTradeRoutes and
+ *        settleTradeInCoins, was appended to only by the human's trade
+ *        screen, so it was empty for every headless run; the money
+ *        programme's Phase 0.5 deleted it. Trader UNITS, in
+ *        TradeRouteSystem.cpp, are how everyone trades.
  *
  *        The whole international-money layer hung off the human-only one.
  *        Measured over 500 turns of seed 42: settleTradeInCoins settled zero

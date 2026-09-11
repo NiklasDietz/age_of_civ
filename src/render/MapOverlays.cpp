@@ -7,7 +7,8 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
-#include "aoc/simulation/economy/TradeRoute.hpp"
+#include "aoc/game/Unit.hpp"
+#include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -139,19 +140,21 @@ void renderTradeRouteOverlay(vulkan_app::renderer::Renderer2D& renderer,
                              const aoc::map::HexGrid& /*grid*/,
                              float cameraX, float cameraY, float zoom,
                              PlayerId player) {
-    for (const aoc::sim::TradeRouteComponent& route : gameState.tradeRoutes()) {
-        if (route.sourcePlayer != player && route.destPlayer != player) {
-            continue;
-        }
-
-        // Draw gold lines between path waypoints
-        for (std::size_t p = 0; p + 1 < route.path.size(); ++p) {
-            float x1 = 0.0f, y1 = 0.0f;
-            float x2 = 0.0f, y2 = 0.0f;
-            hexToScreen(route.path[p], cameraX, cameraY, zoom, x1, y1);
-            hexToScreen(route.path[p + 1], cameraX, cameraY, zoom, x2, y2);
-
-            renderer.drawLine(x1, y1, x2, y2, 1.5f, 0.9f, 0.8f, 0.2f, 0.6f);
+    for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::Unit>& unit : gsPlayer->units()) {
+            const aoc::sim::TraderComponent& trader = unit->trader();
+            if (trader.owner == aoc::INVALID_PLAYER ||
+                (trader.owner != player && trader.destOwner != player)) {
+                continue;
+            }
+            // Gold lines along the Trader's path.
+            for (std::size_t p = 0; p + 1 < trader.path.size(); ++p) {
+                float x1 = 0.0f, y1 = 0.0f;
+                float x2 = 0.0f, y2 = 0.0f;
+                hexToScreen(trader.path[p], cameraX, cameraY, zoom, x1, y1);
+                hexToScreen(trader.path[p + 1], cameraX, cameraY, zoom, x2, y2);
+                renderer.drawLine(x1, y1, x2, y2, 1.5f, 0.9f, 0.8f, 0.2f, 0.6f);
+            }
         }
     }
 }

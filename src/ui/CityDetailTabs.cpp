@@ -37,7 +37,6 @@
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
-#include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/economy/DomesticCourier.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/map/Improvement.hpp"

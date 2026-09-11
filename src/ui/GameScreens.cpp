@@ -31,7 +31,6 @@
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/economy/Market.hpp"
-#include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/economy/DomesticCourier.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
@@ -2274,20 +2273,13 @@ void EconomyScreen::open(UIManager& ui) {
 }
 
 void EconomyScreen::buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel) {
-    // Remove old trade route panel if any
     if (this->m_tradeRoutePanel != INVALID_WIDGET) {
         ui.removeWidget(this->m_tradeRoutePanel);
         this->m_tradeRoutePanel = INVALID_WIDGET;
     }
 
-    this->m_trSourcePlayerIdx = -1;
-    this->m_trSourceCityIdx   = -1;
-    this->m_trDestPlayerIdx   = -1;
-    this->m_trDestCityIdx     = -1;
-
-    this->m_tradeRoutePanel = ui.createPanel(parentPanel, {0.0f, 0.0f, 470.0f, 300.0f},
+    this->m_tradeRoutePanel = ui.createPanel(parentPanel, {0.0f, 0.0f, 470.0f, 90.0f},
                                              PanelData{tokens::SURFACE_PARCHMENT_DIM, 4.0f});
-
     Widget* trPanel = ui.getWidget(this->m_tradeRoutePanel);
     if (trPanel != nullptr) {
         trPanel->padding      = {6.0f, 6.0f, 6.0f, 6.0f};
@@ -2295,164 +2287,27 @@ void EconomyScreen::buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel) {
     }
 
     (void)ui.createLabel(this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 16.0f},
-                         LabelData{"-- Create Trade Route --", tokens::TEXT_HEADER, 13.0f});
-
-    // Source city selection (player's own cities)
-    (void)ui.createLabel(this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 14.0f},
-                         LabelData{"Source City (yours):", tokens::TEXT_HEADER, 11.0f});
-
-    WidgetId sourceList = ui.createScrollList(this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 80.0f});
-    Widget* srcListW    = ui.getWidget(sourceList);
-    if (srcListW != nullptr) {
-        srcListW->padding      = {2.0f, 2.0f, 2.0f, 2.0f};
-        srcListW->childSpacing = 2.0f;
-    }
-
+                         LabelData{"-- Trade Routes --", tokens::TEXT_HEADER, 13.0f});
     const aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
-    if (owningPlayer != nullptr) {
-        const int32_t playerIdx = static_cast<int32_t>(this->m_player);
-        int32_t cityIdx         = 0;
-        for (const std::unique_ptr<aoc::game::City>& city : owningPlayer->cities()) {
-            const int32_t capturedCityIdx = cityIdx;
-            ButtonData srcBtn;
-            srcBtn.label        = city->name();
-            srcBtn.fontSize     = 10.0f;
-            srcBtn.normalColor  = tokens::BRONZE_BASE;
-            srcBtn.hoverColor   = tokens::BRONZE_LIGHT;
-            srcBtn.pressedColor = tokens::BRONZE_DARK;
-            srcBtn.cornerRadius = 2.0f;
-            srcBtn.onClick      = [this, playerIdx, capturedCityIdx]() {
-                this->m_trSourcePlayerIdx = playerIdx;
-                this->m_trSourceCityIdx   = capturedCityIdx;
-                LOG_INFO("Trade route source city selected");
-            };
-            (void)ui.createButton(sourceList, {0.0f, 0.0f, 440.0f, 20.0f}, std::move(srcBtn));
-            ++cityIdx;
+    const int32_t active = owningPlayer != nullptr ? owningPlayer->activeTradeRouteCount() : 0;
+    (void)ui.createLabel(this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 14.0f},
+                         LabelData{"Traders on a route: " + std::to_string(active),
+                                   tokens::TEXT_HEADER, 11.0f});
+
+    ButtonData routesBtn;
+    routesBtn.label        = "Send a Trader (Routes screen)";
+    routesBtn.fontSize     = 12.0f;
+    routesBtn.normalColor  = tokens::STATE_SUCCESS;
+    routesBtn.hoverColor   = {0.432f, 0.654f, 0.292f, 1.0f};
+    routesBtn.pressedColor = {0.288f, 0.436f, 0.194f, 1.0f};
+    routesBtn.cornerRadius = 4.0f;
+    routesBtn.onClick      = [this]() {
+        if (this->m_onOpenRouteSetup) {
+            this->m_onOpenRouteSetup();
         }
-    }
-
-    // Destination city selection (other players' cities)
-    (void)ui.createLabel(
-        this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 14.0f},
-        LabelData{"Destination City (other players):", tokens::TEXT_HEADER, 11.0f});
-
-    WidgetId destList = ui.createScrollList(this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 80.0f});
-    Widget* dstListW  = ui.getWidget(destList);
-    if (dstListW != nullptr) {
-        dstListW->padding      = {2.0f, 2.0f, 2.0f, 2.0f};
-        dstListW->childSpacing = 2.0f;
-    }
-
-    for (const std::unique_ptr<aoc::game::Player>& otherPlayer : this->m_gameState->players()) {
-        if (otherPlayer->id() == this->m_player) {
-            continue;
-        }
-        const int32_t destPlayerIdx = static_cast<int32_t>(otherPlayer->id());
-        int32_t cityIdx             = 0;
-        for (const std::unique_ptr<aoc::game::City>& city : otherPlayer->cities()) {
-            const int32_t capturedCityIdx = cityIdx;
-            std::string destLabel = city->name() + " (P" +
-                                    std::to_string(static_cast<unsigned>(otherPlayer->id())) + ")";
-            ButtonData dstBtn;
-            dstBtn.label        = std::move(destLabel);
-            dstBtn.fontSize     = 10.0f;
-            dstBtn.normalColor  = tokens::BRONZE_BASE;
-            dstBtn.hoverColor   = tokens::BRONZE_LIGHT;
-            dstBtn.pressedColor = tokens::BRONZE_DARK;
-            dstBtn.cornerRadius = 2.0f;
-            dstBtn.onClick      = [this, destPlayerIdx, capturedCityIdx]() {
-                this->m_trDestPlayerIdx = destPlayerIdx;
-                this->m_trDestCityIdx   = capturedCityIdx;
-                LOG_INFO("Trade route destination city selected");
-            };
-            (void)ui.createButton(destList, {0.0f, 0.0f, 440.0f, 20.0f}, std::move(dstBtn));
-            ++cityIdx;
-        }
-    }
-
-    // "Establish Route" button
-    ButtonData establishBtn;
-    establishBtn.label        = "Establish Route";
-    establishBtn.fontSize     = 12.0f;
-    establishBtn.normalColor  = tokens::STATE_SUCCESS;
-    establishBtn.hoverColor   = {0.432f, 0.654f, 0.292f, 1.0f};
-    establishBtn.pressedColor = {0.288f, 0.436f, 0.194f, 1.0f};
-    establishBtn.cornerRadius = 4.0f;
-    establishBtn.onClick      = [this]() {
-        if (this->m_trSourcePlayerIdx < 0 || this->m_trSourceCityIdx < 0 ||
-            this->m_trDestPlayerIdx < 0 || this->m_trDestCityIdx < 0) {
-            LOG_INFO("Trade route: must select both source and destination cities");
-            return;
-        }
-
-        const aoc::game::Player* srcPlayer =
-            this->m_gameState->player(static_cast<PlayerId>(this->m_trSourcePlayerIdx));
-        const aoc::game::Player* dstPlayer =
-            this->m_gameState->player(static_cast<PlayerId>(this->m_trDestPlayerIdx));
-
-        if (srcPlayer == nullptr || dstPlayer == nullptr) {
-            return;
-        }
-        // cityCount() (raw vector size): bounds check for the indexed
-        // access into cities() below. Must match vector capacity, not
-        // currently-owned count.
-        if (this->m_trSourceCityIdx >= srcPlayer->cityCount() ||
-            this->m_trDestCityIdx >= dstPlayer->cityCount()) {
-            return;
-        }
-
-        const aoc::game::City& srcCity =
-            *srcPlayer->cities()[static_cast<std::size_t>(this->m_trSourceCityIdx)];
-        const aoc::game::City& dstCity =
-            *dstPlayer->cities()[static_cast<std::size_t>(this->m_trDestCityIdx)];
-
-        // Compute path between cities
-        std::optional<aoc::map::PathResult> pathResult =
-            aoc::map::findPath(*this->m_grid, srcCity.location(), dstCity.location());
-
-        if (!pathResult.has_value()) {
-            LOG_INFO("Trade route: no path found between cities");
-            return;
-        }
-
-        // Create the trade route and add it to global state
-        aoc::sim::TradeRouteComponent route{};
-        route.sourceCityId   = EntityId{}; // Routes now identified by location, not legacy entity
-        route.destCityId     = EntityId{};
-        route.sourcePlayer   = srcPlayer->id();
-        route.destPlayer     = dstPlayer->id();
-        route.path           = pathResult->path;
-        route.turnsRemaining = static_cast<int32_t>(pathResult->path.size()) / 5 + 1;
-
-        // Auto-fill cargo with top 3 surplus goods from source city stockpile
-        const aoc::sim::CityStockpileComponent& stockpile = srcCity.stockpile();
-        std::vector<std::pair<uint16_t, int32_t>> surplusGoods;
-        for (const std::pair<const uint16_t, int32_t>& entry : stockpile.goods) {
-            if (entry.second > 0) {
-                surplusGoods.push_back({entry.first, entry.second});
-            }
-        }
-        std::sort(surplusGoods.begin(), surplusGoods.end(),
-                  [](const std::pair<uint16_t, int32_t>& a, const std::pair<uint16_t, int32_t>& b) {
-                      return a.second > b.second;
-                  });
-        const std::size_t cargoCount = (surplusGoods.size() < 3) ? surplusGoods.size() : 3;
-        for (std::size_t c = 0; c < cargoCount; ++c) {
-            aoc::sim::TradeOffer offer{};
-            offer.goodId        = surplusGoods[c].first;
-            offer.amountPerTurn = surplusGoods[c].second / 2; // Ship half surplus
-            if (offer.amountPerTurn > 0) {
-                route.cargo.push_back(std::move(offer));
-            }
-        }
-
-        this->m_gameState->tradeRoutes().push_back(std::move(route));
-
-        LOG_INFO("Trade route established from %s to %s (%d turns)", srcCity.name().c_str(),
-                 dstCity.name().c_str(), this->m_gameState->tradeRoutes().back().turnsRemaining);
     };
-    (void)ui.createButton(this->m_tradeRoutePanel, {0.0f, 0.0f, 160.0f, 26.0f},
-                          std::move(establishBtn));
+    (void)ui.createButton(this->m_tradeRoutePanel, {0.0f, 0.0f, 240.0f, 26.0f},
+                          std::move(routesBtn));
 
     ui.layout();
 }
@@ -2469,10 +2324,6 @@ void EconomyScreen::close(UIManager& ui) {
     this->m_infoLabel         = INVALID_WIDGET;
     this->m_marketList        = INVALID_WIDGET;
     this->m_tradeRoutePanel   = INVALID_WIDGET;
-    this->m_trSourcePlayerIdx = -1;
-    this->m_trSourceCityIdx   = -1;
-    this->m_trDestPlayerIdx   = -1;
-    this->m_trDestCityIdx     = -1;
 }
 
 void EconomyScreen::refresh(UIManager& ui) {

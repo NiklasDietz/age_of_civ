@@ -42,7 +42,6 @@
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/monetary/MonetaryActions.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
-#include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/simulation/ai/AIEconomicStrategy.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
@@ -2087,14 +2086,16 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
                 ++tradePartnerCount;
             }
         };
-        for (const aoc::sim::TradeRouteComponent& route : gameState.tradeRoutes()) {
-            if (route.sourcePlayer == this->m_player &&
-                route.destPlayer != this->m_player) {
-                markPartner(route.destPlayer);
-            }
-            if (route.destPlayer == this->m_player &&
-                route.sourcePlayer != this->m_player) {
-                markPartner(route.sourcePlayer);
+        // Live Traders, major civs only: markPartner's MAX_PLAYERS guard
+        // leaves city-state destinations out.
+        const aoc::game::Player* me = gameState.player(this->m_player);
+        if (me != nullptr) {
+            for (const std::unique_ptr<aoc::game::Unit>& unit : me->units()) {
+                const aoc::sim::TraderComponent& trader = unit->trader();
+                if (trader.owner != INVALID_PLAYER && trader.destOwner != INVALID_PLAYER &&
+                    trader.destOwner != this->m_player) {
+                    markPartner(trader.destOwner);
+                }
             }
         }
     }

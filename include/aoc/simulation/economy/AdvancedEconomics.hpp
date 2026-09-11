@@ -62,55 +62,6 @@ struct PlayerTariffComponent {
     [[nodiscard]] float effectiveCanalTollRate(PlayerId trader) const;
 };
 
-/// Apply tariffs to a trade deal value. Returns the post-tariff value.
-[[nodiscard]] float applyTariffs(const PlayerTariffComponent& importer,
-                                 PlayerId exporter, float baseValue);
-
-// ============================================================================
-// Transport Costs
-// ============================================================================
-
-/// Compute transport cost between two hex coordinates based on distance
-/// and infrastructure. Cities with roads/harbors between them have lower costs.
-[[nodiscard]] float computeTransportCost(const aoc::map::HexGrid& grid,
-                                         hex::AxialCoord from, hex::AxialCoord to,
-                                         float baseGoodValue);
-
-// ============================================================================
-// Trade Blocs
-// ============================================================================
-
-/// A trade bloc is a group of players with shared tariff policies.
-struct TradeBloc {
-    uint8_t id = 0;
-    std::string_view name;
-    std::vector<PlayerId> members;
-    float internalTariff = 0.0f;   ///< Tariff between members (usually 0 = free trade)
-    float externalTariff = 0.10f;  ///< Common external tariff
-};
-
-/// Global tracker for trade blocs (one per game).
-struct GlobalTradeBlocTracker {
-    std::vector<TradeBloc> blocs;
-
-    /// Check if two players are in the same trade bloc.
-    [[nodiscard]] bool areInSameBloc(PlayerId a, PlayerId b) const;
-
-    /// Get the effective tariff between two players considering blocs.
-    [[nodiscard]] float effectiveTariff(PlayerId importer, PlayerId exporter) const;
-};
-
-// ============================================================================
-// Technology Spillover
-// ============================================================================
-
-/// When trading with a more advanced player, gain a small science bonus.
-/// Bonus = max(0, partnerTechs - myTechs) * spilloverRate
-[[nodiscard]] float computeTechSpillover(const aoc::game::GameState& gameState,
-                                         PlayerId player, PlayerId tradePartner);
-
-/// Process tech spillover for all active trade routes.
-void processTechSpillover(aoc::game::GameState& gameState);
 
 // ============================================================================
 // Labor Market
@@ -163,11 +114,5 @@ struct CityLaborComponent {
 [[nodiscard]] float computeExchangeRate(const aoc::game::GameState& gameState,
                                         PlayerId playerA, PlayerId playerB);
 
-// ============================================================================
-// Master function: process all advanced economics per turn.
-// ============================================================================
-
-void processAdvancedEconomics(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
-                              PlayerId player, Market& market);
 
 } // namespace aoc::sim

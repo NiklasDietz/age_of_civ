@@ -1056,6 +1056,7 @@ if(AOC_BUILD_TESTS)
         test_income_breakdown_parity
         test_trade_measurability
         test_resource_geography
+        test_trader_readers
         test_resource_curse_is_emergent
         test_deal_proposals
         test_natural_disasters

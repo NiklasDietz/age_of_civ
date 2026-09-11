@@ -1906,6 +1906,13 @@ ErrorCode Application::initialize(const Config& config) {
 
     // "Choose a site" on a queued district arms map siting: the screen closes,
     // the candidate tiles light up and the next right-click places it.
+    this->m_economyScreen.setOpenRouteSetupCallback([this]() {
+        if (!this->m_tradeRouteSetupScreen.isOpen()) {
+            this->m_tradeRouteSetupScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0,
+                                                     &this->m_economy.market(), &this->m_diplomacy);
+            this->m_tradeRouteSetupScreen.open(this->m_uiManager);
+        }
+    });
     this->m_cityDetailScreen.setPlaceDistrictCallback(
         [this](aoc::hex::AxialCoord cityAt, aoc::sim::DistrictType type) {
             this->m_pendingDistrictCity   = cityAt;

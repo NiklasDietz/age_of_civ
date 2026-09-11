@@ -1265,9 +1265,9 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             // systems, their fiat trust, and the exchange-rate risk between
             // them.
             //
-            // It had exactly one caller, EconomySimulation::settleTradeInCoins,
-            // which walks gameState.tradeRoutes(); the only code that appends
-            // to that vector is the human's trade screen. So in an AI game the
+            // Until 2026-09-11 its only caller was the legacy settleTradeInCoins,
+            // which walked a route list only the human's trade screen filled,
+            // and that list is gone. So in an AI game the
             // function was never called, and currency trust -- computed every
             // turn, saved, penalised by crises, gating reserve status -- had no
             // route to anyone's treasury at all. Traders are how the AI trades,
@@ -1329,15 +1329,11 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             // buyer, which is what ForexMarket means by `tradeBalance`: a civ
             // selling more abroad than it buys sees its currency firm.
             //
-            // The other place that writes tradeBalance is
-            // EconomySimulation::settleTradeInCoins, and it cannot fire in an
-            // AI game. That settles TradeRouteComponent entries, and the only
-            // code in the tree that appends one is the human's trade screen
-            // (GameScreens.cpp), so gameState.tradeRoutes() is empty for every
-            // headless run: measured over 500 turns of seed 42, that loop
-            // settled exactly zero payments and IncomeGoodsEcon was 0 in all
-            // 1400 player-turns. Traders are how the AI actually trades, so the
-            // channel has to be fed from here to exist at all.
+            // The only other writer of tradeBalance was the legacy
+            // settleTradeInCoins, deleted 2026-09-11: it settled a route list
+            // only the human's trade screen filled, so over 500 turns of seed
+            // 42 it settled exactly zero payments. Traders are how everyone
+            // trades, so the channel has to be fed from here to exist at all.
             if (goldEarned > 0
                 && trader.owner != cityOwner
                 && trader.owner != INVALID_PLAYER && cityOwner != INVALID_PLAYER

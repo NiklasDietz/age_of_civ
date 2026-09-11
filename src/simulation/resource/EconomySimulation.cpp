@@ -14,7 +14,6 @@
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
-#include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/economy/InternalTrade.hpp"
 #include "aoc/simulation/economy/EnvironmentModifier.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
@@ -204,8 +203,6 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
     this->reportToMarket(gameState);
     this->computePlayerNeeds(gameState);
     this->m_market.updatePrices();
-    this->executeTradeRoutes(gameState);
-    this->settleTradeInCoins(gameState);
     this->updateCoinReservesFromStockpiles(gameState);
     this->tickMonetaryMechanics(gameState);
     this->processCrisisAndBonds(gameState);
@@ -1296,49 +1293,6 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
 // Step 4: Execute active trade routes
 // ============================================================================
 
-void EconomySimulation::executeTradeRoutes(aoc::game::GameState& gameState) {
-    for (TradeRouteComponent& route : gameState.tradeRoutes()) {
-        if (route.turnsRemaining > 0) {
-            --route.turnsRemaining;
-            continue;
-        }
-
-        // Resolve destination stockpile via destPlayer + first city.
-        // TradeRouteComponent carries destPlayer for exactly this purpose.
-        aoc::game::Player* destPlayer = gameState.player(route.destPlayer);
-        if (destPlayer == nullptr || destPlayer->cities().empty()) {
-            continue;
-        }
-        // Deliver to the first (capital) city of the destination player.
-        aoc::game::City* destCity = destPlayer->cities().front().get();
-        if (destCity == nullptr) {
-            continue;
-        }
-        CityStockpileComponent& destStockpile = destCity->stockpile();
-
-        // Export price multiplier from source player's currency devaluation.
-        float exportMult = 1.0f;
-        aoc::game::Player* srcPlayer = gameState.player(route.sourcePlayer);
-        if (srcPlayer != nullptr) {
-            exportMult = srcPlayer->currencyDevaluation().exportPriceMultiplier();
-        }
-
-        for (const TradeOffer& offer : route.cargo) {
-            int32_t adjusted = static_cast<int32_t>(
-                static_cast<float>(offer.amountPerTurn) / std::max(0.5f, exportMult));
-            destStockpile.addGoods(offer.goodId, adjusted);
-        }
-
-        int32_t baseTurns = static_cast<int32_t>(route.path.size()) / 5 + 1;
-
-        // Tech check: Computers (TechId 16) reduces travel time by 1 turn.
-        if (srcPlayer != nullptr && srcPlayer->hasResearched(TechId{16})) {
-            baseTurns = std::max(1, baseTurns - 1);
-        }
-
-        route.turnsRemaining = baseTurns;
-    }
-}
 
 // ============================================================================
 // Step 5: Monetary policy
@@ -1447,134 +1401,6 @@ void EconomySimulation::executeMonetaryPolicy(aoc::game::GameState& gameState) {
 // Step 4b: Settle trade route imbalances in coins
 // ============================================================================
 
-void EconomySimulation::settleTradeInCoins(aoc::game::GameState& gameState) {
-    const std::vector<TradeRouteComponent>& tradeRoutes = gameState.tradeRoutes();
-
-    struct PlayerPairHash {
-        std::size_t operator()(const std::pair<PlayerId, PlayerId>& p) const {
-            return std::hash<uint32_t>()(
-                (static_cast<uint32_t>(p.first) << 16) | static_cast<uint32_t>(p.second));
-        }
-    };
-    std::unordered_map<std::pair<PlayerId, PlayerId>, int32_t, PlayerPairHash> tradeFlows;
-
-    for (const TradeRouteComponent& route : tradeRoutes) {
-        if (route.turnsRemaining > 0) { continue; }
-
-        int32_t cargoValue = 0;
-        for (const TradeOffer& offer : route.cargo) {
-            cargoValue += offer.amountPerTurn * this->m_market.price(offer.goodId);
-        }
-
-        if (cargoValue > 0) {
-            tradeFlows[std::make_pair(route.sourcePlayer, route.destPlayer)] += cargoValue;
-        }
-    }
-
-    std::unordered_set<uint64_t> processed;
-    for (const std::pair<const std::pair<PlayerId, PlayerId>, int32_t>& entry : tradeFlows) {
-        PlayerId pA = entry.first.first;
-        PlayerId pB = entry.first.second;
-
-        uint64_t pairKey = (static_cast<uint64_t>(std::min(pA, pB)) << 32)
-                         | static_cast<uint64_t>(std::max(pA, pB));
-        if (processed.count(pairKey) > 0) { continue; }
-        processed.insert(pairKey);
-
-        int32_t flowAtoB = entry.second;
-        std::pair<PlayerId, PlayerId> reverseKey = std::make_pair(pB, pA);
-        std::unordered_map<std::pair<PlayerId, PlayerId>, int32_t, PlayerPairHash>::iterator reverseIt =
-            tradeFlows.find(reverseKey);
-        int32_t flowBtoA   = (reverseIt != tradeFlows.end()) ? reverseIt->second : 0;
-        int32_t netBalance = flowAtoB - flowBtoA;
-
-        if (netBalance == 0) { continue; }
-
-        PlayerId payer    = (netBalance > 0) ? pB : pA;
-        PlayerId receiver = (netBalance > 0) ? pA : pB;
-        int32_t paymentValue = std::abs(netBalance);
-
-        aoc::game::Player* payerPlayer    = gameState.player(payer);
-        aoc::game::Player* receiverPlayer = gameState.player(receiver);
-        if (payerPlayer == nullptr || receiverPlayer == nullptr) { continue; }
-
-        // Feed the exchange rate. ForexMarket READS forex.tradeBalance to move
-        // the rate away from its fundamental, and resets it to 0 at the end of
-        // its own update -- but nothing anywhere WROTE a non-zero value, so the
-        // field occurred exactly twice in the tree (its declaration and that
-        // reset) and the trade channel contributed identically zero. This is
-        // the net flow it always wanted: a civ exporting more than it imports
-        // accumulates a surplus and its currency firms.
-        //
-        // I removed a ResourceCurse currencyAppreciation multiplier earlier on
-        // the stated grounds that this channel already did the job. It did not.
-        // Now it does.
-        receiverPlayer->currencyExchange().tradeBalance += paymentValue;
-        payerPlayer->currencyExchange().tradeBalance    -= paymentValue;
-
-        float efficiency = bilateralTradeEfficiency(gameState, payer, receiver);
-        int32_t effectivePayment = static_cast<int32_t>(
-            static_cast<float>(paymentValue) * efficiency * 0.05f);
-        effectivePayment = std::max(1, effectivePayment);
-
-        // Transfer coins via city stockpiles (not just reserve fields) so that
-        // updateCoinReservesFromStockpiles() picks them up correctly.
-        // Coins are withdrawn from the payer's first city (capital) and deposited
-        // into the receiver's first city. This is how ore-less civs acquire coins:
-        // through trade surpluses (price-specie flow).
-        if (payerPlayer->cities().empty() || receiverPlayer->cities().empty()) { continue; }
-        CityStockpileComponent& payerStock = payerPlayer->cities().front()->stockpile();
-        CityStockpileComponent& recvStock  = receiverPlayer->cities().front()->stockpile();
-
-        int32_t remaining = effectivePayment;
-
-        // Transfer highest-value coins first (gold bars > silver > copper).
-        // Consume from the payer FIRST and credit the receiver only with what
-        // was actually removed: consumeGoods is all-or-nothing, so on a
-        // shortfall it removes zero — crediting the requested amount anyway
-        // would mint coins from nothing.
-        if (remaining > 0) {
-            int32_t payerGold = payerStock.getAmount(goods::GOLD_BARS);
-            if (payerGold > 0) {
-                int32_t goldToTransfer = std::min(payerGold,
-                    (remaining + GOLD_BAR_VALUE - 1) / GOLD_BAR_VALUE);
-                if (payerStock.consumeGoods(goods::GOLD_BARS, goldToTransfer)) {
-                    recvStock.addGoods(goods::GOLD_BARS, goldToTransfer);
-                    remaining -= goldToTransfer * GOLD_BAR_VALUE;
-                } else {
-                    LOG_WARN("settleTradeInCoins: gold shortfall, payer had %d < %d requested",
-                             payerGold, goldToTransfer);
-                }
-            }
-        }
-        if (remaining > 0) {
-            int32_t payerSilver = payerStock.getAmount(goods::SILVER_COINS);
-            if (payerSilver > 0) {
-                int32_t silverToTransfer = std::min(payerSilver,
-                    (remaining + SILVER_COIN_VALUE - 1) / SILVER_COIN_VALUE);
-                if (payerStock.consumeGoods(goods::SILVER_COINS, silverToTransfer)) {
-                    recvStock.addGoods(goods::SILVER_COINS, silverToTransfer);
-                    remaining -= silverToTransfer * SILVER_COIN_VALUE;
-                } else {
-                    LOG_WARN("settleTradeInCoins: silver shortfall, payer had %d < %d requested",
-                             payerSilver, silverToTransfer);
-                }
-            }
-        }
-        if (remaining > 0) {
-            int32_t payerCopper = payerStock.getAmount(goods::COPPER_COINS);
-            if (payerCopper > 0) {
-                int32_t copperToTransfer = std::min(payerCopper, remaining);
-                if (payerStock.consumeGoods(goods::COPPER_COINS, copperToTransfer)) {
-                    recvStock.addGoods(goods::COPPER_COINS, copperToTransfer);
-                } else {
-                    LOG_WARN("settleTradeInCoins: copper shortfall, payer had %d < %d requested",
-                             payerCopper, copperToTransfer);
-                }
-            }
-        }
-    }
-}
 
 // ============================================================================
 // Sync coin reserves from city stockpiles into the monetary state
