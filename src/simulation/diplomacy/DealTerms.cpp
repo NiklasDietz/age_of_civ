@@ -206,6 +206,24 @@ void liftExclusiveAccess(const aoc::game::GameState& gameState, DiplomacyManager
             }
             break;
         }
+        case DealTermType::SupplyContract: {
+            if (term.goodAmount <= 0 || term.goldPerTurn < 0 || term.duration <= 0 ||
+                term.duration > SUPPLY_CONTRACT_MAX_TURNS) {
+                return ErrorCode::InvalidArgument;
+            }
+            const aoc::game::Player* seller = gameState.player(term.fromPlayer);
+            const aoc::game::Player* buyer  = gameState.player(term.toPlayer);
+            if (seller == nullptr || buyer == nullptr || buyer->ownedCityCount() == 0) {
+                return ErrorCode::InvalidState;
+            }
+            // The seller can make the first shipment and the buyer the first
+            // instalment; later turns are the contract's own risk.
+            if (playerGoodsHeld(*seller, term.goodId) < term.goodAmount) {
+                return ErrorCode::InsufficientResources;
+            }
+            goldOwed[term.toPlayer] += static_cast<CurrencyAmount>(term.goldPerTurn);
+            break;
+        }
         case DealTermType::GoldLump: {
             if (term.goldLump <= 0) {
                 break;
@@ -270,6 +288,21 @@ ErrorCode acceptDeal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
     }
 
     deal.isAccepted = true;
+    // A deal made only of contracts lives exactly as long as its longest one;
+    // a mixed deal lives at least that long.
+    int32_t longestContract = 0;
+    bool onlyContracts      = true;
+    for (const DealTerm& term : deal.terms) {
+        if (term.type == DealTermType::SupplyContract) {
+            longestContract = std::max(longestContract, term.duration);
+        } else {
+            onlyContracts = false;
+        }
+    }
+    if (longestContract > 0) {
+        deal.turnsRemaining = onlyContracts ? longestContract
+                                            : std::max(deal.turnsRemaining, longestContract);
+    }
     if (diplomacy != nullptr && diplomacy->eventLog() != nullptr) {
         diplomacy->eventLog()->record(TurnEventType::DealAccepted, deal.playerA, deal.playerB,
                                       static_cast<int32_t>(deal.terms.size()), 0,
@@ -520,6 +553,78 @@ bool hasMilitaryUnitsNearBorder(const aoc::game::GameState& gameState,
 
 } // anonymous namespace
 
+namespace {
+
+enum class ContractFate : uint8_t { Runs, Ended, Breached };
+
+struct ContractCheck {
+    ContractFate fate = ContractFate::Runs;
+    PlayerId breaker  = INVALID_PLAYER;
+};
+
+/// Whether a deal carrying contracts can run this turn: not with a party
+/// gone (no city to ship from or to), not at war, not under embargo.
+[[nodiscard]] ContractCheck checkContractParties(const aoc::game::GameState& gameState,
+                                                 const DiplomacyManager& diplomacy,
+                                                 const DiplomaticDeal& deal) {
+    const aoc::game::Player* a = gameState.player(deal.playerA);
+    const aoc::game::Player* b = gameState.player(deal.playerB);
+    if (a == nullptr || b == nullptr || a->ownedCityCount() == 0 || b->ownedCityCount() == 0) {
+        return {ContractFate::Ended, INVALID_PLAYER};
+    }
+    const PairwiseRelation& rel = diplomacy.relation(deal.playerA, deal.playerB);
+    if (rel.isAtWar) {
+        const PlayerId aggressor = rel.lastWarAggressor;
+        return {ContractFate::Breached,
+                (aggressor == deal.playerA || aggressor == deal.playerB) ? aggressor : deal.playerA};
+    }
+    if (diplomacy.hasEmbargo(deal.playerA, deal.playerB)) {
+        return {ContractFate::Breached, deal.playerA};
+    }
+    if (diplomacy.hasEmbargo(deal.playerB, deal.playerA)) {
+        return {ContractFate::Breached, deal.playerB};
+    }
+    return {};
+}
+
+/// One turn of a supply contract: the buyer must be able to pay something,
+/// the goods move, the payment is prorated to what arrived, a shortfall costs
+/// the seller reputation. Returns the party in breach, or INVALID_PLAYER.
+[[nodiscard]] PlayerId runSupplyContract(aoc::game::GameState& gameState,
+                                         DiplomacyManager& diplomacy, DealTerm& term) {
+    aoc::game::Player* seller = gameState.player(term.fromPlayer);
+    aoc::game::Player* buyer  = gameState.player(term.toPlayer);
+    if (seller == nullptr || buyer == nullptr) {
+        return INVALID_PLAYER;
+    }
+    if (term.goldPerTurn > 0 && buyer->treasury() <= 0) {
+        return term.toPlayer;
+    }
+    const int32_t moved = transferGoods(*seller, *buyer, term.goodId, term.goodAmount);
+    if (moved <= 0) {
+        return term.fromPlayer;
+    }
+    const CurrencyAmount due =
+        static_cast<CurrencyAmount>(term.goldPerTurn) * moved / std::max(1, term.goodAmount);
+    if (due > 0) {
+        const CurrencyAmount paid = std::min(due, buyer->treasury());
+        buyer->setTreasury(buyer->treasury() - paid);
+        seller->setTreasury(seller->treasury() + paid);
+    }
+    if (moved < term.goodAmount) {
+        // Stored as breakDeal stores it: the seller's standing, in relation(seller, buyer).
+        diplomacy.addReputationModifier(term.fromPlayer, term.toPlayer,
+                                        CONTRACT_SHORTFALL_REPUTATION, 10);
+        LOG_INFO("SupplyContract short: player %u sent %d of %d of good %u to player %u",
+                 static_cast<unsigned>(term.fromPlayer), moved, term.goodAmount,
+                 static_cast<unsigned>(term.goodId), static_cast<unsigned>(term.toPlayer));
+    }
+    --term.duration;
+    return INVALID_PLAYER;
+}
+
+} // namespace
+
 void processDeals(aoc::game::GameState& gameState, GlobalDealTracker& tracker,
                   DiplomacyManager& diplomacy, const aoc::map::HexGrid& grid) {
     // First pass: check for auto-break conditions (NonAggression violated by war)
@@ -544,15 +649,41 @@ void processDeals(aoc::game::GameState& gameState, GlobalDealTracker& tracker,
     // Second pass: enforce terms and tick durations
     std::vector<DiplomaticDeal>::iterator it = tracker.activeDeals.begin();
     while (it != tracker.activeDeals.end()) {
-        if (!it->isAccepted || it->isBroken) {
+        if (it->isBroken) {
+            // Broken deals used to stay in the list for the rest of the game.
+            it = tracker.activeDeals.erase(it);
+            continue;
+        }
+        if (!it->isAccepted) {
             ++it;
             continue;
         }
-
+        const int32_t index = static_cast<int32_t>(it - tracker.activeDeals.begin());
+        if (it->hasTerm(DealTermType::SupplyContract)) {
+            const ContractCheck check = checkContractParties(gameState, diplomacy, *it);
+            if (check.fate == ContractFate::Ended) {
+                LOG_INFO("Contract between player %u and %u ended: a party has no city",
+                         static_cast<unsigned>(it->playerA), static_cast<unsigned>(it->playerB));
+                liftExclusiveAccess(gameState, diplomacy, *it);
+                it = tracker.activeDeals.erase(it);
+                continue;
+            }
+            if (check.fate == ContractFate::Breached) {
+                breakDeal(gameState, tracker, diplomacy, check.breaker, index);
+                it = tracker.activeDeals.erase(it);
+                continue;
+            }
+        }
         --it->turnsRemaining;
-
-        for (const DealTerm& term : it->terms) {
+        PlayerId breachedBy = INVALID_PLAYER;
+        for (DealTerm& term : it->terms) {
             switch (term.type) {
+            case DealTermType::SupplyContract: {
+                if (term.duration > 0 && breachedBy == INVALID_PLAYER) {
+                    breachedBy = runSupplyContract(gameState, diplomacy, term);
+                }
+                break;
+            }
             case DealTermType::WarReparations: {
                 if (term.goldPerTurn > 0) {
                     aoc::game::Player* fromPlayer = gameState.player(term.fromPlayer);
@@ -641,7 +772,11 @@ void processDeals(aoc::game::GameState& gameState, GlobalDealTracker& tracker,
                 break;
             }
         }
-
+        if (breachedBy != INVALID_PLAYER) {
+            breakDeal(gameState, tracker, diplomacy, breachedBy, index);
+            it = tracker.activeDeals.erase(it);
+            continue;
+        }
         if (it->turnsRemaining <= 0) {
             LOG_INFO("Deal between player %u and %u expired", static_cast<unsigned>(it->playerA),
                      static_cast<unsigned>(it->playerB));

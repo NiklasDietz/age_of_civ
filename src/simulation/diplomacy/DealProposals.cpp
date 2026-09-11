@@ -87,7 +87,10 @@ ErrorCode proposalShapeValid(const aoc::game::GameState& gameState, const Diplom
         if (!partiesOk) {
             return ErrorCode::InvalidArgument;
         }
-        if (atWar && term.type == DealTermType::OpenBorders) {
+        if (atWar && (term.type == DealTermType::OpenBorders || term.type == DealTermType::SupplyContract)) {
+            return ErrorCode::InvalidState;
+        }
+        if (term.type == DealTermType::SupplyContract && diplomacy.hasAnyEmbargo(a, b)) {
             return ErrorCode::InvalidState;
         }
     }
@@ -315,6 +318,17 @@ int32_t dealValueFor(const aoc::game::GameState& gameState, const DiplomacyManag
                 value += side == GoodsSide::Receive ? worth : -worth;
                 break;
             }
+            case DealTermType::SupplyContract: {
+                // A stream: the goods leg through the seam, discounted for the
+                // wait, against the gold leg, both over the term.
+                const GoodsSide side = term.toPlayer == evaluator ? GoodsSide::Receive : GoodsSide::Give;
+                const int32_t goodsLeg = goodsValueFor(gameState, diplomacy, market, evaluator, other,
+                                                       term.goodId, term.goodAmount, side)
+                                         * term.duration * CONTRACT_VALUE_PCT / 100;
+                const int32_t goldLeg = term.goldPerTurn * term.duration;
+                value += side == GoodsSide::Receive ? goodsLeg - goldLeg : goldLeg - goodsLeg;
+                break;
+            }
             case DealTermType::MostFavoredNation:
                 // Deliberately still neutral: nothing enforces it yet, so
                 // pricing it would have the AI pay for a promise that does
@@ -368,6 +382,10 @@ std::string describeDealTerm(const aoc::game::GameState& gameState, const DealTe
             return "Most Favoured Nation";
         case DealTermType::ExclusiveAccess:
             return "Exclusive access to good " + std::to_string(term.goodId);
+        case DealTermType::SupplyContract:
+            return std::to_string(term.goodAmount) + " of good " + std::to_string(term.goodId)
+                   + " per turn for " + std::to_string(term.duration) + " turns at "
+                   + std::to_string(term.goldPerTurn) + " gold per turn (" + from + " -> " + to + ")";
         default:
             return "Unknown term";
     }

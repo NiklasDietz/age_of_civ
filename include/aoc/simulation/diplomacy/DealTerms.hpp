@@ -65,8 +65,20 @@ enum class DealTermType : uint8_t {
     OpenBorders,        ///< Units can pass through territory
     ArmsLimitation,     ///< Cap on military unit count for both parties
 
+    /// goodAmount of goodId per turn from fromPlayer to toPlayer, for
+    /// goldPerTurn, for duration turns. The standing contract of the money
+    /// and trade programme (plan B4): counts down per term, so a mixed deal
+    /// keeps its other terms' lifetimes; a shortfall is prorated and costs the
+    /// seller reputation; nothing delivered, nothing paid, war, or an embargo
+    /// breaks it; a party with no city left ends it without blame.
+    SupplyContract,
     Count
 };
+
+inline constexpr int32_t SUPPLY_CONTRACT_MAX_TURNS     = 60;
+/// A stream is worth this share of the same goods delivered at once.
+inline constexpr int32_t CONTRACT_VALUE_PCT            = 80;
+inline constexpr int32_t CONTRACT_SHORTFALL_REPUTATION = -2;
 
 struct DealTerm {
     DealTermType type;
