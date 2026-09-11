@@ -89,11 +89,6 @@ private:
                                  aoc::Random& rng,
                                  GlobalDealTracker* dealTracker);
 
-    /// Evaluate market prices and manage surplus/deficit goods for trade.
-    void manageEconomy(aoc::game::GameState& gameState,
-                       DiplomacyManager& diplomacy,
-                       const Market& market);
-
     /// Assign idle Trader units to trade routes with other players' cities.
     void manageTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                             const Market& market, const DiplomacyManager& diplomacy);
@@ -141,7 +136,7 @@ private:
     /// Reused per city via clear(); capacity preserved (audit WP-10 #6).
     std::vector<std::size_t> m_topIndicesScratch;
 
-    /// Per-good aggregated stockpile scratch for manageEconomy and
+    /// Per-good aggregated stockpile scratch for
     /// bestAvailableMilitaryUnit. Indexed by goodId; iteration order is
     /// goodId-ordered, which makes economy decisions deterministic across
     /// runs (the previous std::unordered_map iteration order varied between

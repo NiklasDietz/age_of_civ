@@ -171,6 +171,7 @@ TEST_CASE("the deal composer toggles preset terms and sends them; an AI takes a 
     CHECK(f.world.gameState.player(PlayerId{0})->treasury() == 50);
     REQUIRE(f.tracker.activeDeals.size() == 1);
     CHECK(f.tracker.activeDeals.front().hasTerm(aoc::sim::DealTermType::NonAggression));
+    CHECK(f.tracker.activeDeals.front().turnsRemaining == 30); // the pact lives its term
     CHECK(f.tracker.hasNonAggressionPact(PlayerId{0}, PlayerId{1}));
 
     f.screen.open(f.ui);

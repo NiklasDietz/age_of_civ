@@ -105,6 +105,25 @@ int32_t transferGoods(aoc::game::Player& giver, aoc::game::Player& receiver, uin
 void liftExclusiveAccess(const aoc::game::GameState& gameState, DiplomacyManager& diplomacy,
                          const DiplomaticDeal& deal);
 
+/// Terms that hold for `duration` turns, as opposed to ones that settle on
+/// acceptance (gold, goods, cessions, guilt).
+[[nodiscard]] bool isStandingTerm(DealTermType type) {
+    switch (type) {
+        case DealTermType::OpenBorders:
+        case DealTermType::NonAggression:
+        case DealTermType::MutualDefense:
+        case DealTermType::ArmsLimitation:
+        case DealTermType::DemilitarizedZone:
+        case DealTermType::MostFavoredNation:
+        case DealTermType::ExclusiveAccess:
+        case DealTermType::SupplyContract:
+        case DealTermType::WarReparations:
+            return true;
+        default:
+            return false;
+    }
+}
+
 /// Every major seat other than the two parties to the deal.
 [[nodiscard]] std::vector<PlayerId> thirdParties(const aoc::game::GameState& gameState,
                                                  PlayerId a, PlayerId b) {
@@ -288,20 +307,22 @@ ErrorCode acceptDeal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
     }
 
     deal.isAccepted = true;
-    // A deal made only of contracts lives exactly as long as its longest one;
-    // a mixed deal lives at least that long.
-    int32_t longestContract = 0;
-    bool onlyContracts      = true;
+    // A deal made only of standing terms lives exactly as long as its longest
+    // one; a mixed deal lives at least that long. A deal that settles on
+    // acceptance keeps whatever the proposer set (normally nothing). Pacts
+    // used to be left at zero, so a 30-turn pact left the tracker next turn.
+    int32_t longestStanding = 0;
+    bool onlyStanding       = true;
     for (const DealTerm& term : deal.terms) {
-        if (term.type == DealTermType::SupplyContract) {
-            longestContract = std::max(longestContract, term.duration);
+        if (isStandingTerm(term.type)) {
+            longestStanding = std::max(longestStanding, term.duration);
         } else {
-            onlyContracts = false;
+            onlyStanding = false;
         }
     }
-    if (longestContract > 0) {
-        deal.turnsRemaining = onlyContracts ? longestContract
-                                            : std::max(deal.turnsRemaining, longestContract);
+    if (longestStanding > 0) {
+        deal.turnsRemaining = onlyStanding ? longestStanding
+                                           : std::max(deal.turnsRemaining, longestStanding);
     }
     if (diplomacy != nullptr && diplomacy->eventLog() != nullptr) {
         diplomacy->eventLog()->record(TurnEventType::DealAccepted, deal.playerA, deal.playerB,

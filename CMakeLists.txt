@@ -1047,6 +1047,7 @@ if(AOC_BUILD_TESTS)
         test_one_treasury
         test_tax_rate_clamp
         test_ai_goods_purchase
+        test_ai_offers_goods
         test_map_helpers
         test_income_display
         test_barter_science

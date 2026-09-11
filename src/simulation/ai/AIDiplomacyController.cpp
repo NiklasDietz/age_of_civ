@@ -890,6 +890,13 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
                                        target->goodId, target->amount, gameState.currentTurn(), &market);
             }
         }
+        // Sell what we can spare as a standing contract to a civ that needs
+        // it, and as a sole source offer exclusive access now and then. The
+        // "Trade interest" note this replaces logged the wish and moved nothing.
+        (void)aoc::sim::aiOfferGoods(gameState, grid, *dealTracker, diplomacy, this->m_player,
+                                     gameState.currentTurn(), &market);
+        (void)aoc::sim::aiOfferExclusiveAccess(gameState, grid, *dealTracker, diplomacy, this->m_player,
+                                               gameState.currentTurn(), &market);
     }
 
     // ------------------------------------------------------------------

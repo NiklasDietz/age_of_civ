@@ -357,7 +357,6 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
     this->m_builderController.manageBuildersAndImprovements(gameState, grid);
     this->m_settlerController.executeSettlerActions(gameState, grid);
     this->m_militaryController.executeMilitaryActions(gameState, grid, rng, &diplomacy);
-    this->manageEconomy(gameState, diplomacy, market);
     this->manageMonetarySystem(gameState, grid, diplomacy);
     aoc::sim::aiEconomicStrategy(gameState, grid, market, diplomacy, this->m_player,
                                   static_cast<int32_t>(this->m_difficulty));
@@ -1939,102 +1938,6 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
 // ============================================================================
 // Economy management
 // ============================================================================
-
-void AIController::manageEconomy(aoc::game::GameState& gameState,
-                                  DiplomacyManager& diplomacy,
-                                  const Market& market) {
-    aoc::game::Player* gsPlayer = gameState.player(this->m_player);
-    if (gsPlayer == nullptr) {
-        return;
-    }
-
-    // Reuse the goodId-indexed stockpile scratch (member cache). Iteration
-    // over a contiguous vector is deterministic across runs and hosts; the
-    // previous std::unordered_map iteration depended on libstdc++'s hash
-    // seed and broke seed reproducibility for the GA replay harness.
-    const uint16_t totalGoods = market.goodsCount();
-    std::vector<int32_t>& totalStockpile = this->m_stockpileByGoodScratch;
-    totalStockpile.assign(totalGoods, 0);
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : gsPlayer->cities()) {
-        for (const std::pair<const uint16_t, int32_t>& entry : cityPtr->stockpile().goods) {
-            if (entry.first < totalGoods) {
-                totalStockpile[entry.first] += entry.second;
-            }
-        }
-    }
-
-    constexpr float SELL_THRESHOLD = 1.5f;
-    constexpr float BUY_THRESHOLD  = 0.7f;
-    constexpr int32_t MIN_SURPLUS_TO_SELL = 3;
-
-    struct TradeDesire {
-        uint16_t goodId;
-        int32_t  amount;
-        bool     wantToSell;
-    };
-    // Single allocation: at most one desire per good, so reserving up front
-    // removes the growth reallocations (audit WP-10 #6). Kept local (not a
-    // member) because TradeDesire is a function-local type.
-    std::vector<TradeDesire> desires;
-    desires.reserve(totalGoods);
-
-    for (uint16_t g = 0; g < totalGoods; ++g) {
-        const int32_t currentPrice = market.price(g);
-        const GoodDef& def = goodDef(g);
-        if (def.basePrice <= 0) { continue; }
-
-        const float priceRatio = static_cast<float>(currentPrice) /
-                                 static_cast<float>(def.basePrice);
-        const int32_t held = totalStockpile[g];
-
-        if (priceRatio > SELL_THRESHOLD && held > MIN_SURPLUS_TO_SELL) {
-            const int32_t sellAmount = held / 2;
-            if (sellAmount > 0) {
-                desires.push_back({g, sellAmount, true});
-            }
-        } else if (priceRatio < BUY_THRESHOLD && held == 0) {
-            desires.push_back({g, 2, false});
-        }
-    }
-
-    if (desires.empty()) { return; }
-
-    const uint8_t playerCount = diplomacy.playerCount();
-    for (const TradeDesire& desire : desires) {
-        if (!desire.wantToSell) { continue; }
-
-        for (uint8_t other = 0; other < playerCount; ++other) {
-            if (other == this->m_player) { continue; }
-            const PairwiseRelation& rel = diplomacy.relation(this->m_player, other);
-            if (rel.isAtWar || rel.hasEmbargo) { continue; }
-            if (rel.totalScore() < -10) { continue; }
-
-            int32_t partnerHoldings = 0;
-            const aoc::game::Player* partnerPlayer = gameState.player(other);
-            if (partnerPlayer != nullptr) {
-                for (const std::unique_ptr<aoc::game::City>& partnerCity :
-                         partnerPlayer->cities()) {
-                    partnerHoldings += partnerCity->stockpile().getAmount(desire.goodId);
-                }
-            }
-
-            if (partnerHoldings < 2) {
-                LOG_INFO("AI %u wants to sell %d of good %u (price ratio %.2f) to player %u",
-                         static_cast<unsigned>(this->m_player),
-                         desire.amount,
-                         static_cast<unsigned>(desire.goodId),
-                         static_cast<double>(
-                             static_cast<float>(market.price(desire.goodId)) /
-                             static_cast<float>(goodDef(desire.goodId).basePrice)),
-                         static_cast<unsigned>(other));
-
-                diplomacy.addModifier(this->m_player, other,
-                    RelationModifier{"Trade interest", 1, 10});
-                break;
-            }
-        }
-    }
-}
 
 // ============================================================================
 // Government management

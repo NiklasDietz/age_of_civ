@@ -144,6 +144,33 @@ bool aiOfferToBuy(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, Glob
 /// the variety it buys outlasts the Trader that could have carried it.
 inline constexpr int32_t LUXURY_DEAL_UNITS = 10;
 
+/// An AI seller's contract: this many turns, at most this much bulk per
+/// turn, offered only while the seller can spare CONTRACT_COVER_TURNS of it.
+inline constexpr int32_t CONTRACT_OFFER_TURNS   = 30;
+inline constexpr int32_t CONTRACT_BULK_PER_TURN = 5;
+inline constexpr int32_t CONTRACT_COVER_TURNS   = 10;
+/// A sole source considers exclusive access to a good on turns where
+/// (turn + good) is a multiple of this, so offers are spread out.
+inline constexpr int32_t EXCLUSIVE_OFFER_PERIOD = 20;
+
+/// `seller` offers one supply contract this turn: its deepest surplus (stock
+/// above its own need, lowest id on ties) to the first met, peaceful civ with
+/// an unmet need for it and no such contract already running. Luxuries go one
+/// a turn, bulk at the buyer's need capped at CONTRACT_BULK_PER_TURN; the rate
+/// splits the gain between the seller's give value and the buyer's receive
+/// value, both by their own valuation. A human buyer finds it in the inbox.
+/// True when a proposal was delivered or applied.
+bool aiOfferGoods(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
+                  DiplomacyManager& diplomacy, PlayerId seller, int32_t currentTurn,
+                  const Market* market = nullptr);
+
+/// On a good's staggered turn, a `seller` that is the only civ holding it
+/// offers exclusive access to the first met, peaceful civ that needs it, for a
+/// lump midway between the two valuations and never more than the buyer holds.
+bool aiOfferExclusiveAccess(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
+                            GlobalDealTracker& tracker, DiplomacyManager& diplomacy, PlayerId seller,
+                            int32_t currentTurn, const Market* market = nullptr);
+
 struct PurchaseTarget {
     uint16_t goodId = 0;
     int32_t amount  = 0;
