@@ -587,6 +587,9 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     }
 
     for (const std::unique_ptr<aoc::game::City>& c : ownerPlayer->cities()) {
+        // A city that went free stays in its old holder's list; a Trader
+        // cannot leave from a city its owner no longer holds.
+        if (c == nullptr || c->owner() != traderUnit->owner()) { continue; }
         int32_t dist = grid.distance(traderUnit->position(), c->location());
         if (dist < bestDist) {
             bestDist = dist;

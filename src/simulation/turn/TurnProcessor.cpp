@@ -848,8 +848,13 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         // Capture the tech-in-progress before advancing, for the same reason the
         // civic path below does: advanceResearch calls completeResearch() on
         // completion, which clears currentResearch.
+        // A civ that holds no city has nowhere to complete anything: passive
+        // science (suzerainty, founder beliefs, agreements) still accrues, but
+        // no tech or civic completes until it settles again. Its free cities
+        // stay in its list, and elimination can lag the last revolt by turns.
+        const bool settled = gsPlayer->ownedCityCount() > 0;
         const TechId techBeforeAdvance = gsPlayer->tech().currentResearch;
-        if (advanceResearch(gsPlayer->tech(), science) && techBeforeAdvance.isValid()) {
+        if (settled && advanceResearch(gsPlayer->tech(), science) && techBeforeAdvance.isValid()) {
             const aoc::sim::TechDef& doneTech = aoc::sim::techDef(techBeforeAdvance);
             // One discovery is the spark for the next.
             checkEurekaConditions(*gsPlayer, EurekaCondition::ResearchTech);
@@ -866,7 +871,7 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         // calls completeResearch() on completion, which clears currentResearch.
         // Without capturing first, the just-completed civic id is unrecoverable.
         const CivicId civicBeforeAdvance = gsPlayer->civics().currentResearch;
-        if (advanceCivicResearch(gsPlayer->civics(), culture, &gsPlayer->government()) &&
+        if (settled && advanceCivicResearch(gsPlayer->civics(), culture, &gsPlayer->government()) &&
             civicBeforeAdvance.isValid()) {
             applyCivicEffect(*turnContext.gameState, player,
                              static_cast<uint8_t>(civicBeforeAdvance.value));

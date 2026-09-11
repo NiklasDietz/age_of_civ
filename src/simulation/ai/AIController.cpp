@@ -1001,19 +1001,23 @@ static float scoreTrader(const LeaderBehavior& behavior,
     // and never more than cities + 2. A flat cap of four left slots idle
     // for every civ past its fourth Market; two are always allowed so a
     // single-city empire still forms routes and tech diffusion has volume.
-    const int32_t maxTraders = std::max(2, std::min(tradeSlots, cityCount + 2));
     // Zero past the cap: a residual 0.1 kept the Trader a candidate in every
     // city, and once tech gates locked the other candidates it won by default
     // (2072 Traders in one seed-42 run, 2026-09-05).
-    const float tradeScore = (traderCount < maxTraders) ? 1.0f : 0.0f;
+    const int32_t maxTraders = std::max(2, std::min(tradeSlots, cityCount + 2));
+    if (traderCount >= maxTraders) { return 0.0f; }
 
-    // Lowered to 0.8 -- 1.2 caused 40+ traders per game, drowning out
-    // military and builder production.  maxTraders already caps supply but
-    // trader attrition kept traderCount below the cap, so the score stayed
-    // at full 1.0 multiplier indefinitely.
-    constexpr float BASE_WEIGHT = 0.8f;
-
-    return BASE_WEIGHT * behavior.economicFocus * tradeScore;
+    // Every civ trades; focus sets how eagerly the slots fill, not whether.
+    // The first two Traders are a civ's first commercial links (gold, goods,
+    // the luxuries it lacks, diffusion) and rank with a Builder; the rest
+    // fill slots at the old weight, which 1.2 showed floods the map with
+    // Traders. At 0.8 x focus alone the Trader lost to every building for
+    // a low-focus leader, so on seeds 42 and 43 no civ ran a route before
+    // turn 80 and two of four never did (measurement gate, 2026-09-11).
+    constexpr float FIRST_LINKS_WEIGHT = 2.0f;
+    constexpr float FILL_WEIGHT        = 0.8f;
+    const float eagerness = 0.5f + 0.5f * behavior.economicFocus;
+    return (traderCount < 2 ? FIRST_LINKS_WEIGHT : FILL_WEIGHT) * eagerness;
 }
 
 // -------------------------------------------------------------------------

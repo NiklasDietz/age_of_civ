@@ -185,3 +185,21 @@ TEST_CASE("a Trader sent to a civ at war with its owner is refused for consent")
     CHECK(aoc::sim::establishTradeRoute(w.gameState, w.grid, market, &diplomacy, idle, beta) ==
           ErrorCode::TradeRouteRefusedConsent);
 }
+
+TEST_CASE("a Trader cannot leave from a city its owner no longer holds") {
+    // A city that went free stays in its old holder's list, and the origin
+    // search used to pick it: a civ with no city of its own kept running
+    // routes (and bringing science home) from cities it had lost.
+    aoc::test::World w = aoc::test::makeWorld(2, 30, 16);
+    aoc::game::City& alpha = aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
+    aoc::game::City& beta  = aoc::test::addCityAt(w, P1, 9, 5, "Beta");
+    aoc::sim::DiplomacyManager diplomacy;
+    diplomacy.initialize(2);
+    aoc::sim::Market market;
+    aoc::game::Unit& idle = aoc::test::addUnitAt(w, P0, TRADER, 5, 5);
+    REQUIRE(w.gameState.transferCity(alpha.location(), aoc::INVALID_PLAYER) != nullptr);
+    REQUIRE(w.gameState.player(P0)->cities().size() == 1); // still held, not owned
+    CHECK(aoc::sim::establishTradeRoute(w.gameState, w.grid, market, &diplomacy, idle, beta) ==
+          ErrorCode::InvalidArgument);
+    CHECK(idle.trader().owner == aoc::INVALID_PLAYER);
+}

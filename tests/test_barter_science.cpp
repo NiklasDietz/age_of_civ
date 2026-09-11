@@ -13,6 +13,7 @@
 
 #include "support/World.hpp"
 
+#include "aoc/core/Random.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/city/CityScience.hpp"
@@ -101,4 +102,34 @@ TEST_CASE("a city that went free yields its old holder neither science nor peopl
     CHECK(p.ownedCityCount() == 0);
     CHECK(aoc::sim::computePlayerScience(p, w.grid) == 0.0f);
     CHECK(p.totalPopulation() == 0);
+}
+
+TEST_CASE("a civ that holds no city completes no tech, however much progress it has") {
+    aoc::test::World w     = aoc::test::makeWorld(2);
+    aoc::game::City& alpha = aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Alpha");
+    aoc::test::addCityAt(w, PlayerId{1}, 15, 9, "Beta");
+    aoc::game::Player& p = *w.gameState.player(PlayerId{0});
+    p.tech().currentResearch = aoc::TechId{0};
+    p.tech().researchProgress = 1000.0f; // more than any first tech costs
+    REQUIRE(w.gameState.transferCity(alpha.location(), aoc::INVALID_PLAYER) != nullptr);
+
+    aoc::sim::DiplomacyManager diplomacy;
+    diplomacy.initialize(2);
+    aoc::sim::EconomySimulation economy;
+    aoc::Random rng(7);
+    aoc::sim::TurnContext ctx{};
+    ctx.gameState   = &w.gameState;
+    ctx.grid        = &w.grid;
+    ctx.economy     = &economy;
+    ctx.diplomacy   = &diplomacy;
+    ctx.rng         = &rng;
+    ctx.allPlayers  = {PlayerId{0}, PlayerId{1}};
+    ctx.currentTurn = 2;
+    aoc::sim::processTurn(ctx);
+    CHECK_FALSE(p.tech().hasResearched(aoc::TechId{0}));
+
+    aoc::test::addCityAt(w, PlayerId{0}, 9, 5, "Gamma"); // settled again
+    ctx.currentTurn = 3;
+    aoc::sim::processTurn(ctx);
+    CHECK(p.tech().hasResearched(aoc::TechId{0}));
 }
