@@ -243,7 +243,9 @@ int32_t Player::militaryUnitCount() const {
 int32_t Player::totalPopulation() const {
     int32_t total = 0;
     for (const std::unique_ptr<City>& city : this->m_cities) {
-        total += city->population();
+        if (city != nullptr && city->owner() == this->m_id) { // a free city's people are not ours
+            total += city->population();
+        }
     }
     return total;
 }

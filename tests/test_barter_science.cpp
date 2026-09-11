@@ -83,3 +83,22 @@ TEST_CASE("a Barter civ with no coins researches at full speed") {
     // that is the positive control, and the gap that used to hit Barter too.
     CHECK(p.coinage == doctest::Approx(p.barter * 0.5f).epsilon(0.02));
 }
+
+TEST_CASE("a city that went free yields its old holder neither science nor people") {
+    // A free city has no seat to move to, so it stays in the old holder's
+    // list with a foreign owner. Science and population used to count it,
+    // so a civ with no city of its own kept researching (sim_health H2).
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::game::City& alpha = aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Alpha");
+    alpha.setPopulation(4);
+    aoc::game::Player& p = *w.gameState.player(PlayerId{0});
+    const float before   = aoc::sim::computePlayerScience(p, w.grid);
+    REQUIRE(before > 0.0f);
+    REQUIRE(p.totalPopulation() == 4);
+
+    REQUIRE(w.gameState.transferCity(alpha.location(), aoc::INVALID_PLAYER) != nullptr);
+    REQUIRE(p.cities().size() == 1); // still held, no longer owned
+    CHECK(p.ownedCityCount() == 0);
+    CHECK(aoc::sim::computePlayerScience(p, w.grid) == 0.0f);
+    CHECK(p.totalPopulation() == 0);
+}

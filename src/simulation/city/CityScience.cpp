@@ -47,6 +47,11 @@ float computePlayerScience(const aoc::game::Player& player, const aoc::map::HexG
     districtIndex.build(player);
 
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        // A city that went free stays in its old holder's list (no seat to
+        // move it to) but is not the holder's to research from.
+        if (city == nullptr || city->owner() != player.id()) {
+            continue;
+        }
         float cityScience = 0.0f;
 
         // 1. Science from worked tiles (WP-G adjacency cluster bonuses included).
