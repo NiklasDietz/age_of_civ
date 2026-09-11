@@ -1058,6 +1058,7 @@ if(AOC_BUILD_TESTS)
         test_resource_geography
         test_trader_readers
         test_luxury_demand
+        test_goods_valuation
         test_resource_curse_is_emergent
         test_deal_proposals
         test_natural_disasters

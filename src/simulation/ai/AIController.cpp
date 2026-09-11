@@ -993,14 +993,16 @@ static float scoreBuilder(const LeaderBehavior& behavior,
 static float scoreTrader(const LeaderBehavior& behavior,
                           bool    hasForeignTrade,
                           int32_t traderCount,
-                          int32_t cityCount) {
+                          int32_t cityCount,
+                          int32_t tradeSlots) {
     // has_trade_civic: hard prerequisite -- score is zero without it
     if (!hasForeignTrade) { return 0.0f; }
 
-    // trade_need: want traders up to min(cityCount+1, 4). Cities=1 is
-    // common early, so allow 2 traders even in a single-city empire so
-    // trade routes actually form and tech diffusion has volume.
-    const int32_t maxTraders = std::max(2, std::min(cityCount + 1, 4));
+    // trade_need: want Traders up to the route slots the civ actually has,
+    // and never more than cities + 2. A flat cap of four left slots idle
+    // for every civ past its fourth Market; two are always allowed so a
+    // single-city empire still forms routes and tech diffusion has volume.
+    const int32_t maxTraders = std::max(2, std::min(tradeSlots, cityCount + 2));
     // Zero past the cap: a residual 0.1 kept the Trader a candidate in every
     // city, and once tech gates locked the other candidates it won by default
     // (2072 Traders in one seed-42 run, 2026-09-05).
@@ -1298,7 +1300,8 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 personality.behavior,
                 hasForeignTrade,
                 unitCounts.traders,
-                ownedCityCount
+                ownedCityCount,
+                computeTotalTradeSlots(*gsPlayer, grid)
             );
             if (traderScore > 0.0f) {
                 ProductionCandidate candidate{};

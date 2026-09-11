@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/diplomacy/DealProposals.hpp"
+#include "aoc/simulation/economy/Market.hpp"
 
 #include "aoc/core/Log.hpp"
 #include "aoc/game/City.hpp"
@@ -148,8 +149,104 @@ ErrorCode applyDeal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, Gl
 
 } // namespace
 
+namespace {
+
+/// Units of `goodId` across every city `player` owns.
+[[nodiscard]] int32_t goodsHeld(const aoc::game::Player& player, uint16_t goodId) {
+    int32_t held = 0;
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        if (city != nullptr && city->owner() == player.id()) {
+            held += city->stockpile().getAmount(goodId);
+        }
+    }
+    return held;
+}
+
+[[nodiscard]] int32_t needOf(const aoc::game::Player& player, uint16_t goodId) {
+    const std::unordered_map<uint16_t, int32_t>& needs = player.economy().totalNeeds;
+    const std::unordered_map<uint16_t, int32_t>::const_iterator it = needs.find(goodId);
+    return it == needs.end() ? 0 : std::max(0, it->second);
+}
+
+/// Whether `giver` is the only civ on the map holding any of `goodId`.
+[[nodiscard]] bool soleSource(const aoc::game::GameState& gameState, PlayerId giver, uint16_t goodId) {
+    bool giverHolds = false;
+    for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+        if (other == nullptr || goodsHeld(*other, goodId) <= 0) {
+            continue;
+        }
+        if (other->id() == giver) {
+            giverHolds = true;
+        } else {
+            return false;
+        }
+    }
+    return giverHolds;
+}
+
+[[nodiscard]] bool atWarWithAnyone(const DiplomacyManager& diplomacy, PlayerId who) {
+    for (uint8_t other = 0; other < diplomacy.playerCount(); ++other) {
+        if (other != who && diplomacy.isAtWar(who, static_cast<PlayerId>(other))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] int32_t receivePercent(int32_t have, int32_t need) {
+    if (have == 0 && need > 0) {
+        return GOODS_MISSING_PCT;
+    }
+    if (have < need) {
+        return GOODS_SHORT_PCT;
+    }
+    if (have == 0) {
+        return GOODS_NEUTRAL_PCT;
+    }
+    return GOODS_SURPLUS_PCT;
+}
+
+[[nodiscard]] int32_t givePercent(int32_t have, int32_t need, int32_t amount) {
+    const int32_t left = have - amount;
+    if (left < need) {
+        return GIVE_SHORTFALL_PCT;
+    }
+    if (left < need + amount) {
+        return GIVE_THIN_PCT;
+    }
+    return GIVE_SURPLUS_PCT;
+}
+
+} // namespace
+
+int32_t goodsValueFor(const aoc::game::GameState& gameState, const DiplomacyManager& diplomacy,
+                      const Market* market, PlayerId evaluator, PlayerId counterparty, uint16_t goodId,
+                      int32_t amount, GoodsSide side) {
+    const aoc::game::Player* me = gameState.player(evaluator);
+    if (me == nullptr || amount <= 0 || goodId >= goods::GOOD_COUNT) {
+        return 0;
+    }
+    const int32_t unit = std::max(1, market != nullptr ? market->price(goodId)
+                                                       : static_cast<int32_t>(goodDef(goodId).basePrice));
+    const int32_t need = needOf(*me, goodId);
+    const int32_t have = goodsHeld(*me, goodId);
+    int32_t pct = side == GoodsSide::Receive ? receivePercent(have, need) : givePercent(have, need, amount);
+    const PlayerId giver = side == GoodsSide::Give ? evaluator : counterparty;
+    if (soleSource(gameState, giver, goodId)) {
+        pct = pct * SOLE_SOURCE_PCT / 100;
+    }
+    if (goodDef(goodId).isStrategic && atWarWithAnyone(diplomacy, evaluator)) {
+        pct = pct * WAR_STRATEGIC_PCT / 100;
+    }
+    if (side == GoodsSide::Give && me->treasury() < CASH_POOR_TREASURY) {
+        pct = pct * CASH_POOR_PCT / 100;
+    }
+    pct = std::clamp(pct, GOODS_VALUE_MIN_PCT, GOODS_VALUE_MAX_PCT);
+    return unit * amount * pct / 100;
+}
+
 int32_t dealValueFor(const aoc::game::GameState& gameState, const DiplomacyManager& diplomacy,
-                     PlayerId evaluator, const DiplomaticDeal& deal) {
+                     PlayerId evaluator, const DiplomaticDeal& deal, const Market* market) {
     const PlayerId other = otherParty(deal, evaluator);
     const bool inMatrix  = evaluator < diplomacy.playerCount() && other < diplomacy.playerCount();
     const DiplomaticStance stance = inMatrix ? diplomacy.relation(evaluator, other).stance()
@@ -200,23 +297,22 @@ int32_t dealValueFor(const aoc::game::GameState& gameState, const DiplomacyManag
                 value += term.fromPlayer == evaluator ? WAR_GUILT_BLAME : WAR_GUILT_GAIN;
                 break;
             case DealTermType::GoodsExchange: {
-                // Valued at the goods' own market worth, from the evaluator's
-                // side of the transfer. These three sat in a `default: break;`
-                // marked "neutral until the goods valuation lands", so the AI
-                // scored every economic term at exactly zero -- it would hand
-                // over anything for free and never ask for anything.
-                const int32_t worth =
-                    term.goodAmount * std::max(1, static_cast<int32_t>(goodDef(term.goodId).basePrice));
-                value += (term.toPlayer == evaluator) ? worth : -worth;
+                // Through the one valuation seam, from the evaluator's side.
+                // Before 2026-09-06 these terms were scored at exactly zero, and
+                // until 2026-09-11 at flat base price with no idea of need.
+                const GoodsSide side = term.toPlayer == evaluator ? GoodsSide::Receive : GoodsSide::Give;
+                const int32_t worth  = goodsValueFor(gameState, diplomacy, market, evaluator, other,
+                                                     term.goodId, term.goodAmount, side);
+                value += side == GoodsSide::Receive ? worth : -worth;
                 break;
             }
             case DealTermType::ExclusiveAccess: {
-                // Sole access is worth a multiple of a single shipment, since it
-                // is a standing claim rather than a one-off. Granting it costs
-                // the seller its other customers.
-                const int32_t unit = std::max(1, static_cast<int32_t>(goodDef(term.goodId).basePrice));
-                const int32_t worth = unit * EXCLUSIVE_ACCESS_SHIPMENTS;
-                value += (term.toPlayer == evaluator) ? worth : -worth;
+                // A standing claim, priced as EXCLUSIVE_ACCESS_SHIPMENTS units:
+                // granting it costs the seller its other customers.
+                const GoodsSide side = term.toPlayer == evaluator ? GoodsSide::Receive : GoodsSide::Give;
+                const int32_t worth  = goodsValueFor(gameState, diplomacy, market, evaluator, other,
+                                                     term.goodId, EXCLUSIVE_ACCESS_SHIPMENTS, side);
+                value += side == GoodsSide::Receive ? worth : -worth;
                 break;
             }
             case DealTermType::MostFavoredNation:
@@ -234,8 +330,8 @@ int32_t dealValueFor(const aoc::game::GameState& gameState, const DiplomacyManag
 }
 
 bool aiAcceptsDeal(const aoc::game::GameState& gameState, const DiplomacyManager& diplomacy, PlayerId ai,
-                   const DiplomaticDeal& deal) {
-    return dealValueFor(gameState, diplomacy, ai, deal) >= 0;
+                   const DiplomaticDeal& deal, const Market* market) {
+    return dealValueFor(gameState, diplomacy, ai, deal, market) >= 0;
 }
 
 std::string describeDealTerm(const aoc::game::GameState& gameState, const DealTerm& term) {
@@ -278,7 +374,8 @@ std::string describeDealTerm(const aoc::game::GameState& gameState, const DealTe
 }
 
 ErrorCode requestProposeDeal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
-                             DiplomacyManager& diplomacy, const DiplomaticDeal& deal, int32_t currentTurn) {
+                             DiplomacyManager& diplomacy, const DiplomaticDeal& deal, int32_t currentTurn,
+                             const Market* market) {
     const ErrorCode shape = proposalShapeValid(gameState, diplomacy, deal);
     if (shape != ErrorCode::Ok) {
         return shape;
@@ -307,9 +404,10 @@ ErrorCode requestProposeDeal(aoc::game::GameState& gameState, aoc::map::HexGrid&
     }
     const aoc::game::Player* proposer = gameState.player(deal.playerA);
     const bool humanProposer          = proposer != nullptr && proposer->isHuman();
-    if (!aiAcceptsDeal(gameState, diplomacy, deal.playerB, deal)) {
+    if (!aiAcceptsDeal(gameState, diplomacy, deal.playerB, deal, market)) {
         LOG_INFO("Player %u declined a deal from player %u (value %d)", static_cast<unsigned>(deal.playerB),
-                 static_cast<unsigned>(deal.playerA), dealValueFor(gameState, diplomacy, deal.playerB, deal));
+                 static_cast<unsigned>(deal.playerA),
+                 dealValueFor(gameState, diplomacy, deal.playerB, deal, market));
         if (humanProposer) {
             notify(deal.playerA, deal.playerB, "Deal declined",
                    civName(gameState, deal.playerB) + " declined: " + termsText(gameState, deal), 4);
@@ -411,31 +509,36 @@ bool aiOfferOpenBorders(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     return requestProposeDeal(gameState, grid, tracker, diplomacy, deal, currentTurn) == ErrorCode::Ok;
 }
 
-namespace {
-
-/// Units of `goodId` across every city `player` owns.
-[[nodiscard]] int32_t goodsHeld(const aoc::game::Player& player, uint16_t goodId) {
-    int32_t held = 0;
-    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
-        if (city != nullptr && city->owner() == player.id()) {
-            held += city->stockpile().getAmount(goodId);
+std::optional<PurchaseTarget> aiPurchaseTarget(const aoc::game::Player& buyer) {
+    const std::unordered_map<uint16_t, int32_t>& needs = buyer.economy().totalNeeds;
+    for (const uint16_t luxId : luxuryGoodIds()) {
+        const std::unordered_map<uint16_t, int32_t>::const_iterator it = needs.find(luxId);
+        if (it != needs.end() && it->second > 0) {
+            return PurchaseTarget{luxId, LUXURY_DEAL_UNITS};
         }
     }
-    return held;
+    std::optional<PurchaseTarget> best;
+    for (const std::pair<const uint16_t, int32_t>& need : needs) {
+        if (need.second <= 0) {
+            continue;
+        }
+        const bool better = !best.has_value() || need.second > best->amount ||
+                            (need.second == best->amount && need.first < best->goodId);
+        if (better) {
+            best = PurchaseTarget{need.first, need.second};
+        }
+    }
+    if (best.has_value()) {
+        best->amount = std::min(best->amount, GOODS_DEAL_MAX_UNITS);
+    }
+    return best;
 }
-
-} // namespace
 
 bool aiOfferToBuy(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
                   DiplomacyManager& diplomacy, PlayerId buyer, uint16_t goodId, int32_t qty,
-                  int32_t currentTurn) {
+                  int32_t currentTurn, const Market* market) {
     const aoc::game::Player* buyerPtr = gameState.player(buyer);
     if (buyerPtr == nullptr || qty <= 0 || goodId >= goods::GOOD_COUNT) {
-        return false;
-    }
-    const int32_t unitPrice = std::max(1, static_cast<int32_t>(goodDef(goodId).basePrice));
-    const int32_t offer     = (qty * unitPrice * GOODS_DEAL_PREMIUM_PCT) / 100;
-    if (buyerPtr->treasury() < offer) {
         return false;
     }
     for (const std::unique_ptr<aoc::game::Player>& sellerPtr : gameState.players()) {
@@ -445,6 +548,13 @@ bool aiOfferToBuy(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, Glob
         const PlayerId seller       = sellerPtr->id();
         const PairwiseRelation& rel = diplomacy.relation(buyer, seller);
         if (!rel.hasMet || rel.isAtWar || goodsHeld(*sellerPtr, goodId) < qty) {
+            continue;
+        }
+        // What the shipment is worth to us from this seller: a sole source
+        // commands more. The seller's own valuation answers the offer.
+        const int32_t offer = goodsValueFor(gameState, diplomacy, market, buyer, seller, goodId, qty,
+                                            GoodsSide::Receive);
+        if (offer <= 0 || buyerPtr->treasury() < offer) {
             continue;
         }
         DiplomaticDeal deal;
@@ -463,7 +573,7 @@ bool aiOfferToBuy(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, Glob
         payment.toPlayer   = seller;
         payment.goldLump   = offer;
         deal.terms         = {shipment, payment};
-        if (requestProposeDeal(gameState, grid, tracker, diplomacy, deal, currentTurn) == ErrorCode::Ok) {
+        if (requestProposeDeal(gameState, grid, tracker, diplomacy, deal, currentTurn, market) == ErrorCode::Ok) {
             LOG_INFO("AI %u offers %d gold for %d of good %u to player %u", static_cast<unsigned>(buyer),
                      offer, qty, static_cast<unsigned>(goodId), static_cast<unsigned>(seller));
             return true;

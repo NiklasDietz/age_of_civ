@@ -879,21 +879,15 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
     if (dealTracker != nullptr) {
         const aoc::game::Player* buyer = gameState.player(this->m_player);
         if (buyer != nullptr) {
-            // Our largest unmet need, if any.
-            uint16_t wantedGood = 0xFFFFu;
-            int32_t  wantedQty  = 0;
-            for (const std::pair<const uint16_t, int32_t>& need : buyer->economy().totalNeeds) {
-                if (need.second > wantedQty) {
-                    wantedQty  = need.second;
-                    wantedGood = need.first;
-                }
-            }
-            if (wantedGood != 0xFFFFu && wantedQty > 0) {
+            // A missing luxury before the biggest bulk need: the largest
+            // quantity was always wheat or clothing, so a luxury need of one
+            // could never win and the AI never bought variety.
+            const std::optional<aoc::sim::PurchaseTarget> target = aoc::sim::aiPurchaseTarget(*buyer);
+            if (target.has_value()) {
                 // Through the request layer: a human seller gets the offer in
                 // the inbox instead of having goods lifted from its cities.
                 aoc::sim::aiOfferToBuy(gameState, grid, *dealTracker, diplomacy, this->m_player,
-                                       wantedGood, std::min(wantedQty, GOODS_DEAL_MAX_UNITS),
-                                       gameState.currentTurn());
+                                       target->goodId, target->amount, gameState.currentTurn(), &market);
             }
         }
     }

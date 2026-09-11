@@ -22,10 +22,12 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace aoc::game {
 class GameState;
+class Player;
 }
 namespace aoc::map {
 class HexGrid;
@@ -34,6 +36,7 @@ class HexGrid;
 namespace aoc::sim {
 
 class DiplomacyManager;
+class Market;
 
 /// Net worth of `deal` in gold for `evaluator`: transfers count by direction
 /// (gold at face value, reparations per turn times duration, a city 200 + 50
@@ -41,11 +44,44 @@ class DiplomacyManager;
 /// need Friendly or Allied, non-aggression is welcome unless Hostile, arms
 /// limits and zones cost, war guilt costs the side that accepts blame); plus a
 /// quarter of a positive relation score as goodwill.
+/// Which side of a goods transfer the evaluator stands on.
+enum class GoodsSide : uint8_t { Receive, Give };
+
+/// The valuation seam for every goods term (plan B4): market price anchor,
+/// then percent factors. Receive side: a good the evaluator needs and lacks
+/// entirely is worth GOODS_MISSING_PCT, one it holds less of than it needs
+/// GOODS_SHORT_PCT, one it neither needs nor holds GOODS_NEUTRAL_PCT, one it
+/// has in surplus GOODS_SURPLUS_PCT. Give side: parting with what leaves the
+/// evaluator short costs GIVE_SHORTFALL_PCT, a thin surplus GIVE_THIN_PCT, a
+/// deep one GIVE_SURPLUS_PCT. A giver who is the sole source on the map adds
+/// SOLE_SOURCE_PCT, a strategic good at war WAR_STRATEGIC_PCT, and a giver
+/// below CASH_POOR_TREASURY sells at CASH_POOR_PCT. Clamped to
+/// [GOODS_VALUE_MIN_PCT, GOODS_VALUE_MAX_PCT] of the anchor. A null market
+/// anchors on the goods table's base price.
+inline constexpr int32_t GOODS_MISSING_PCT   = 250;
+inline constexpr int32_t GOODS_SHORT_PCT     = 175;
+inline constexpr int32_t GOODS_NEUTRAL_PCT   = 100;
+inline constexpr int32_t GOODS_SURPLUS_PCT   = 60;
+inline constexpr int32_t GIVE_SHORTFALL_PCT  = 200;
+inline constexpr int32_t GIVE_THIN_PCT       = 100;
+inline constexpr int32_t GIVE_SURPLUS_PCT    = 70;
+inline constexpr int32_t SOLE_SOURCE_PCT     = 150;
+inline constexpr int32_t WAR_STRATEGIC_PCT   = 125;
+inline constexpr int32_t CASH_POOR_PCT       = 80;
+inline constexpr int32_t GOODS_VALUE_MIN_PCT = 25;
+inline constexpr int32_t GOODS_VALUE_MAX_PCT = 300;
+inline constexpr CurrencyAmount CASH_POOR_TREASURY = 50;
+
+[[nodiscard]] int32_t goodsValueFor(const aoc::game::GameState& gameState, const DiplomacyManager& diplomacy,
+                                    const Market* market, PlayerId evaluator, PlayerId counterparty,
+                                    uint16_t goodId, int32_t amount, GoodsSide side);
+
 [[nodiscard]] int32_t dealValueFor(const aoc::game::GameState& gameState, const DiplomacyManager& diplomacy,
-                                   PlayerId evaluator, const DiplomaticDeal& deal);
+                                   PlayerId evaluator, const DiplomaticDeal& deal,
+                                   const Market* market = nullptr);
 
 [[nodiscard]] bool aiAcceptsDeal(const aoc::game::GameState& gameState, const DiplomacyManager& diplomacy,
-                                 PlayerId ai, const DiplomaticDeal& deal);
+                                 PlayerId ai, const DiplomaticDeal& deal, const Market* market = nullptr);
 
 /// "100 gold (Rome -> Egypt)", "Open Borders (30 turns)", ...
 [[nodiscard]] std::string describeDealTerm(const aoc::game::GameState& gameState, const DealTerm& term);
@@ -55,7 +91,8 @@ class DiplomacyManager;
 /// declines. InvalidArgument: no terms or a term naming a third party. For an AI
 /// recipient the deal is applied through acceptDeal and its code is returned.
 ErrorCode requestProposeDeal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
-                             DiplomacyManager& diplomacy, const DiplomaticDeal& deal, int32_t currentTurn);
+                             DiplomacyManager& diplomacy, const DiplomaticDeal& deal, int32_t currentTurn,
+                             const Market* market = nullptr);
 
 /// The human answers proposal `index` of GameState::pendingProposals(). The
 /// proposal leaves the inbox either way; on accept the deal is applied through
@@ -88,7 +125,6 @@ inline constexpr int32_t GOODS_DEAL_MAX_UNITS = 20;
 /// What a buyer offers as a percentage of the goods' base value. A seller
 /// values them AT base price, so an offer that merely matches it gives them no
 /// reason to agree; the premium is what makes the trade worth doing.
-inline constexpr int32_t GOODS_DEAL_PREMIUM_PCT = 140;
 
 /// `buyer` offers gold for `qty` of `goodId` to the first met, peaceful seller
 /// that holds the stock and agrees. A human seller finds the offer in the
@@ -97,7 +133,23 @@ inline constexpr int32_t GOODS_DEAL_PREMIUM_PCT = 140;
 /// cities without a prompt. True when a proposal was delivered or applied.
 bool aiOfferToBuy(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, GlobalDealTracker& tracker,
                   DiplomacyManager& diplomacy, PlayerId buyer, uint16_t goodId, int32_t qty,
-                  int32_t currentTurn);
+                  int32_t currentTurn, const Market* market = nullptr);
+
+/// Units of a luxury an AI buys at once: enough turns of LUXURY_UPKEEP that
+/// the variety it buys outlasts the Trader that could have carried it.
+inline constexpr int32_t LUXURY_DEAL_UNITS = 10;
+
+struct PurchaseTarget {
+    uint16_t goodId = 0;
+    int32_t amount  = 0;
+};
+
+/// What an AI should try to buy this turn: the first luxury type it lacks
+/// that exists somewhere (variety shortfall, lowest id first), else its
+/// largest bulk need capped at GOODS_DEAL_MAX_UNITS (lowest id on ties).
+/// The old rule took the largest quantity, which a luxury need of one could
+/// never win.
+[[nodiscard]] std::optional<PurchaseTarget> aiPurchaseTarget(const aoc::game::Player& buyer);
 
 /// Drop proposals whose expiresTurn has come. Runs once per turn.
 void expireProposals(aoc::game::GameState& gameState, int32_t currentTurn);
