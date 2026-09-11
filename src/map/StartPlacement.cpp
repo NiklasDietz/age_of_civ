@@ -12,6 +12,7 @@
 #include "aoc/map/Terrain.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <cstddef>
 
@@ -117,6 +118,10 @@ candidatesByLandmass(const HexGrid& grid, const LandmassMap& landmasses,
                                              bool& found) {
     constexpr float SPREAD_WEIGHT = 0.5f; // reward distance from rivals, capped below
     constexpr int32_t SPREAD_CAP  = 24;
+    // Reward a different latitude band from the placed starts: capitals in
+    // one temperate belt all hold the same luxuries and have nothing to trade.
+    constexpr float CLIMATE_WEIGHT = 30.0f;
+    constexpr float CLIMATE_CAP    = 0.3f;
 
     found                   = false;
     hex::AxialCoord best    = {0, 0};
@@ -128,8 +133,14 @@ candidatesByLandmass(const HexGrid& grid, const LandmassMap& landmasses,
         if (nearest < minDistance) {
             continue;
         }
-        const float score =
-            c.score + SPREAD_WEIGHT * static_cast<float>(std::min(nearest, SPREAD_CAP));
+        float climate = starts.empty() ? 0.0f : CLIMATE_CAP;
+        for (const hex::AxialCoord& s : starts) {
+            const float mine   = grid.latitudeFraction(hex::axialToOffset(c.coord).row);
+            const float theirs = grid.latitudeFraction(hex::axialToOffset(s).row);
+            climate            = std::min(climate, std::fabs(mine - theirs));
+        }
+        const float score = c.score + SPREAD_WEIGHT * static_cast<float>(std::min(nearest, SPREAD_CAP)) +
+                            CLIMATE_WEIGHT * climate;
         if (score > bestScore) {
             bestScore = score;
             best      = c.coord;

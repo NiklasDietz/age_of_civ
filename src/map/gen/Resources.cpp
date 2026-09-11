@@ -10,6 +10,7 @@
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/LandmassMetrics.hpp"
 #include "aoc/map/gen/Noise.hpp"
+#include "aoc/map/gen/ResourceClusters.hpp"
 #include "aoc/map/gen/PlateBoundary.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
@@ -99,8 +100,7 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
 
             const BoundaryType bType = boundary[static_cast<std::size_t>(index)];
             const int8_t elev        = grid.elevation(index);
-            const float latitudeT    = static_cast<float>(row) / static_cast<float>(height);
-            const float temperature  = 1.0f - 2.0f * std::abs(latitudeT - 0.5f);
+            const float temperature  = 1.0f - grid.latitudeFraction(row); // 1 equator, 0 pole
             const bool nearCoast     = isNearCoast(row, col);
 
             // Real-tectonic context per tile.
@@ -238,8 +238,7 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
             // + Hills feature on old igneous bedrock. Real: Jamaica,
             // Guinea, Australia (Weipa), Brazil.
             if (!placed.isValid() && grid.feature(index) == aoc::map::FeatureType::Hills) {
-                const float laterite_lat = static_cast<float>(row) / static_cast<float>(height);
-                const float lat          = 2.0f * std::abs(laterite_lat - 0.5f);
+                const float lat = grid.latitudeFraction(row);
                 if (lat < 0.25f && tileAge > 30.0f && (rType == 1 || rType == 2) &&
                     resRng.chance(0.06f)) {
                     placed = ResourceId{aoc::sim::goods::ALUMINUM};
@@ -285,8 +284,7 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
             // NICKEL: laterite weathering (tropical Hills + age) OR
             // magmatic Ni-Cu (igneous + craton).
             if (!placed.isValid()) {
-                const float ny0  = static_cast<float>(row) / static_cast<float>(height);
-                const float lat0 = 2.0f * std::abs(ny0 - 0.5f);
+                const float lat0 = grid.latitudeFraction(row);
                 if (lat0 < 0.20f && grid.feature(index) == aoc::map::FeatureType::Hills &&
                     rType == 1 && resRng.chance(0.04f)) {
                     placed = ResourceId{aoc::sim::goods::NICKEL};
@@ -385,10 +383,10 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
             }
             (void)landFr;
 
-            // Climate-based resources (only if no geology resource was placed).
-            // WP-C2 cut: INCENSE/IVORY/COFFEE/TOBACCO/TEA lines stripped —
-            // those goods were dead-end luxuries with no downstream recipe.
-            // Remaining lines pick up the probability mass.
+            // Climate-based bonus and strategic resources (only if no geology
+            // resource was placed). Luxuries are not sprinkled here any more:
+            // placeLuxuryClusters lays them as regional clusters once the
+            // starts are known, so that a civ can lack what another has.
             if (!placed.isValid()) {
                 if (terrain == TerrainType::Desert) {
                     if (elev <= 0 && resRng.chance(0.04f)) {
@@ -403,17 +401,8 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
                         placed = ResourceId{aoc::sim::goods::COTTON};
                     } else if (jungle && resRng.chance(0.05f)) {
                         placed = ResourceId{aoc::sim::goods::RUBBER};
-                    } else if (resRng.chance(0.06f)) {
-                        placed = ResourceId{aoc::sim::goods::SPICES};
                     } else if (resRng.chance(0.05f)) {
                         placed = ResourceId{aoc::sim::goods::SUGAR};
-                    }
-                } else if (temperature >= 0.55f && temperature <= 0.70f) {
-                    // Subtropical band. SILK + WINE only.
-                    if (resRng.chance(0.05f)) {
-                        placed = ResourceId{aoc::sim::goods::SILK};
-                    } else if (resRng.chance(0.05f)) {
-                        placed = ResourceId{aoc::sim::goods::WINE};
                     }
                 } else if (temperature >= 0.30f && temperature < 0.55f) {
                     // Temperate: bonus + luxury resources
@@ -423,19 +412,6 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
                         placed = ResourceId{aoc::sim::goods::WOOD};
                     } else if (resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::CATTLE};
-                    } else if (resRng.chance(0.04f) && (terrain == TerrainType::Grassland ||
-                                                        terrain == TerrainType::Plains)) {
-                        // 2026-05-03: HORSES placement was missing entirely
-                        // from geology pass — Knights/Cavalry/Cuirassier
-                        // need {4 (Horses), …} resource and audit showed 0
-                        // horse tiles on Continents maps.
-                        placed = ResourceId{aoc::sim::goods::HORSES};
-                    } else if (resRng.chance(0.03f)) {
-                        placed = ResourceId{aoc::sim::goods::SALT};
-                    } else if (resRng.chance(0.03f)) {
-                        placed = ResourceId{aoc::sim::goods::DYES};
-                    } else if (grid.feature(index) == FeatureType::Hills && resRng.chance(0.04f)) {
-                        placed = ResourceId{aoc::sim::goods::MARBLE};
                     } else if (grid.riverEdges(index) != 0 && resRng.chance(0.06f)) {
                         placed = ResourceId{aoc::sim::goods::RICE};
                     } else if (resRng.chance(0.03f)) {
@@ -444,18 +420,9 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
                         placed = ResourceId{aoc::sim::goods::CLAY};
                     }
                 } else if (temperature < 0.30f) {
-                    // Cold: furs. WP-C2 cut GEMS (dead-end).
-                    if (resRng.chance(0.06f)) {
-                        placed = ResourceId{aoc::sim::goods::FURS};
-                    } else if (nearCoast && resRng.chance(0.04f)) {
+                    // Cold coasts: fish.
+                    if (nearCoast && resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::FISH};
-                    }
-                }
-
-                // Desert also gets salt
-                if (!placed.isValid() && terrain == TerrainType::Desert) {
-                    if (resRng.chance(0.04f)) {
-                        placed = ResourceId{aoc::sim::goods::SALT};
                     }
                 }
             }
@@ -1365,6 +1332,16 @@ std::vector<int32_t> MapGenerator::startRegions(const HexGrid& grid,
         region[static_cast<std::size_t>(i)] = best;
     }
     return region;
+}
+
+void MapGenerator::finishResourcesForStarts(HexGrid& grid, const std::vector<hex::AxialCoord>& starts,
+                                            ResourcePlacementMode placement, aoc::Random& rng) {
+    if (placement == ResourcePlacementMode::Realistic) {
+        placeLuxuryClusters(grid, starts, rng);
+        placeStrategicClusters(grid, starts, rng);
+        return;
+    }
+    balanceResourcesFair(grid, starts, placement, rng);
 }
 
 void MapGenerator::balanceResourcesFair(HexGrid& grid, const std::vector<hex::AxialCoord>& starts,

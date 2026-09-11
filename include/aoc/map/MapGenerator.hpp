@@ -252,6 +252,12 @@ private:
     static void placeRandomResources(const Config& config, HexGrid& grid, aoc::Random& rng);
 
 public:
+    /// Resource work that needs the starts (chosen after generate): Realistic
+    /// placement lays its luxury clusters (ResourceClusters.hpp); Fair and
+    /// Random run the regional pass below.
+    static void finishResourcesForStarts(HexGrid& grid, const std::vector<hex::AxialCoord>& starts,
+                                         ResourcePlacementMode placement, aoc::Random& rng);
+
     /// Regional exclusivity for Fair and Random placement, run once the
     /// starts are known (they are chosen after generate). Land is split into
     /// nearest-start regions; the six balanced strategics are spread so each

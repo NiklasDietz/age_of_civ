@@ -505,10 +505,10 @@ int main(int argc, char* argv[]) {
         aoc::Random startRng(config.seed);
         const std::vector<aoc::hex::AxialCoord> starts =
             aoc::map::chooseStartPositions(grid, count, startRng);
-        // The regional pass depends on the starts, so measure a copy per count.
+        // The start-dependent resource work is measured on a copy per count.
         aoc::map::HexGrid regional = grid;
         aoc::Random regionRng(config.seed ^ 0x5245474Eu); // "REGN"
-        aoc::map::MapGenerator::balanceResourcesFair(regional, starts, config.placement, regionRng);
+        aoc::map::MapGenerator::finishResourcesForStarts(regional, starts, config.placement, regionRng);
         const aoc::map::ResourceGeography geo = aoc::map::measureResourceGeography(regional, starts);
         std::fprintf(stderr,
                      "[resgeo] players=%d starts=%zu luxuries=%d A=%.3f B=%d C=%d D1=%d "

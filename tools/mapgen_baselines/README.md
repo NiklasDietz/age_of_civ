@@ -60,3 +60,15 @@ or two luxury types (C = 2 on nine of ten runs, 1 on the tenth), six luxuries
 never appear at all (B = 0), and half to all of the start pairs each hold a
 luxury the other lacks (E 0.50-1.00; salt and marble are common and differ
 from start to start). The `-post` file lands with 1.7.
+
+## `resgeo-post.json` (2026-09-11)
+
+The same instrument after Phase 1.7 (realistic luxury and horse clusters,
+`src/map/gen/ResourceClusters.cpp`, run once the starts are chosen). Every
+resource gate passes on all ten runs: A 0.77-0.82 luxury types absent per
+start (was 0.50-0.73), B every luxury on the map (six were missing), C 3
+types within reach of every start (was 1-2), D1 copper or iron at every
+start, D2 horses within reach of exactly half the starts (the guarantee in
+`placeStrategicClusters`), E 0.93-1.00 complementary start pairs. Compare
+against `resgeo-pre.json`; the shape baselines above are unaffected because
+the clusters only rewrite the resource layer.

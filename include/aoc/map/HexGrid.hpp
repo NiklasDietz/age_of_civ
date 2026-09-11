@@ -16,6 +16,7 @@
 
 #include <array>
 #include <cassert>
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <unordered_map>
@@ -177,6 +178,10 @@ public:
     /// units, so every downstream threshold expressed as "fraction of the way
     /// to the pole" keeps its meaning while finally receiving a true latitude.
     [[nodiscard]] float latitudeFraction(int32_t row) const {
+        if (this->m_rowLatitudeDeg.empty()) { // no projection: the old row-fraction proxy
+            const float t = (static_cast<float>(row) + 0.5f) / static_cast<float>(std::max(1, this->m_height));
+            return std::min(1.0f, 2.0f * std::fabs(t - 0.5f));
+        }
         const float f = std::fabs(this->rowLatitudeDeg(row)) / 90.0f;
         return (f < 0.0f) ? 0.0f : ((f > 1.0f) ? 1.0f : f);
     }

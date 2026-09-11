@@ -1,0 +1,529 @@
+{
+  "42": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-home-games-age-of-civ/e87413f9-2d27-4453-809d-d830ad3d17dc/scratchpad/resgeo_real2/seed42.csv",
+    "sha256": "e68686625a115ff9e50c6138fa25f4ea20ab2d6b215665b4a60a6bc1868ec67d",
+    "width": 140,
+    "height": 90,
+    "projection": "lambert",
+    "wrap": true,
+    "land_fraction": 0.3357,
+    "land_fraction_raw_tiles": 0.3357,
+    "sphere_tile_fraction": 1.0,
+    "n_land_components": 4,
+    "component_bands": {
+      "1-3": 0,
+      "4-30": 0,
+      "31-100": 0,
+      ">100": 4
+    },
+    "largest_components": [
+      2153,
+      1723,
+      181,
+      173
+    ],
+    "largest_over_median": 11.9,
+    "coastline_cells": 1085,
+    "coast_perimeter_over_land": 0.2565,
+    "coast_box_dimension": 1.197,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.234,
+        0.2398,
+        0.2698,
+        0.2563
+      ],
+      "axis_aligned_frac": 0.5039,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 1034
+    },
+    "mountains": {
+      "n_components": 38,
+      "n_belts": 20,
+      "belt_axis_bins_0_45_90_135": [
+        1,
+        4,
+        10,
+        5
+      ],
+      "belt_axis_aligned_frac": 0.55,
+      "median_elongation": 5.84
+    },
+    "landmass_elongation": {
+      "median": 6.46,
+      "p90": 2.86,
+      "max": 6.46,
+      "n_components": 4,
+      "n_degenerate": 0,
+      "units": "grid-index eigenvalue (variance) ratio",
+      "sphere_axis_ratio": {
+        "median": 1.19,
+        "p90": 1.19,
+        "max": 1.69,
+        "n_components": 4,
+        "n_degenerate": 0
+      }
+    },
+    "largest_share_of_land": 0.509,
+    "big_landmasses": 4,
+    "mean_inland_depth": 3.108,
+    "inland_depth_over_disc": 0.436,
+    "perimeter_over_disc": 2.673,
+    "perimeter_components": 4,
+    "crust_largest_component_share": 0.9523,
+    "crust_component_count": 2,
+    "crust_tile_fraction": 0.4362,
+    "crust_budget": {
+      "crust_share": 0.432,
+      "crust_submerged": 0.274,
+      "shelf_share_of_planet": null,
+      "_shelf_share_of_water": 0.045,
+      "_shelf_subgrid_share_of_planet": 0.0428
+    },
+    "resource_geography": {
+      "4": {
+        "starts": 4,
+        "luxury_types": 17,
+        "luxury_types_absent": 0.809,
+        "every_luxury_on_map": 1,
+        "min_luxury_types": 3,
+        "copper_or_iron_every_start": 1,
+        "horses_share": 0.5,
+        "complementary_pairs": 1.0
+      },
+      "6": {
+        "starts": 6,
+        "luxury_types": 17,
+        "luxury_types_absent": 0.804,
+        "every_luxury_on_map": 1,
+        "min_luxury_types": 3,
+        "copper_or_iron_every_start": 1,
+        "horses_share": 0.5,
+        "complementary_pairs": 0.933
+      }
+    }
+  },
+  "43": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-home-games-age-of-civ/e87413f9-2d27-4453-809d-d830ad3d17dc/scratchpad/resgeo_real2/seed43.csv",
+    "sha256": "72d3c93fae98890f2e65e08f5789c1b7a13fd20b6db7a6aa243a6cd4e99e4e1b",
+    "width": 140,
+    "height": 90,
+    "projection": "lambert",
+    "wrap": true,
+    "land_fraction": 0.3248,
+    "land_fraction_raw_tiles": 0.3248,
+    "sphere_tile_fraction": 1.0,
+    "n_land_components": 5,
+    "component_bands": {
+      "1-3": 0,
+      "4-30": 0,
+      "31-100": 0,
+      ">100": 5
+    },
+    "largest_components": [
+      1463,
+      1461,
+      790,
+      189,
+      189
+    ],
+    "largest_over_median": 1.85,
+    "coastline_cells": 972,
+    "coast_perimeter_over_land": 0.2375,
+    "coast_box_dimension": 1.175,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.2227,
+        0.2893,
+        0.2341,
+        0.2539
+      ],
+      "axis_aligned_frac": 0.4568,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 961
+    },
+    "mountains": {
+      "n_components": 38,
+      "n_belts": 21,
+      "belt_axis_bins_0_45_90_135": [
+        2,
+        5,
+        11,
+        3
+      ],
+      "belt_axis_aligned_frac": 0.619,
+      "median_elongation": 7.66
+    },
+    "landmass_elongation": {
+      "median": 1.7,
+      "p90": 4.33,
+      "max": 6.76,
+      "n_components": 5,
+      "n_degenerate": 0,
+      "units": "grid-index eigenvalue (variance) ratio",
+      "sphere_axis_ratio": {
+        "median": 1.32,
+        "p90": 1.75,
+        "max": 2.38,
+        "n_components": 5,
+        "n_degenerate": 0
+      }
+    },
+    "largest_share_of_land": 0.3575,
+    "big_landmasses": 5,
+    "mean_inland_depth": 3.604,
+    "inland_depth_over_disc": 0.575,
+    "perimeter_over_disc": 2.076,
+    "perimeter_components": 5,
+    "crust_largest_component_share": 0.531,
+    "crust_component_count": 4,
+    "crust_tile_fraction": 0.4384,
+    "crust_budget": {
+      "crust_share": 0.438,
+      "crust_submerged": 0.306,
+      "shelf_share_of_planet": null,
+      "_shelf_share_of_water": 0.051,
+      "_shelf_subgrid_share_of_planet": 0.0561
+    },
+    "resource_geography": {
+      "4": {
+        "starts": 4,
+        "luxury_types": 17,
+        "luxury_types_absent": 0.765,
+        "every_luxury_on_map": 1,
+        "min_luxury_types": 3,
+        "copper_or_iron_every_start": 1,
+        "horses_share": 0.5,
+        "complementary_pairs": 1.0
+      },
+      "6": {
+        "starts": 6,
+        "luxury_types": 17,
+        "luxury_types_absent": 0.784,
+        "every_luxury_on_map": 1,
+        "min_luxury_types": 3,
+        "copper_or_iron_every_start": 1,
+        "horses_share": 0.5,
+        "complementary_pairs": 1.0
+      }
+    }
+  },
+  "44": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-home-games-age-of-civ/e87413f9-2d27-4453-809d-d830ad3d17dc/scratchpad/resgeo_real2/seed44.csv",
+    "sha256": "231068d21bbce6dabfc75e860f8849e38ea8067dbb1eacd0a7567d8e12502f20",
+    "width": 140,
+    "height": 90,
+    "projection": "lambert",
+    "wrap": true,
+    "land_fraction": 0.315,
+    "land_fraction_raw_tiles": 0.315,
+    "sphere_tile_fraction": 1.0,
+    "n_land_components": 5,
+    "component_bands": {
+      "1-3": 0,
+      "4-30": 1,
+      "31-100": 1,
+      ">100": 3
+    },
+    "largest_components": [
+      3246,
+      454,
+      210,
+      52,
+      7
+    ],
+    "largest_over_median": 15.46,
+    "coastline_cells": 846,
+    "coast_perimeter_over_land": 0.2132,
+    "coast_box_dimension": 1.17,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.1851,
+        0.1945,
+        0.3132,
+        0.3072
+      ],
+      "axis_aligned_frac": 0.4982,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 843
+    },
+    "mountains": {
+      "n_components": 63,
+      "n_belts": 43,
+      "belt_axis_bins_0_45_90_135": [
+        8,
+        7,
+        15,
+        13
+      ],
+      "belt_axis_aligned_frac": 0.5349,
+      "median_elongation": 10.5
+    },
+    "landmass_elongation": {
+      "median": 3.79,
+      "p90": 3.79,
+      "max": 105.73,
+      "n_components": 4,
+      "n_degenerate": 0,
+      "units": "grid-index eigenvalue (variance) ratio",
+      "sphere_axis_ratio": {
+        "median": 1.88,
+        "p90": 1.84,
+        "max": 1.88,
+        "n_components": 4,
+        "n_degenerate": 0
+      }
+    },
+    "largest_share_of_land": 0.8178,
+    "big_landmasses": 3,
+    "mean_inland_depth": 3.582,
+    "inland_depth_over_disc": 0.445,
+    "perimeter_over_disc": 2.411,
+    "perimeter_components": 3,
+    "crust_largest_component_share": 0.8065,
+    "crust_component_count": 2,
+    "crust_tile_fraction": 0.4101,
+    "crust_budget": {
+      "crust_share": 0.407,
+      "crust_submerged": 0.29,
+      "shelf_share_of_planet": null,
+      "_shelf_share_of_water": 0.044,
+      "_shelf_subgrid_share_of_planet": 0.0542
+    },
+    "resource_geography": {
+      "4": {
+        "starts": 4,
+        "luxury_types": 17,
+        "luxury_types_absent": 0.779,
+        "every_luxury_on_map": 1,
+        "min_luxury_types": 3,
+        "copper_or_iron_every_start": 1,
+        "horses_share": 0.5,
+        "complementary_pairs": 1.0
+      },
+      "6": {
+        "starts": 6,
+        "luxury_types": 17,
+        "luxury_types_absent": 0.794,
+        "every_luxury_on_map": 1,
+        "min_luxury_types": 3,
+        "copper_or_iron_every_start": 1,
+        "horses_share": 0.5,
+        "complementary_pairs": 1.0
+      }
+    }
+  },
+  "45": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-home-games-age-of-civ/e87413f9-2d27-4453-809d-d830ad3d17dc/scratchpad/resgeo_real2/seed45.csv",
+    "sha256": "c46ab55e4d55ca36ca95584df92cfb46c0df36753b64b542a6176bcc2c66a912",
+    "width": 140,
+    "height": 90,
+    "projection": "lambert",
+    "wrap": true,
+    "land_fraction": 0.2775,
+    "land_fraction_raw_tiles": 0.2775,
+    "sphere_tile_fraction": 1.0,
+    "n_land_components": 4,
+    "component_bands": {
+      "1-3": 0,
+      "4-30": 0,
+      "31-100": 0,
+      ">100": 4
+    },
+    "largest_components": [
+      2423,
+      438,
+      369,
+      266
+    ],
+    "largest_over_median": 6.57,
+    "coastline_cells": 647,
+    "coast_perimeter_over_land": 0.1851,
+    "coast_box_dimension": 1.055,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.1889,
+        0.2988,
+        0.2492,
+        0.2632
+      ],
+      "axis_aligned_frac": 0.4381,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 646
+    },
+    "mountains": {
+      "n_components": 44,
+      "n_belts": 19,
+      "belt_axis_bins_0_45_90_135": [
+        3,
+        7,
+        7,
+        2
+      ],
+      "belt_axis_aligned_frac": 0.5263,
+      "median_elongation": 10.51
+    },
+    "landmass_elongation": {
+      "median": 1.16,
+      "p90": 1.38,
+      "max": 8.66,
+      "n_components": 4,
+      "n_degenerate": 0,
+      "units": "grid-index eigenvalue (variance) ratio",
+      "sphere_axis_ratio": {
+        "median": 1.05,
+        "p90": 1.31,
+        "max": 2.75,
+        "n_components": 4,
+        "n_degenerate": 0
+      }
+    },
+    "largest_share_of_land": 0.6931,
+    "big_landmasses": 4,
+    "mean_inland_depth": 4.423,
+    "inland_depth_over_disc": 0.65,
+    "perimeter_over_disc": 1.727,
+    "perimeter_components": 4,
+    "crust_largest_component_share": 0.6449,
+    "crust_component_count": 4,
+    "crust_tile_fraction": 0.3784,
+    "crust_budget": {
+      "crust_share": 0.377,
+      "crust_submerged": 0.296,
+      "shelf_share_of_planet": null,
+      "_shelf_share_of_water": 0.049,
+      "_shelf_subgrid_share_of_planet": 0.0548
+    },
+    "resource_geography": {
+      "4": {
+        "starts": 4,
+        "luxury_types": 17,
+        "luxury_types_absent": 0.824,
+        "every_luxury_on_map": 1,
+        "min_luxury_types": 3,
+        "copper_or_iron_every_start": 1,
+        "horses_share": 0.5,
+        "complementary_pairs": 1.0
+      },
+      "6": {
+        "starts": 6,
+        "luxury_types": 17,
+        "luxury_types_absent": 0.824,
+        "every_luxury_on_map": 1,
+        "min_luxury_types": 3,
+        "copper_or_iron_every_start": 1,
+        "horses_share": 0.5,
+        "complementary_pairs": 1.0
+      }
+    }
+  },
+  "46": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-home-games-age-of-civ/e87413f9-2d27-4453-809d-d830ad3d17dc/scratchpad/resgeo_real2/seed46.csv",
+    "sha256": "39e98222f2848f8bbda3b42101560c45097668bfed7a779d7613a10263f0ff65",
+    "width": 140,
+    "height": 90,
+    "projection": "lambert",
+    "wrap": true,
+    "land_fraction": 0.3085,
+    "land_fraction_raw_tiles": 0.3085,
+    "sphere_tile_fraction": 1.0,
+    "n_land_components": 4,
+    "component_bands": {
+      "1-3": 0,
+      "4-30": 0,
+      "31-100": 1,
+      ">100": 3
+    },
+    "largest_components": [
+      2479,
+      932,
+      399,
+      77
+    ],
+    "largest_over_median": 6.21,
+    "coastline_cells": 832,
+    "coast_perimeter_over_land": 0.214,
+    "coast_box_dimension": 1.091,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.2325,
+        0.2434,
+        0.2976,
+        0.2265
+      ],
+      "axis_aligned_frac": 0.5301,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 830
+    },
+    "mountains": {
+      "n_components": 47,
+      "n_belts": 26,
+      "belt_axis_bins_0_45_90_135": [
+        4,
+        6,
+        15,
+        1
+      ],
+      "belt_axis_aligned_frac": 0.7308,
+      "median_elongation": 8.65
+    },
+    "landmass_elongation": {
+      "median": 3.94,
+      "p90": 7.56,
+      "max": 10.6,
+      "n_components": 4,
+      "n_degenerate": 0,
+      "units": "grid-index eigenvalue (variance) ratio",
+      "sphere_axis_ratio": {
+        "median": 1.1,
+        "p90": 1.19,
+        "max": 2.33,
+        "n_components": 4,
+        "n_degenerate": 0
+      }
+    },
+    "largest_share_of_land": 0.6378,
+    "big_landmasses": 3,
+    "mean_inland_depth": 3.658,
+    "inland_depth_over_disc": 0.514,
+    "perimeter_over_disc": 2.23,
+    "perimeter_components": 3,
+    "crust_largest_component_share": 0.8544,
+    "crust_component_count": 3,
+    "crust_tile_fraction": 0.4073,
+    "crust_budget": {
+      "crust_share": 0.403,
+      "crust_submerged": 0.284,
+      "shelf_share_of_planet": null,
+      "_shelf_share_of_water": 0.043,
+      "_shelf_subgrid_share_of_planet": 0.0487
+    },
+    "resource_geography": {
+      "4": {
+        "starts": 4,
+        "luxury_types": 17,
+        "luxury_types_absent": 0.809,
+        "every_luxury_on_map": 1,
+        "min_luxury_types": 3,
+        "copper_or_iron_every_start": 1,
+        "horses_share": 0.5,
+        "complementary_pairs": 1.0
+      },
+      "6": {
+        "starts": 6,
+        "luxury_types": 17,
+        "luxury_types_absent": 0.814,
+        "every_luxury_on_map": 1,
+        "min_luxury_types": 3,
+        "copper_or_iron_every_start": 1,
+        "horses_share": 0.5,
+        "complementary_pairs": 1.0
+      }
+    }
+  }
+}

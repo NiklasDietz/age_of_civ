@@ -297,6 +297,7 @@ set(AOC_LIB_SOURCES
     src/map/gen/Thresholds.cpp
     src/map/gen/Noise.cpp
     src/map/gen/Resources.cpp
+    src/map/gen/ResourceClusters.cpp
     src/map/gen/Features.cpp
     src/map/gen/Rivers.cpp
     src/map/gen/Terrane.cpp
@@ -1056,6 +1057,7 @@ if(AOC_BUILD_TESTS)
         test_trade_measurability
         test_resource_geography
         test_regional_exclusivity
+        test_resource_clusters
         test_trader_readers
         test_luxury_demand
         test_goods_valuation

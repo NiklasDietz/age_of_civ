@@ -471,9 +471,9 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     // game always has a land path between the rivals.
     const std::vector<aoc::hex::AxialCoord> chosenStarts =
         aoc::map::chooseStartPositions(grid, playerCount, rng);
-    // Fair and Random placement: spread the strategics and deny each start
-    // region a share of the luxuries. Realistic leaves scarcity to worldgen.
-    aoc::map::MapGenerator::balanceResourcesFair(grid, chosenStarts, placement, rng);
+    // Realistic: luxury clusters by climate and geology. Fair and Random:
+    // spread the strategics and deny each start region a share of the luxuries.
+    aoc::map::MapGenerator::finishResourcesForStarts(grid, chosenStarts, placement, rng);
 
     // Spawn each AI player with a starting city and scout
     for (int32_t p = 0; p < playerCount; ++p) {
@@ -506,11 +506,18 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         // COPPER_ORE first: minting ores must be guaranteed even for coastal cities
         // where some ring-1 tiles are water.  Placement falls back to ring-2 if
         // ring-1 is exhausted before all minting ores are placed.
+        // Under Realistic placement iron and silver come from the map alone
+        // (a civ without them has a reason to trade); copper stays so every
+        // civ can mint. Fair and Random keep the full kit.
+        const bool realistic = placement == aoc::map::ResourcePlacementMode::Realistic;
         const uint16_t STARTER_RESOURCES[] = {
-            aoc::sim::goods::COPPER_ORE, aoc::sim::goods::SILVER_ORE,
-            aoc::sim::goods::IRON_ORE,   aoc::sim::goods::WOOD,
+            aoc::sim::goods::COPPER_ORE, realistic ? aoc::sim::goods::WOOD : aoc::sim::goods::SILVER_ORE,
+            realistic ? aoc::sim::goods::STONE : aoc::sim::goods::IRON_ORE,
+            realistic ? aoc::sim::goods::CATTLE : aoc::sim::goods::WOOD,
             aoc::sim::goods::STONE,      aoc::sim::goods::CATTLE
         };
+        const int32_t starterCount = realistic ? 4 : 6;
+        const int32_t mintingOres  = realistic ? 1 : 2;
         int32_t resourcesPlaced = 0;
         // Pass 1: ring-1 neighbors
         for (const aoc::hex::AxialCoord& nbr2 : nbrs) {
@@ -519,7 +526,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             if (!grid.resource(nbrIdx).isValid()
                 && !aoc::map::isWater(grid.terrain(nbrIdx))
                 && !aoc::map::isImpassable(grid.terrain(nbrIdx))
-                && resourcesPlaced < 6) {
+                && resourcesPlaced < starterCount) {
                 grid.setResource(nbrIdx, aoc::ResourceId{STARTER_RESOURCES[resourcesPlaced]});
                 grid.setReserves(nbrIdx, aoc::sim::defaultReserves(STARTER_RESOURCES[resourcesPlaced]));
                 ++resourcesPlaced;
@@ -527,12 +534,12 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         }
         // Pass 2: ring-2 fallback — ensure minting ores (indices 0,1) are placed
         // even for coastal cities where ring-1 has few valid land tiles.
-        if (resourcesPlaced < 2) {
+        if (resourcesPlaced < mintingOres) {
             std::vector<aoc::hex::AxialCoord> ring2;
             ring2.reserve(12);
             aoc::hex::ring(startPos, 2, std::back_inserter(ring2));
             for (const aoc::hex::AxialCoord& tile : ring2) {
-                if (resourcesPlaced >= 2) { break; }
+                if (resourcesPlaced >= mintingOres) { break; }
                 if (!grid.isValid(tile)) { continue; }
                 int32_t tileIdx = grid.toIndex(tile);
                 if (!grid.resource(tileIdx).isValid()
@@ -545,8 +552,9 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             }
         }
 
-        // Place 2 unique luxury resources near each player's capital
-        {
+        // Place 2 unique luxury resources near each player's capital, except
+        // under Realistic placement, where the clusters decide who has what.
+        if (!realistic) {
             constexpr uint16_t LUXURY_POOL[] = {
                 aoc::sim::goods::WINE, aoc::sim::goods::SPICES, aoc::sim::goods::SILK,
                 aoc::sim::goods::FURS, aoc::sim::goods::GEMS, aoc::sim::goods::DYES,
