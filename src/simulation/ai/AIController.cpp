@@ -989,6 +989,20 @@ static float scoreBuilder(const LeaderBehavior& behavior,
 // Internal: score a trader candidate using utility curves
 // -------------------------------------------------------------------------
 
+/// Utility of a civ's first Trader while it has none (see the Trader
+/// candidate): above routine military, below the defenceless floor.
+constexpr float FIRST_TRADER_FLOOR = 20.0f;
+
+/// The capital for production purposes: the first city the player still owns.
+[[nodiscard]] static const aoc::game::City* firstOwnedCity(const aoc::game::Player& player) {
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        if (city != nullptr && city->owner() == player.id()) {
+            return city.get();
+        }
+    }
+    return nullptr;
+}
+
 static float scoreTrader(const LeaderBehavior& behavior,
                           bool    hasForeignTrade,
                           int32_t traderCount,
@@ -1317,6 +1331,16 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 candidate.score          = traderScore
                     * postureMultiplier(currentPosture,
                                         false, false, false, false, false, true);
+                // A civ with no Trader at all keeps one: on the blessed runs
+                // militarised leaders queued routine military at 12-55 utility
+                // against a Trader's 2.5 and never traded in 200+ turns. The
+                // first commercial link outranks routine military but not the
+                // defenceless floor above (50+), so a civ under real attack
+                // still arms first. The first owned city alone carries the
+                // floor, so the empire queues one Trader, not one per city.
+                if (unitCounts.traders == 0 && ownedCityCount >= 2 && &city == firstOwnedCity(*gsPlayer)) {
+                    candidate.score = std::max(candidate.score, FIRST_TRADER_FLOOR);
+                }
                 candidates.push_back(std::move(candidate));
             }
         }
