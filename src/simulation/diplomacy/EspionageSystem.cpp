@@ -186,8 +186,8 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
                 CurrencyAmount stolen = static_cast<CurrencyAmount>(
                     static_cast<float>(target->incomePerTurn()) * pct);
                 stolen = std::max(stolen, static_cast<CurrencyAmount>(1));
-                target->addGold(-stolen);
-                ownerPlayer.addGold(stolen);
+                target->addGold(-stolen, aoc::sim::MoneyFlow::transfer(ownerPlayer.id()));
+                ownerPlayer.addGold(stolen, aoc::sim::MoneyFlow::transfer(target->id()));
                 notifyEspionage(spy.owner, target->id(), "Funds siphoned",
                                 std::to_string(static_cast<long long>(stolen)) + " gold taken");
                 notifyEspionage(target->id(), spy.owner, "Funds stolen",
@@ -214,9 +214,11 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
                 const CurrencyAmount damage = std::min(nominal,
                     std::max<CurrencyAmount>(0, target->treasury()));
                 if (damage > 0) {
-                    target->addGold(-damage);
+                    // Half the damage reaches the saboteur, the rest is destroyed.
                     const CurrencyAmount skim = damage / 2;
-                    ownerPlayer.addGold(skim);
+                    target->addGold(-skim, aoc::sim::MoneyFlow::transfer(ownerPlayer.id()));
+                    target->addGold(-(damage - skim), aoc::sim::MoneyFlow::loss());
+                    ownerPlayer.addGold(skim, aoc::sim::MoneyFlow::transfer(target->id()));
                     notifyEspionage(spy.owner, target->id(), "Market manipulated",
                                     "+" + std::to_string(static_cast<long long>(skim)) + " gold skimmed");
                     notifyEspionage(target->id(), spy.owner, "Market manipulated",
@@ -274,8 +276,8 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
                 const CurrencyAmount bonus = std::min(nominal,
                     std::max<CurrencyAmount>(0, target->treasury()));
                 if (bonus > 0) {
-                    ownerPlayer.addGold(bonus);
-                    target->addGold(-bonus);
+                    ownerPlayer.addGold(bonus, aoc::sim::MoneyFlow::transfer(target->id()));
+                    target->addGold(-bonus, aoc::sim::MoneyFlow::transfer(ownerPlayer.id()));
                     LOG_INFO("Spy (P%u) insider trading: +%lld gold, P%u -%lld",
                              static_cast<unsigned>(spy.owner),
                              static_cast<long long>(bonus),

@@ -452,7 +452,7 @@ TEST_CASE("patronage buys the offered person, in the right currency") {
     aoc::game::Player& p = *w.gameState.player(PlayerId{0});
 
     SUBCASE("an empire that cannot pay does not get the person") {
-        p.setTreasury(0);
+        p.setTreasury(0, aoc::sim::MoneyFlow::external());
         CHECK(aoc::sim::requestPatronage(w.gameState, w.grid, PlayerId{0},
                                          GreatPersonType::Merchant)
               == aoc::ErrorCode::InsufficientResources);
@@ -462,7 +462,7 @@ TEST_CASE("patronage buys the offered person, in the right currency") {
     SUBCASE("paying takes the gold and the person") {
         const int64_t price = aoc::sim::patronageGoldCost(w.gameState, GreatPersonType::Merchant);
         CHECK(price > 0);
-        p.setTreasury(price + 50);
+        p.setTreasury(price + 50, aoc::sim::MoneyFlow::external());
         p.monetary().treasury = price + 50;
         const int32_t claimedBefore = w.gameState.greatPeopleRoster().claimed[
             static_cast<std::size_t>(GreatPersonType::Merchant)];

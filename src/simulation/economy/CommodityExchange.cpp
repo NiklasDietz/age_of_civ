@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/economy/CommodityExchange.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -66,8 +67,9 @@ ErrorCode executeCommodityTrade(aoc::game::GameState& gameState,
                                 PlayerId from, PlayerId to,
                                 uint16_t offerGood, int32_t offerAmount,
                                 uint16_t requestGood, int32_t requestAmount) {
-    if (offerAmount <= 0 || requestAmount <= 0 || offerGood == requestGood) {
-        return ErrorCode::InvalidArgument;
+    if (offerAmount <= 0 || requestAmount <= 0 || offerGood == requestGood ||
+        isCoinGood(offerGood) || isCoinGood(requestGood)) {
+        return ErrorCode::InvalidArgument; // coin settles trades, it is not swapped as goods
     }
     aoc::game::Player* fromPtr = gameState.player(from);
     aoc::game::Player* toPtr   = gameState.player(to);

@@ -27,7 +27,7 @@ TEST_CASE("net gold last turn equals the treasury delta of the turn") {
     aoc::test::addCityAt(w, PlayerId{1}, 15, 9, "Beta").setPopulation(2);
     aoc::game::Player& p = *w.gameState.player(PlayerId{0});
     p.monetary().system = aoc::sim::MonetarySystemType::CommodityMoney;
-    p.setTreasury(400);
+    p.setTreasury(400, aoc::sim::MoneyFlow::external());
     aoc::test::addUnitAt(w, PlayerId{0}, aoc::UnitTypeId{0}, 6, 5);
     aoc::test::addUnitAt(w, PlayerId{0}, aoc::UnitTypeId{0}, 4, 5);
 

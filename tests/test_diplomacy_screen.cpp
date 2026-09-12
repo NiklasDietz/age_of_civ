@@ -138,7 +138,7 @@ TEST_CASE("a rejected action leaves the state alone; an accepted one shows its t
     f.screen.open(f.ui);
     REQUIRE(f.clickButton("Delegation (25 gold)")); // 0 gold
     CHECK_FALSE(f.d.relation(PlayerId{0}, PlayerId{1}).hasDelegation);
-    f.world.gameState.player(PlayerId{0})->addGold(30);
+    f.world.gameState.player(PlayerId{0})->addGold(30, aoc::sim::MoneyFlow::external());
     f.screen.open(f.ui);
     REQUIRE(f.clickButton("Delegation (25 gold)"));
     CHECK(f.d.relation(PlayerId{0}, PlayerId{1}).hasDelegation);
@@ -150,7 +150,7 @@ TEST_CASE("a rejected action leaves the state alone; an accepted one shows its t
 
 TEST_CASE("the deal composer toggles preset terms and sends them; an AI takes a gift at once") {
     Fixture f;
-    f.world.gameState.player(PlayerId{0})->addGold(150);
+    f.world.gameState.player(PlayerId{0})->addGold(150, aoc::sim::MoneyFlow::external());
     f.screen.open(f.ui);
     CHECK(f.buttonsLabelled("Propose Deal") == 1);
     REQUIRE(f.clickButton("Propose Deal"));
@@ -196,8 +196,8 @@ struct GoodsFixture : Fixture {
         this->beta.stockpile().addGoods(aoc::sim::goods::IRON_ORE, 10);
         this->world.gameState.player(PlayerId{1})->economy().totalNeeds[aoc::sim::goods::SILK] = 1;
         this->world.gameState.player(PlayerId{0})->economy().totalNeeds[aoc::sim::goods::IRON_ORE] = 4;
-        this->world.gameState.player(PlayerId{0})->setTreasury(1000);
-        this->world.gameState.player(PlayerId{1})->setTreasury(1000);
+        this->world.gameState.player(PlayerId{0})->setTreasury(1000, aoc::sim::MoneyFlow::external());
+        this->world.gameState.player(PlayerId{1})->setTreasury(1000, aoc::sim::MoneyFlow::external());
     }
 
     /// What the neighbour makes of a one-term deal from the human.
@@ -303,7 +303,7 @@ TEST_CASE("a supply contract row is priced per turn at the counterpart's break-e
 
 TEST_CASE("the inbox lists proposals to the human with Accept and Reject") {
     Fixture f;
-    f.world.gameState.player(PlayerId{1})->addGold(200);
+    f.world.gameState.player(PlayerId{1})->addGold(200, aoc::sim::MoneyFlow::external());
     aoc::sim::PendingProposal offer;
     offer.from = PlayerId{1};
     offer.to   = PlayerId{0};

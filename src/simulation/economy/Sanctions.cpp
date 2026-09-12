@@ -98,6 +98,14 @@ void executeAssetFreeze(aoc::game::GameState& gameState,
     sanctionerState.silverCoinReserves += silverSeized;
     sanctionerState.goldBarReserves   += goldSeized;
     sanctionerState.updateCoinTier();
+    // The money the seized metal made up moves with it, from the target's
+    // private hands to the sanctioner's: a transfer, nothing leaves the world.
+    const CurrencyAmount seizedValue = static_cast<CurrencyAmount>(copperSeized) * COPPER_COIN_VALUE +
+                                       static_cast<CurrencyAmount>(silverSeized) * SILVER_COIN_VALUE +
+                                       static_cast<CurrencyAmount>(goldSeized) * GOLD_BAR_VALUE;
+    const CurrencyAmount movedValue = std::min(seizedValue, std::max<CurrencyAmount>(0, targetState.privateSpecie));
+    targetState.privateSpecie -= movedValue;
+    sanctionerState.privateSpecie += movedValue;
 
     // C28: fiat/digital civs hold wealth in treasury, not physical coin
     // reserves, so coin-only seizure leaves them untouched. Seize the same
@@ -106,8 +114,8 @@ void executeAssetFreeze(aoc::game::GameState& gameState,
     const CurrencyAmount treasurySeized = static_cast<CurrencyAmount>(
         static_cast<float>(targetPlayer->treasury()) * SEIZURE_FRACTION);
     if (treasurySeized > 0) {
-        targetPlayer->setTreasury(targetPlayer->treasury() - treasurySeized);
-        sanctionerPlayer->addGold(treasurySeized);
+        targetPlayer->addGold(-treasurySeized, aoc::sim::MoneyFlow::transfer(sanctionerPlayer->id()));
+        sanctionerPlayer->addGold(treasurySeized, aoc::sim::MoneyFlow::transfer(targetPlayer->id()));
     }
 
     // Cancel bonds held by target that were issued by sanctioner

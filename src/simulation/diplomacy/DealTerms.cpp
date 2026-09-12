@@ -464,8 +464,8 @@ ErrorCode acceptDeal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
             // Affordability (including the cumulative debt of multiple
             // lumps from one payer) was checked in validateImmediateTerms;
             // applying unconditionally here keeps the whole deal atomic.
-            payer->setTreasury(payer->treasury() - amt);
-            receiver->setTreasury(receiver->treasury() + amt);
+            payer->addGold(-amt, aoc::sim::MoneyFlow::transfer(receiver->id()));
+            receiver->addGold(amt, aoc::sim::MoneyFlow::transfer(payer->id()));
             LOG_INFO("GoldLump: player %u paid %lld to player %u",
                      static_cast<unsigned>(term.fromPlayer), static_cast<long long>(amt),
                      static_cast<unsigned>(term.toPlayer));
@@ -629,8 +629,8 @@ struct ContractCheck {
         static_cast<CurrencyAmount>(term.goldPerTurn) * moved / std::max(1, term.goodAmount);
     if (due > 0) {
         const CurrencyAmount paid = std::min(due, buyer->treasury());
-        buyer->setTreasury(buyer->treasury() - paid);
-        seller->setTreasury(seller->treasury() + paid);
+        buyer->addGold(-paid, aoc::sim::MoneyFlow::transfer(seller->id()));
+        seller->addGold(paid, aoc::sim::MoneyFlow::transfer(buyer->id()));
     }
     if (moved < term.goodAmount) {
         // Stored as breakDeal stores it: the seller's standing, in relation(seller, buyer).

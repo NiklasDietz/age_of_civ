@@ -75,11 +75,11 @@ TEST_CASE("slotting costs gold unless a civic just completed") {
     aoc::sim::PlayerGovernmentComponent& gov = p.government();
     gov.unlockPolicy(DISCIPLINE);
     gov.policySwapFree = false;
-    p.spendGold(p.treasury());
+    p.spendGold(p.treasury(), aoc::sim::MoneyFlow::external());
     REQUIRE(p.treasury() == 0);
     CHECK(aoc::sim::requestSlotPolicy(w.gameState, PlayerId{0}, 0, DISCIPLINE)
           == ErrorCode::InsufficientResources);
-    p.addGold(aoc::sim::POLICY_SWAP_GOLD_COST);
+    p.addGold(aoc::sim::POLICY_SWAP_GOLD_COST, aoc::sim::MoneyFlow::external());
     CHECK(aoc::sim::requestSlotPolicy(w.gameState, PlayerId{0}, 0, DISCIPLINE) == ErrorCode::Ok);
     CHECK(p.treasury() == 0);
     CHECK(aoc::sim::requestSlotPolicy(w.gameState, PlayerId{0}, 0, EMPTY_POLICY_SLOT) == ErrorCode::Ok);

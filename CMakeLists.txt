@@ -388,6 +388,7 @@ set(AOC_LIB_SOURCES
     src/simulation/monetary/FiscalPolicy.cpp
     src/simulation/monetary/CurrencyTrust.cpp
     src/simulation/monetary/CurrencyCrisis.cpp
+    src/simulation/monetary/MoneyFlow.cpp
     src/simulation/monetary/CurrencyWar.cpp
     src/simulation/monetary/Bonds.cpp
     src/simulation/monetary/ForexMarket.cpp
@@ -1046,6 +1047,7 @@ if(AOC_BUILD_TESTS)
         test_amphibious_path
         test_monetary_actions
         test_one_treasury
+        test_money_conservation
         test_tax_rate_clamp
         test_ai_goods_purchase
         test_ai_offers_goods

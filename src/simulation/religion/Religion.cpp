@@ -382,7 +382,7 @@ void applyReligionBonuses(aoc::game::Player& player) {
             player.faith().faith += 0.5f;
             const int32_t tithe = city->population() / 3;
             if (tithe > 0) {
-                player.addGold(tithe);
+                player.addGold(tithe, aoc::sim::MoneyFlow::unbacked());
             }
         }
     }

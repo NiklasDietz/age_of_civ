@@ -47,8 +47,8 @@ Progress researchAfterOneTurn(aoc::sim::MonetarySystemType system0,
     aoc::game::Player& b = *w.gameState.player(PlayerId{1});
     a.monetary().system = system0;
     b.monetary().system = system1;
-    a.setTreasury(0);
-    b.setTreasury(0);
+    a.setTreasury(0, aoc::sim::MoneyFlow::external());
+    b.setTreasury(0, aoc::sim::MoneyFlow::external());
     // Nothing reaches either treasury during the turn, so the funding step
     // sees exactly the zero it was given.
     a.monetary().goldAllocation = 0.0f;

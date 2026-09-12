@@ -204,7 +204,7 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
     this->reportToMarket(gameState);
     this->computePlayerNeeds(gameState);
     this->m_market.updatePrices();
-    this->updateCoinReservesFromStockpiles(gameState);
+    this->sweepCoins(gameState);
     this->tickMonetaryMechanics(gameState);
     this->processCrisisAndBonds(gameState);
     this->processEconomicZonesAndSpeculation(gameState, grid);
@@ -1178,13 +1178,13 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
                 + (cityPtr->hasBuilding(BuildingId{15}) ? kGranaryBonus : 0);
             CityStockpileComponent& stock = cityPtr->stockpile();
             for (std::pair<const uint16_t, int32_t>& entry : stock.goods) {
-                if (entry.second > cap) {
+                if (entry.second > cap && !isCoinGood(entry.first)) { // coin is swept, not sold
                     const int32_t excess = entry.second - cap;
                     const GoodDef& def = goodDef(entry.first);
                     const CurrencyAmount fireSaleGold = static_cast<CurrencyAmount>(
                         static_cast<float>(excess) * static_cast<float>(def.basePrice) * 0.2f);
                     if (fireSaleGold > 0) {
-                        playerPtr->addGold(fireSaleGold);
+                        playerPtr->addGold(fireSaleGold, aoc::sim::MoneyFlow::unbacked());
                     }
                     this->m_market.reportSupply(entry.first, excess);
                     entry.second = cap;
@@ -1435,24 +1435,58 @@ void EconomySimulation::executeMonetaryPolicy(aoc::game::GameState& gameState) {
 
 
 // ============================================================================
-// Sync coin reserves from city stockpiles into the monetary state
+// The coin sweep: minted coin goods become money
 // ============================================================================
 
-void EconomySimulation::updateCoinReservesFromStockpiles(aoc::game::GameState& gameState) {
+namespace {
+
+/// Every unit of `goodId` in the stockpile, removed.
+int32_t takeAll(CityStockpileComponent& stockpile, uint16_t goodId) {
+    const int32_t held = stockpile.getAmount(goodId);
+    if (held > 0) {
+        stockpile.consumeGoods(goodId, held);
+    }
+    return held;
+}
+
+} // namespace
+
+void EconomySimulation::sweepCoins(aoc::game::GameState& gameState) {
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         if (playerPtr == nullptr) { continue; }
 
         MonetaryStateComponent& state = playerPtr->monetary();
-        state.copperCoinReserves = 0;
-        state.silverCoinReserves = 0;
-        state.goldBarReserves   = 0;
-
+        int32_t copper = 0;
+        int32_t silver = 0;
+        int32_t gold   = 0;
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-            if (cityPtr == nullptr) { continue; }
-            const CityStockpileComponent& stockpile = cityPtr->stockpile();
-            state.copperCoinReserves += stockpile.getAmount(goods::COPPER_COINS);
-            state.silverCoinReserves += stockpile.getAmount(goods::SILVER_COINS);
-            state.goldBarReserves   += stockpile.getAmount(goods::GOLD_BARS);
+            if (cityPtr == nullptr || cityPtr->owner() != playerPtr->id()) { continue; }
+            copper += takeAll(cityPtr->stockpile(), goods::COPPER_COINS);
+            silver += takeAll(cityPtr->stockpile(), goods::SILVER_COINS);
+            gold   += takeAll(cityPtr->stockpile(), goods::GOLD_BARS);
+        }
+        // The counters now accumulate what was ever minted per metal; they
+        // used to be rebuilt from the stockpiles every turn, so coin sold as
+        // cargo or spent vanished from the record.
+        state.copperCoinReserves += copper;
+        state.silverCoinReserves += silver;
+        state.goldBarReserves   += gold;
+        const CurrencyAmount face = static_cast<CurrencyAmount>(copper) * COPPER_COIN_VALUE
+                                  + static_cast<CurrencyAmount>(silver) * SILVER_COIN_VALUE
+                                  + static_cast<CurrencyAmount>(gold) * GOLD_BAR_VALUE;
+        if (state.system == MonetarySystemType::Barter) {
+            // Metal held until coinage is adopted; money all the same.
+            state.bullion += face;
+            this->m_ledger.record(playerPtr->id(), MoneyFlow::minted(), face);
+        } else {
+            // Adoption (automatic until Phase 2.5) turns the bullion into coin in
+            // private hands; new coin pays the Mint its seigniorage.
+            state.privateSpecie += state.bullion;
+            state.bullion        = 0;
+            const CurrencyAmount seigniorage = face * SEIGNIORAGE_PCT / 100;
+            state.privateSpecie += face - seigniorage;
+            this->m_ledger.record(playerPtr->id(), MoneyFlow::minted(), face - seigniorage);
+            playerPtr->addGold(seigniorage, MoneyFlow::minted());
         }
 
         CoinTier previousTier = state.effectiveCoinTier;
@@ -1471,53 +1505,22 @@ void EconomySimulation::updateCoinReservesFromStockpiles(aoc::game::GameState& g
         if (state.effectiveCoinTier != previousTier) {
             LOG_INFO("Player %u coin tier changed: %.*s -> %.*s",
                      static_cast<unsigned>(playerPtr->id()),
-                     static_cast<int>(coinTierName(previousTier).size()),
-                     coinTierName(previousTier).data(),
+                     static_cast<int>(coinTierName(previousTier).size()), coinTierName(previousTier).data(),
                      static_cast<int>(coinTierName(state.effectiveCoinTier).size()),
                      coinTierName(state.effectiveCoinTier).data());
         }
 
+        // Money supply for display, trade efficiency and inflation (Phase 2.6
+        // redefines it as treasury + private specie + notes).
         if (state.system == MonetarySystemType::CommodityMoney) {
             state.moneySupply = static_cast<CurrencyAmount>(state.totalCoinValue());
-        }
-
-        // === MONEY SUPPLY UPDATE ===
-        // The coin stockpile determines the money supply, which governs:
-        //   - Trade efficiency
-        //   - Tax revenue base (taxation of circulating coins)
-        //   - Inflation (more coins vs more goods)
-        //
-        // Treasury is NOT directly set to coinValue here. Treasury is the
-        // government's spending account: it accumulates from income (taxation of
-        // the money supply) and is drained by expenses (unit/building maintenance).
-        // Starting at 0 with no money, it grows as coins are minted and taxed.
-        //
-        // This fixes the critical bug where treasury was overwritten each turn,
-        // undoing all income and expense calculations from the previous turn.
-        //
-        // In BARTER mode the treasury is left alone: no income accrues without
-        // coins (Maintenance.cpp gates it), and gold a Barter civ does receive
-        // -- a deal, plunder, a ruin -- is the metal it will adopt coinage
-        // with, not something to zero every turn.
-        // In COMMODITY/GOLD/FIAT: moneySupply tracks coin pool, treasury accumulates.
-        if (state.system != MonetarySystemType::Barter) {
-            // Update money supply for display, trade efficiency, and inflation.
-            // CommodityMoney: moneySupply = physical coins
-            // GoldStandard: moneySupply = coins + paper notes
-            // Fiat: moneySupply also includes printed notes (managed separately)
-            if (state.system == MonetarySystemType::CommodityMoney) {
-                state.moneySupply = static_cast<CurrencyAmount>(state.totalCoinValue());
-            } else if (state.system == MonetarySystemType::GoldStandard) {
-                // Notes are issued against the coinage at a STATUTORY multiple,
-                // not against the measured backing ratio. Using the ratio here
-                // closed a loop with CurrencyCrisis, which derives that same
-                // ratio from this same money supply -- see
-                // GOLD_STANDARD_NOTE_ISSUE.
-                const int32_t coinWealth = state.totalCoinValue();
-                state.moneySupply        = static_cast<CurrencyAmount>(
-                    static_cast<float>(coinWealth) * (1.0f + GOLD_STANDARD_NOTE_ISSUE));
-            }
-            // Fiat moneySupply is managed by printMoney() and tracked separately.
+        } else if (state.system == MonetarySystemType::GoldStandard) {
+            // Notes are issued against the coinage at a statutory multiple, not
+            // against the measured backing ratio (that closed a loop with
+            // CurrencyCrisis, which derives the ratio from this figure).
+            const int32_t coinWealth = state.totalCoinValue();
+            state.moneySupply        = static_cast<CurrencyAmount>(
+                static_cast<float>(coinWealth) * (1.0f + GOLD_STANDARD_NOTE_ISSUE));
         }
     }
 }
@@ -1585,8 +1588,23 @@ void EconomySimulation::processCrisisAndBonds(aoc::game::GameState& gameState) {
         // forced GoldStandard -> Fiat suspension lands before hyperinflation
         // checks see the new fiat state.
         CurrencyTrustComponent& trust = playerPtr->currencyTrust();
+        const int32_t goldBefore = state.goldBarReserves;
         processReserveStress(state, trust);
         processCurrencyCrisis(gameState, state, crisis, trust);
+        // A bank or redemption run carries metal abroad; the reserve counters
+        // used to be rebuilt from the stockpiles next turn, so no drain ever
+        // lasted. Now the metal stays gone and the money it backed leaves the
+        // world with it, out of private hands first.
+        const CurrencyAmount drained =
+            static_cast<CurrencyAmount>(std::max(0, goldBefore - state.goldBarReserves)) * GOLD_BAR_VALUE;
+        if (drained > 0) {
+            const CurrencyAmount fromPrivate = std::min(drained, std::max<CurrencyAmount>(0, state.privateSpecie));
+            state.privateSpecie -= fromPrivate;
+            this->m_ledger.record(playerPtr->id(), MoneyFlow::external(), -fromPrivate);
+            if (fromPrivate < drained) {
+                playerPtr->addGold(-(drained - fromPrivate), MoneyFlow::external());
+            }
+        }
     }
 
     processBondPayments(gameState);

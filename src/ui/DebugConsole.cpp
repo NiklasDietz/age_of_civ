@@ -80,7 +80,7 @@ void DebugConsole::execute(aoc::game::GameState& gameState, aoc::map::HexGrid& g
         stream >> amount;
         aoc::game::Player* player = gameState.player(humanPlayer);
         if (player != nullptr) {
-            player->addGold(static_cast<CurrencyAmount>(amount));
+            player->addGold(static_cast<CurrencyAmount>(amount), aoc::sim::MoneyFlow::external());
         }
         this->log("Added " + std::to_string(amount) + " gold");
     }

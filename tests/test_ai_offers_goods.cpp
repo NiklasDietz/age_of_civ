@@ -53,7 +53,7 @@ struct Fixture {
         this->beta  = &aoc::test::addCityAt(this->world, SELLER, 14, 8, "Beta");
         this->gamma = &aoc::test::addCityAt(this->world, BUYER, 20, 12, "Gamma");
         for (const PlayerId id : {HUMAN, SELLER, BUYER}) {
-            this->world.gameState.player(id)->setTreasury(1000);
+            this->world.gameState.player(id)->setTreasury(1000, aoc::sim::MoneyFlow::external());
         }
     }
 
@@ -263,9 +263,9 @@ TEST_CASE("no exclusive offer from a civ that is not the sole source, and none a
         f.needs(BUYER, SILK, 1);
         const int32_t loss = f.sellerLoss(Fixture::bare(DealTermType::ExclusiveAccess, SILK, 0));
         REQUIRE(loss > 1);
-        f.world.gameState.player(BUYER)->setTreasury(loss - 1);
+        f.world.gameState.player(BUYER)->setTreasury(loss - 1, aoc::sim::MoneyFlow::external());
         CHECK_FALSE(f.offerExclusive(on)); // would leave the seller short
-        f.world.gameState.player(BUYER)->setTreasury(loss);
+        f.world.gameState.player(BUYER)->setTreasury(loss, aoc::sim::MoneyFlow::external());
         CHECK(f.offerExclusive(on)); // pays what it has, which just covers the seller
         const DealTerm* pay = f.term(DealTermType::GoldLump);
         REQUIRE(pay != nullptr);

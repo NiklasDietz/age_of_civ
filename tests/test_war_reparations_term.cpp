@@ -40,7 +40,7 @@ aoc::test::World warWorld(aoc::sim::DiplomacyManager& dip, CurrencyAmount loserG
     dip.relation(PlayerId{0}, PlayerId{1}).hasMet = true;
     dip.relation(PlayerId{1}, PlayerId{0}).hasMet = true;
     dip.declareWar(PlayerId{0}, PlayerId{1});
-    w.gameState.player(PlayerId{0})->setTreasury(loserGold);
+    w.gameState.player(PlayerId{0})->setTreasury(loserGold, aoc::sim::MoneyFlow::external());
     return w;
 }
 

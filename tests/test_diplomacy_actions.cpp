@@ -219,7 +219,7 @@ TEST_CASE("delegation and embassy cost gold, raise intelligence and cannot repea
     aoc::game::Player& me    = *gs.player(PlayerId{0});
     CHECK(aoc::sim::requestSendDelegation(gs, f.d, PlayerId{0}, PlayerId{1}) ==
           ErrorCode::InsufficientResources);
-    me.addGold(100);
+    me.addGold(100, aoc::sim::MoneyFlow::external());
     CHECK(aoc::sim::requestSendDelegation(gs, f.d, PlayerId{0}, PlayerId{1}) == ErrorCode::Ok);
     CHECK(me.treasury() == 100 - aoc::sim::DELEGATION_GOLD);
     CHECK(f.d.relation(PlayerId{0}, PlayerId{1}).hasDelegation);

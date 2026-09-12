@@ -226,7 +226,7 @@ void BarbarianController::executeTurn(aoc::game::GameState& gameState,
         }
         const int32_t reward = encampmentDestroyReward(1 + this->m_turnCounter / 50);
         if (aoc::game::Player* clearerPlayer = gameState.player(clearer); clearerPlayer != nullptr) {
-            clearerPlayer->addGold(reward);
+            clearerPlayer->addGold(reward, aoc::sim::MoneyFlow::external());
         }
         if (eventLog != nullptr) {
             eventLog->record(TurnEventType::BarbarianCampCleared, clearer, BARBARIAN_PLAYER, reward,

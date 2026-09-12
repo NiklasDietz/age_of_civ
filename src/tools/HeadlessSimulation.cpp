@@ -147,6 +147,11 @@ struct PlayerSnapshot {
     int32_t activeRoutes = 0;      ///< Traders with a route right now
     int32_t dealsActive = 0;       ///< Accepted, unbroken deals this player is party to
     int32_t luxuryTypesHeld = 0;   ///< Distinct raw luxury goods in any of its stockpiles
+    int64_t circulation = 0;       ///< treasury + private specie + private notes + bullion
+    int64_t arrears = 0;           ///< governmentDebt
+    float priceLevel = 1.0f;
+    int64_t mintedTurn = 0;        ///< face value swept from the Mint this turn
+    int64_t unbackedTurn = 0;      ///< money the old model conjured minus destroyed this turn
 };
 
 /**
@@ -169,6 +174,9 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
     const aoc::sim::MonetaryStateComponent& ms = player->monetary();
     snap.gdp = ms.gdp;
     snap.treasury = player->treasury();  // Use Player::m_treasury (actual spending account)
+    snap.circulation = ms.treasury + ms.privateSpecie + ms.privateNotes + ms.bullion;
+    snap.arrears     = ms.governmentDebt;
+    snap.priceLevel  = ms.priceLevel;
     snap.coinTier = static_cast<uint8_t>(ms.effectiveCoinTier);
     snap.monetarySystem = static_cast<uint8_t>(ms.system);
     snap.inflationRate = ms.inflationRate;
@@ -369,7 +377,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         << "ExpenseUnits,ExpenseBuildings,TotalExpense,NetFlow,GoodsStockpiled,"
         << "FoodPerTurn,FamineCities,ScienceDiffusion,CultureDiffusion,BarbarianUnits,"
         << "IncomeMoneyTax,IncomeTradeRoutes,ExpenseScience,"
-        << "ActiveRoutes,DealsActive,LuxuryTypesHeld\n";
+        << "ActiveRoutes,DealsActive,LuxuryTypesHeld,"
+        << "Circulation,Arrears,PriceLevel,MintedTurn,UnbackedTurn\n";
 
     aoc::map::HexGrid grid;
     // 2026-05-03: honour --seed CLI/yaml override so audit_matrix.sh sims are
@@ -589,7 +598,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             gsPlayer->setCivId(static_cast<aoc::sim::CivId>(
                 civAssignment[static_cast<std::size_t>(p)]));
             gsPlayer->setHuman(false);
-            gsPlayer->setTreasury(0);  // No money at start: barter economy
+            gsPlayer->setTreasury(0, aoc::sim::MoneyFlow::external());  // No money at start: barter economy
 
             // Initialize monetary state
             gsPlayer->monetary().owner = player;
@@ -892,6 +901,11 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         // Write snapshot row for each player
         for (int32_t p = 0; p < playerCount; ++p) {
             PlayerSnapshot snap = snapshotPlayer(gameState, grid, static_cast<aoc::PlayerId>(p));
+            {
+                const aoc::sim::MoneyLedger::Civ& book = economy.moneyLedger().civs[static_cast<std::size_t>(p)];
+                snap.mintedTurn   = book.minted;
+                snap.unbackedTurn = book.unbackedIn - book.unbackedOut;
+            }
             // Game-level context columns
             const aoc::game::Player* snapPlayer = gameState.player(static_cast<aoc::PlayerId>(p));
             const uint8_t civId = (snapPlayer != nullptr)
@@ -957,6 +971,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 << bd.expenseScience;
             csv << "," << snap.activeRoutes << "," << snap.dealsActive << ","
                 << snap.luxuryTypesHeld;
+            csv << "," << snap.circulation << "," << snap.arrears << "," << snap.priceLevel << ","
+                << snap.mintedTurn << "," << snap.unbackedTurn;
             csv << "\n";
         }
 

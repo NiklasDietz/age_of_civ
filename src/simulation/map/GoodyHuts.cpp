@@ -108,7 +108,7 @@ GoodyHutReward checkAndClaimGoodyHut(GoodyHutState& state,
     switch (reward) {
         case GoodyHutReward::Gold: {
             const CurrencyAmount gold = static_cast<CurrencyAmount>(50 + rng.nextInt(0, 150));
-            player.addGold(gold);
+            player.addGold(gold, aoc::sim::MoneyFlow::external());
             LOG_INFO("Goody hut: P%u found %lld gold!",
                      static_cast<unsigned>(player.id()),
                      static_cast<long long>(gold));
@@ -127,7 +127,7 @@ GoodyHutReward checkAndClaimGoodyHut(GoodyHutState& state,
                          static_cast<int>(def.name.size()), def.name.data());
             } else {
                 // No active research — give gold instead
-                player.addGold(100);
+                player.addGold(100, aoc::sim::MoneyFlow::external());
             }
             break;
         }
@@ -147,7 +147,7 @@ GoodyHutReward checkAndClaimGoodyHut(GoodyHutState& state,
                 // advanceCivicResearch drops culture when nothing is being
                 // researched, and a reward that can silently amount to nothing
                 // is the bug this case was fixing. Pay the old gold instead.
-                player.addGold(80);
+                player.addGold(80, aoc::sim::MoneyFlow::external());
                 LOG_INFO("Goody hut: P%u found oral traditions, no civic in progress (+80 gold)",
                          static_cast<unsigned>(player.id()));
             }

@@ -45,11 +45,11 @@ TEST_CASE("gold purchase pays the price and honours the build gates") {
     for (std::size_t t = 0; t < p.tech().completedTechs.size(); ++t) {
         p.tech().completedTechs[t] = true;       // every tech gate open; civic gates stay
     }
-    p.setTreasury(0);
+    p.setTreasury(0, aoc::sim::MoneyFlow::external());
 
     CHECK(aoc::sim::requestPurchase(w.gameState, &w.grid, PlayerId{0}, HOME, ProductionItemType::Unit, 0)
           == ErrorCode::InsufficientResources);
-    p.setTreasury(10000);
+    p.setTreasury(10000, aoc::sim::MoneyFlow::external());
     const std::size_t unitsBefore = p.units().size();
     CHECK(aoc::sim::requestPurchase(w.gameState, &w.grid, PlayerId{0}, HOME, ProductionItemType::Unit, 0)
           == ErrorCode::Ok);

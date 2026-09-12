@@ -342,6 +342,10 @@ namespace goods {
 /// Whether the goods table files this good under RawLuxury.
 [[nodiscard]] bool isLuxuryGood(uint16_t goodId);
 
+/// Copper coins, silver coins, gold bars: money, not cargo. The end-of-turn
+/// sweep turns them into bullion or private money at face value.
+[[nodiscard]] bool isCoinGood(uint16_t goodId);
+
 /// Every RawLuxury good id, ascending: the one list the amenity model, the
 /// needs model and the resource-geography metric share. Two hand-kept copies
 /// used to disagree with the table (both listed SUGAR, neither SALT or MARBLE).

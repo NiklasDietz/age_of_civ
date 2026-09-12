@@ -2160,7 +2160,7 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
                     static_cast<CurrencyAmount>(myState.totalCoinValue());
                 const CurrencyAmount popSavings =
                     static_cast<CurrencyAmount>(gsPlayer->totalPopulation() * 4);
-                gsPlayer->setTreasury(coinValue + popSavings);
+                gsPlayer->setTreasury(coinValue + popSavings, aoc::sim::MoneyFlow::unbacked());
             }
         }
 
@@ -2442,7 +2442,7 @@ void AIController::considerCanalBuilding(aoc::game::GameState& gameState,
     }
 
     // Build one canal per turn (expensive, strategic decision)
-    if (gsPlayer->spendGold(CANAL_GOLD_COST)) {
+    if (gsPlayer->spendGold(CANAL_GOLD_COST, aoc::sim::MoneyFlow::unbacked())) {
         ErrorCode result = aoc::sim::executeTerrainProject(
             grid, best.tileIndex, aoc::sim::TerrainProjectType::Canal);
         if (result == ErrorCode::Ok) {
@@ -2454,7 +2454,7 @@ void AIController::considerCanalBuilding(aoc::game::GameState& gameState,
                      static_cast<int>(tradeTrafficTiles),
                      static_cast<int>(CANAL_GOLD_COST));
         } else {
-            gsPlayer->addGold(CANAL_GOLD_COST);
+            gsPlayer->addGold(CANAL_GOLD_COST, aoc::sim::MoneyFlow::unbacked());
         }
     }
 }

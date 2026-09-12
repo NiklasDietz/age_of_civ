@@ -672,7 +672,7 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
                 const CurrencyAmount bonus = static_cast<CurrencyAmount>(
                     static_cast<float>(gsPlayer->treasury()) * (all.goldMult - 1.0f) * 0.01f);
                 if (bonus > 0) {
-                    gsPlayer->addGold(bonus);
+                    gsPlayer->addGold(bonus, aoc::sim::MoneyFlow::unbacked());
                 }
             }
         }
@@ -687,7 +687,7 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
             moneyless ? 0 : static_cast<CurrencyAmount>(science * SCIENCE_FUNDING_COST);
         if (fundingCost > 0) {
             if (gsPlayer->treasury() >= fundingCost) {
-                gsPlayer->addGold(-fundingCost);
+                gsPlayer->addGold(-fundingCost, aoc::sim::MoneyFlow::unbacked());
             } else {
                 // Can't fully fund: research at reduced efficiency (min 50%)
                 const float affordableFraction =
@@ -697,7 +697,7 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
                 const float efficiency = 0.5f + affordableFraction * 0.5f;
                 science *= efficiency;
                 if (gsPlayer->treasury() > 0) {
-                    gsPlayer->addGold(-gsPlayer->treasury()); // Spend what we can
+                    gsPlayer->addGold(-gsPlayer->treasury(), aoc::sim::MoneyFlow::unbacked()); // Spend what we can
                 }
             }
         }
@@ -1402,6 +1402,15 @@ void processGlobalSystems(TurnContext& turnContext) {
 // ============================================================================
 
 void processTurn(TurnContext& turnContext) {
+    // One money book per turn: every treasury mutation below lands in it.
+    if (turnContext.economy != nullptr && turnContext.gameState != nullptr) {
+        turnContext.economy->moneyLedger().reset();
+        for (const std::unique_ptr<aoc::game::Player>& player : turnContext.gameState->players()) {
+            if (player != nullptr) {
+                player->setMoneyLedger(&turnContext.economy->moneyLedger());
+            }
+        }
+    }
     // Install decision logger for this thread so AI call sites can reach it
     // via currentDecisionLog() without threading a pointer through every API.
     aoc::core::ScopedDecisionLog scopedLog(turnContext.decisionLog);

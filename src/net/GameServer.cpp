@@ -155,7 +155,7 @@ void GameServer::initialize(const GameConfig& config) {
         if (gsPlayer != nullptr) {
             gsPlayer->setCivId(static_cast<aoc::sim::CivId>(civId));
             gsPlayer->setHuman(p < config.humanPlayerCount);
-            gsPlayer->setTreasury(0);
+            gsPlayer->setTreasury(0, aoc::sim::MoneyFlow::external());
 
             // Initialize tech state
             gsPlayer->tech().owner = player;

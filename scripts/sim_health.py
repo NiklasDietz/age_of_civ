@@ -325,6 +325,15 @@ def evaluate(rows: list[dict[str, str]], events: list[dict[str, str]] | None = N
                 f"{wars} declared, baseline {war_baseline}, band {lo:.1f}..{hi:.1f}",
             )
 
+    # N16 (M7) Money the old model still conjures or destroys, netted per turn
+    # from the ledger (Phase 2.1). Phases 2.2-2.4 bring it to zero; until then
+    # the figure is the programme's progress meter, so a note, not a target.
+    unbacked = sum(float(r.get("UnbackedTurn", "0") or 0) for r in rows if int(r["Turn"]) > late_from)
+    minted = sum(float(r.get("MintedTurn", "0") or 0) for r in rows if int(r["Turn"]) > late_from)
+    report.notes.append(
+        f"NOTE: N16 after turn {late_from}: {minted:.0f} minted, {unbacked:+.0f} unbacked net "
+        f"(M7 wants 0)")
+
     if not quiet:
         for line in report.notes:
             print(line)
@@ -344,6 +353,7 @@ COLUMNS = [
     "IncomeTax", "IncomeCommercial", "IncomeIndustrial", "IncomeTileGold",
     "IncomeGoodsEcon", "IncomeMoneyTax", "TotalIncome", "BarbarianUnits",
     "IncomeTradeRoutes", "ActiveRoutes", "DealsActive", "LuxuryTypesHeld",
+    "Circulation", "Arrears", "PriceLevel", "MintedTurn", "UnbackedTurn",
 ]
 
 EVENT_COLUMNS = ["Turn", "SubStep", "EventType", "Player", "OtherPlayer",
@@ -497,6 +507,12 @@ def selftest() -> int:
         r["DealsActive"] = "0"
     add("T4b no deals in force", rows, "MISSED: T4b")
 
+    # N16: the ledger still shows unbacked money.
+    rows = _healthy()
+    for r in rows:
+        r["UnbackedTurn"] = "5"
+    add("N16 unbacked money noted", rows, "NOTE: N16 after turn")
+
     # T5: wars spike past the band.
     add("T5 war spike", _healthy(), "MISSED: T5",
         events=_healthy_events() + [_event(t, "WarDeclared") for t in range(90, 150, 10)])
@@ -512,7 +528,8 @@ def selftest() -> int:
 
     for name, rows, events, expect in cases:
         report = evaluate(rows, events, WAR_BASELINE, quiet=True)
-        hits = [line for line in report.failures + report.missed if line.startswith(expect)]
+        hits = [line for line in report.failures + report.missed + report.notes
+                if line.startswith(expect)]
         if not hits:
             print(f"SELFTEST FAIL: '{name}' was not detected (expected '{expect}')")
             ok = False

@@ -52,7 +52,7 @@ struct Table {
         this->buyerCity  = &aoc::test::addCityAt(this->world, BUYER, 13, 7, "Buyer");
         aoc::test::addCityAt(this->world, RIVAL, 19, 11, "Rival");
         this->sellerCity->stockpile().addGoods(SILK, 10);
-        this->world.gameState.player(BUYER)->setTreasury(100);
+        this->world.gameState.player(BUYER)->setTreasury(100, aoc::sim::MoneyFlow::external());
     }
 
     [[nodiscard]] aoc::game::Player& player(PlayerId id) {
@@ -139,7 +139,7 @@ TEST_CASE("a shortfall is prorated and costs the seller reputation; nothing at a
 TEST_CASE("a buyer who cannot pay is in breach before any goods move") {
     Table t;
     REQUIRE(t.settle({Table::contract(2, 5, 3)}) == ErrorCode::Ok);
-    t.player(BUYER).setTreasury(0);
+    t.player(BUYER).setTreasury(0, aoc::sim::MoneyFlow::external());
     t.turn();
     CHECK(t.tracker.activeDeals.empty());
     CHECK(t.buyerCity->stockpile().getAmount(SILK) == 0);
@@ -184,10 +184,10 @@ TEST_CASE("a contract is refused before anyone is bound when it cannot start") {
     Table t;
     const int32_t silkBefore = t.sellerCity->stockpile().getAmount(SILK);
     CHECK(t.settle({Table::contract(11, 5, 3)}) == ErrorCode::InsufficientResources); // no stock
-    t.player(BUYER).setTreasury(4);
+    t.player(BUYER).setTreasury(4, aoc::sim::MoneyFlow::external());
     CHECK(t.settle({Table::contract(2, 5, 3)}) ==
           ErrorCode::InsufficientResources); // first instalment
-    t.player(BUYER).setTreasury(100);
+    t.player(BUYER).setTreasury(100, aoc::sim::MoneyFlow::external());
     CHECK(t.settle({Table::contract(0, 5, 3)}) == ErrorCode::InvalidArgument);
     CHECK(t.settle({Table::contract(2, 5, 0)}) == ErrorCode::InvalidArgument);
     CHECK(t.settle({Table::contract(2, 5, aoc::sim::SUPPLY_CONTRACT_MAX_TURNS + 1)}) ==

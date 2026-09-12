@@ -111,8 +111,8 @@ private:
 
 TEST_CASE("acceptDeal rejects an unpayable deal and leaves both portfolios unchanged") {
     DealWorld w;
-    w.seller().setTreasury(500);
-    w.buyer().setTreasury(50);  // cannot afford the 300 gold term
+    w.seller().setTreasury(500, aoc::sim::MoneyFlow::external());
+    w.buyer().setTreasury(50, aoc::sim::MoneyFlow::external());  // cannot afford the 300 gold term
 
     aoc::sim::GlobalDealTracker tracker;
     REQUIRE(aoc::sim::proposeDeal(w.gameState, tracker, w.citySaleDeal(300))
@@ -133,8 +133,8 @@ TEST_CASE("acceptDeal rejects an unpayable deal and leaves both portfolios uncha
 
 TEST_CASE("acceptDeal applies every term when the deal is payable") {
     DealWorld w;
-    w.seller().setTreasury(500);
-    w.buyer().setTreasury(1000);
+    w.seller().setTreasury(500, aoc::sim::MoneyFlow::external());
+    w.buyer().setTreasury(1000, aoc::sim::MoneyFlow::external());
 
     aoc::sim::GlobalDealTracker tracker;
     REQUIRE(aoc::sim::proposeDeal(w.gameState, tracker, w.citySaleDeal(300))
@@ -155,8 +155,8 @@ TEST_CASE("acceptDeal applies every term when the deal is payable") {
 
 TEST_CASE("acceptDeal moves a ceded city's footprint but never a third party's land") {
     DealWorld w(3);  // seller=0, buyer=1, third party=2
-    w.seller().setTreasury(0);
-    w.buyer().setTreasury(1000);
+    w.seller().setTreasury(0, aoc::sim::MoneyFlow::external());
+    w.buyer().setTreasury(1000, aoc::sim::MoneyFlow::external());
     const aoc::PlayerId thirdId = w.gameState.players()[2]->id();
 
     // Lay out the sold city's footprint on the grid.
@@ -196,8 +196,8 @@ TEST_CASE("acceptDeal moves a ceded city's footprint but never a third party's l
 
 TEST_CASE("acceptDeal cedes a map-edge city without touching off-map tiles") {
     DealWorld w;
-    w.seller().setTreasury(0);
-    w.buyer().setTreasury(1000);
+    w.seller().setTreasury(0, aoc::sim::MoneyFlow::external());
+    w.buyer().setTreasury(1000, aoc::sim::MoneyFlow::external());
 
     // A corner city: some hex-ring neighbours are off-map. toIndex() on those
     // would abort (debug assert) or alias a wrapped tile (release), so the
@@ -249,8 +249,8 @@ TEST_CASE("acceptDeal cedes a map-edge city without touching off-map tiles") {
 
 TEST_CASE("acceptDeal rejects when cumulative lump payments overdraw one payer") {
     DealWorld w;
-    w.seller().setTreasury(0);
-    w.buyer().setTreasury(400);  // each 300 lump fits alone; 600 together does not
+    w.seller().setTreasury(0, aoc::sim::MoneyFlow::external());
+    w.buyer().setTreasury(400, aoc::sim::MoneyFlow::external());  // each 300 lump fits alone; 600 together does not
 
     aoc::sim::DiplomaticDeal deal;
     deal.playerA = w.seller().id();
@@ -279,8 +279,8 @@ TEST_CASE("acceptDeal keeps a tile cession atomic when the buyer cannot pay") {
     DealWorld w;
     const aoc::hex::AxialCoord tile = w.setupBorderTile();
     const int32_t tileIdx = w.grid.toIndex(tile);
-    w.seller().setTreasury(0);
-    w.buyer().setTreasury(50);  // cannot afford the 100 gold term
+    w.seller().setTreasury(0, aoc::sim::MoneyFlow::external());
+    w.buyer().setTreasury(50, aoc::sim::MoneyFlow::external());  // cannot afford the 100 gold term
 
     aoc::sim::GlobalDealTracker tracker;
     REQUIRE(aoc::sim::proposeDeal(w.gameState, tracker, w.tileSaleDeal(tile, 100))
@@ -300,8 +300,8 @@ TEST_CASE("acceptDeal transfers tile and gold when a tile cession is payable") {
     DealWorld w;
     const aoc::hex::AxialCoord tile = w.setupBorderTile();
     const int32_t tileIdx = w.grid.toIndex(tile);
-    w.seller().setTreasury(0);
-    w.buyer().setTreasury(500);
+    w.seller().setTreasury(0, aoc::sim::MoneyFlow::external());
+    w.buyer().setTreasury(500, aoc::sim::MoneyFlow::external());
 
     aoc::sim::GlobalDealTracker tracker;
     REQUIRE(aoc::sim::proposeDeal(w.gameState, tracker, w.tileSaleDeal(tile, 100))
@@ -317,8 +317,8 @@ TEST_CASE("acceptDeal transfers tile and gold when a tile cession is payable") {
 
 TEST_CASE("acceptDeal rejects a whole deal when a CedeCity term names no city") {
     DealWorld w;
-    w.seller().setTreasury(0);
-    w.buyer().setTreasury(1000);  // the gold term alone would be payable
+    w.seller().setTreasury(0, aoc::sim::MoneyFlow::external());
+    w.buyer().setTreasury(1000, aoc::sim::MoneyFlow::external());  // the gold term alone would be payable
 
     aoc::sim::DiplomaticDeal deal;
     deal.playerA = w.seller().id();

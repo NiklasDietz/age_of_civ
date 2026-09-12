@@ -193,7 +193,7 @@ void processCityStateBonuses(aoc::game::GameState& gameState, PlayerId player) {
                 gsPlayer->civics().researchProgress += magF * 4.0f;
                 break;
             case CityStateType::Trade:
-                gsPlayer->addGold(bonus * 3);
+                gsPlayer->addGold(bonus * 3, aoc::sim::MoneyFlow::external());
                 break;
             case CityStateType::Religious:
                 gsPlayer->faith().faith += magF * 3.0f;
@@ -377,7 +377,7 @@ bool bullyCityState(aoc::game::GameState& gameState, PlayerId player,
     // Bullying: player gains 50 gold, loses 2 envoys at this CS, every
     // OTHER major player that has at least one envoy here gets a grievance
     // against the bully — reputation cost baked in, not caller-dependent.
-    gsPlayer->addGold(CS_BULLY_GOLD);
+    gsPlayer->addGold(CS_BULLY_GOLD, aoc::sim::MoneyFlow::external());
     cs.addEnvoys(player, -2);
     cs.turnsSinceBully = 0;
 
@@ -409,7 +409,7 @@ bool levyCityStateMilitary(aoc::game::GameState& gameState, PlayerId player,
     aoc::game::Player* gsPlayer = gameState.player(player);
     if (gsPlayer == nullptr) { return false; }
     if (gsPlayer->treasury() < CS_LEVY_GOLD) { return false; }
-    gsPlayer->addGold(-CS_LEVY_GOLD);
+    gsPlayer->addGold(-CS_LEVY_GOLD, aoc::sim::MoneyFlow::external());
 
     cs.levyPlayer    = player;
     cs.levyTurnsLeft = CS_LEVY_TURNS;  // roughly a half-era

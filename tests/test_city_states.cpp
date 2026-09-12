@@ -147,7 +147,7 @@ TEST_CASE("levy needs suzerainty and 200 gold; bully needs no rival suzerain and
 
     CHECK(aoc::sim::requestLevyCityState(w.gameState, PlayerId{1}, idx) == ErrorCode::InvalidState);
     CHECK(aoc::sim::requestLevyCityState(w.gameState, PlayerId{0}, idx) == ErrorCode::InsufficientResources);
-    me.addGold(250);
+    me.addGold(250, aoc::sim::MoneyFlow::external());
     CHECK(aoc::sim::requestLevyCityState(w.gameState, PlayerId{0}, idx) == ErrorCode::Ok);
     CHECK(cs.levyPlayer == PlayerId{0});
     CHECK(cs.levyTurnsLeft == aoc::sim::CS_LEVY_TURNS);

@@ -326,7 +326,7 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
 
 CurrencyAmount processGoldIncome(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
     const EconomicBreakdown bd = computeEconomicBreakdown(player, grid);
-    player.addGold(bd.effectiveIncome);
+    player.addGold(bd.effectiveIncome, aoc::sim::MoneyFlow::unbacked());
     player.setIncomePerTurn(bd.totalIncome);
     return bd.totalIncome;
 }
@@ -487,7 +487,7 @@ void processUnitMaintenance(aoc::game::Player& player) {
             // Partial payment: only deduct down to the floor.
             const CurrencyAmount allowed = player.treasury() - TREASURY_HARD_FLOOR;
             if (allowed > 0) {
-                player.addGold(-allowed);
+                player.addGold(-allowed, aoc::sim::MoneyFlow::unbacked());
             }
             LOG_INFO("Player %u unit maintenance partially paid: %lld of %lld gold "
                      "(hard floor hit, treasury: %lld)",
@@ -496,7 +496,7 @@ void processUnitMaintenance(aoc::game::Player& player) {
                      static_cast<long long>(totalMaintenance),
                      static_cast<long long>(player.treasury()));
         } else {
-            player.addGold(-totalMaintenance);
+            player.addGold(-totalMaintenance, aoc::sim::MoneyFlow::unbacked());
             LOG_INFO("Player %u unit maintenance: %d units, cost %lld gold "
                      "(treasury: %lld)",
                      static_cast<unsigned>(player.id()), paidUnits,
@@ -600,7 +600,7 @@ void processBuildingMaintenance(aoc::game::Player& player) {
     if (afterDeduction < TREASURY_HARD_FLOOR) {
         const CurrencyAmount allowed = player.treasury() - TREASURY_HARD_FLOOR;
         if (allowed > 0) {
-            player.addGold(-allowed);
+            player.addGold(-allowed, aoc::sim::MoneyFlow::unbacked());
         }
         LOG_INFO(
             "Player %u building/city maintenance partially paid: %lld of %lld gold "
@@ -608,7 +608,7 @@ void processBuildingMaintenance(aoc::game::Player& player) {
             static_cast<unsigned>(player.id()), static_cast<long long>(allowed > 0 ? allowed : 0),
             static_cast<long long>(adjustedMaintenance), static_cast<long long>(player.treasury()));
     } else {
-        player.addGold(-adjustedMaintenance);
+        player.addGold(-adjustedMaintenance, aoc::sim::MoneyFlow::unbacked());
         LOG_INFO("Player %u building/city maintenance: %lld gold (treasury: %lld)",
                  static_cast<unsigned>(player.id()), static_cast<long long>(adjustedMaintenance),
                  static_cast<long long>(player.treasury()));

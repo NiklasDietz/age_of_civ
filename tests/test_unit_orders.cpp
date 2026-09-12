@@ -44,7 +44,7 @@ TEST_CASE("pillage needs war, marks the tile, heals and pays; the yield is gone 
     aoc::game::Unit& raider = aoc::test::addUnitAt(w, PlayerId{0}, WARRIOR, at.q, at.r);
     raider.setHitPoints(40);
     aoc::game::Player& p0 = *w.gameState.player(PlayerId{0});
-    p0.setTreasury(0);
+    p0.setTreasury(0, aoc::sim::MoneyFlow::external());
 
     CHECK(aoc::sim::requestPillage(w.gameState, w.grid, PlayerId{0}, at, &diplomacy) == ErrorCode::InvalidState);
     diplomacy.declareWar(PlayerId{0}, PlayerId{1});
@@ -69,7 +69,7 @@ TEST_CASE("pillage needs war, marks the tile, heals and pays; the yield is gone 
 TEST_CASE("deleting a unit at home refunds a quarter of its cost; abroad nothing") {
     aoc::test::World w = aoc::test::makeWorld(2);
     aoc::game::Player& p0 = *w.gameState.player(PlayerId{0});
-    p0.setTreasury(0);
+    p0.setTreasury(0, aoc::sim::MoneyFlow::external());
     w.grid.setOwner(w.grid.toIndex(AxialCoord{5, 5}), PlayerId{0});
     aoc::test::addUnitAt(w, PlayerId{0}, WARRIOR, 5, 5);
     aoc::test::addUnitAt(w, PlayerId{0}, WARRIOR, 9, 9);

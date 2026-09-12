@@ -58,7 +58,7 @@ aoc::test::World baseWorld() {
     // Nuclear Fission (TechId{17}) costs 1100 science: unreachable in one turn.
     w.gameState.player(PlayerId{0})->tech().currentResearch = TechId{17};
     // Enough gold to pay the 0.2 gold/science funding cost without cap.
-    w.gameState.player(PlayerId{0})->setTreasury(100000);
+    w.gameState.player(PlayerId{0})->setTreasury(100000, aoc::sim::MoneyFlow::external());
     return w;
 }
 

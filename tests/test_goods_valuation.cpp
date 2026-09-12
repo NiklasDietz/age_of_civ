@@ -46,7 +46,7 @@ struct Fixture {
         this->beta  = &aoc::test::addCityAt(this->world, P1, 14, 8, "Beta");
         this->gamma = &aoc::test::addCityAt(this->world, P2, 20, 12, "Gamma");
         for (const PlayerId id : {P0, P1, P2}) {
-            this->world.gameState.player(id)->setTreasury(1000);
+            this->world.gameState.player(id)->setTreasury(1000, aoc::sim::MoneyFlow::external());
         }
         this->beta->stockpile().addGoods(SILK, 10);
         this->gamma->stockpile().addGoods(SILK, 10);
@@ -138,11 +138,11 @@ TEST_CASE("at war a strategic good is dearer and a luxury is not") {
 
 TEST_CASE("a cash-poor seller sells cheaper") {
     Fixture f;
-    f.world.gameState.player(P1)->setTreasury(aoc::sim::CASH_POOR_TREASURY - 1);
+    f.world.gameState.player(P1)->setTreasury(aoc::sim::CASH_POOR_TREASURY - 1, aoc::sim::MoneyFlow::external());
     CHECK(f.value(P1, P0, SILK, 3, GoodsSide::Give) ==
           worth(SILK, 3, aoc::sim::GIVE_SURPLUS_PCT * aoc::sim::CASH_POOR_PCT / 100));
     // Being poor does not make what you buy cheaper.
-    f.world.gameState.player(P0)->setTreasury(0);
+    f.world.gameState.player(P0)->setTreasury(0, aoc::sim::MoneyFlow::external());
     CHECK(f.value(P0, P1, SILK, 4, GoodsSide::Receive) ==
           worth(SILK, 4, aoc::sim::GOODS_NEUTRAL_PCT));
 }

@@ -355,7 +355,7 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rn
 
         if (defenderOwner == BARBARIAN_PLAYER && atkPlayer != nullptr) {
             // Barbarian encampment clearance bonus
-            atkPlayer->addGold(25);
+            atkPlayer->addGold(25, aoc::sim::MoneyFlow::unbacked());
             LOG_INFO("Player %u earned 25 gold from clearing barbarian encampment",
                      static_cast<unsigned>(attackerOwner));
         } else if (atkPlayer != nullptr) {
@@ -364,7 +364,7 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rn
             const CurrencyAmount plunderGold =
                 static_cast<CurrencyAmount>(defenderProductionCost * 3 / 10);
             if (plunderGold > 0) {
-                atkPlayer->addGold(plunderGold);
+                atkPlayer->addGold(plunderGold, aoc::sim::MoneyFlow::unbacked());
                 LOG_INFO("Player %u pillaged %lld gold from destroying %.*s",
                          static_cast<unsigned>(attackerOwner), static_cast<long long>(plunderGold),
                          static_cast<int>(defenderName.size()), defenderName.data());
@@ -396,7 +396,7 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rn
                 const CurrencyAmount cargoGold =
                     static_cast<CurrencyAmount>((gd.basePrice * defenderCargoQuantity) / 2);
                 if (cargoGold > 0) {
-                    atkPlayer->addGold(cargoGold);
+                    atkPlayer->addGold(cargoGold, aoc::sim::MoneyFlow::unbacked());
                     LOG_INFO("Player %u looted courier cargo: good %u x%d for %lld gold",
                              static_cast<unsigned>(attackerOwner),
                              static_cast<unsigned>(defenderCargoGoodId), defenderCargoQuantity,
@@ -411,7 +411,7 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rn
             const aoc::map::ImprovementType tileImp = grid.improvement(tileIdx);
             if (tileRes.isValid() || tileImp != aoc::map::ImprovementType::None) {
                 constexpr CurrencyAmount TILE_PILLAGE_BONUS = 15;
-                atkPlayer->addGold(TILE_PILLAGE_BONUS);
+                atkPlayer->addGold(TILE_PILLAGE_BONUS, aoc::sim::MoneyFlow::unbacked());
                 LOG_INFO("Player %u pillaged tile improvements at (%d,%d) for %lld gold",
                          static_cast<unsigned>(attackerOwner), defenderTile.q, defenderTile.r,
                          static_cast<long long>(TILE_PILLAGE_BONUS));

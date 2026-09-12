@@ -524,7 +524,7 @@ void processProductionQueues(aoc::game::GameState& gameState, aoc::map::HexGrid&
                     // soften the loss. 50% of wonder cost as gold.
                     const int32_t refund = static_cast<int32_t>(
                         static_cast<float>(wonderDef(wonderId).productionCost) * 0.5f);
-                    gsPlayer->addGold(refund);
+                    gsPlayer->addGold(refund, aoc::sim::MoneyFlow::unbacked());
                     LOG_INFO("Wonder %.*s already built — %s race-lost, +%d gold refund",
                              static_cast<int>(item.name.size()), item.name.c_str(),
                              city->name().c_str(), refund);
@@ -590,8 +590,8 @@ void processProductionQueues(aoc::game::GameState& gameState, aoc::map::HexGrid&
                                 static_cast<WonderId>(qit->itemId) == wonderId) {
                                 const int32_t refund = static_cast<int32_t>(qit->progress * 0.5f);
                                 if (refund > 0) {
-                                    otherPtr->setTreasury(otherPtr->treasury() +
-                                                          static_cast<CurrencyAmount>(refund));
+                                    otherPtr->addGold(static_cast<CurrencyAmount>(refund),
+                                                      aoc::sim::MoneyFlow::unbacked());
                                 }
                                 LOG_INFO(
                                     "Wonder race loss: Player %u refunded %d gold from %.*s in %s",
@@ -644,7 +644,7 @@ ErrorCode purchaseInCity(aoc::game::GameState& /*gameState*/, aoc::game::Player&
     }
 
     // Deduct gold.
-    player.setTreasury(player.treasury() - static_cast<CurrencyAmount>(goldCost));
+    player.setTreasury(player.treasury() - static_cast<CurrencyAmount>(goldCost), aoc::sim::MoneyFlow::unbacked());
 
     // Create the item immediately.
     if (type == ProductionItemType::Unit) {

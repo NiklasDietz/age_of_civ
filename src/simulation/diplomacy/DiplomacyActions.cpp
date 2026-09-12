@@ -265,7 +265,7 @@ ErrorCode requestSendDelegation(aoc::game::GameState& gameState, DiplomacyManage
     if (me.treasury() < DELEGATION_GOLD) {
         return ErrorCode::InsufficientResources;
     }
-    me.addGold(-DELEGATION_GOLD);
+    me.addGold(-DELEGATION_GOLD, aoc::sim::MoneyFlow::unbacked());
     rel.hasDelegation = true;
     rel.intelLevel    = std::max<uint8_t>(rel.intelLevel, 1);
     diplomacy.addModifier(actor, target, RelationModifier{"Delegation", DELEGATION_BONUS, 0});
@@ -289,7 +289,7 @@ ErrorCode requestEstablishEmbassy(aoc::game::GameState& gameState, DiplomacyMana
     if (me.treasury() < EMBASSY_GOLD) {
         return ErrorCode::InsufficientResources;
     }
-    me.addGold(-EMBASSY_GOLD);
+    me.addGold(-EMBASSY_GOLD, aoc::sim::MoneyFlow::unbacked());
     rel.hasEmbassy = true;
     rel.intelLevel = std::max<uint8_t>(rel.intelLevel, 2);
     diplomacy.addModifier(actor, target, RelationModifier{"Embassy", EMBASSY_BONUS, 0});

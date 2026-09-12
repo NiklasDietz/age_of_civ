@@ -83,9 +83,11 @@ void selectTradeGoods(const CityStockpileComponent& originStock,
     };
     std::unordered_map<uint16_t, int32_t> combined;
     for (const std::pair<const uint16_t, int32_t>& entry : originStock.goods) {
+        if (isCoinGood(entry.first)) { continue; } // money, not cargo: the sweep takes it
         combined[entry.first] += entry.second;
     }
     for (const std::pair<const uint16_t, int32_t>& entry : originStock.exportBuffer) {
+        if (isCoinGood(entry.first)) { continue; }
         combined[entry.first] += entry.second;
     }
     for (const std::pair<const uint16_t, int32_t>& entry : combined) {
@@ -1048,8 +1050,8 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             if (acceptToll) {
                 // Pay toll: credit territory owner, debit trader
                 aoc::game::Player* tollReceiver = gameState.player(te.owner);
-                if (tollReceiver != nullptr) { tollReceiver->addGold(totalToll); }
-                if (traderPlayer != nullptr) { traderPlayer->addGold(-totalToll); }
+                if (tollReceiver != nullptr) { tollReceiver->addGold(totalToll, aoc::sim::MoneyFlow::unbacked()); }
+                if (traderPlayer != nullptr) { traderPlayer->addGold(-totalToll, aoc::sim::MoneyFlow::unbacked()); }
                 trader.tollPaidThisTurn += totalToll;
 
                 // Reputation: +1 for honoring toll. `diplomacy` is already
@@ -1925,6 +1927,7 @@ TradeRouteEstimate estimateTradeRouteIncome(
     std::vector<ScoredGood> scoredGoods;
 
     for (const std::pair<const uint16_t, int32_t>& entry : originStock.goods) {
+        if (isCoinGood(entry.first)) { continue; } // money, not cargo: the sweep takes it
         if (entry.second <= 0) { continue; }
         int32_t marketPrice = market.price(entry.first);
         if (marketPrice <= 0) { continue; }

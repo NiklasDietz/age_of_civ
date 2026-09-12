@@ -41,7 +41,7 @@ struct Fixture {
         this->alpha = &aoc::test::addCityAt(this->world, PlayerId{0}, 4, 4, "Alpha");
         aoc::test::addCityAt(this->world, PlayerId{1}, 14, 8, "Beta");
         this->gamma = &aoc::test::addCityAt(this->world, PlayerId{2}, 20, 12, "Gamma");
-        this->world.gameState.player(PlayerId{1})->setTreasury(5000);
+        this->world.gameState.player(PlayerId{1})->setTreasury(5000, aoc::sim::MoneyFlow::external());
     }
 
     bool offer() {

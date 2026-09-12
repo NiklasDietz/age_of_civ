@@ -89,12 +89,40 @@ bool Player::canSeeResource(uint16_t goodId) const {
     return this->m_tech.hasResearched(revealTech);
 }
 
-bool Player::spendGold(CurrencyAmount amount) {
+void Player::addGold(CurrencyAmount amount, aoc::sim::MoneyFlow flow) {
+    this->m_monetary.treasury += amount;
+    const bool ownCiv = flow.kind == aoc::sim::MoneyFlowKind::Domestic &&
+                        (flow.counterparty == this->m_id || flow.counterparty == INVALID_PLAYER);
+    if (ownCiv) {
+        // The other side is our own private money: a tax draws it down, a
+        // payment puts it back. A tax the people cannot pay is unbacked.
+        if (amount > 0) {
+            const CurrencyAmount backed =
+                std::min(amount, std::max<CurrencyAmount>(0, this->m_monetary.privateSpecie));
+            this->m_monetary.privateSpecie -= backed;
+            if (backed < amount && this->m_ledger != nullptr) {
+                this->m_ledger->record(this->m_id, aoc::sim::MoneyFlow::unbacked(), amount - backed);
+            }
+        } else {
+            this->m_monetary.privateSpecie -= amount;
+        }
+        return;
+    }
+    if (this->m_ledger != nullptr) {
+        this->m_ledger->record(this->m_id, flow, amount);
+    }
+}
+
+bool Player::spendGold(CurrencyAmount amount, aoc::sim::MoneyFlow flow) {
     if (this->m_monetary.treasury < amount) {
         return false;
     }
-    this->m_monetary.treasury -= amount;
+    this->addGold(-amount, flow);
     return true;
+}
+
+void Player::setTreasury(CurrencyAmount amount, aoc::sim::MoneyFlow flow) {
+    this->addGold(amount - this->m_monetary.treasury, flow);
 }
 
 City* Player::cityAt(aoc::hex::AxialCoord location) {

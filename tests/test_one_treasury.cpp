@@ -31,7 +31,7 @@ TEST_CASE("the gold API and the monetary component are the same account") {
     aoc::test::World w      = aoc::test::makeWorld(1);
     aoc::game::Player& p    = *w.gameState.player(PlayerId{0});
 
-    p.setTreasury(500);
+    p.setTreasury(500, aoc::sim::MoneyFlow::external());
     CHECK(p.monetary().treasury == 500);
 
     // A credit made through the monetary component is visible to the spending
@@ -41,24 +41,24 @@ TEST_CASE("the gold API and the monetary component are the same account") {
     CHECK(p.treasury() == 750);
 
     // And the reverse.
-    p.addGold(100);
+    p.addGold(100, aoc::sim::MoneyFlow::external());
     CHECK(p.monetary().treasury == 850);
 }
 
 TEST_CASE("money credited through the monetary component can be spent") {
     aoc::test::World w   = aoc::test::makeWorld(1);
     aoc::game::Player& p = *w.gameState.player(PlayerId{0});
-    p.setTreasury(0);
+    p.setTreasury(0, aoc::sim::MoneyFlow::external());
 
     // Exactly the shape of a trade-route delivery: TradeRouteSystem credits
     // `sellerMon.treasury += goldEarned`.
     p.monetary().treasury += 300;
 
     REQUIRE(p.treasury() == 300);
-    CHECK(p.spendGold(120));
+    CHECK(p.spendGold(120, aoc::sim::MoneyFlow::external()));
     CHECK(p.treasury() == 180);
     // Overspending still refuses.
-    CHECK_FALSE(p.spendGold(1000));
+    CHECK_FALSE(p.spendGold(1000, aoc::sim::MoneyFlow::external()));
     CHECK(p.treasury() == 180);
 }
 
@@ -68,7 +68,7 @@ TEST_CASE("Trade city-state envoys pay into the one treasury") {
     // envoy sent to a Trade city-state bought nothing.
     aoc::test::World w   = aoc::test::makeWorld(2);
     aoc::game::Player& p = *w.gameState.player(PlayerId{0});
-    p.setTreasury(0);
+    p.setTreasury(0, aoc::sim::MoneyFlow::external());
 
     aoc::sim::CityStateComponent cs{};
     cs.type      = aoc::sim::CityStateType::Trade;
@@ -86,7 +86,7 @@ TEST_CASE("a turn does not discard monetary credits") {
     aoc::test::World w   = aoc::test::makeWorld(2);
     aoc::game::Player& p = *w.gameState.player(PlayerId{0});
     aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Mint");
-    p.setTreasury(200);
+    p.setTreasury(200, aoc::sim::MoneyFlow::external());
 
     p.monetary().treasury += 1000; // e.g. cargo revenue, seigniorage, a bond
     const aoc::CurrencyAmount afterCredit = p.treasury();

@@ -118,7 +118,7 @@ TEST_CASE("the Ancient Map is harmless without a fog layer") {
 TEST_CASE("Oral Tradition grants culture to a civic in progress, not gold") {
     aoc::test::World w        = aoc::test::makeWorld(1);
     aoc::game::Player& player = *w.gameState.player(PlayerId{0});
-    player.setTreasury(0);
+    player.setTreasury(0, aoc::sim::MoneyFlow::external());
     // Culture only lands somewhere if something is being researched.
     player.civics().currentResearch = aoc::CivicId{0};
     const float cultureBefore       = player.civics().researchProgress;
@@ -141,7 +141,7 @@ TEST_CASE("Oral Tradition falls back to gold when no civic is in progress") {
     // about, so the empty case must still pay.
     aoc::test::World w        = aoc::test::makeWorld(1);
     aoc::game::Player& player = *w.gameState.player(PlayerId{0});
-    player.setTreasury(0);
+    player.setTreasury(0, aoc::sim::MoneyFlow::external());
     REQUIRE_FALSE(player.civics().currentResearch.isValid());
 
     REQUIRE(claimOnce(w, GoodyHutReward::Culture, nullptr));

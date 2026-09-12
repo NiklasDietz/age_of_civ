@@ -298,7 +298,7 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
         if (gsPlayer != nullptr) {
             gsPlayer->setCivId(civForPlayer(p, subjectCiv));
             gsPlayer->setHuman(false);
-            gsPlayer->setTreasury(0);
+            gsPlayer->setTreasury(0, aoc::sim::MoneyFlow::external());
 
             gsPlayer->monetary().owner = player;
             gsPlayer->monetary().system = aoc::sim::MonetarySystemType::Barter;

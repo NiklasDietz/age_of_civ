@@ -107,9 +107,11 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     defs[goods::ADV_CONSUMER_GOODS]   = {goods::ADV_CONSUMER_GOODS,   "Adv. Consumer Goods",  GoodCategory::Advanced, 90, false, 0.8f};
 
     // Monetary goods (140+) -- low elasticity (stable value as currency)
-    defs[goods::COPPER_COINS] = {goods::COPPER_COINS, "Copper Coins", GoodCategory::Monetary, 10, false, 0.2f};
-    defs[goods::SILVER_COINS] = {goods::SILVER_COINS, "Silver Coins", GoodCategory::Monetary, 20, false, 0.2f};
-    defs[goods::GOLD_BARS]   = {goods::GOLD_BARS,   "Gold Bars",   GoodCategory::Monetary, 40, false, 0.2f};
+    // Priced at face value (COPPER_COIN_VALUE, SILVER_COIN_VALUE, GOLD_BAR_VALUE):
+    // the old 10/20/40 contradicted the 1/5/25 the treasury counted them at.
+    defs[goods::COPPER_COINS] = {goods::COPPER_COINS, "Copper Coins", GoodCategory::Monetary, 1, false, 0.2f};
+    defs[goods::SILVER_COINS] = {goods::SILVER_COINS, "Silver Coins", GoodCategory::Monetary, 5, false, 0.2f};
+    defs[goods::GOLD_BARS]   = {goods::GOLD_BARS,   "Gold Bars",   GoodCategory::Monetary, 25, false, 0.2f};
 
     // Automation goods
     defs[goods::ROBOT_WORKERS] = {goods::ROBOT_WORKERS, "Robot Workers", GoodCategory::Advanced, 300, false, 0.8f};
@@ -769,6 +771,10 @@ uint16_t goodCount() {
 
 bool isLuxuryGood(uint16_t goodId) {
     return goodId < goods::GOOD_COUNT && goodDef(goodId).category == GoodCategory::RawLuxury;
+}
+
+bool isCoinGood(uint16_t goodId) {
+    return goodId < goods::GOOD_COUNT && goodDef(goodId).category == GoodCategory::Monetary;
 }
 
 const std::vector<uint16_t>& luxuryGoodIds() {

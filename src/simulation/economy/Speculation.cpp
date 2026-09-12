@@ -7,6 +7,7 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/economy/Speculation.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
@@ -22,8 +23,8 @@ ErrorCode hoardCommodity(aoc::game::GameState& gameState,
                          const Market& market,
                          PlayerId player,
                          uint16_t goodId, int32_t amount) {
-    if (amount <= 0 || goodId >= market.goodsCount()) {
-        return ErrorCode::InvalidArgument;
+    if (amount <= 0 || goodId >= market.goodsCount() || aoc::sim::isCoinGood(goodId)) {
+        return ErrorCode::InvalidArgument; // coin is money, not a commodity to corner
     }
 
     aoc::game::Player* playerObj = gameState.player(player);

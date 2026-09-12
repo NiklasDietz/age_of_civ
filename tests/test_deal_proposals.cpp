@@ -77,7 +77,7 @@ TEST_CASE("an AI accepts a deal worth at least nothing to it at once and decline
     Fixture f;
     aoc::game::Player& me   = *f.world.gameState.player(PlayerId{0});
     aoc::game::Player& them = *f.world.gameState.player(PlayerId{1});
-    me.addGold(300);
+    me.addGold(300, aoc::sim::MoneyFlow::external());
 
     // Gift: +100 for the AI -> applied immediately.
     CHECK(f.propose(Fixture::deal(PlayerId{0}, PlayerId{1}, {Fixture::gold(PlayerId{0}, PlayerId{1}, 100)}))
@@ -135,7 +135,7 @@ TEST_CASE("proposals to the human wait in the inbox until answered or expired") 
     aoc::game::GameState& gs = f.world.gameState;
     aoc::game::Player& human = *gs.player(PlayerId{0});
     aoc::game::Player& ai    = *gs.player(PlayerId{1});
-    ai.addGold(500);
+    ai.addGold(500, aoc::sim::MoneyFlow::external());
 
     const DiplomaticDeal offer =
         Fixture::deal(PlayerId{1}, PlayerId{0}, {Fixture::gold(PlayerId{1}, PlayerId{0}, 50)});
@@ -183,7 +183,7 @@ TEST_CASE("malformed proposals are refused before anyone is asked") {
     CHECK(f.propose(Fixture::deal(PlayerId{0}, PlayerId{1}, {Fixture::pact(DealTermType::OpenBorders, PlayerId{0}, PlayerId{1})}))
           == ErrorCode::InvalidState); // no open borders at war
     // A gold gift during war is still a valid proposal (an AI recipient takes it).
-    gs.player(PlayerId{0})->addGold(10);
+    gs.player(PlayerId{0})->addGold(10, aoc::sim::MoneyFlow::external());
     CHECK(f.propose(Fixture::deal(PlayerId{0}, PlayerId{1}, {Fixture::gold(PlayerId{0}, PlayerId{1}, 10)}))
           == ErrorCode::Ok);
     // An accepted deal the payer cannot afford is rejected by acceptDeal and leaves no trace.
@@ -196,7 +196,7 @@ TEST_CASE("a deal concluded at war is the peace treaty, and the AI offers one to
     Fixture f;
     aoc::game::GameState& gs = f.world.gameState;
     static_cast<void>(aoc::sim::event::drainNotifications(PlayerId{0}));
-    gs.player(PlayerId{1})->addGold(200);
+    gs.player(PlayerId{1})->addGold(200, aoc::sim::MoneyFlow::external());
     f.d.declareWar(PlayerId{1}, PlayerId{0}, aoc::sim::CasusBelliType::SurpriseWar, nullptr, &gs, 5);
 
     CHECK(aoc::sim::aiOfferPeace(gs, f.world.grid, f.tracker, f.d, PlayerId{1}, PlayerId{0}, 20));
@@ -237,7 +237,7 @@ TEST_CASE("a deal concluded at war is the peace treaty, and the AI offers one to
 
     // Broke: the offer becomes a non-aggression pact instead of gold.
     f.d.declareWar(PlayerId{1}, PlayerId{0}, aoc::sim::CasusBelliType::SurpriseWar, nullptr, &gs, 30);
-    gs.player(PlayerId{1})->addGold(-gs.player(PlayerId{1})->treasury());
+    gs.player(PlayerId{1})->addGold(-gs.player(PlayerId{1})->treasury(), aoc::sim::MoneyFlow::external());
     CHECK(aoc::sim::aiOfferPeace(gs, f.world.grid, f.tracker, f.d, PlayerId{1}, PlayerId{0}, 40));
     CHECK(gs.pendingProposals().front().deal.terms[0].type == DealTermType::NonAggression);
     CHECK_FALSE(aoc::sim::aiOfferPeace(gs, f.world.grid, f.tracker, f.d, PlayerId{1}, PlayerId{2}, 40)); // not at war

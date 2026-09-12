@@ -61,11 +61,11 @@ TEST_CASE("reminting costs real money, which is what makes debasement a loan") {
     REQUIRE(p.monetary().debasement.debasementRatio > 0.0f);
 
     // A broke civ cannot afford to put its coinage right.
-    p.setTreasury(0);
+    p.setTreasury(0, aoc::sim::MoneyFlow::external());
     CHECK(aoc::sim::requestRemintCurrency(w.gameState, PlayerId{0}) ==
           ErrorCode::InsufficientResources);
 
-    p.setTreasury(1000);
+    p.setTreasury(1000, aoc::sim::MoneyFlow::external());
     CHECK(aoc::sim::requestRemintCurrency(w.gameState, PlayerId{0}) == ErrorCode::Ok);
     CHECK(p.monetary().debasement.debasementRatio == doctest::Approx(0.0f));
     CHECK(p.treasury() == 800); // a fifth, gone

@@ -63,12 +63,12 @@ TEST_CASE("a player with one gold is left at zero, not in debt") {
     aoc::game::Player& loser  = *w.gameState.player(PlayerId{0});
     aoc::game::Player& winner = *w.gameState.player(PlayerId{1});
 
-    loser.setTreasury(1);
-    winner.setTreasury(0);
+    loser.setTreasury(1, aoc::sim::MoneyFlow::external());
+    winner.setTreasury(0, aoc::sim::MoneyFlow::external());
 
     const CurrencyAmount paid = aiReparations(loser.treasury());
-    loser.addGold(-paid);
-    winner.addGold(paid);
+    loser.addGold(-paid, aoc::sim::MoneyFlow::external());
+    winner.addGold(paid, aoc::sim::MoneyFlow::external());
 
     CHECK(loser.treasury() == 0);
     CHECK(loser.treasury() >= 0);

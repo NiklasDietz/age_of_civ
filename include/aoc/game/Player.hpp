@@ -20,6 +20,7 @@
 #include "aoc/simulation/tech/EraScore.hpp"
 #include "aoc/simulation/tech/EurekaBoost.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/monetary/MoneyFlow.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
@@ -145,9 +146,15 @@ public:
     /// MonetaryStateComponent& and have no Player to call addGold on, so no
     /// amount of rewriting call sites could have closed the hole.
     [[nodiscard]] CurrencyAmount treasury() const { return this->m_monetary.treasury; }
-    void setTreasury(CurrencyAmount amount) { this->m_monetary.treasury = amount; }
-    void addGold(CurrencyAmount amount) { this->m_monetary.treasury += amount; }
-    bool spendGold(CurrencyAmount amount); ///< Returns false if insufficient
+    /// The money seam (MoneyFlow.hpp): every mutation names where the money
+    /// comes from or goes and is booked in the ledger set for the turn.
+    /// Domestic to our own civ moves our private money the other way; a tax
+    /// the people cannot pay is booked as unbacked.
+    void setTreasury(CurrencyAmount amount, aoc::sim::MoneyFlow flow);
+    void addGold(CurrencyAmount amount, aoc::sim::MoneyFlow flow);
+    bool spendGold(CurrencyAmount amount, aoc::sim::MoneyFlow flow); ///< Returns false if insufficient
+    /// Non-owning; the turn loop points every player at the economy's ledger.
+    void setMoneyLedger(aoc::sim::MoneyLedger* ledger) { this->m_ledger = ledger; }
 
     [[nodiscard]] CurrencyAmount incomePerTurn() const { return this->m_incomePerTurn; }
     void setIncomePerTurn(CurrencyAmount income) { this->m_incomePerTurn = income; }
@@ -563,6 +570,7 @@ private:
     // block), and this account IS that field.
     CurrencyAmount m_incomePerTurn = 0;
     CurrencyAmount m_netGoldLastTurn = 0; ///< Not saved; processTurn recomputes it
+    aoc::sim::MoneyLedger* m_ledger = nullptr; ///< Not saved; set for the turn, may be null in tests
     aoc::sim::MonetaryStateComponent m_monetary;
 
     // Government

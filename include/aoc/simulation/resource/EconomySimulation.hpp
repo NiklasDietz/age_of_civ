@@ -14,6 +14,7 @@
 #include "aoc/simulation/economy/Sanctions.hpp"
 #include "aoc/simulation/economy/ColonialEconomics.hpp"
 #include "aoc/simulation/monetary/CurrencyWar.hpp"
+#include "aoc/simulation/monetary/MoneyFlow.hpp"
 #include "aoc/core/Types.hpp"
 
 #include <array>
@@ -53,6 +54,9 @@ public:
     /// Access the market (for UI display / trade decisions).
     [[nodiscard]] Market& market() { return this->m_market; }
     [[nodiscard]] const Market& market() const { return this->m_market; }
+    /// This turn's book of money entering and leaving the world (MoneyFlow.hpp).
+    [[nodiscard]] MoneyLedger& moneyLedger() { return this->m_ledger; }
+    [[nodiscard]] const MoneyLedger& moneyLedger() const { return this->m_ledger; }
 
     [[nodiscard]] const ProductionChain& productionChain() const { return this->m_productionChain; }
 
@@ -64,7 +68,11 @@ private:
     void computePlayerNeeds(aoc::game::GameState& gameState);
     void applyResourceDepletion(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
     void reportToMarket(aoc::game::GameState& gameState);
-    void updateCoinReservesFromStockpiles(aoc::game::GameState& gameState);
+    /// End of the economy step: every coin good in every stockpile becomes
+    /// bullion (Barter) or private money with a seigniorage share to the
+    /// treasury (coinage), at face value, and is booked as minted. The reserve
+    /// counters accumulate what was ever minted per metal.
+    void sweepCoins(aoc::game::GameState& gameState);
     void tickMonetaryMechanics(aoc::game::GameState& gameState);
     void executeMonetaryPolicy(aoc::game::GameState& gameState);
     void processCrisisAndBonds(aoc::game::GameState& gameState);
@@ -72,6 +80,7 @@ private:
 
     ProductionChain m_productionChain;
     Market          m_market;
+    MoneyLedger     m_ledger; ///< transient, reset by the turn loop
 
     /// Previous-turn GDP per player (for inflation delta calculation).
     std::unordered_map<PlayerId, CurrencyAmount> m_previousGDP;

@@ -68,7 +68,7 @@ ErrorCode requestPillage(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
     grid.setPillaged(tileIndex, true);
     unit->heal(PILLAGE_HEAL);
     const int32_t gold = pillageGold(effectiveEraFromTech(*owner).value);
-    owner->addGold(gold);
+    owner->addGold(gold, aoc::sim::MoneyFlow::unbacked());
     unit->setMovementRemaining(0);
     LOG_INFO("Player %u pillaged (%d,%d): +%d gold, healed %d", static_cast<unsigned>(player), at.q,
              at.r, gold, PILLAGE_HEAL);
@@ -109,7 +109,7 @@ ErrorCode requestDeleteUnit(aoc::game::GameState& gameState, const aoc::map::Hex
     int32_t refund = 0;
     if (grid.isValid(at) && grid.owner(grid.toIndex(at)) == player) {
         refund = unit->typeDef().productionCost / 4;
-        owner->addGold(refund);
+        owner->addGold(refund, aoc::sim::MoneyFlow::unbacked());
     }
     LOG_INFO("Player %u disbanded %.*s at (%d,%d) (+%d gold)", static_cast<unsigned>(player),
              static_cast<int>(unit->typeDef().name.size()), unit->typeDef().name.data(), at.q, at.r,

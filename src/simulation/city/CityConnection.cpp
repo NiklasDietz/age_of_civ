@@ -99,7 +99,7 @@ int32_t processCityConnections(aoc::game::Player& player,
     }
 
     if (totalBonus > 0) {
-        player.addGold(static_cast<CurrencyAmount>(totalBonus));
+        player.addGold(static_cast<CurrencyAmount>(totalBonus), aoc::sim::MoneyFlow::unbacked());
     }
 
     return totalBonus;
