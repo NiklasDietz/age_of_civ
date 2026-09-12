@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 /**
  * @file ProductionSystem.hpp
  * @brief City production queue processing.
@@ -42,10 +44,12 @@ void processProductionQueues(aoc::game::GameState& gameState,
  *   Factory (120 prod):      100 + 120*8 = 1,060 gold
  *   Research Lab (480 prod): 100 + 480*8 = 3,940 gold
  */
-[[nodiscard]] inline int32_t purchaseCost(float productionCost) {
-    constexpr float BASE_COST = 100.0f;
+/// Nominal at the civ's price level (never below one gold).
+[[nodiscard]] inline int32_t purchaseCost(float productionCost, float priceLevel) {
+    constexpr float BASE_COST  = 100.0f;
     constexpr float MULTIPLIER = 8.0f;
-    return static_cast<int32_t>(BASE_COST + productionCost * MULTIPLIER);
+    const float nominal        = (BASE_COST + productionCost * MULTIPLIER) * priceLevel;
+    return std::max(1, static_cast<int32_t>(nominal + 0.5f));
 }
 
 /**

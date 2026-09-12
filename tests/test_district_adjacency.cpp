@@ -126,7 +126,7 @@ TEST_CASE("Holy Site faith arrives once, through the shared path") {
     CHECK(gained == doctest::Approx(3.0f + adjacencyFaith));
 }
 
-TEST_CASE("Commercial river gold reaches the treasury, not just the breakdown") {
+TEST_CASE("Commercial river gold is collection reach, and the treasury sees it") {
     Fixture f;
     const AxialCoord centre = f.city->location();
     const AxialCoord hub    = {centre.q + 2, centre.r};
@@ -135,20 +135,21 @@ TEST_CASE("Commercial river gold reaches the treasury, not just the breakdown") 
     aoc::game::Player& player = *f.world.gameState.player(PlayerId{0});
     player.monetary().system =
         aoc::sim::MonetarySystemType::CommodityMoney; // past the barter guard
+    player.monetary().privateSpecie = 100000;         // something to tax
 
+    const float dryReach                  = aoc::sim::collectionEfficiency(player, f.world.grid);
     const aoc::CurrencyAmount dryTreasury = aoc::sim::processGoldIncome(player, f.world.grid);
-    const aoc::CurrencyAmount dryBreakdown =
-        aoc::sim::computeEconomicBreakdown(player, f.world.grid).totalIncome;
 
+    player.monetary().privateSpecie = 100000;
     f.world.grid.setRiverEdges(f.world.grid.toIndex(hub), 0x01);
+    const float wetReach                  = aoc::sim::collectionEfficiency(player, f.world.grid);
     const aoc::CurrencyAmount wetTreasury = aoc::sim::processGoldIncome(player, f.world.grid);
-    const aoc::CurrencyAmount wetBreakdown =
-        aoc::sim::computeEconomicBreakdown(player, f.world.grid).totalIncome;
 
-    // The river is worth +2 gold to the Commercial Hub, and the treasury sees
-    // it -- before this it reached only the diagnostic breakdown.
-    CHECK(wetTreasury - dryTreasury == 2);
-    CHECK(wetBreakdown - dryBreakdown == 2);
+    // The river is worth +2 gold points to the Commercial Hub, now two points
+    // of reach (0.01 each, scaled by the city's weight and multipliers), and
+    // the tax the treasury takes rises with it.
+    CHECK(wetReach > dryReach);
+    CHECK(wetTreasury > dryTreasury);
 }
 
 TEST_CASE("district adjacency reaches player science and culture") {

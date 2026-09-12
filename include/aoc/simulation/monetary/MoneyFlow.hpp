@@ -49,6 +49,7 @@ struct MoneyFlow {
 struct MoneyLedger {
     struct Civ {
         int64_t minted      = 0; ///< face value swept from the Mint's coin goods
+        int64_t seigniorage = 0; ///< the treasury's share of that (part of minted)
         int64_t printed     = 0;
         int64_t externalIn  = 0;
         int64_t externalOut = 0;

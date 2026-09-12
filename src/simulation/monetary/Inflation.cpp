@@ -5,6 +5,8 @@
 
 #include "aoc/simulation/monetary/Inflation.hpp"
 
+#include "aoc/balance/BalanceParams.hpp"
+
 #include <algorithm>
 #include <cmath>
 
@@ -14,10 +16,9 @@ void computeInflation(MonetaryStateComponent& state,
                       CurrencyAmount previousGDP,
                       CurrencyAmount currentGDP,
                       CurrencyAmount previousMoneySupply) {
-    // Barter has no inflation
+    // Barter has no inflation; its price level is whatever coinage left it.
     if (state.system == MonetarySystemType::Barter) {
         state.inflationRate = 0.0f;
-        state.priceLevel = 1.0f;
         return;
     }
 
@@ -159,10 +160,38 @@ void computeInflation(MonetaryStateComponent& state,
     state.inflationRate = std::clamp(state.inflationRate, -0.20f, 0.50f);
 }
 
+bool priceAnchored(MonetarySystemType system) {
+    return system == MonetarySystemType::CommodityMoney || system == MonetarySystemType::GoldStandard;
+}
+
+void anchorPriceLevel(MonetaryStateComponent& state, int32_t population) {
+    if (!priceAnchored(state.system)) {
+        return;
+    }
+    if (population <= 0) {
+        state.inflationRate = 0.0f; // no economy to price; the level holds
+        return;
+    }
+    const CurrencyAmount money = state.treasury + state.privateSpecie + state.privateNotes;
+    const float target = static_cast<float>(std::max<CurrencyAmount>(0, money)) * state.velocityOfMoney /
+                         (aoc::balance::params().priceAnchorK * static_cast<float>(population));
+    const float before = std::max(state.priceLevel, 0.01f);
+    const float step   = (std::clamp(target, PRICE_ANCHOR_MIN, PRICE_ANCHOR_MAX) - before) *
+                       PRICE_ANCHOR_SMOOTHING;
+    state.priceLevel = before + step;
+    // The rate is what prices actually did this turn. Reading the unclamped
+    // target instead left a moneyless civ signalling 3% deflation for ever
+    // while its prices sat still at the floor, and every reader of the rate
+    // (science stability, happiness, crises) punished it for nothing.
+    state.inflationRate = std::clamp(step / before, -0.20f, 0.50f);
+}
+
 void applyInflationEffects(MonetaryStateComponent& state) {
-    // Update cumulative price level
-    state.priceLevel *= (1.0f + state.inflationRate);
-    state.priceLevel = std::clamp(state.priceLevel, 0.1f, 10.0f);  // Cap at 10x base (hyperinflation ceiling)
+    // Update cumulative price level; the anchor owns it for specie regimes.
+    if (!priceAnchored(state.system)) {
+        state.priceLevel *= (1.0f + state.inflationRate);
+        state.priceLevel = std::clamp(state.priceLevel, 0.1f, 10.0f); // 10x base: hyperinflation ceiling
+    }
 
     // Debt is eroded by inflation (real value decreases)
     if (state.inflationRate > 0.0f && state.governmentDebt > 0) {

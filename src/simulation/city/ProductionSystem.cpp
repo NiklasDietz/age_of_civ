@@ -626,7 +626,7 @@ ErrorCode purchaseInCity(aoc::game::GameState& /*gameState*/, aoc::game::Player&
         return ErrorCode::InvalidArgument;
     }
 
-    const int32_t goldCost = purchaseCost(baseCost);
+    const int32_t goldCost = purchaseCost(baseCost, player.monetary().priceLevel);
     if (goldCost <= 0) {
         return ErrorCode::InvalidArgument;
     }

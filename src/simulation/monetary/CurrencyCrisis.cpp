@@ -92,8 +92,7 @@ bool processCurrencyCrisis(aoc::game::GameState& gameState,
                     // Paper currency loses 50% of value
                     adjustMoneySupply(state, -state.moneySupply / 2,
                                       "bankRunDevaluation");
-                    state.goldBackingRatio = 0.0f;
-                    state.priceLevel *= 2.0f;  // Prices double
+                    state.goldBackingRatio = 0.0f; // the anchor prices the halved money stock
                     LOG_INFO("Player %u: bank run depleted gold reserves, forced devaluation!",
                              static_cast<unsigned>(state.owner));
                 }
@@ -223,9 +222,8 @@ bool processCurrencyCrisis(aoc::game::GameState& gameState,
 void executeCurrencyReform(MonetaryStateComponent& state,
                            CurrencyCrisisComponent& crisis,
                            CurrencyTrustComponent& trust) {
-    // Reset price level to baseline
-    state.priceLevel = 1.0f;
-    // Wipe 50% of money supply (the "new currency" is worth 2x the old)
+    // Wipe 50% of money supply (the "new currency" is worth 2x the old); the
+    // price level follows the money through the Fisher path, not by decree.
     adjustMoneySupply(state, -state.moneySupply / 2, "currencyReform");
     // G4: halve governmentDebt too so the real debt burden is preserved across
     // redenomination. Without this pairing, deliberate hyperinflation is a

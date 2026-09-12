@@ -35,19 +35,10 @@ namespace aoc::sim {
                                     hex::AxialCoord cityPos,
                                     hex::AxialCoord capitalPos);
 
-/**
- * @brief Process city connections and award gold bonuses.
- *
- * Finds the player's capital, then for each other city owned by the player,
- * checks if it is connected via roads. Connected cities grant +3 gold to
- * the player's treasury.
- *
- * @param world  The ECS world.
- * @param grid   The hex grid.
- * @param player The player to process.
- * @return Total gold bonus awarded this turn.
- */
-int32_t processCityConnections(aoc::game::Player& player,
-                                const aoc::map::HexGrid& grid);
+/// How many of the player's other cities a road joins to the capital. A
+/// connection used to pay gold from nowhere; it is now a point of collection
+/// efficiency (Maintenance.hpp), so this only counts.
+[[nodiscard]] int32_t connectedCityCount(const aoc::game::Player& player,
+                                         const aoc::map::HexGrid& grid);
 
 } // namespace aoc::sim

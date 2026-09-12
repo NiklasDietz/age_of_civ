@@ -55,52 +55,29 @@ bool isCityConnected(const aoc::map::HexGrid& grid,
     return false;
 }
 
-int32_t processCityConnections(aoc::game::Player& player,
-                                const aoc::map::HexGrid& grid) {
-    constexpr int32_t CONNECTION_BONUS = 3;
-
-    if (moneyless(player)) {
-        return 0;
-    }
-
-    // Find capital
+int32_t connectedCityCount(const aoc::game::Player& player, const aoc::map::HexGrid& grid) {
     aoc::hex::AxialCoord capitalPos{0, 0};
-    bool foundCapital = false;
+    bool hasCapital = false;
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
-        if (city->isOriginalCapital()) {
+        if (city != nullptr && city->owner() == player.id() && city->isOriginalCapital()) {
             capitalPos = city->location();
-            foundCapital = true;
+            hasCapital = true;
             break;
         }
     }
-
-    if (!foundCapital) {
+    if (!hasCapital) {
         return 0;
     }
-
-    // C27: per-turn bonus decays with number of connected cities so a 10-city
-    // empire can't snowball +30 gold passive. Each additional connected city
-    // contributes BONUS / log2(n+1) instead of a flat +3. Keeps early
-    // connections valuable, flattens late-game.
-    int32_t connectedCount = 0;
+    int32_t connected = 0;
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
-        if (city->location() == capitalPos) { continue; }
+        if (city == nullptr || city->owner() != player.id() || city->location() == capitalPos) {
+            continue;
+        }
         if (isCityConnected(grid, city->location(), capitalPos)) {
-            ++connectedCount;
+            ++connected;
         }
     }
-    int32_t totalBonus = 0;
-    if (connectedCount > 0) {
-        const float divisor = std::log2(static_cast<float>(connectedCount) + 1.0f);
-        const float perCity = static_cast<float>(CONNECTION_BONUS) / std::max(1.0f, divisor);
-        totalBonus = static_cast<int32_t>(perCity * static_cast<float>(connectedCount));
-    }
-
-    if (totalBonus > 0) {
-        player.addGold(static_cast<CurrencyAmount>(totalBonus), aoc::sim::MoneyFlow::unbacked()); // 2.3: efficiency
-    }
-
-    return totalBonus;
+    return connected;
 }
 
 } // namespace aoc::sim

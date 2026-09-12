@@ -1356,6 +1356,7 @@ void EconomySimulation::executeMonetaryPolicy(aoc::game::GameState& gameState) {
 
         executeFiscalPolicy(state, currentGDP);
         computeInflation(state, prevGDP, currentGDP, prevMoney);
+        anchorPriceLevel(state, playerPtr->totalPopulation());
         applyInflationEffects(state);
 
         // Monetary system advancement. Civs upgrade currency systems
@@ -1491,6 +1492,7 @@ void EconomySimulation::sweepCoins(aoc::game::GameState& gameState) {
             state.privateSpecie += face - seigniorage;
             this->m_ledger.record(playerPtr->id(), MoneyFlow::minted(), face - seigniorage);
             playerPtr->addGold(seigniorage, MoneyFlow::minted());
+            this->m_ledger.civs[static_cast<std::size_t>(playerPtr->id())].seigniorage += seigniorage;
         }
 
         CoinTier previousTier = state.effectiveCoinTier;

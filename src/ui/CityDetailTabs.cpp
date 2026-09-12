@@ -764,7 +764,9 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
         if (itemType == aoc::sim::ProductionItemType::Unit
             || itemType == aoc::sim::ProductionItemType::Building) {
             ButtonData buyBtn;
-            buyBtn.label        = "Buy " + std::to_string(aoc::sim::purchaseCost(itemCost)) + "g";
+            const aoc::game::Player* buyer = this->m_gameState->player(this->m_player);
+            const float priceLevel         = buyer != nullptr ? buyer->monetary().priceLevel : 1.0f;
+            buyBtn.label = "Buy " + std::to_string(aoc::sim::purchaseCost(itemCost, priceLevel)) + "g";
             buyBtn.fontSize     = 10.0f;
             buyBtn.cornerRadius = 3.0f;
             buyBtn.normalColor  = tokens::BRONZE_BASE;

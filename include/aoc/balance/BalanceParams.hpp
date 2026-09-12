@@ -130,6 +130,14 @@ struct BalanceParams {
     // Raising it does NOT weaken the resource curse: that emerges from miners
     // and factories drawing on ONE pool, not from the pool being small.
     float   workerCapacityPerPop     = 0.55996f;
+
+    /// Price anchor for specie regimes (Inflation.hpp anchorPriceLevel):
+    /// `P* = M x V / (K x population)`. K is the money per citizen at which
+    /// prices sit at 1.0. Calibrated 2026-09-12 on the seed-42 200-turn run
+    /// after 2.3: the median money per citizen over every coinage
+    /// player-turn was 16.4 at velocity 0.8, so K = 13 puts the median at
+    /// P = 1 (plan B1, 2.3). The 2.7 balance pass re-measures it.
+    float   priceAnchorK             = 13.0f;
 };
 
 /// Access the single global balance-params instance.

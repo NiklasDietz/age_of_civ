@@ -50,6 +50,7 @@ MoneyLedger::Civ MoneyLedger::total() const {
     Civ sum;
     for (const Civ& civ : this->civs) {
         sum.minted += civ.minted;
+        sum.seigniorage += civ.seigniorage;
         sum.printed += civ.printed;
         sum.externalIn += civ.externalIn;
         sum.externalOut += civ.externalOut;

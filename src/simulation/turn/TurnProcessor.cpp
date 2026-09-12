@@ -474,8 +474,16 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     computeSupplyLines(*turnContext.gameState, grid, player);
     applySupplyAttrition(*turnContext.gameState, player);
 
-    // Gold income: reads from Player/City objects, writes to Player::treasury()
-    processGoldIncome(*gsPlayer, grid);
+    // Alliance yield modifiers (Research/Cultural/Religious/Economic); the
+    // Economic one is a collection-efficiency bonus on the tax below.
+    aoc::sim::AllianceYieldModifiers alliance{};
+    if (turnContext.diplomacy != nullptr) {
+        alliance = aoc::sim::computeAllianceYieldModifiers(
+            *turnContext.diplomacy, player, static_cast<uint8_t>(turnContext.gameState->playerCount()));
+    }
+
+    // The tax: out of the civ's private money into the treasury.
+    processGoldIncome(*gsPlayer, grid, alliance.goldMult);
 
     // Maintenance: per-unit era-scaled, per-building, per-district, per-city.
     // What the treasury cannot pay is arrears, reported for the turn.
@@ -552,9 +560,6 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
             std::min(unitPtr->hitPoints() + healAmount, unitPtr->typeDef().maxHitPoints);
         unitPtr->setHitPoints(newHP);
     }
-
-    // City connections: uses GameState directly
-    processCityConnections(*gsPlayer, grid);
 
     // Advanced economics (tariffs, banking, debt)
 
@@ -650,11 +655,8 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         float science = computePlayerScience(*gsPlayer, grid);
         float culture = computePlayerCulture(*gsPlayer, grid);
 
-        // Alliance yield modifiers (Research/Cultural/Religious/Economic).
         if (turnContext.diplomacy != nullptr) {
-            const aoc::sim::AllianceYieldModifiers all = aoc::sim::computeAllianceYieldModifiers(
-                *turnContext.diplomacy, player,
-                static_cast<uint8_t>(turnContext.gameState->playerCount()));
+            const aoc::sim::AllianceYieldModifiers& all = alliance;
             // A Research alliance's level-2 eureka and level-3 free tech are
             // grants on their own intervals, not a standing multiplier, so they
             // are paid here rather than folded into scienceMult.
@@ -666,24 +668,18 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
             if (all.faithMult != 1.0f) {
                 gsPlayer->faith().faith *= all.faithMult; // applied as an instant boost
             }
-            // goldMult had no reader at all: an Economic alliance was the only
-            // one of the five whose own yield never arrived. Applied to the
-            // turn's treasury gain the way faith is.
-            if (all.goldMult > 1.0f) {
-                const CurrencyAmount bonus = static_cast<CurrencyAmount>(
-                    static_cast<float>(gsPlayer->treasury()) * (all.goldMult - 1.0f) * 0.01f);
-                if (bonus > 0) {
-                    gsPlayer->addGold(bonus, aoc::sim::MoneyFlow::unbacked()); // 2.3: a collection bonus
-                }
-            }
         }
 
         // Science funding cost: SCIENCE_FUNDING_COST gold per science point.
         // A Barter civ with no coins has no money to fund research with and
         // no way to earn any; charging it drove every such civ to the 50%
         // floor for the half of a game most of them spend in Barter.
+        // Nominal at the civ's price level: scholars charge what things cost.
         const CurrencyAmount fundingCost =
-            moneyless(*gsPlayer) ? 0 : static_cast<CurrencyAmount>(science * SCIENCE_FUNDING_COST);
+            moneyless(*gsPlayer)
+                ? 0
+                : static_cast<CurrencyAmount>(science * SCIENCE_FUNDING_COST *
+                                              gsPlayer->monetary().priceLevel);
         if (fundingCost > 0) {
             if (gsPlayer->treasury() >= fundingCost) {
                 gsPlayer->addGold(-fundingCost, aoc::sim::MoneyFlow::domestic(player)); // scholars are our people

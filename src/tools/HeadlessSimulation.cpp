@@ -372,13 +372,13 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         << "Population,Cities,Military,TechsResearched,CultureTotal,"
         << "TradePartners,CompositeCSI,EraVP,Era,Eliminated,AvgHappiness,"
         << "Corruption,CrisisType,IndustrialRev,GovernmentType,"
-        << "IncomeCapital,IncomeTax,IncomeCommercial,IncomeIndustrial,IncomeTileGold,"
-        << "IncomeGoodsEcon,TotalIncome,EffectiveIncome,"
+        << "IncomeTax,IncomeSeigniorage,IncomeTariffs,IncomeExternal,"
+        << "TotalIncome,EffectiveIncome,"
         << "ExpenseUnits,ExpenseBuildings,TotalExpense,NetFlow,GoodsStockpiled,"
         << "FoodPerTurn,FamineCities,ScienceDiffusion,CultureDiffusion,BarbarianUnits,"
-        << "IncomeMoneyTax,IncomeTradeRoutes,ExpenseScience,"
+        << "IncomeTradeRoutes,ExpenseScience,"
         << "ActiveRoutes,DealsActive,LuxuryTypesHeld,"
-        << "Circulation,Arrears,PriceLevel,MintedTurn,UnbackedTurn\n";
+        << "Circulation,Arrears,PriceLevel,MintedTurn,UnbackedTurn,CollectionEfficiency\n";
 
     aoc::map::HexGrid grid;
     // 2026-05-03: honour --seed CLI/yaml override so audit_matrix.sh sims are
@@ -956,22 +956,19 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             if (snapPlayer != nullptr) {
                 bd = aoc::sim::computeEconomicBreakdown(*snapPlayer, grid);
             }
-            csv << bd.incomeCapital << "," << bd.incomeTax << "," << bd.incomeCommercial << ","
-                << bd.incomeIndustrial << "," << bd.incomeTileGold << ","
-                << bd.incomeGoodsEcon << "," << bd.totalIncome << ","
-                << bd.effectiveIncome << ","
+            csv << bd.incomeTax << "," << bd.incomeSeigniorage << "," << bd.incomeTariffs << ","
+                << bd.incomeExternal << "," << bd.totalIncome << "," << bd.effectiveIncome << ","
                 << bd.expenseUnits << "," << bd.expenseBuildings << ","
                 << bd.totalExpense << "," << bd.netFlow << ","
                 << bd.goodsStockpiled;
             csv << "," << snap.foodPerTurn << "," << snap.famineCities
                 << "," << snap.scienceDiffusion << "," << snap.cultureDiffusion
                 << "," << snap.barbarianUnits;
-            csv << "," << bd.incomeMoneyTax << "," << bd.incomeTradeRoutes << ","
-                << bd.expenseScience;
+            csv << "," << bd.incomeTradeRoutes << "," << bd.expenseScience;
             csv << "," << snap.activeRoutes << "," << snap.dealsActive << ","
                 << snap.luxuryTypesHeld;
             csv << "," << snap.circulation << "," << snap.arrears << "," << snap.priceLevel << ","
-                << snap.mintedTurn << "," << snap.unbackedTurn;
+                << snap.mintedTurn << "," << snap.unbackedTurn << "," << bd.collectionEfficiency;
             csv << "\n";
         }
 

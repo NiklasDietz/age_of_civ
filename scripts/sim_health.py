@@ -224,13 +224,10 @@ def evaluate(rows: list[dict[str, str]], events: list[dict[str, str]] | None = N
     )
 
     # H8  The income breakdown reconciles with its own total. The CSV used to
-    #     omit IncomeCapital, so the channels never summed to TotalIncome; the
-    #     money-supply tax was folded into IncomeCommercial until 2026-09-10.
-    channels = (
-        "IncomeCapital", "IncomeTax", "IncomeCommercial",
-        "IncomeIndustrial", "IncomeTileGold", "IncomeGoodsEcon",
-        "IncomeMoneyTax",
-    )
+    #     omit a channel, so the parts never summed to TotalIncome. Since the
+    #     conserved ledger (2.3) the channels are the tax on private money,
+    #     seigniorage, tariffs and the external sector.
+    channels = ("IncomeTax", "IncomeSeigniorage", "IncomeTariffs", "IncomeExternal")
     mismatches = []
     for row in rows:
         parts = sum(float(row[c]) for c in channels)
@@ -349,11 +346,12 @@ def evaluate(rows: list[dict[str, str]], events: list[dict[str, str]] | None = N
 
 COLUMNS = [
     "Turn", "Player", "GDP", "Cities", "TechsResearched", "TradePartners",
-    "EraVP", "Era", "Eliminated", "MetPlayersMask", "IncomeCapital",
-    "IncomeTax", "IncomeCommercial", "IncomeIndustrial", "IncomeTileGold",
-    "IncomeGoodsEcon", "IncomeMoneyTax", "TotalIncome", "BarbarianUnits",
+    "EraVP", "Era", "Eliminated", "MetPlayersMask",
+    "IncomeTax", "IncomeSeigniorage", "IncomeTariffs", "IncomeExternal",
+    "TotalIncome", "BarbarianUnits",
     "IncomeTradeRoutes", "ActiveRoutes", "DealsActive", "LuxuryTypesHeld",
     "Circulation", "Arrears", "PriceLevel", "MintedTurn", "UnbackedTurn",
+    "CollectionEfficiency",
 ]
 
 EVENT_COLUMNS = ["Turn", "SubStep", "EventType", "Player", "OtherPlayer",
@@ -471,12 +469,12 @@ def selftest() -> int:
         r["TotalIncome"] = "99"
     add("income mismatch", rows, "FAIL: income channels")
 
-    # H8: the money-supply tax is a channel of its own; a total that leaves
-    # it out no longer reconciles.
+    # H8: seigniorage is a channel of its own; a total that leaves it out
+    # no longer reconciles.
     rows = _healthy()
     for r in rows:
-        r["IncomeMoneyTax"] = "7"
-    add("money tax left out of the total", rows, "FAIL: income channels")
+        r["IncomeSeigniorage"] = "7"
+    add("seigniorage left out of the total", rows, "FAIL: income channels")
 
     # T1: Traders sit idle.
     rows = _healthy()

@@ -57,7 +57,7 @@ TEST_CASE("activeTradeRouteCount counts traders with a route, not idle traders o
     CHECK(p.activeTradeRouteCount() == 2);
 }
 
-TEST_CASE("goldFromTradeRoute adds a flat bonus per active route to income and its breakdown") {
+TEST_CASE("goldFromTradeRoute adds a point of reach per route, and the tax follows") {
     const std::pair<aoc::sim::CivId, int32_t> civ =
         firstCivWith([](const CivilizationDef& d) { return d.modifiers.goldFromTradeRoute; });
     REQUIRE(civ.second > 0);
@@ -65,17 +65,20 @@ TEST_CASE("goldFromTradeRoute adds a flat bonus per active route to income and i
     aoc::test::World w = aoc::test::makeWorld(1);
     aoc::game::Player& p = *w.gameState.players()[0];
     p.setCivId(civ.first);
-    p.monetary().system = aoc::sim::MonetarySystemType::CommodityMoney;  // past the barter guard
+    p.monetary().system        = aoc::sim::MonetarySystemType::CommodityMoney;  // past the barter guard
+    p.monetary().privateSpecie = 10000;                                          // something to tax
 
+    const float reachNone                   = aoc::sim::collectionEfficiency(p, w.grid);
     const aoc::CurrencyAmount incomeNone    = aoc::sim::processGoldIncome(p, w.grid);
-    const aoc::CurrencyAmount breakdownNone = aoc::sim::computeEconomicBreakdown(p, w.grid).totalIncome;
+    p.monetary().privateSpecie              = 10000;
     addActiveTrader(w, PlayerId{0}, 3, 1);
     addActiveTrader(w, PlayerId{0}, 4, 1);
-    const aoc::CurrencyAmount incomeTwo    = aoc::sim::processGoldIncome(p, w.grid);
-    const aoc::CurrencyAmount breakdownTwo = aoc::sim::computeEconomicBreakdown(p, w.grid).totalIncome;
+    const float reachTwo                    = aoc::sim::collectionEfficiency(p, w.grid);
+    const aoc::CurrencyAmount incomeTwo     = aoc::sim::processGoldIncome(p, w.grid);
+    const float govMult = aoc::sim::computeGovernmentModifiers(p.government()).goldMultiplier;
 
-    CHECK(incomeTwo - incomeNone == 2 * civ.second);
-    CHECK(breakdownTwo - breakdownNone == 2 * civ.second);   // the HUD and the CSV agree with the credit
+    CHECK(reachTwo - reachNone == doctest::Approx(0.01f * static_cast<float>(2 * civ.second) * govMult));
+    CHECK(incomeTwo > incomeNone);   // the treasury sees the ability, as it did when it was gold
 }
 
 TEST_CASE("goldFromTradeRoute pays nothing under barter, like every other gold source") {

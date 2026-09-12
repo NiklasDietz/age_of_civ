@@ -9,6 +9,7 @@
 #include "aoc/simulation/economy/Maintenance.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/city/CityScience.hpp"
+#include "aoc/simulation/city/CityConnection.hpp"
 #include "aoc/simulation/city/DistrictAdjacency.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
@@ -71,14 +72,26 @@ constexpr uint16_t MARKET         = 6u;
 constexpr uint16_t TELECOM_HUB    = 13u;
 constexpr uint16_t BANK           = 20u;
 constexpr uint16_t STOCK_EXCHANGE = 21u;
-constexpr float PALACE_GOLD       = 10.0f;
+
+// Collection-efficiency contributions (plan 2.3).
+constexpr float PALACE_EFFICIENCY     = 0.10f;
+constexpr float HUB_EFFICIENCY        = 0.05f;
+constexpr float HARBOR_EFFICIENCY     = 0.03f;
+constexpr float GOLD_POINT_EFFICIENCY = 0.01f; ///< per point of tile, adjacency or goods gold
+constexpr float CITY_GOLD_CAP         = 0.10f; ///< cap on a city's tile, adjacency and goods gold
+constexpr float WONDER_GOLD_POINT     = 0.02f;
+constexpr float INDUSTRIAL_POINT      = 0.02f; ///< per point of gold per citizen from industrialisation
+constexpr float CONNECTION_EFFICIENCY = 0.02f; ///< per city connected to the capital by road
+constexpr float ROUTE_ABILITY_POINT   = 0.01f; ///< per point of a civ's goldFromTradeRoute, per route
 
 /// Upkeep and stock, tallied the same way for money and barter civs so the
-/// diagnostic matches processUnitMaintenance and processBuildingMaintenance.
-/// The barter branch used to charge a district fee and double sprawl that no
-/// maintenance function ever collected.
+/// diagnostic matches processUnitMaintenance and processBuildingMaintenance,
+/// nominal at the civ's price level.
 void tallyUpkeepAndStock(const aoc::game::Player& player, EconomicBreakdown& bd) {
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        if (city == nullptr || city->owner() != player.id()) {
+            continue;
+        }
         for (const CityDistrictsComponent::PlacedDistrict& d : city->districts().districts) {
             for (BuildingId bid : d.buildings) {
                 bd.expenseBuildings +=
@@ -98,6 +111,9 @@ void tallyUpkeepAndStock(const aoc::game::Player& player, EconomicBreakdown& bd)
             bd.expenseUnits += static_cast<CurrencyAmount>(cost);
         }
     }
+    const float priceMult = priceLevelMaintenanceMultiplier(player.monetary().priceLevel);
+    bd.expenseUnits     = static_cast<CurrencyAmount>(static_cast<float>(bd.expenseUnits) * priceMult);
+    bd.expenseBuildings = static_cast<CurrencyAmount>(static_cast<float>(bd.expenseBuildings) * priceMult);
 }
 
 /// Coin the civ's Traders brought home this turn. The Trader system credits
@@ -121,7 +137,7 @@ void tallyUpkeepAndStock(const aoc::game::Player& player, EconomicBreakdown& bd)
     return {0, 0};
 }
 
-/// Share of a city's gross gold that survives distance corruption (never at
+/// Share of a city's commerce that survives distance corruption (never at
 /// the capital; Communism has none) and the named governor's multiplier.
 [[nodiscard]] float cityGoldMultiplier(const aoc::game::City& city, const aoc::map::HexGrid& grid,
                                        aoc::hex::AxialCoord capital, const GovernmentDef& gov) {
@@ -149,56 +165,37 @@ void tallyUpkeepAndStock(const aoc::game::Player& player, EconomicBreakdown& bd)
     return false;
 }
 
-/// Gold of the Market, Bank and Stock Exchange in a city, which Big Ben
-/// doubles.
-[[nodiscard]] int32_t marketBuildingGold(const aoc::game::City& city) {
-    int32_t gold = 0;
+/// The Market, Bank and Stock Exchange contributions in a city, which Big
+/// Ben doubles.
+[[nodiscard]] float marketBuildingBonus(const aoc::game::City& city) {
+    float bonus = 0.0f;
     for (const CityDistrictsComponent::PlacedDistrict& d : city.districts().districts) {
         for (BuildingId bid : d.buildings) {
             if (bid.value == MARKET || bid.value == BANK || bid.value == STOCK_EXCHANGE) {
-                gold += buildingDef(bid).goldBonus;
+                bonus += buildingCollectionBonus(bid);
             }
         }
     }
-    return gold;
+    return bonus;
 }
 
-/// Wonder gold with era decay. Machu Picchu pays only beside a Mountain; Big
-/// Ben adds its flat bonus and doubles the market buildings' gold.
-[[nodiscard]] float cityWonderGold(const aoc::game::Player& player, const aoc::game::City& city,
-                                   const aoc::map::HexGrid& grid) {
-    float gold = 0.0f;
+/// Wonder gold points with era decay, plus Big Ben's doubling of the market
+/// buildings. Machu Picchu pays only beside a Mountain.
+[[nodiscard]] float cityWonderBonus(const aoc::game::Player& player, const aoc::game::City& city,
+                                    const aoc::map::HexGrid& grid) {
+    float bonus = 0.0f;
     for (const WonderId wid : city.wonders().wonders) {
         if (wid == MACHU_PICCHU && !bordersMountain(grid, city.location())) {
             continue;
         }
         const WonderDef& wdef = wonderDef(wid);
         const float decay     = wonderEraDecayFactor(wdef, player.era().currentEra);
-        gold += wdef.effect.goldBonus * decay;
+        bonus += wdef.effect.goldBonus * decay * WONDER_GOLD_POINT;
         if (wid == BIG_BEN) {
-            gold += static_cast<float>(marketBuildingGold(city)) * decay;
+            bonus += marketBuildingBonus(city) * decay;
         }
     }
-    return gold;
-}
-
-/// Hub +3, Harbor +2, every building's goldBonus, and the adjacency yields
-/// (river and harbor-side hubs, coastal resources beside a Harbor).
-[[nodiscard]] float cityCommercialGold(const aoc::game::City& city, const aoc::map::HexGrid& grid,
-                                       const DistrictIndex& index) {
-    int32_t gold = 0;
-    for (const CityDistrictsComponent::PlacedDistrict& d : city.districts().districts) {
-        if (d.type == DistrictType::Commercial) {
-            gold += 3;
-        }
-        if (d.type == DistrictType::Harbor) {
-            gold += 2;
-        }
-        for (BuildingId bid : d.buildings) {
-            gold += buildingDef(bid).goldBonus;
-        }
-    }
-    return static_cast<float>(gold) + cityAdjacencyYields(grid, index, city).gold;
+    return bonus;
 }
 
 /// Worked-tile gold including the WP-G improvement cluster bonuses.
@@ -212,38 +209,31 @@ void tallyUpkeepAndStock(const aoc::game::Player& player, EconomicBreakdown& bd)
     return gold;
 }
 
-/// Base 0.50 plus the commerce that makes coin taxable: hub +5%, Market +8%,
-/// Bank +12%, Stock Exchange +18%, Telecom Hub +10%, capped at 1.
-[[nodiscard]] float coinCollectionEfficiency(const aoc::game::Player& player) {
-    float efficiency = 0.50f;
-    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
-        for (const CityDistrictsComponent::PlacedDistrict& d : city->districts().districts) {
-            if (d.type == DistrictType::Commercial) {
-                efficiency += 0.05f;
-            }
-            for (BuildingId bid : d.buildings) {
-                const uint16_t bv = bid.value;
-                efficiency += (bv == MARKET) ? 0.08f : 0.0f;
-                efficiency += (bv == BANK) ? 0.12f : 0.0f;
-                efficiency += (bv == STOCK_EXCHANGE) ? 0.18f : 0.0f;
-                efficiency += (bv == TELECOM_HUB) ? 0.10f : 0.0f;
-            }
+/// One city's commerce as collection efficiency, before corruption and the
+/// governor: Palace, hubs and harbors, buildings, the gold its tiles, its
+/// adjacency and its finished goods yield (capped), its wonders and its
+/// industrialisation.
+[[nodiscard]] float cityCommerceBonus(const aoc::game::Player& player, const aoc::game::City& city,
+                                      const aoc::map::HexGrid& grid, const DistrictIndex& index) {
+    float bonus = city.isOriginalCapital() ? PALACE_EFFICIENCY : 0.0f;
+    for (const CityDistrictsComponent::PlacedDistrict& d : city.districts().districts) {
+        if (d.type == DistrictType::Commercial) {
+            bonus += HUB_EFFICIENCY;
+        }
+        if (d.type == DistrictType::Harbor) {
+            bonus += HARBOR_EFFICIENCY;
+        }
+        for (BuildingId bid : d.buildings) {
+            bonus += buildingCollectionBonus(bid);
         }
     }
-    return std::min(efficiency, 1.0f);
-}
-
-/// Money-supply tax: coin stock x taxable share x tax rate x collection
-/// efficiency. The taxable share is a velocity: it turns the coin STOCK into
-/// the GDP FLOW a tax rate can apply to, so a hoard is not taxed whole every
-/// turn and more coin raises revenue less than proportionally.
-[[nodiscard]] float moneySupplyTax(const aoc::game::Player& player) {
-    const int32_t supply = player.monetary().totalCoinValue();
-    if (supply <= 0) {
-        return 0.0f;
-    }
-    return static_cast<float>(supply) * player.monetary().taxableMoneyShare() *
-           player.monetary().taxRate * coinCollectionEfficiency(player);
+    const float goldPoints = static_cast<float>(cityTileGold(city, grid)) +
+                             cityAdjacencyYields(grid, index, city).gold +
+                             static_cast<float>(cityGoodsTax(city));
+    bonus += std::min(CITY_GOLD_CAP, goldPoints * GOLD_POINT_EFFICIENCY);
+    bonus += cityWonderBonus(player, city, grid);
+    bonus += player.industrial().cumulativeGoldPerCitizen() * INDUSTRIAL_POINT;
+    return bonus;
 }
 
 [[nodiscard]] CurrencyAmount toGold(float value) {
@@ -252,78 +242,89 @@ void tallyUpkeepAndStock(const aoc::game::Player& player, EconomicBreakdown& bd)
 
 } // namespace
 
+float buildingCollectionBonus(BuildingId building) {
+    switch (building.value) {
+        case MARKET:         return 0.08f;
+        case BANK:           return 0.12f;
+        case STOCK_EXCHANGE: return 0.18f;
+        case TELECOM_HUB:    return 0.10f;
+        default:             return static_cast<float>(buildingDef(building).goldBonus) * GOLD_POINT_EFFICIENCY;
+    }
+}
+
+float collectionEfficiency(const aoc::game::Player& player, const aoc::map::HexGrid& grid,
+                           float allianceGoldMult) {
+    const GovernmentDef& govDef        = governmentDef(player.government().government);
+    const aoc::hex::AxialCoord capital = capitalLocation(player);
+    DistrictIndex districtIndex;
+    districtIndex.build(player);
+
+    float totalPop = 0.0f;
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        if (city != nullptr && city->owner() == player.id()) {
+            totalPop += static_cast<float>(std::max(0, city->population()));
+        }
+    }
+    float efficiency = BASE_COLLECTION_EFFICIENCY;
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        if (city == nullptr || city->owner() != player.id() || totalPop <= 0.0f) {
+            continue;
+        }
+        const float weight = static_cast<float>(std::max(0, city->population())) / totalPop;
+        efficiency += weight * cityCommerceBonus(player, *city, grid, districtIndex) *
+                      cityGoldMultiplier(*city, grid, capital, govDef);
+    }
+    efficiency += CONNECTION_EFFICIENCY * static_cast<float>(connectedCityCount(player, grid));
+    // Civ ability: +N gold per active trade route, now N points of reach per route.
+    const int32_t perRoute = civDef(player.civId()).modifiers.goldFromTradeRoute;
+    if (perRoute > 0) {
+        efficiency += ROUTE_ABILITY_POINT * static_cast<float>(perRoute) *
+                      static_cast<float>(player.activeTradeRouteCount());
+    }
+    efficiency *= computeGovernmentModifiers(player.government()).goldMultiplier * allianceGoldMult;
+    return std::clamp(efficiency, 0.0f, 1.0f);
+}
+
 EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
-                                           const aoc::map::HexGrid& grid) {
+                                           const aoc::map::HexGrid& grid, float allianceGoldMult) {
     EconomicBreakdown bd{};
     tallyUpkeepAndStock(player, bd);
     bd.incomeTradeRoutes = routeGoldEarned(player);
+    if (const aoc::sim::MoneyLedger* ledger = player.moneyLedger(); ledger != nullptr) {
+        const MoneyLedger::Civ& book = ledger->civs[static_cast<std::size_t>(player.id())];
+        bd.incomeSeigniorage         = book.seigniorage;
+        bd.incomeExternal            = book.externalIn;
+    }
     if (moneyless(player)) {
+        bd.totalIncome  = bd.incomeSeigniorage + bd.incomeTariffs + bd.incomeExternal;
         bd.totalExpense = bd.expenseUnits + bd.expenseBuildings;
         bd.netFlow      = -bd.totalExpense;
         return bd;
     }
 
-    const GovernmentDef& govDef        = governmentDef(player.government().government);
-    const aoc::hex::AxialCoord capital = capitalLocation(player);
-    const float indGoldPerCitizen      = player.industrial().cumulativeGoldPerCitizen();
-    DistrictIndex districtIndex;
-    districtIndex.build(player);
+    // The tax: the flow the people's money makes, at the rate, as far as the
+    // state reaches; the goldAllocation share is what the treasury keeps, the
+    // rest it spends straight back on luxuries and learning.
+    const MonetaryStateComponent& money = player.monetary();
+    bd.collectionEfficiency = collectionEfficiency(player, grid, allianceGoldMult);
+    bd.taxBase = toGold(static_cast<float>(std::max<CurrencyAmount>(0, money.privateSpecie)) *
+                        money.taxableMoneyShare());
+    const float due = static_cast<float>(bd.taxBase) * money.taxRate * bd.collectionEfficiency;
+    bd.incomeTax    = toGold(due * money.goldAllocation);
 
-    // Per-city rules, each channel scaled by that city's corruption and governor.
-    float capitalGold = 0.0f;
-    float headTax     = 0.0f;
-    float industrial  = 0.0f;
-    float tileGold    = 0.0f;
-    float commercial  = 0.0f;
-    float goodsTax    = 0.0f;
-    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
-        const float mult = cityGoldMultiplier(*city, grid, capital, govDef);
-        const float pop  = static_cast<float>(city->population());
-        if (city->isOriginalCapital()) {
-            capitalGold += PALACE_GOLD * mult;
-        }
-        headTax += pop * mult;
-        industrial += pop * indGoldPerCitizen * mult;
-        tileGold += static_cast<float>(cityTileGold(*city, grid)) * mult;
-        commercial +=
-            (cityCommercialGold(*city, grid, districtIndex) + cityWonderGold(player, *city, grid)) *
-            mult;
-        goodsTax += static_cast<float>(cityGoodsTax(*city)) * mult;
-    }
-
-    // Civ-wide rules: the money-supply tax, then the government multiplier
-    // over every channel. Each channel is truncated on its own so the CSV's
-    // channels always sum to its total.
-    const float govMult = computeGovernmentModifiers(player.government()).goldMultiplier;
-    bd.incomeCapital    = toGold(capitalGold * govMult);
-    bd.incomeTax        = toGold(headTax * govMult);
-    bd.incomeIndustrial = toGold(industrial * govMult);
-    bd.incomeTileGold   = toGold(tileGold * govMult);
-    bd.incomeCommercial = toGold(commercial * govMult);
-    bd.incomeGoodsEcon  = toGold(goodsTax * govMult);
-    bd.incomeMoneyTax   = toGold(moneySupplyTax(player) * govMult);
-
-    // Civ ability: +N gold per active trade route, flat and after the
-    // multipliers, like its science and culture siblings in CityScience.cpp.
-    const int32_t perRoute = civDef(player.civId()).modifiers.goldFromTradeRoute;
-    if (perRoute > 0) {
-        bd.incomeCommercial +=
-            static_cast<CurrencyAmount>(player.activeTradeRouteCount() * perRoute);
-    }
-
-    bd.totalIncome = bd.incomeCapital + bd.incomeTax + bd.incomeIndustrial + bd.incomeTileGold +
-                     bd.incomeCommercial + bd.incomeGoodsEcon + bd.incomeMoneyTax;
-    bd.effectiveIncome =
-        toGold(static_cast<float>(bd.totalIncome) * player.monetary().goldAllocation);
-    bd.expenseScience = toGold(computePlayerScience(player, grid) * SCIENCE_FUNDING_COST);
-    bd.totalExpense   = bd.expenseUnits + bd.expenseBuildings + bd.expenseScience;
-    bd.netFlow        = bd.effectiveIncome - bd.totalExpense;
+    bd.effectiveIncome = bd.incomeTax;
+    bd.totalIncome = bd.incomeTax + bd.incomeSeigniorage + bd.incomeTariffs + bd.incomeExternal;
+    bd.expenseScience =
+        toGold(computePlayerScience(player, grid) * SCIENCE_FUNDING_COST * money.priceLevel);
+    bd.totalExpense = bd.expenseUnits + bd.expenseBuildings + bd.expenseScience;
+    bd.netFlow      = bd.effectiveIncome - bd.totalExpense;
     return bd;
 }
 
-CurrencyAmount processGoldIncome(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
-    const EconomicBreakdown bd = computeEconomicBreakdown(player, grid);
-    player.addGold(bd.effectiveIncome, aoc::sim::MoneyFlow::unbacked()); // 2.3: a tax on private money
+CurrencyAmount processGoldIncome(aoc::game::Player& player, const aoc::map::HexGrid& grid,
+                                 float allianceGoldMult) {
+    const EconomicBreakdown bd = computeEconomicBreakdown(player, grid, allianceGoldMult);
+    takeFromPrivate(player, bd.incomeTax);
     player.setIncomePerTurn(bd.totalIncome);
     return bd.totalIncome;
 }

@@ -5,9 +5,9 @@
  * @brief Gold income, unit maintenance, and building maintenance processing.
  *
  * All functions operate on the GameState object model (Player/City/Unit).
- * Per-unit maintenance scales with era (era/2 + 1). Building maintenance
- * includes the per-city sprawl cost. Below the -500 hard floor, or after five
- * turns below -200, the most expensive military unit is disbanded.
+ * Per-unit maintenance scales with era (era/2 + 1) and the price level.
+ * Building maintenance includes the per-city sprawl cost. Bills the treasury
+ * cannot pay are arrears; five turns of them disband the costliest unit.
  */
 
 #include "aoc/core/Types.hpp"
@@ -44,25 +44,30 @@ namespace aoc::sim {
 
 
 
-/// Detailed per-turn economic breakdown for diagnostic analysis.
+/// The treasury's turn, read-only: what it takes in and what it owes.
+///
+/// Income is a tax on the civ's private money (plan B1): the state reaches a
+/// share of the flow `privateSpecie x taxable share` at its tax rate, and the
+/// share it can reach is the collection efficiency below. Buildings create no
+/// gold; a Market makes the people's money easier to tax. Seigniorage and the
+/// external sector arrive on their own and are reported from the turn's ledger.
 struct EconomicBreakdown {
-    // Income sources
-    CurrencyAmount incomeTax         = 0;  ///< Population-based taxation
-    CurrencyAmount incomeCommercial  = 0;  ///< Districts, buildings, adjacency, wonders, civ route bonus
-    CurrencyAmount incomeIndustrial  = 0;  ///< Industrial revolution per-citizen bonus
-    CurrencyAmount incomeTileGold    = 0;  ///< Gold from worked tiles
-    CurrencyAmount incomeGoodsEcon   = 0;  ///< Taxable economic activity from goods stockpiles
-    CurrencyAmount incomeCapital     = 0;  ///< Palace bonus (+10)
-    CurrencyAmount incomeMoneyTax    = 0;  ///< Coin stock x taxable share x tax rate x collection efficiency
+    // Income: what reaches the treasury this turn
+    CurrencyAmount incomeTax         = 0;  ///< The tax the treasury keeps (goldAllocation share)
+    CurrencyAmount incomeSeigniorage = 0;  ///< The Mint's share of coin struck this turn (ledger)
+    CurrencyAmount incomeTariffs     = 0;  ///< Customs at delivery (Phase 3.3; zero until then)
+    CurrencyAmount incomeExternal    = 0;  ///< City-states, ruins, camps, endowments this turn (ledger)
     CurrencyAmount incomeTradeRoutes = 0;  ///< Coin the civ's Traders brought home this turn. Credited by
                                            ///< the Trader system on arrival, so reported beside
                                            ///< totalIncome, never inside it
-    CurrencyAmount totalIncome       = 0;  ///< Sum of the seven channels above (before goldAllocation split)
-    CurrencyAmount effectiveIncome   = 0;  ///< After goldAllocation (what goes to treasury)
+    CurrencyAmount totalIncome       = 0;  ///< tax + seigniorage + tariffs + external
+    CurrencyAmount effectiveIncome   = 0;  ///< What processGoldIncome moves: the tax
+    CurrencyAmount taxBase           = 0;  ///< Private money x taxable share: the flow a rate applies to
+    float collectionEfficiency       = 0.0f; ///< Share of that flow the state can reach, [0, 1]
 
-    // Expense sinks
+    // Expense sinks, nominal at this turn's price level
     CurrencyAmount expenseUnits      = 0;  ///< Unit maintenance
-    CurrencyAmount expenseBuildings  = 0;  ///< Building + district + city sprawl maintenance
+    CurrencyAmount expenseBuildings  = 0;  ///< Building + city sprawl maintenance
     CurrencyAmount expenseScience    = 0;  ///< Science funding cost
     CurrencyAmount totalExpense      = 0;  ///< Sum of all expenses
 
@@ -75,22 +80,37 @@ struct EconomicBreakdown {
     int32_t goodsStockpiled  = 0;  ///< Total goods in all city stockpiles
 };
 
-/// Gold charged per point of science generated: the research budget.
+/// Gold charged per point of science generated, at price level 1: the research budget.
 inline constexpr float SCIENCE_FUNDING_COST = 0.2f;
 
-/// The player's economy this turn, read-only. Every rule the treasury applies
-/// lives here (Palace, head tax, effective tile yields, districts, buildings,
-/// adjacency, wonders, goods, corruption, governor, money-supply tax,
-/// government multiplier, civ route bonus); processGoldIncome credits what
-/// this returns, so the HUD, the CSV and the treasury cannot disagree.
-[[nodiscard]] EconomicBreakdown computeEconomicBreakdown(
-    const aoc::game::Player& player, const aoc::map::HexGrid& grid);
+/// What a state with no commerce at all still reaches of its people's money.
+inline constexpr float BASE_COLLECTION_EFFICIENCY = 0.50f;
 
-/// Credit the breakdown's effective income to the treasury and record the
-/// gross income for display. Returns the gross income (before the
-/// goldAllocation split), which is what the breakdown calls totalIncome.
-CurrencyAmount processGoldIncome(aoc::game::Player& player,
-                                  const aoc::map::HexGrid& grid);
+/// A building's contribution to collection efficiency: Market 0.08, Bank
+/// 0.12, Stock Exchange 0.18, Telecom Hub 0.10, any other 0.01 per point of
+/// its goldBonus. The AI's purchase ROI reads this table.
+[[nodiscard]] float buildingCollectionBonus(BuildingId building);
+
+/// Share of the taxable flow the state reaches, [0, 1]: the base plus the
+/// population-weighted commerce of each city (Palace, hubs, harbors,
+/// buildings, tile and adjacency gold, wonders, Big Ben doubling the market
+/// buildings, industrialisation), each city after its corruption and governor,
+/// plus road connections and civ route abilities, times the government's and
+/// the alliance's gold multipliers.
+[[nodiscard]] float collectionEfficiency(const aoc::game::Player& player,
+                                         const aoc::map::HexGrid& grid,
+                                         float allianceGoldMult = 1.0f);
+
+/// The player's economy this turn, read-only. processGoldIncome moves what
+/// this returns, so the HUD, the CSV and the treasury cannot disagree.
+[[nodiscard]] EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
+                                                         const aoc::map::HexGrid& grid,
+                                                         float allianceGoldMult = 1.0f);
+
+/// Draw the breakdown's tax out of the civ's private money into the treasury
+/// and record the turn's income for display. Returns the breakdown's total.
+CurrencyAmount processGoldIncome(aoc::game::Player& player, const aoc::map::HexGrid& grid,
+                                 float allianceGoldMult = 1.0f);
 
 /**
  * @brief Pay unit maintenance out of the treasury into the hands of whoever

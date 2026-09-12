@@ -25,6 +25,7 @@
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/ProductionSystem.hpp"
+#include "aoc/simulation/economy/Maintenance.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
@@ -2192,8 +2193,13 @@ void AIController::considerPurchases(aoc::game::GameState& gameState) {
     const bool needsMilitary = milCount < std::max(desiredGarrison, cityCount);
     const float threatThreshold = 0.5f - beh.militaryAggression * 0.2f;
     const bool underThreat = bb.threatLevel > std::max(threatThreshold, 0.1f);
+    // Every gate and price below is nominal at the civ's price level.
+    const float priceLevel = gsPlayer->monetary().priceLevel;
+    const auto atPrices    = [priceLevel](int32_t real) {
+        return static_cast<CurrencyAmount>(static_cast<float>(real) * priceLevel);
+    };
     if ((needsMilitary || underThreat)
-        && treasury >= 200
+        && treasury >= atPrices(200)
         && !gsPlayer->cities().empty()) {
         aoc::game::City& capital = *gsPlayer->cities().front();
         // Find best affordable military unit (prefer strongest that we can afford).
@@ -2202,7 +2208,7 @@ void AIController::considerPurchases(aoc::game::GameState& gameState) {
         for (const UnitTypeDef& def : UNIT_TYPE_DEFS) {
             if (!isMilitary(def.unitClass) || isNaval(def.unitClass)) { continue; }
             if (!canBuildUnit(gameState, this->m_player, def.id)) { continue; }
-            const int32_t unitCost = purchaseCost(static_cast<float>(def.productionCost));
+            const int32_t unitCost = purchaseCost(static_cast<float>(def.productionCost), priceLevel);
             if (treasury < static_cast<CurrencyAmount>(unitCost)) { continue; }
             const int32_t str = def.combatStrength + def.rangedStrength;
             if (str > bestStrength) {
@@ -2211,7 +2217,7 @@ void AIController::considerPurchases(aoc::game::GameState& gameState) {
             }
         }
         if (bestStrength > 0) {
-            const int32_t cost = purchaseCost(static_cast<float>(unitTypeDef(bestId).productionCost));
+            const int32_t cost = purchaseCost(static_cast<float>(unitTypeDef(bestId).productionCost), priceLevel);
             if (cost > 0 && treasury >= static_cast<CurrencyAmount>(cost)) {
                 const ErrorCode result = purchaseInCity(gameState, *gsPlayer, capital,
                                                          ProductionItemType::Unit, bestId.value);
@@ -2226,7 +2232,7 @@ void AIController::considerPurchases(aoc::game::GameState& gameState) {
     // settler that cannot be placed would just drain the treasury.
     const bool wantsExpansion = !bb.expansionExhausted
                              && (bb.expansionOpportunity > 0.3f
-                                 || (cityCount < 4 && treasury >= 500));
+                                 || (cityCount < 4 && treasury >= atPrices(500)));
     if (wantsExpansion && !gsPlayer->cities().empty()) {
         // Check no settler already exists.
         bool hasSettler = false;
@@ -2238,7 +2244,8 @@ void AIController::considerPurchases(aoc::game::GameState& gameState) {
         }
         if (!hasSettler) {
             aoc::game::City& capital = *gsPlayer->cities().front();
-            const int32_t settlerCost = purchaseCost(static_cast<float>(unitTypeDef(UNIT_SETTLER).productionCost));
+            const int32_t settlerCost =
+                purchaseCost(static_cast<float>(unitTypeDef(UNIT_SETTLER).productionCost), priceLevel);
             if (treasury >= static_cast<CurrencyAmount>(settlerCost)) {
                 const ErrorCode result = purchaseInCity(gameState, *gsPlayer, capital,
                                                          ProductionItemType::Unit, 3);
@@ -2250,18 +2257,23 @@ void AIController::considerPurchases(aoc::game::GameState& gameState) {
     // ROI-based building purchase: buy if payback period is reasonable.
     // Economic leaders (Cleopatra: economicFocus=1.8) accept longer payback periods.
     float maxPaybackTurns = 30.0f * beh.economicFocus;
-    if (treasury > 5000) { maxPaybackTurns = 60.0f * beh.economicFocus; }
-    if (treasury > 10000) { maxPaybackTurns = 100.0f * beh.economicFocus; }
+    if (treasury > atPrices(5000)) { maxPaybackTurns = 60.0f * beh.economicFocus; }
+    if (treasury > atPrices(10000)) { maxPaybackTurns = 100.0f * beh.economicFocus; }
+    // What one point of collection efficiency is worth per turn: the taxable
+    // flow at the tax rate (Maintenance.hpp).
+    const float taxFlow = static_cast<float>(std::max<CurrencyAmount>(0, gsPlayer->monetary().privateSpecie)) *
+                          gsPlayer->monetary().taxableMoneyShare() * gsPlayer->monetary().taxRate;
 
     for (const std::unique_ptr<aoc::game::City>& cityPtr : gsPlayer->cities()) {
         for (const BuildingDef& bdef : BUILDING_DEFS) {
             if (!canBuildBuilding(gameState, this->m_player, *cityPtr, bdef.id)) { continue; }
 
-            const int32_t goldCost = purchaseCost(static_cast<float>(bdef.productionCost));
+            const int32_t goldCost = purchaseCost(static_cast<float>(bdef.productionCost), priceLevel);
             if (goldCost <= 0 || treasury < static_cast<CurrencyAmount>(goldCost)) { continue; }
 
-            // Estimate yield per turn, weighted by leader's priorities.
-            const float yieldPerTurn = static_cast<float>(bdef.goldBonus) * beh.economicFocus
+            // Estimate yield per turn, weighted by leader's priorities. A
+            // building creates no gold; it raises what the tax reaches.
+            const float yieldPerTurn = buildingCollectionBonus(bdef.id) * taxFlow * beh.economicFocus
                                      + static_cast<float>(bdef.scienceBonus) * 0.5f * beh.scienceFocus
                                      + static_cast<float>(bdef.productionBonus) * 0.8f;
             if (yieldPerTurn <= 0.0f) { continue; }

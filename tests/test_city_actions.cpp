@@ -55,7 +55,8 @@ TEST_CASE("gold purchase pays the price and honours the build gates") {
           == ErrorCode::Ok);
     CHECK(p.units().size() == unitsBefore + 1);
     CHECK(p.treasury() == 10000 - aoc::sim::purchaseCost(static_cast<float>(
-                              aoc::sim::unitTypeDef(UnitTypeId{0}).productionCost)));
+                                                             aoc::sim::unitTypeDef(UnitTypeId{0}).productionCost),
+                                                         p.monetary().priceLevel));
 
     CHECK(aoc::sim::requestPurchase(w.gameState, &w.grid, PlayerId{0}, HOME, ProductionItemType::Building,
                                     TEMPLE.value) == ErrorCode::TechPrerequisiteNotMet);   // civic + Shrine

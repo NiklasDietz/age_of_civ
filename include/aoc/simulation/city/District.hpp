@@ -354,7 +354,7 @@ inline constexpr std::array<BuildingDef, 55> BUILDING_DEFS = {{
      {{44, 2}}},                                                                          // 2 Stone
     {BuildingId{23}, "Shipyard", DistrictType::Harbor, 120, 2, 3, 0, 2, 1.0f, {{62, 2}}}, // 2
                                                                                           // Lumber
-    {BuildingId{24}, "Mint", DistrictType::CityCenter, 70, 1, 0, 0, 4, 1.0f, {{44, 1}}},  // 1 Stone
+    {BuildingId{24}, "Mint", DistrictType::CityCenter, 70, 1, 0, 0, 0, 1.0f, {{44, 1}}},  // 1 Stone; earns seigniorage
     {BuildingId{25}, "Waste Treatment", DistrictType::Industrial, 100, 2, 0, 0, 0, 1.0f},
     {BuildingId{26},
      "Coal Plant",

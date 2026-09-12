@@ -52,6 +52,22 @@ void computeInflation(MonetaryStateComponent& state,
  */
 void applyInflationEffects(MonetaryStateComponent& state);
 
+/// Specie regimes (coinage and the gold standard) price their goods by how
+/// much money there is: the anchor `P* = M x V / (K x population)`, with
+/// M = treasury + private specie + private notes, clamped to [0.5, 4], and
+/// priceLevel moves 3% of the way there each turn (plan B1). So a small
+/// early money stock means low prices, and a specie drain hurts for tens of
+/// turns, as it did in history. The inflation rate is the level's actual
+/// change this turn. Fiat regimes keep the Fisher path; Barter is untouched.
+void anchorPriceLevel(MonetaryStateComponent& state, int32_t population);
+
+/// True for the regimes whose price level the anchor owns.
+[[nodiscard]] bool priceAnchored(MonetarySystemType system);
+
+inline constexpr float PRICE_ANCHOR_MIN       = 0.5f;
+inline constexpr float PRICE_ANCHOR_MAX       = 4.0f;
+inline constexpr float PRICE_ANCHOR_SMOOTHING = 0.03f;
+
 /**
  * @brief Get the happiness penalty from inflation.
  *
