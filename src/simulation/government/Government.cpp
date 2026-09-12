@@ -232,7 +232,7 @@ ErrorCode requestSlotPolicy(aoc::game::GameState& gameState, PlayerId player,
             return ErrorCode::InvalidState;   // already slotted elsewhere
         }
     }
-    if (!gov.policySwapFree && !owner->spendGold(POLICY_SWAP_GOLD_COST, aoc::sim::MoneyFlow::unbacked())) {
+    if (!gov.policySwapFree && !owner->spendGold(POLICY_SWAP_GOLD_COST, aoc::sim::MoneyFlow::domestic(player))) {
         return ErrorCode::InsufficientResources;
     }
     gov.activePolicies[slot] = policyId;

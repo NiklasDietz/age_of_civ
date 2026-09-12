@@ -109,8 +109,8 @@ ErrorCode issueBond(aoc::game::GameState& gameState,
     bond.accruedInterest = 0;
 
     // Transfer cash: buyer pays, issuer receives
-    buyerState.treasury  -= principal;
-    issuerState.treasury += principal;
+    buyerPlayer->addGold(-principal, aoc::sim::MoneyFlow::transfer(issuer));
+    issuerPlayer->addGold(principal, aoc::sim::MoneyFlow::transfer(buyer));
 
     // And record the LIABILITY. A bond is borrowed money; issuing one used to
     // move cash and leave governmentDebt untouched, so debt stayed at exactly 0
@@ -160,7 +160,7 @@ ErrorCode dumpBonds(aoc::game::GameState& gameState,
     }
 
     // Dumper gets 50% back immediately
-    dumperPlayer->monetary().treasury += recoveredValue;
+    dumperPlayer->addGold(recoveredValue, aoc::sim::MoneyFlow::external()); // sold on to outside buyers
 
     // Effects on target:
     // 1. Bond yields spike (+5% across the board for the target)
@@ -208,16 +208,18 @@ void processBondPayments(aoc::game::GameState& gameState) {
                 CurrencyAmount totalPayment = it->principal + it->accruedInterest;
 
                 if (issuerState.treasury >= totalPayment) {
-                    issuerState.treasury -= totalPayment;
+                    aoc::game::Player* holderPlayer = gameState.player(it->holder);
+                    issuerPtr->addGold(-totalPayment, holderPlayer != nullptr
+                                                          ? aoc::sim::MoneyFlow::transfer(it->holder)
+                                                          : aoc::sim::MoneyFlow::loss());
                     // Repaid: the principal is no longer owed. Interest was
                     // never part of the debt stock.
                     issuerState.governmentDebt =
                         std::max<CurrencyAmount>(0, issuerState.governmentDebt - it->principal);
 
                     // Pay the holder
-                    aoc::game::Player* holderPlayer = gameState.player(it->holder);
                     if (holderPlayer != nullptr) {
-                        holderPlayer->monetary().treasury += totalPayment;
+                        holderPlayer->addGold(totalPayment, aoc::sim::MoneyFlow::transfer(issuerPtr->id()));
 
                         // Remove from holder's portfolio by unique bond id.
                         PlayerBondComponent& holderBonds = holderPlayer->bonds();
@@ -304,8 +306,8 @@ ErrorCode createIOU(aoc::game::GameState& gameState,
     }
 
     // Transfer cash
-    creditorState.treasury -= principal;
-    debtorState.treasury   += principal;
+    creditorPlayer->addGold(-principal, aoc::sim::MoneyFlow::transfer(debtor));
+    debtorPlayer->addGold(principal, aoc::sim::MoneyFlow::transfer(creditor));
     // An IOU is debt for the same reason a bond is.
     debtorState.governmentDebt += principal;
 
@@ -363,9 +365,9 @@ ErrorCode callInIOU(aoc::game::GameState& gameState,
         }
 
         totalDemanded += it->remaining;
-        CurrencyAmount payment = std::min(debtorState.treasury, it->remaining);
-        debtorState.treasury   -= payment;
-        creditorState.treasury += payment;
+        CurrencyAmount payment = std::min<CurrencyAmount>(debtorState.treasury, it->remaining);
+        debtorPlayer->addGold(-payment, aoc::sim::MoneyFlow::transfer(creditor));
+        creditorPlayer->addGold(payment, aoc::sim::MoneyFlow::transfer(debtor));
         debtorState.governmentDebt =
             std::max<CurrencyAmount>(0, debtorState.governmentDebt - payment);
         totalPaid += payment;
@@ -419,9 +421,9 @@ void settleExpiredIOU(IOUContract& iou,
     if (debtorPlayer != nullptr && creditorPlayer != nullptr) {
         MonetaryStateComponent& debtorState   = debtorPlayer->monetary();
         MonetaryStateComponent& creditorState = creditorPlayer->monetary();
-        const CurrencyAmount settlement = std::min(debtorState.treasury, iou.remaining);
-        debtorState.treasury   -= settlement;
-        creditorState.treasury += settlement;
+        const CurrencyAmount settlement = std::min<CurrencyAmount>(debtorState.treasury, iou.remaining);
+        debtorPlayer->addGold(-settlement, aoc::sim::MoneyFlow::transfer(creditorId));
+        creditorPlayer->addGold(settlement, aoc::sim::MoneyFlow::transfer(iou.debtor));
         iou.remaining          -= settlement;
     }
     if (iou.remaining > 0) {
@@ -470,9 +472,9 @@ void processIOUPayments(aoc::game::GameState& gameState) {
                 MonetaryStateComponent& debtorState   = debtorPlayer->monetary();
                 MonetaryStateComponent& creditorState = creditorPlayer->monetary();
 
-                CurrencyAmount actualPayment = std::min(debtorState.treasury, scheduledPayment);
-                debtorState.treasury   -= actualPayment;
-                creditorState.treasury += actualPayment;
+                CurrencyAmount actualPayment = std::min<CurrencyAmount>(debtorState.treasury, scheduledPayment);
+                debtorPlayer->addGold(-actualPayment, aoc::sim::MoneyFlow::transfer(creditorPtr->id()));
+                creditorPlayer->addGold(actualPayment, aoc::sim::MoneyFlow::transfer(it->debtor));
                 it->remaining          -= actualPayment;
 
                 if (actualPayment < scheduledPayment) {

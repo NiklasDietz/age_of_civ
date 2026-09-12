@@ -13,6 +13,7 @@
 
 namespace aoc::game {
 class GameState;
+class Player;
 }
 
 namespace aoc::sim {
@@ -66,6 +67,37 @@ struct MoneyLedger {
     /// True when nothing was conjured or destroyed this turn.
     [[nodiscard]] bool backed() const;
 };
+
+/// A Barter civ has no money economy: it earns no tax, pays no upkeep and is
+/// charged nothing for research; its bullion waits for coinage (plan Part E).
+[[nodiscard]] bool moneyless(const aoc::game::Player& player);
+
+/// The treasury pays up to `amount` into its own people's hands (a purchase,
+/// a building's upkeep, research, a policy change). Never overdraws: what
+/// the treasury lacks stays unpaid. Returns what was paid.
+CurrencyAmount payFromTreasury(aoc::game::Player& payer, CurrencyAmount amount);
+
+/// The same, into the hands of the civ holding the province `civ` (a garrison
+/// abroad pays the locals): the payer's own people when `civ` is the payer or
+/// nobody, the external sector when it is a city-state seat.
+CurrencyAmount payFromTreasury(aoc::game::GameState& gameState, aoc::game::Player& payer,
+                               CurrencyAmount amount, PlayerId civ);
+
+/// The treasury draws up to `amount` from its own people (a tithe, a levy):
+/// never more than they hold. Returns what was taken.
+CurrencyAmount takeFromPrivate(aoc::game::Player& taker, CurrencyAmount amount);
+
+/// `taker`'s treasury draws up to `amount` from the private money of `civ`'s
+/// people (a tithe, a pillaged farm, a toll): never more than they hold, so
+/// a civ with no money yields nothing. Returns what was taken.
+CurrencyAmount takeFromPrivate(aoc::game::GameState& gameState, PlayerId civ,
+                               aoc::game::Player& taker, CurrencyAmount amount);
+
+/// Plunder: `captor` takes up to `amount` from `victim`'s people first, then
+/// from its treasury. A victim outside the world (barbarians, nobody) makes
+/// the whole amount external. Returns what was taken.
+CurrencyAmount plunder(aoc::game::GameState& gameState, PlayerId victim, aoc::game::Player& captor,
+                       CurrencyAmount amount);
 
 /// Sum of every money pool in the world: treasuries, private specie and
 /// notes, bullion, and coin carried by Traders on the road.

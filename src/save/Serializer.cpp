@@ -90,6 +90,13 @@
 
 namespace aoc::save {
 
+/// The one way to write a treasury outside the money seam: restoring it.
+struct TreasuryRestore {
+    static void set(aoc::sim::MonetaryStateComponent& m, CurrencyAmount value) {
+        m.treasury.m_value = value;
+    }
+};
+
 namespace {
 
 // Coerce a non-finite float to `fallback`. A NaN or infinity written into a
@@ -2948,7 +2955,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 m.owner              = owner;
                 m.system             = static_cast<aoc::sim::MonetarySystemType>(buf.readU8());
                 m.moneySupply        = buf.readI64();
-                m.treasury           = buf.readI64();
+                TreasuryRestore::set(m, buf.readI64());
                 m.copperCoinReserves = buf.readI32();
                 m.silverCoinReserves = buf.readI32();
                 m.goldBarReserves    = buf.readI32();

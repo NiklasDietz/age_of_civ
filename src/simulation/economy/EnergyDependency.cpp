@@ -210,8 +210,10 @@ void processElectricityAgreements(aoc::game::GameState& gameState,
             a.lastDeliveredEnergy = 0;
             continue;
         }
-        buyerPlayer->monetary().treasury  -= static_cast<CurrencyAmount>(a.goldPerTurn);
-        sellerPlayer->monetary().treasury += static_cast<CurrencyAmount>(a.goldPerTurn);
+        buyerPlayer->addGold(-static_cast<CurrencyAmount>(a.goldPerTurn),
+                             aoc::sim::MoneyFlow::transfer(a.seller));
+        sellerPlayer->addGold(static_cast<CurrencyAmount>(a.goldPerTurn),
+                              aoc::sim::MoneyFlow::transfer(a.buyer));
 
         // Delivery is recorded here; consumption side is applied inside
         // computeCityPower so the per-city import cap can gate it.

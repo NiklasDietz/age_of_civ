@@ -10,6 +10,8 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
+#include "aoc/simulation/monetary/MoneyFlow.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/economy/MonopolyPricing.hpp"
@@ -152,11 +154,25 @@ void detectMonopolies(aoc::game::GameState& gameState, const aoc::map::HexGrid& 
 void applyMonopolyIncome(aoc::game::GameState& gameState) {
     const GlobalMonopolyComponent& mono = gameState.monopoly();
 
+    // The rent comes out of the buyers' pockets: every other major civ with a
+    // city pays an equal share from its private money, as far as it goes.
+    std::vector<aoc::game::Player*> buyers;
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr != nullptr && playerPtr->id() < CITY_STATE_PLAYER_BASE &&
+            playerPtr->ownedCityCount() > 0) {
+            buyers.push_back(playerPtr.get());
+        }
+    }
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         if (playerPtr == nullptr) { continue; }
-        CurrencyAmount income = mono.monopolyIncome(playerPtr->id());
-        if (income > 0) {
-            playerPtr->monetary().treasury += income;
+        const CurrencyAmount income = mono.monopolyIncome(playerPtr->id());
+        const std::size_t payers    = buyers.size() > 1 ? buyers.size() - 1 : 0;
+        if (income <= 0 || payers == 0) { continue; }
+        const CurrencyAmount share = income / static_cast<CurrencyAmount>(payers);
+        for (aoc::game::Player* buyer : buyers) {
+            if (buyer != playerPtr.get()) {
+                takeFromPrivate(gameState, buyer->id(), *playerPtr, share);
+            }
         }
     }
 }

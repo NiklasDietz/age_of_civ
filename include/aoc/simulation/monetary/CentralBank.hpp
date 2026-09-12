@@ -19,6 +19,10 @@
 
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 
+namespace aoc::game {
+class Player;
+}
+
 namespace aoc::sim {
 
 /// Set the central bank interest rate. Clamped to [0.0, 0.25].
@@ -27,14 +31,6 @@ void setInterestRate(MonetaryStateComponent& state, Percentage rate);
 /// Set the reserve requirement ratio. Clamped to [0.01, 0.50].
 void setReserveRequirement(MonetaryStateComponent& state, Percentage ratio);
 
-/**
- * @brief Print new money (Fiat only). Increases money supply directly.
- *
- * @param state  Player's monetary state.
- * @param amount Amount of new currency to create.
- * @return Ok if successful, InvalidMonetaryTransition if not in Fiat system.
- */
-[[nodiscard]] ErrorCode printMoney(MonetaryStateComponent& state, CurrencyAmount amount);
 
 /**
  * @brief Compute the money multiplier from reserve requirement.
@@ -95,6 +91,6 @@ bool tickDebasementDiscovery(MonetaryStateComponent& state);
  *         InsufficientResources if treasury can't pay the 20% cost, or
  *         InvalidArgument if already at 0% debasement.
  */
-[[nodiscard]] ErrorCode remintCurrency(MonetaryStateComponent& state);
+[[nodiscard]] ErrorCode remintCurrency(aoc::game::Player& player);
 
 } // namespace aoc::sim

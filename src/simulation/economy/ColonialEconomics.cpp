@@ -138,7 +138,15 @@ void processEconomicZones(aoc::game::GameState& gameState,
         if (totalExtractedValue > 0) {
             const CurrencyAmount payment = static_cast<CurrencyAmount>(
                 static_cast<float>(totalExtractedValue) * zone.paymentRate);
-            hostPlayerObj->monetary().treasury += payment;
+            aoc::game::Player* colonizer = gameState.player(zone.colonizer);
+            const CurrencyAmount paid =
+                colonizer != nullptr
+                    ? std::min(payment, std::max<CurrencyAmount>(0, colonizer->treasury()))
+                    : 0;
+            if (paid > 0) {
+                colonizer->addGold(-paid, aoc::sim::MoneyFlow::transfer(zone.host));
+                hostPlayerObj->addGold(paid, aoc::sim::MoneyFlow::transfer(zone.colonizer));
+            }
         }
 
         // Reduce host city loyalty

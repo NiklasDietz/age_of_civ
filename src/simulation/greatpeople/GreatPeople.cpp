@@ -691,7 +691,7 @@ ErrorCode requestRetireGreatPerson(aoc::game::GameState& gameState, PlayerId pla
     if (gp.owner != player || gp.isActivated) {
         return ErrorCode::InvalidUnitAction;
     }
-    owner->monetary().treasury += GP_RETIRE_GOLD;
+    owner->addGold(GP_RETIRE_GOLD, aoc::sim::MoneyFlow::external());
     owner->victoryTracker().eraVictoryPoints += GP_RETIRE_ERA_SCORE;
     LOG_INFO("Player %u retired a great person for %lld gold", static_cast<unsigned>(player),
              static_cast<long long>(GP_RETIRE_GOLD));
@@ -744,7 +744,7 @@ ErrorCode requestPatronage(aoc::game::GameState& gameState, aoc::map::HexGrid& g
     } else {
         const int64_t price = patronageGoldCost(gameState, type);
         if (owner->treasury() < price) { return ErrorCode::InsufficientResources; }
-        owner->monetary().treasury -= price;
+        owner->addGold(-price, aoc::sim::MoneyFlow::domestic(player));
     }
 
     // Spawn them where the civ's first city stands, as recruitment does.

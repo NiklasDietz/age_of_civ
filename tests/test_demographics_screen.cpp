@@ -52,7 +52,7 @@ struct Fixture {
         this->world.gameState.players()[0]->victoryTracker().score = 400;
         this->world.gameState.players()[1]->victoryTracker().score = 700;
         this->world.gameState.players()[2]->victoryTracker().score = 9000;
-        this->world.gameState.players()[1]->monetary().treasury = 120;
+        this->world.gameState.players()[1]->setTreasury(120, aoc::sim::MoneyFlow::external());
         this->world.gameState.players()[1]->tourism().tourismPerTurn = 12.0f;
 
         this->ui.setScreenSize(1920.0f, 1200.0f);

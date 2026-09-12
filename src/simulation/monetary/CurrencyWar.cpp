@@ -19,7 +19,7 @@ constexpr int32_t RACE_TO_BOTTOM_THRESHOLD   = 3;
 constexpr int32_t RACE_TO_BOTTOM_DURATION    = 10;
 constexpr float   RACE_TO_BOTTOM_TRADE_MULT  = 0.80f;
 
-ErrorCode devalueCurrency(aoc::game::GameState& /*gameState*/,
+ErrorCode devalueCurrency(aoc::game::GameState& gameState,
                           MonetaryStateComponent& state,
                           CurrencyDevaluationComponent& deval,
                           const GlobalCurrencyWarState& global) {
@@ -38,7 +38,9 @@ ErrorCode devalueCurrency(aoc::game::GameState& /*gameState*/,
     CurrencyAmount increase = static_cast<CurrencyAmount>(
         static_cast<float>(state.moneySupply) * DEVALUATION_MONEY_INCREASE);
     adjustMoneySupply(state, increase, "devaluation");
-    state.treasury    += increase;
+    if (aoc::game::Player* owner = gameState.player(state.owner); owner != nullptr) {
+        owner->addGold(increase, aoc::sim::MoneyFlow::printed());
+    }
 
     // Activate devaluation effects
     deval.isDevalued           = true;

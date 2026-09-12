@@ -212,7 +212,7 @@ ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, in
     // Gold goes through Player::addGold, the one treasury.
     if (chosen.goldChange > 0) {
         const int64_t gain = static_cast<int64_t>(chosen.goldChange) / 2;
-        playerObj->addGold(gain, aoc::sim::MoneyFlow::unbacked());
+        playerObj->addGold(gain, aoc::sim::MoneyFlow::external()); // a windfall from beyond the map
         const float gdpRef = std::max(
             1.0f, static_cast<float>(playerObj->monetary().gdp));
         playerObj->monetary().inflationRate = std::clamp(
@@ -220,7 +220,9 @@ ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, in
                 + static_cast<float>(gain) / gdpRef * 0.02f,
             -0.20f, 0.50f);
     } else if (chosen.goldChange < 0) {
-        playerObj->addGold(static_cast<CurrencyAmount>(chosen.goldChange), aoc::sim::MoneyFlow::unbacked());
+        const CurrencyAmount lost = std::min<CurrencyAmount>(-static_cast<CurrencyAmount>(chosen.goldChange),
+                                                             std::max<CurrencyAmount>(0, playerObj->treasury()));
+        playerObj->addGold(-lost, aoc::sim::MoneyFlow::loss());
     }
 
     // Apply population change to capital

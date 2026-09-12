@@ -580,7 +580,7 @@ void checkCityStateQuests(aoc::game::GameState& gameState) {
             if (cs.questStreak.streak >= 3) {
                 aoc::game::Player* p = gameState.player(assignee);
                 if (p != nullptr) {
-                    p->monetary().treasury += 25;
+                    p->addGold(25, aoc::sim::MoneyFlow::external());
                 }
             }
             LOG_INFO("City-state quest completed: player %d +%d envoys (streak %d)",

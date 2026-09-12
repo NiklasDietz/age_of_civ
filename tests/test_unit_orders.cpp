@@ -1,7 +1,7 @@
 /**
  * @file test_unit_orders.cpp
  * @brief Pillage marks an enemy improvement, heals and pays gold, the tile
- *        yields nothing until a Builder repairs it; deleting a unit refunds a
+ *        yields nothing until a Builder repairs it; deleting a unit refunds
  *        quarter of its cost at home; the alert stance sleeps a unit and wakes
  *        it when an enemy approaches. Civ VI plan Phase 2.5, 2026-09-05.
  */
@@ -44,7 +44,9 @@ TEST_CASE("pillage needs war, marks the tile, heals and pays; the yield is gone 
     aoc::game::Unit& raider = aoc::test::addUnitAt(w, PlayerId{0}, WARRIOR, at.q, at.r);
     raider.setHitPoints(40);
     aoc::game::Player& p0 = *w.gameState.player(PlayerId{0});
+    aoc::game::Player& p1 = *w.gameState.player(PlayerId{1});
     p0.setTreasury(0, aoc::sim::MoneyFlow::external());
+    p1.monetary().privateSpecie = 1000; // the farmers' savings are what gets looted
 
     CHECK(aoc::sim::requestPillage(w.gameState, w.grid, PlayerId{0}, at, &diplomacy) == ErrorCode::InvalidState);
     diplomacy.declareWar(PlayerId{0}, PlayerId{1});
@@ -52,6 +54,7 @@ TEST_CASE("pillage needs war, marks the tile, heals and pays; the yield is gone 
     CHECK(w.grid.isPillaged(idx));
     CHECK(raider.hitPoints() == 90);
     CHECK(p0.treasury() == aoc::sim::pillageGold(0));
+    CHECK(p1.monetary().privateSpecie == 1000 - aoc::sim::pillageGold(0));
     CHECK(raider.movementRemaining() == 0);
     CHECK(w.grid.tileYield(idx).food < full.food);   // the Farm's bonus is suspended
     CHECK(aoc::sim::requestPillage(w.gameState, w.grid, PlayerId{0}, at, &diplomacy) == ErrorCode::InvalidUnitAction);
@@ -66,7 +69,7 @@ TEST_CASE("pillage needs war, marks the tile, heals and pays; the yield is gone 
     CHECK(w.grid.tileYield(idx).food == full.food);
 }
 
-TEST_CASE("deleting a unit at home refunds a quarter of its cost; abroad nothing") {
+TEST_CASE("deleting a unit refunds nothing, at home or abroad: money comes from nowhere no more") {
     aoc::test::World w = aoc::test::makeWorld(2);
     aoc::game::Player& p0 = *w.gameState.player(PlayerId{0});
     p0.setTreasury(0, aoc::sim::MoneyFlow::external());
@@ -76,9 +79,9 @@ TEST_CASE("deleting a unit at home refunds a quarter of its cost; abroad nothing
     const std::size_t before = p0.units().size();
     CHECK(aoc::sim::requestDeleteUnit(w.gameState, w.grid, PlayerId{0}, AxialCoord{5, 5}) == ErrorCode::Ok);
     CHECK(p0.units().size() == before - 1);
-    CHECK(p0.treasury() == aoc::sim::unitTypeDef(WARRIOR).productionCost / 4);
+    CHECK(p0.treasury() == 0);
     CHECK(aoc::sim::requestDeleteUnit(w.gameState, w.grid, PlayerId{0}, AxialCoord{9, 9}) == ErrorCode::Ok);
-    CHECK(p0.treasury() == aoc::sim::unitTypeDef(WARRIOR).productionCost / 4);
+    CHECK(p0.treasury() == 0);
     CHECK(aoc::sim::requestDeleteUnit(w.gameState, w.grid, PlayerId{0}, AxialCoord{9, 9}) == ErrorCode::InvalidArgument);
 }
 

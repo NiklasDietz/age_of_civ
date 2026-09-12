@@ -5,6 +5,7 @@
 
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
+#include "aoc/simulation/monetary/MoneyFlow.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/city/DistrictAdjacency.hpp"
 #include "aoc/simulation/city/CityLoyalty.hpp"
@@ -284,7 +285,7 @@ void completeCityProject(aoc::game::GameState& gameState, aoc::game::City& city,
         // Grant gold burst to treasury
         aoc::game::Player* gsPlayer = gameState.player(city.owner());
         if (gsPlayer != nullptr) {
-            gsPlayer->monetary().treasury += 100;
+            takeFromPrivate(*gsPlayer, 100);
         }
         LOG_INFO("City %s: Commercial Investment completed (+100 gold)", city.name().c_str());
         break;

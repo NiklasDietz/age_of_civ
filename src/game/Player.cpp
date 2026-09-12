@@ -90,7 +90,7 @@ bool Player::canSeeResource(uint16_t goodId) const {
 }
 
 void Player::addGold(CurrencyAmount amount, aoc::sim::MoneyFlow flow) {
-    this->m_monetary.treasury += amount;
+    this->m_monetary.treasury.m_value += amount;
     const bool ownCiv = flow.kind == aoc::sim::MoneyFlowKind::Domestic &&
                         (flow.counterparty == this->m_id || flow.counterparty == INVALID_PLAYER);
     if (ownCiv) {

@@ -84,7 +84,7 @@ ErrorCode requestRemintCurrency(aoc::game::GameState& gameState, PlayerId player
     if (p->monetary().debasement.debasementRatio <= 0.0f) {
         return ErrorCode::InvalidState; // nothing to put right
     }
-    return remintCurrency(p->monetary());
+    return remintCurrency(*p);
 }
 
 ErrorCode requestDevalueCurrency(aoc::game::GameState& gameState, PlayerId player,
@@ -105,7 +105,10 @@ ErrorCode requestPrintMoney(aoc::game::GameState& gameState, PlayerId player,
     if (!isFiatClass(p->monetary().system)) { return ErrorCode::InvalidState; }
     // printMoney caps at a share of GDP and returns what it actually issued;
     // zero means the cap refused the whole request.
-    return (p->monetary().printMoney(amount) > 0) ? ErrorCode::Ok : ErrorCode::InvalidState;
+    const CurrencyAmount issued = p->monetary().printMoney(amount);
+    if (issued <= 0) { return ErrorCode::InvalidState; }
+    p->addGold(issued, aoc::sim::MoneyFlow::printed());
+    return ErrorCode::Ok;
 }
 
 ErrorCode requestSetInterestRate(aoc::game::GameState& gameState, PlayerId player, float rate) {

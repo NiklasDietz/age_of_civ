@@ -93,22 +93,27 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
                                   const aoc::map::HexGrid& grid);
 
 /**
- * @brief Deduct unit maintenance from a player's treasury.
+ * @brief Pay unit maintenance out of the treasury into the hands of whoever
+ *        holds the province each unit stands on (a garrison abroad pays the
+ *        locals: the Germania effect).
  *
  * Each military unit costs era/2 + 1 gold per turn (Ancient 1 .. Information 4).
- * Civilian units (settlers, builders, traders, scouts) are free.
- * Disbands the most expensive unit below the -500 hard floor or after five
- * turns below -200.
+ * Civilian units (settlers, builders, traders, scouts) are free. The treasury
+ * never overdraws: an unpaid bill is arrears, and five consecutive turns of
+ * arrears disband the most expensive unit above the garrison minimum.
+ * @return The part of the bill that went unpaid this turn.
  */
-void processUnitMaintenance(aoc::game::Player& player);
+CurrencyAmount processUnitMaintenance(aoc::game::GameState& gameState,
+                                      const aoc::map::HexGrid& grid, aoc::game::Player& player);
 
 /**
- * @brief Deduct building, district, and city maintenance from treasury.
+ * @brief Pay building, district, and city maintenance to the civ's own people.
  *
- * Costs: per-building from BuildingDef.maintenanceCost, +1 per non-CityCenter
- * district, +2 per city beyond the capital. Scaled by inflation price level.
+ * Costs: per-building from BuildingDef.maintenanceCost, +1 per city beyond
+ * the capital. Scaled by inflation price level. Never overdraws.
+ * @return The part of the bill that went unpaid this turn.
  */
-void processBuildingMaintenance(aoc::game::Player& player);
+CurrencyAmount processBuildingMaintenance(aoc::game::Player& player);
 
 /**
  * @brief WP-P: drain food from owner's stockpile per military unit / turn.

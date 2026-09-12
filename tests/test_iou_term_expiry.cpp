@@ -37,7 +37,7 @@ struct IOUWorld {
 
 TEST_CASE("an expired IOU is force-closed instead of lingering past its term") {
     IOUWorld w;
-    w.creditor().monetary().treasury = 5000;  // enough to fund the loan
+    w.creditor().setTreasury(5000, aoc::sim::MoneyFlow::external());  // enough to fund the loan
 
     // A short 2-turn term: expiry hits well before the 20-turn amortization
     // schedule pays the loan down, so `remaining` is still positive at term.
@@ -47,7 +47,7 @@ TEST_CASE("an expired IOU is force-closed instead of lingering past its term") {
     REQUIRE(w.debtor().ious().loansReceived.size() == 1);
 
     SUBCASE("solvent debtor settles the balance in full, no default") {
-        w.debtor().monetary().treasury = 5000;  // can cover the balloon settlement
+        w.debtor().setTreasury(5000, aoc::sim::MoneyFlow::external());  // can cover the balloon settlement
         const float trustBefore = w.debtor().currencyTrust().trustScore;
         const aoc::CurrencyAmount creditorBefore = w.creditor().monetary().treasury;
 
@@ -63,7 +63,7 @@ TEST_CASE("an expired IOU is force-closed instead of lingering past its term") {
     }
 
     SUBCASE("insolvent debtor defaults; the balance is written off and closed") {
-        w.debtor().monetary().treasury = 0;  // spent the loan, cannot repay
+        w.debtor().setTreasury(0, aoc::sim::MoneyFlow::external());  // spent the loan, cannot repay
         const float trustBefore = w.debtor().currencyTrust().trustScore;
 
         for (int32_t i = 0; i < 3; ++i) { aoc::sim::processIOUPayments(w.gameState); }

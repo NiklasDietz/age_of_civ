@@ -20,8 +20,8 @@ TEST_CASE("bond issue moves principal buyer->issuer and conserves the total") {
     gs.initialize(2);
     aoc::game::Player& issuer = *gs.players()[0];
     aoc::game::Player& holder = *gs.players()[1];
-    issuer.monetary().treasury = 50;
-    holder.monetary().treasury = 1000;
+    issuer.setTreasury(50, aoc::sim::MoneyFlow::external());
+    holder.setTreasury(1000, aoc::sim::MoneyFlow::external());
     const aoc::CurrencyAmount totalBefore =
         issuer.monetary().treasury + holder.monetary().treasury;
 
@@ -41,8 +41,8 @@ TEST_CASE("bond default clears the bond from BOTH portfolios") {
     gs.initialize(2);
     aoc::game::Player& issuer = *gs.players()[0];
     aoc::game::Player& holder = *gs.players()[1];
-    issuer.monetary().treasury = 0;
-    holder.monetary().treasury = 1000;
+    issuer.setTreasury(0, aoc::sim::MoneyFlow::external());
+    holder.setTreasury(1000, aoc::sim::MoneyFlow::external());
 
     REQUIRE(aoc::sim::issueBond(gs, aoc::PlayerId{0}, aoc::PlayerId{1}, 200)
             == aoc::ErrorCode::Ok);
@@ -50,7 +50,7 @@ TEST_CASE("bond default clears the bond from BOTH portfolios") {
 
     // Drain the issuer and run past maturity (turnsToMaturity defaults to
     // 10): the issuer cannot pay, so the bond defaults.
-    issuer.monetary().treasury = 0;
+    issuer.setTreasury(0, aoc::sim::MoneyFlow::external());
     for (int i = 0; i < 12; ++i) {
         aoc::sim::processBondPayments(gs);
     }
@@ -103,8 +103,8 @@ TEST_CASE("issuing a bond records the principal as government debt") {
     gs.initialize(2);
     aoc::game::Player& issuer = *gs.players()[0];
     aoc::game::Player& holder = *gs.players()[1];
-    issuer.monetary().treasury = 50;
-    holder.monetary().treasury = 1000;
+    issuer.setTreasury(50, aoc::sim::MoneyFlow::external());
+    holder.setTreasury(1000, aoc::sim::MoneyFlow::external());
     REQUIRE(issuer.monetary().governmentDebt == 0);
 
     REQUIRE(aoc::sim::issueBond(gs, aoc::PlayerId{0}, aoc::PlayerId{1}, 200)
@@ -120,8 +120,8 @@ TEST_CASE("an IOU is debt for the borrower, not the lender") {
     gs.initialize(2);
     aoc::game::Player& creditor = *gs.players()[0];
     aoc::game::Player& debtor   = *gs.players()[1];
-    creditor.monetary().treasury = 1000;
-    debtor.monetary().treasury   = 10;
+    creditor.setTreasury(1000, aoc::sim::MoneyFlow::external());
+    debtor.setTreasury(10, aoc::sim::MoneyFlow::external());
 
     REQUIRE(aoc::sim::createIOU(gs, aoc::PlayerId{0}, aoc::PlayerId{1}, 300)
             == aoc::ErrorCode::Ok);
@@ -138,8 +138,8 @@ TEST_CASE("debt never goes negative when more is repaid than was borrowed") {
     gs.initialize(2);
     aoc::game::Player& debtor = *gs.players()[1];
     debtor.monetary().governmentDebt = 0;
-    debtor.monetary().treasury       = 5000;
-    gs.players()[0]->monetary().treasury = 5000;
+    debtor.setTreasury(5000, aoc::sim::MoneyFlow::external());
+    gs.players()[0]->setTreasury(5000, aoc::sim::MoneyFlow::external());
 
     REQUIRE(aoc::sim::createIOU(gs, aoc::PlayerId{0}, aoc::PlayerId{1}, 100)
             == aoc::ErrorCode::Ok);

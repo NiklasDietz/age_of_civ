@@ -22,6 +22,7 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/game/Player.hpp"
+#include "aoc/simulation/monetary/MoneyFlow.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/core/Log.hpp"
@@ -382,7 +383,7 @@ void applyReligionBonuses(aoc::game::Player& player) {
             player.faith().faith += 0.5f;
             const int32_t tithe = city->population() / 3;
             if (tithe > 0) {
-                player.addGold(tithe, aoc::sim::MoneyFlow::unbacked());
+                takeFromPrivate(player, tithe);
             }
         }
     }
@@ -850,15 +851,18 @@ void processFounderBeliefs(aoc::game::GameState& gameState) {
     }
 
     // Count the cities each religion holds, across the whole world: a founder
-    // is paid for reach, including reach into rival empires.
+    // is paid for reach, including reach into rival empires, and the gold is
+    // a tithe those cities' people pay, civ by civ.
     std::array<int32_t, MAX_RELIGIONS> followerCities{};
+    std::array<std::array<int32_t, MAX_PLAYERS>, MAX_RELIGIONS> followersByCiv{};
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
         if (player == nullptr) { continue; }
         for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
-            if (city == nullptr) { continue; }
+            if (city == nullptr || city->owner() != player->id()) { continue; }
             const ReligionId dominant = city->religion().dominantReligion();
             if (dominant != NO_RELIGION && dominant < MAX_RELIGIONS) {
                 ++followerCities[dominant];
+                ++followersByCiv[dominant][static_cast<std::size_t>(player->id())];
             }
         }
     }
@@ -872,8 +876,13 @@ void processFounderBeliefs(aoc::game::GameState& gameState) {
         const BeliefDef& belief = allBeliefs()[faith.founderBelief];
         const float cities      = static_cast<float>(followerCities[r]);
         if (belief.goldPerFollowerCity > 0.0f) {
-            founder->monetary().treasury +=
-                static_cast<CurrencyAmount>(belief.goldPerFollowerCity * cities);
+            for (std::size_t civ = 0; civ < MAX_PLAYERS; ++civ) {
+                const CurrencyAmount tithe = static_cast<CurrencyAmount>(
+                    belief.goldPerFollowerCity * static_cast<float>(followersByCiv[r][civ]));
+                if (tithe > 0) {
+                    takeFromPrivate(gameState, static_cast<PlayerId>(civ), *founder, tithe);
+                }
+            }
         }
         if (belief.sciencePerFollowerCity > 0.0f) {
             founder->tech().researchProgress += belief.sciencePerFollowerCity * cities;

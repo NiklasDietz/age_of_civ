@@ -53,7 +53,7 @@ void processBlackMarketTrade(aoc::game::GameState& gameState) {
                 static_cast<float>(basePrice) * priceMult * leakRate);
 
             if (cost > 0 && state.treasury >= cost) {
-                state.treasury    -= cost;
+                playerPtr->addGold(-cost, aoc::sim::MoneyFlow::external());
                 bm.smugglingCost  += cost;
 
                 // Deliver smuggled goods to the player's first city

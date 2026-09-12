@@ -59,9 +59,7 @@ int32_t processCityConnections(aoc::game::Player& player,
                                 const aoc::map::HexGrid& grid) {
     constexpr int32_t CONNECTION_BONUS = 3;
 
-    // In barter mode with no coins, road connection bonuses don't exist yet.
-    if (player.monetary().system == MonetarySystemType::Barter
-        && player.monetary().totalCoinCount() == 0) {
+    if (moneyless(player)) {
         return 0;
     }
 
@@ -99,7 +97,7 @@ int32_t processCityConnections(aoc::game::Player& player,
     }
 
     if (totalBonus > 0) {
-        player.addGold(static_cast<CurrencyAmount>(totalBonus), aoc::sim::MoneyFlow::unbacked());
+        player.addGold(static_cast<CurrencyAmount>(totalBonus), aoc::sim::MoneyFlow::unbacked()); // 2.3: efficiency
     }
 
     return totalBonus;

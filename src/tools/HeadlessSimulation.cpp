@@ -148,7 +148,7 @@ struct PlayerSnapshot {
     int32_t dealsActive = 0;       ///< Accepted, unbroken deals this player is party to
     int32_t luxuryTypesHeld = 0;   ///< Distinct raw luxury goods in any of its stockpiles
     int64_t circulation = 0;       ///< treasury + private specie + private notes + bullion
-    int64_t arrears = 0;           ///< governmentDebt
+    int64_t arrears = 0;           ///< bills the treasury could not pay this turn
     float priceLevel = 1.0f;
     int64_t mintedTurn = 0;        ///< face value swept from the Mint this turn
     int64_t unbackedTurn = 0;      ///< money the old model conjured minus destroyed this turn
@@ -175,7 +175,7 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
     snap.gdp = ms.gdp;
     snap.treasury = player->treasury();  // Use Player::m_treasury (actual spending account)
     snap.circulation = ms.treasury + ms.privateSpecie + ms.privateNotes + ms.bullion;
-    snap.arrears     = ms.governmentDebt;
+    snap.arrears     = player->unpaidLastTurn();
     snap.priceLevel  = ms.priceLevel;
     snap.coinTier = static_cast<uint8_t>(ms.effectiveCoinTier);
     snap.monetarySystem = static_cast<uint8_t>(ms.system);
@@ -603,7 +603,6 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             // Initialize monetary state
             gsPlayer->monetary().owner = player;
             gsPlayer->monetary().system = aoc::sim::MonetarySystemType::Barter;
-            gsPlayer->monetary().treasury = 0;
 
             // Initialize economy component
             gsPlayer->economy().owner = player;

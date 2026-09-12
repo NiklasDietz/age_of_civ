@@ -718,9 +718,11 @@ void processDeals(aoc::game::GameState& gameState, GlobalDealTracker& tracker,
                             std::max<CurrencyAmount>(0, fromPlayer->monetary().treasury);
                         const CurrencyAmount paid =
                             std::min<CurrencyAmount>(term.goldPerTurn, available);
-                        fromPlayer->monetary().treasury -= paid;
+                        fromPlayer->addGold(-paid, toPlayer != nullptr
+                                                       ? aoc::sim::MoneyFlow::transfer(term.toPlayer)
+                                                       : aoc::sim::MoneyFlow::loss());
                         if (toPlayer != nullptr) {
-                            toPlayer->monetary().treasury += paid;
+                            toPlayer->addGold(paid, aoc::sim::MoneyFlow::transfer(term.fromPlayer));
                         }
                         if (paid < term.goldPerTurn) {
                             LOG_INFO("WarReparations partial: player %u owed %lld, paid %lld",

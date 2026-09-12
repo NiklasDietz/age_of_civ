@@ -37,7 +37,7 @@ TEST_CASE("the gold API and the monetary component are the same account") {
     // A credit made through the monetary component is visible to the spending
     // API. This is the direction that was broken: every monetary system wrote
     // here and nothing could spend it.
-    p.monetary().treasury += 250;
+    p.addGold(250, aoc::sim::MoneyFlow::external());
     CHECK(p.treasury() == 750);
 
     // And the reverse.
@@ -52,7 +52,7 @@ TEST_CASE("money credited through the monetary component can be spent") {
 
     // Exactly the shape of a trade-route delivery: TradeRouteSystem credits
     // `sellerMon.treasury += goldEarned`.
-    p.monetary().treasury += 300;
+    p.addGold(300, aoc::sim::MoneyFlow::external());
 
     REQUIRE(p.treasury() == 300);
     CHECK(p.spendGold(120, aoc::sim::MoneyFlow::external()));
@@ -88,7 +88,7 @@ TEST_CASE("a turn does not discard monetary credits") {
     aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Mint");
     p.setTreasury(200, aoc::sim::MoneyFlow::external());
 
-    p.monetary().treasury += 1000; // e.g. cargo revenue, seigniorage, a bond
+    p.addGold(1000, aoc::sim::MoneyFlow::external()); // e.g. cargo revenue, seigniorage, a bond
     const aoc::CurrencyAmount afterCredit = p.treasury();
     REQUIRE(afterCredit == 1200);
 

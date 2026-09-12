@@ -105,14 +105,14 @@ TEST_CASE("reparations never drive a treasury below zero") {
     aoc::game::Player& payer = *w.gameState.player(PlayerId{0});
     aoc::game::Player& payee = *w.gameState.player(PlayerId{1});
 
-    payer.monetary().treasury = 5;
-    payee.monetary().treasury = 0;
+    payer.setTreasury(5, aoc::sim::MoneyFlow::external());
+    payee.setTreasury(0, aoc::sim::MoneyFlow::external());
 
     const CurrencyAmount owed      = 100;
     const CurrencyAmount available = std::max<CurrencyAmount>(0, payer.monetary().treasury);
     const CurrencyAmount paid      = std::min<CurrencyAmount>(owed, available);
-    payer.monetary().treasury -= paid;
-    payee.monetary().treasury += paid;
+    payer.addGold(-(paid), aoc::sim::MoneyFlow::external());
+    payee.addGold(paid, aoc::sim::MoneyFlow::external());
 
     CHECK(payer.monetary().treasury == 0);
     CHECK(payer.monetary().treasury >= 0);

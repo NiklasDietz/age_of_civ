@@ -39,7 +39,7 @@ ErrorCode bribeClan(aoc::game::GameState& gameState,
     if (gsPlayer->monetary().treasury < static_cast<CurrencyAmount>(cost)) {
         return ErrorCode::InsufficientResources;
     }
-    gsPlayer->monetary().treasury -= static_cast<CurrencyAmount>(cost);
+    gsPlayer->addGold(-static_cast<CurrencyAmount>(cost), aoc::sim::MoneyFlow::external());
 
     clan.isBribed = true;
     clan.bribeTurnsLeft = 20;
@@ -70,7 +70,7 @@ ErrorCode hireClan(aoc::game::GameState& gameState,
     if (hirerPlayer->monetary().treasury < static_cast<CurrencyAmount>(cost)) {
         return ErrorCode::InsufficientResources;
     }
-    hirerPlayer->monetary().treasury -= static_cast<CurrencyAmount>(cost);
+    hirerPlayer->addGold(-static_cast<CurrencyAmount>(cost), aoc::sim::MoneyFlow::external());
 
     clan.hiredBy = hirer;
     clan.hiredTarget = target;
@@ -150,7 +150,7 @@ ErrorCode convertClanToCityState(aoc::game::GameState& gameState, aoc::map::HexG
         return ErrorCode::InvalidState; // no seat left to settle them into
     }
 
-    gsPlayer->monetary().treasury -= static_cast<CurrencyAmount>(cost);
+    gsPlayer->addGold(-static_cast<CurrencyAmount>(cost), aoc::sim::MoneyFlow::external());
 
     CityStateComponent cs{};
     cs.defId    = clan.clanId;

@@ -120,31 +120,11 @@ public:
     // Economy
     // ========================================================================
 
-    /// ONE treasury. These read and write `m_monetary.treasury`, which is the
-    /// same account every `monetary().treasury` site touches.
-    ///
-    /// There used to be two. `m_treasury` was the real one -- purchases,
-    /// maintenance and income used it -- while `MonetaryStateComponent::treasury`
-    /// was a shadow that `TurnProcessor` overwrote from it once per turn. So
-    /// roughly twenty-five gold flows wrote to an account that was wiped before
-    /// anything could spend from it: ALL trade-route cargo revenue, bonds, IOUs,
-    /// seigniorage, fiat printing, war reparations, monopoly income, city-capture
-    /// plunder, the stock market, futures, colonial tribute, barbarian bribes and
-    /// more. Measured over 120 turns, four civs earned 2970/6384/5909/3826 gold
-    /// of trade revenue and all four still ended with a NEGATIVE treasury.
-    ///
-    /// The bug was visible inside a single file: in TradeRouteSystem, tolls were
-    /// paid with `addGold` into the real account while cargo revenue went to the
-    /// shadow. Two comments disagreed about which was authoritative
-    /// (TurnProcessor called this one "the actual spending account";
-    /// AdvancedEconomics called the other "the authoritative spending account"),
-    /// and WorldEvents already carried a note warning contributors to route
-    /// around the overwrite instead of fixing it.
-    ///
-    /// Unifying here rather than editing the writers was deliberate: several of
-    /// them (printMoney, seigniorage, the bond and forex helpers) receive only a
-    /// MonetaryStateComponent& and have no Player to call addGold on, so no
-    /// amount of rewriting call sites could have closed the hole.
+    /// ONE treasury, `m_monetary.treasury`, readable through the component
+    /// and writable only here. There used to be two (a shadow that the turn
+    /// loop overwrote once a turn swallowed some twenty-five gold flows), then
+    /// one that fifty sites wrote directly. TreasuryAccount closes that: a
+    /// direct write no longer compiles, so every flow passes the seam below.
     [[nodiscard]] CurrencyAmount treasury() const { return this->m_monetary.treasury; }
     /// The money seam (MoneyFlow.hpp): every mutation names where the money
     /// comes from or goes and is booked in the ledger set for the turn.
@@ -155,6 +135,10 @@ public:
     bool spendGold(CurrencyAmount amount, aoc::sim::MoneyFlow flow); ///< Returns false if insufficient
     /// Non-owning; the turn loop points every player at the economy's ledger.
     void setMoneyLedger(aoc::sim::MoneyLedger* ledger) { this->m_ledger = ledger; }
+    [[nodiscard]] aoc::sim::MoneyLedger* moneyLedger() const { return this->m_ledger; }
+    /// Bills the treasury could not pay last turn (arrears); not saved.
+    [[nodiscard]] CurrencyAmount unpaidLastTurn() const { return this->m_unpaidLastTurn; }
+    void setUnpaidLastTurn(CurrencyAmount unpaid) { this->m_unpaidLastTurn = unpaid; }
 
     [[nodiscard]] CurrencyAmount incomePerTurn() const { return this->m_incomePerTurn; }
     void setIncomePerTurn(CurrencyAmount income) { this->m_incomePerTurn = income; }
@@ -570,6 +554,7 @@ private:
     // block), and this account IS that field.
     CurrencyAmount m_incomePerTurn = 0;
     CurrencyAmount m_netGoldLastTurn = 0; ///< Not saved; processTurn recomputes it
+    CurrencyAmount m_unpaidLastTurn  = 0; ///< Not saved; maintenance recomputes it
     aoc::sim::MoneyLedger* m_ledger = nullptr; ///< Not saved; set for the turn, may be null in tests
     aoc::sim::MonetaryStateComponent m_monetary;
 

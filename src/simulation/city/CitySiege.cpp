@@ -10,6 +10,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
+#include "aoc/simulation/monetary/MoneyFlow.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/simulation/city/CityBombardment.hpp"
@@ -240,8 +241,8 @@ void captureCity(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, aoc::
         captorPlayer->victoryTracker().eraVictoryPoints += vp;
         const int32_t loot = civDef(captorPlayer->civId()).modifiers.goldOnCityCapture;
         if (loot > 0) {
-            captorPlayer->monetary().treasury +=
-                static_cast<int64_t>(loot) * std::max(1, taken->population());
+            plunder(gameState, previousOwner, *captorPlayer,
+                    static_cast<int64_t>(loot) * std::max(1, taken->population()));
         }
     }
 

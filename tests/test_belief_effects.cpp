@@ -83,11 +83,17 @@ TEST_CASE("a founder belief pays its founder for the cities that follow") {
     aoc::sim::processFounderBeliefs(w.gameState);
     CHECK(founder.monetary().treasury == before); // nobody follows it yet
 
-    // A rival's city adopting the faith pays the founder, which is the point.
+    // A rival's city adopting the faith pays the founder a tithe out of that
+    // rival's private money, which is the point: no money from nowhere.
     follower.religion().addPressure(faith, 500.0f);
     REQUIRE(follower.religion().dominantReligion() == faith);
+    aoc::game::Player& rival = *w.gameState.player(PlayerId{1});
+    aoc::sim::processFounderBeliefs(w.gameState);
+    CHECK(founder.monetary().treasury == before); // the rival's people had nothing to give
+    rival.monetary().privateSpecie = 1000;
     aoc::sim::processFounderBeliefs(w.gameState);
     CHECK(founder.monetary().treasury > before);
+    CHECK(rival.monetary().privateSpecie == 1000 - (founder.monetary().treasury - before));
 }
 
 TEST_CASE("every belief in the table carries an effect the simulation can read") {

@@ -4,6 +4,8 @@
  */
 
 #include "aoc/simulation/monetary/CentralBank.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/simulation/monetary/MoneyFlow.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -16,21 +18,6 @@ void setInterestRate(MonetaryStateComponent& state, Percentage rate) {
 
 void setReserveRequirement(MonetaryStateComponent& state, Percentage ratio) {
     state.reserveRequirement = std::clamp(ratio, 0.01f, 0.50f);
-}
-
-ErrorCode printMoney(MonetaryStateComponent& state, CurrencyAmount amount) {
-    if (state.system != MonetarySystemType::FiatMoney
-        && state.system != MonetarySystemType::Digital) {
-        return ErrorCode::InvalidMonetaryTransition;
-    }
-    if (amount <= 0) {
-        return ErrorCode::InvalidArgument;
-    }
-
-    adjustMoneySupply(state, amount, "printMoney");
-    // Printed money goes to the government treasury
-    state.treasury += amount;
-    return ErrorCode::Ok;
 }
 
 float moneyMultiplier(const MonetaryStateComponent& state) {
@@ -129,7 +116,8 @@ bool tickDebasementDiscovery(MonetaryStateComponent& state) {
     return false;
 }
 
-ErrorCode remintCurrency(MonetaryStateComponent& state) {
+ErrorCode remintCurrency(aoc::game::Player& player) {
+    MonetaryStateComponent& state = player.monetary();
     // G15: escape valve from the permanent-debasement trap. Costs 20% of the
     // current treasury and shaves 0.10 off the debasementRatio. Clears the
     // discovery flag so partners have to catch the civ again on the next round.
@@ -145,7 +133,7 @@ ErrorCode remintCurrency(MonetaryStateComponent& state) {
         return ErrorCode::InsufficientResources;
     }
 
-    state.treasury -= cost;
+    player.addGold(-cost, aoc::sim::MoneyFlow::loss()); // metal lost in the restrike
     state.debasement.debasementRatio =
         std::max(0.0f, state.debasement.debasementRatio - 0.10f);
     state.debasement.discoveredByPartners = false;

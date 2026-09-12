@@ -41,7 +41,29 @@
 #include <string>
 #include <string_view>
 
+namespace aoc::game {
+class Player;
+}
+namespace aoc::save {
+struct TreasuryRestore;
+}
+
 namespace aoc::sim {
+
+/// The state's cash. Read it anywhere; written only by Player's tagged
+/// mutators (MoneyFlow.hpp) and by the save loader, so every change names
+/// its counterparty and the turn's money book stays complete. The compiler
+/// lists any site that tries to write it another way.
+class TreasuryAccount {
+public:
+    constexpr TreasuryAccount() = default;
+    [[nodiscard]] constexpr operator CurrencyAmount() const { return this->m_value; }
+
+private:
+    friend class aoc::game::Player;
+    friend struct aoc::save::TreasuryRestore;
+    CurrencyAmount m_value = 0;
+};
 
 // ============================================================================
 // Monetary system type (state machine states)
@@ -285,7 +307,7 @@ struct MonetaryStateComponent {
 
     // -- Money supply (paper/fiat currency in GoldStandard/Fiat) --
     CurrencyAmount moneySupply    = 0;    ///< Total currency in circulation
-    CurrencyAmount treasury       = 0;    ///< Government cash = coin stockpile. Starts at 0 (barter).
+    TreasuryAccount treasury;             ///< Government cash; see TreasuryAccount
 
     // -- Private money (v34) --
     // Coin the Mint strikes is swept out of the city stockpiles at the end of
@@ -353,8 +375,9 @@ struct MonetaryStateComponent {
     int32_t turnsInCurrentSystem = 0;
 
     // -- Bankruptcy tracking --
-    /// Number of consecutive turns the treasury has been negative.
-    /// Resets to zero whenever treasury >= 0.
+    /// Consecutive turns with a bill the treasury could not pay (arrears);
+    /// resets to zero on the first turn everything is paid. The name is the
+    /// save layout's; the treasury itself no longer goes negative.
     int32_t consecutiveNegativeTurns = 0;
 
     // -- Reserve-ratio stress tracking (GoldStandard -> Fiat cascade) --
@@ -483,7 +506,8 @@ struct MonetaryStateComponent {
      * The risk: hyperinflation destroys the economy.
      *
      * @param amount  How much to print. Capped at 10% of GDP per turn.
-     * @return Actual amount printed (may be capped).
+     * @return Actual amount printed (may be capped). The caller credits the
+     *         treasury with it as MoneyFlow::printed(); this only issues.
      */
     CurrencyAmount printMoney(CurrencyAmount amount) {
         if (this->system != MonetarySystemType::FiatMoney
@@ -496,7 +520,6 @@ struct MonetaryStateComponent {
             static_cast<CurrencyAmount>(this->gdp / 10));
         const CurrencyAmount actualPrint = std::min(amount, maxPrint);
 
-        this->treasury += actualPrint;
         this->moneySupply += actualPrint;
         this->printAmountThisTurn = actualPrint;
 

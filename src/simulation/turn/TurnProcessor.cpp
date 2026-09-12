@@ -477,9 +477,10 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     // Gold income: reads from Player/City objects, writes to Player::treasury()
     processGoldIncome(*gsPlayer, grid);
 
-    // Maintenance: per-unit era-scaled, per-building, per-district, per-city
-    processUnitMaintenance(*gsPlayer);
-    processBuildingMaintenance(*gsPlayer);
+    // Maintenance: per-unit era-scaled, per-building, per-district, per-city.
+    // What the treasury cannot pay is arrears, reported for the turn.
+    gsPlayer->setUnpaidLastTurn(processUnitMaintenance(*turnContext.gameState, grid, *gsPlayer) +
+                                processBuildingMaintenance(*gsPlayer));
 
     // WP-P: military food consumption + starve tracking. Drains owner's
     // aggregated food stockpile per-unit each turn. Empty stockpile →
@@ -672,7 +673,7 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
                 const CurrencyAmount bonus = static_cast<CurrencyAmount>(
                     static_cast<float>(gsPlayer->treasury()) * (all.goldMult - 1.0f) * 0.01f);
                 if (bonus > 0) {
-                    gsPlayer->addGold(bonus, aoc::sim::MoneyFlow::unbacked());
+                    gsPlayer->addGold(bonus, aoc::sim::MoneyFlow::unbacked()); // 2.3: a collection bonus
                 }
             }
         }
@@ -681,13 +682,11 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         // A Barter civ with no coins has no money to fund research with and
         // no way to earn any; charging it drove every such civ to the 50%
         // floor for the half of a game most of them spend in Barter.
-        const bool moneyless = gsPlayer->monetary().system == MonetarySystemType::Barter
-                            && gsPlayer->monetary().totalCoinCount() == 0;
         const CurrencyAmount fundingCost =
-            moneyless ? 0 : static_cast<CurrencyAmount>(science * SCIENCE_FUNDING_COST);
+            moneyless(*gsPlayer) ? 0 : static_cast<CurrencyAmount>(science * SCIENCE_FUNDING_COST);
         if (fundingCost > 0) {
             if (gsPlayer->treasury() >= fundingCost) {
-                gsPlayer->addGold(-fundingCost, aoc::sim::MoneyFlow::unbacked());
+                gsPlayer->addGold(-fundingCost, aoc::sim::MoneyFlow::domestic(player)); // scholars are our people
             } else {
                 // Can't fully fund: research at reduced efficiency (min 50%)
                 const float affordableFraction =
@@ -697,7 +696,7 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
                 const float efficiency = 0.5f + affordableFraction * 0.5f;
                 science *= efficiency;
                 if (gsPlayer->treasury() > 0) {
-                    gsPlayer->addGold(-gsPlayer->treasury(), aoc::sim::MoneyFlow::unbacked()); // Spend what we can
+                    gsPlayer->addGold(-gsPlayer->treasury(), aoc::sim::MoneyFlow::domestic(player)); // what we can
                 }
             }
         }

@@ -254,24 +254,6 @@ void aiPrepareIndustrialRevolution(aoc::game::GameState& /*gameState*/,
 }
 
 // ============================================================================
-// Gold spending: prevent treasury runaway
-// ============================================================================
-
-static void aiSpendExcessGold(aoc::game::GameState& gameState, PlayerId player) {
-    aoc::game::Player* myPlayer = gameState.player(player);
-    if (myPlayer == nullptr) { return; }
-
-    MonetaryStateComponent& myState = myPlayer->monetary();
-
-    // Cap treasury to prevent integer overflow.
-    // Excess gold is "spent" on public works (not tracked individually).
-    constexpr CurrencyAmount MAX_TREASURY = 50000;
-    if (myState.treasury > MAX_TREASURY) {
-        myState.treasury = MAX_TREASURY;
-    }
-}
-
-// ============================================================================
 // Master economic strategy
 // ============================================================================
 
@@ -288,7 +270,6 @@ void aiEconomicStrategy(aoc::game::GameState& gameState,
     aiImmigrationPolicy(gameState, player);
     aiManageInfrastructure(gameState, grid, player);
     aiCrisisResponse(gameState, player);
-    aiSpendExcessGold(gameState, player);
     aiPrepareIndustrialRevolution(gameState, market, player);
 }
 

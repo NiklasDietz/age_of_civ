@@ -9,6 +9,7 @@
 #include "aoc/core/Log.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
+#include "aoc/simulation/monetary/MoneyFlow.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
@@ -67,11 +68,11 @@ ErrorCode requestPillage(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
     }
     grid.setPillaged(tileIndex, true);
     unit->heal(PILLAGE_HEAL);
-    const int32_t gold = pillageGold(effectiveEraFromTech(*owner).value);
-    owner->addGold(gold, aoc::sim::MoneyFlow::unbacked());
+    const CurrencyAmount gold =
+        takeFromPrivate(gameState, tileOwner, *owner, pillageGold(effectiveEraFromTech(*owner).value));
     unit->setMovementRemaining(0);
-    LOG_INFO("Player %u pillaged (%d,%d): +%d gold, healed %d", static_cast<unsigned>(player), at.q,
-             at.r, gold, PILLAGE_HEAL);
+    LOG_INFO("Player %u pillaged (%d,%d): +%lld gold, healed %d", static_cast<unsigned>(player), at.q,
+             at.r, static_cast<long long>(gold), PILLAGE_HEAL);
     return ErrorCode::Ok;
 }
 
@@ -106,14 +107,10 @@ ErrorCode requestDeleteUnit(aoc::game::GameState& gameState, const aoc::map::Hex
     if (unit == nullptr) {
         return ErrorCode::InvalidArgument;
     }
-    int32_t refund = 0;
-    if (grid.isValid(at) && grid.owner(grid.toIndex(at)) == player) {
-        refund = unit->typeDef().productionCost / 4;
-        owner->addGold(refund, aoc::sim::MoneyFlow::unbacked());
-    }
-    LOG_INFO("Player %u disbanded %.*s at (%d,%d) (+%d gold)", static_cast<unsigned>(player),
-             static_cast<int>(unit->typeDef().name.size()), unit->typeDef().name.data(), at.q, at.r,
-             refund);
+    // No refund: the gold it would conjure came from nowhere (plan 2.2).
+    (void)grid;
+    LOG_INFO("Player %u disbanded %.*s at (%d,%d)", static_cast<unsigned>(player),
+             static_cast<int>(unit->typeDef().name.size()), unit->typeDef().name.data(), at.q, at.r);
     owner->removeUnit(unit);
     return ErrorCode::Ok;
 }

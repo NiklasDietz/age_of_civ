@@ -2056,6 +2056,7 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
             static_cast<CurrencyAmount>(1), shortfall / 2);
         const CurrencyAmount printed = myState.printMoney(toPrint);
         if (printed > 0) {
+            gsPlayer->addGold(printed, aoc::sim::MoneyFlow::printed());
             LOG_INFO("AI %u printed %lld fiat money (inflation now %.2f%%)",
                      static_cast<unsigned>(this->m_player),
                      static_cast<long long>(printed),
@@ -2145,24 +2146,6 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
         tradePartnerCount, gdpRank, playerCount);
     if (result == ErrorCode::Ok) {
         myState.transitionTo(nextTarget);
-
-        // Bootstrap treasury on first monetization: coins in circulation
-        // become the initial government spending power.  Without this, the
-        // player would start the monetary era with 0 treasury while already
-        // owing maintenance on all the units built during barter.
-        if (nextTarget == MonetarySystemType::CommodityMoney) {
-            // Bootstrap treasury: coins in circulation + population savings.
-            // Represents the accumulated wealth that gets monetized when coins
-            // are introduced. Without this the player starts with 0 treasury
-            // while owing maintenance on all barter-era units immediately.
-            if (gsPlayer != nullptr && gsPlayer->treasury() <= 0) {
-                const CurrencyAmount coinValue =
-                    static_cast<CurrencyAmount>(myState.totalCoinValue());
-                const CurrencyAmount popSavings =
-                    static_cast<CurrencyAmount>(gsPlayer->totalPopulation() * 4);
-                gsPlayer->setTreasury(coinValue + popSavings, aoc::sim::MoneyFlow::unbacked());
-            }
-        }
 
         LOG_INFO("AI player %u transitioned to %.*s",
                  static_cast<unsigned>(this->m_player),
@@ -2442,7 +2425,7 @@ void AIController::considerCanalBuilding(aoc::game::GameState& gameState,
     }
 
     // Build one canal per turn (expensive, strategic decision)
-    if (gsPlayer->spendGold(CANAL_GOLD_COST, aoc::sim::MoneyFlow::unbacked())) {
+    if (gsPlayer->spendGold(CANAL_GOLD_COST, aoc::sim::MoneyFlow::domestic(this->m_player))) {
         ErrorCode result = aoc::sim::executeTerrainProject(
             grid, best.tileIndex, aoc::sim::TerrainProjectType::Canal);
         if (result == ErrorCode::Ok) {
@@ -2454,7 +2437,7 @@ void AIController::considerCanalBuilding(aoc::game::GameState& gameState,
                      static_cast<int>(tradeTrafficTiles),
                      static_cast<int>(CANAL_GOLD_COST));
         } else {
-            gsPlayer->addGold(CANAL_GOLD_COST, aoc::sim::MoneyFlow::unbacked());
+            gsPlayer->addGold(CANAL_GOLD_COST, aoc::sim::MoneyFlow::domestic(this->m_player));
         }
     }
 }

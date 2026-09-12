@@ -43,11 +43,10 @@ ErrorCode buyFuture(aoc::game::GameState& gameState, const Market& market,
         return ErrorCode::InvalidArgument;
     }
 
-    MonetaryStateComponent& monetary = buyerPlayer->monetary();
-    if (monetary.treasury < totalCost) {
+    if (buyerPlayer->treasury() < totalCost) {
         return ErrorCode::InsufficientResources;
     }
-    monetary.treasury -= totalCost;
+    buyerPlayer->addGold(-totalCost, aoc::sim::MoneyFlow::external()); // margin posted with the exchange
 
     FuturesContract contract{};
     contract.buyer   = buyer;
@@ -77,7 +76,7 @@ ErrorCode sellFuture(aoc::game::GameState& gameState, const Market& market,
         return ErrorCode::InvalidArgument;
     }
 
-    sellerPlayer->monetary().treasury += revenue;
+    sellerPlayer->addGold(revenue, aoc::sim::MoneyFlow::external());
 
     FuturesContract contract{};
     contract.buyer             = INVALID_PLAYER;
@@ -112,13 +111,14 @@ void settleFutures(aoc::game::GameState& gameState, Market& market) {
                 if (it->buyer != INVALID_PLAYER) {
                     aoc::game::Player* buyerPlayer = gameState.player(it->buyer);
                     if (buyerPlayer != nullptr) {
-                        buyerPlayer->monetary().treasury += mtm;
+                        buyerPlayer->addGold(mtm, aoc::sim::MoneyFlow::external());
                     }
                 }
                 if (it->seller != INVALID_PLAYER) {
                     aoc::game::Player* sellerPlayer = gameState.player(it->seller);
                     if (sellerPlayer != nullptr) {
-                        sellerPlayer->monetary().treasury -= mtm;
+                        sellerPlayer->addGold(-std::min(mtm, std::max<CurrencyAmount>(0, sellerPlayer->treasury())),
+                                              aoc::sim::MoneyFlow::external());
                     }
                 }
 
@@ -193,7 +193,10 @@ void processInsurancePremiums(aoc::game::GameState& gameState) {
         int32_t premium = ins.totalPremium();
         if (premium <= 0) { continue; }
 
-        playerPtr->monetary().treasury -= static_cast<CurrencyAmount>(premium);
+        const CurrencyAmount due = std::min<CurrencyAmount>(premium, std::max<CurrencyAmount>(0, playerPtr->treasury()));
+        if (due > 0) {
+            playerPtr->addGold(-due, aoc::sim::MoneyFlow::external()); // the insurer is the external sector
+        }
     }
 }
 

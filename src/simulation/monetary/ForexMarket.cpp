@@ -68,7 +68,7 @@ ErrorCode buyCurrency(aoc::game::GameState& gameState,
     CurrencyExchangeComponent& buyerForex  = buyerPlayer->currencyExchange();
 
     // Execute: buyer spends gold, gets foreign currency reserves
-    buyerState.treasury    -= goldAmount;
+    buyerPlayer->addGold(-goldAmount, aoc::sim::MoneyFlow::external()); // held as foreign reserves
     buyerForex.foreignReserves += goldAmount;
 
     // Buy pressure on target currency, normalised by target GDP to prevent tiny amounts
@@ -116,7 +116,7 @@ ErrorCode sellCurrency(aoc::game::GameState& gameState,
     // Gold received = amount * target exchange rate (stronger currency = more gold)
     CurrencyAmount goldReceived = static_cast<CurrencyAmount>(
         static_cast<float>(currencyAmount) * targetForex.exchangeRate);
-    sellerPlayer->monetary().treasury += goldReceived;
+    sellerPlayer->addGold(goldReceived, aoc::sim::MoneyFlow::external());
 
     // Sell pressure on target currency, normalised by target GDP
     float pressureScale = 1.0f;

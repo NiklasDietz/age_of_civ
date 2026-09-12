@@ -6797,7 +6797,7 @@ void Application::handleContextAction() {
                 // Second click: execute purchase via GameState player treasury
                 aoc::game::Player* buyPlayer = this->m_gameState.player(0);
                 if (buyPlayer != nullptr &&
-                    buyPlayer->spendGold(static_cast<CurrencyAmount>(cost), aoc::sim::MoneyFlow::external())) {
+                    buyPlayer->spendGold(static_cast<CurrencyAmount>(cost), aoc::sim::MoneyFlow::domestic(0))) {
                     this->m_hexGrid.setOwner(tileIdx, 0);
                     city.incrementTilesClaimed();
                     this->m_notificationManager.push("Bought tile for " + std::to_string(cost) +
@@ -7638,7 +7638,6 @@ void Application::spawnStartingEntities(aoc::sim::CivId civId, hex::AxialCoord s
         aoc::sim::MonetaryStateComponent& monetary = humanPlayer->monetary();
         monetary.owner                             = 0;
         monetary.system                            = aoc::sim::MonetarySystemType::Barter;
-        monetary.treasury                          = 0;
         monetary.moneySupply                       = 0;
         monetary.taxRate                           = 0.15f;
         monetary.governmentSpending                = 0;
@@ -7800,7 +7799,6 @@ void Application::spawnAIPlayer(PlayerId player, aoc::sim::CivId civId, hex::Axi
         aoc::sim::MonetaryStateComponent& monetary = aiPlayer->monetary();
         monetary.owner                             = player;
         monetary.system                            = aoc::sim::MonetarySystemType::Barter;
-        monetary.treasury                          = 0;
 
         aiPlayer->economy().owner    = player;
         aiPlayer->setTreasury(0, aoc::sim::MoneyFlow::external());

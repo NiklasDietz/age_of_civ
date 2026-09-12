@@ -112,7 +112,7 @@ bool upgradeUnit(aoc::game::GameState& gameState, aoc::game::Unit& unit,
     unit.setMovementRemaining(newDef.movementPoints);
 
     // Deduct gold
-    gsPlayer->monetary().treasury -= static_cast<CurrencyAmount>(cost);
+    gsPlayer->addGold(-static_cast<CurrencyAmount>(cost), aoc::sim::MoneyFlow::domestic(player));
 
     LOG_INFO("Player %u upgraded %.*s -> %.*s for %d gold",
              static_cast<unsigned>(player),

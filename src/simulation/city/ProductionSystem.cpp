@@ -520,14 +520,11 @@ void processProductionQueues(aoc::game::GameState& gameState, aoc::map::HexGrid&
                 // what made a national wonder still race-lose at completion
                 // time even though the build gate had allowed it.
                 if (!wonderDef(wonderId).national && gameState.wonderTracker().isBuilt(wonderId)) {
-                    // Refund a portion of production: convert to gold to
-                    // soften the loss. 50% of wonder cost as gold.
-                    const int32_t refund = static_cast<int32_t>(
-                        static_cast<float>(wonderDef(wonderId).productionCost) * 0.5f);
-                    gsPlayer->addGold(refund, aoc::sim::MoneyFlow::unbacked());
-                    LOG_INFO("Wonder %.*s already built — %s race-lost, +%d gold refund",
+                    // The effort is lost; gold conjured to soften it would be
+                    // money from nowhere (plan 2.2).
+                    LOG_INFO("Wonder %.*s already built: %s race-lost",
                              static_cast<int>(item.name.size()), item.name.c_str(),
-                             city->name().c_str(), refund);
+                             city->name().c_str());
                     // Pop from queue without granting wonder. Skip the
                     // shared `popCompleted()` below — we already erased the
                     // queue head here, and a second erase would drop the
@@ -588,14 +585,9 @@ void processProductionQueues(aoc::game::GameState& gameState, aoc::map::HexGrid&
                         for (auto qit = otherQueue.queue.begin(); qit != otherQueue.queue.end();) {
                             if (qit->type == ProductionItemType::Wonder &&
                                 static_cast<WonderId>(qit->itemId) == wonderId) {
-                                const int32_t refund = static_cast<int32_t>(qit->progress * 0.5f);
-                                if (refund > 0) {
-                                    otherPtr->addGold(static_cast<CurrencyAmount>(refund),
-                                                      aoc::sim::MoneyFlow::unbacked());
-                                }
                                 LOG_INFO(
-                                    "Wonder race loss: Player %u refunded %d gold from %.*s in %s",
-                                    static_cast<unsigned>(otherPtr->id()), refund,
+                                    "Wonder race loss: Player %u loses %.*s in %s",
+                                    static_cast<unsigned>(otherPtr->id()),
                                     static_cast<int>(qit->name.size()), qit->name.c_str(),
                                     otherCity->name().c_str());
                                 qit = otherQueue.queue.erase(qit);
@@ -643,8 +635,8 @@ ErrorCode purchaseInCity(aoc::game::GameState& /*gameState*/, aoc::game::Player&
         return ErrorCode::InsufficientResources;
     }
 
-    // Deduct gold.
-    player.setTreasury(player.treasury() - static_cast<CurrencyAmount>(goldCost), aoc::sim::MoneyFlow::unbacked());
+    // Paid to the people who build it: the money stays in the civ.
+    player.addGold(-static_cast<CurrencyAmount>(goldCost), aoc::sim::MoneyFlow::domestic(city.owner()));
 
     // Create the item immediately.
     if (type == ProductionItemType::Unit) {

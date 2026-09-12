@@ -167,8 +167,7 @@ void GameServer::initialize(const GameConfig& config) {
             gsPlayer->civics().initialize();
 
             // Initialize monetary state
-            gsPlayer->monetary().owner    = player;
-            gsPlayer->monetary().treasury = 0;
+            gsPlayer->monetary().owner = player;
 
             // Initialize economy component
             gsPlayer->economy().owner    = player;

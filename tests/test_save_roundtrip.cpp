@@ -116,8 +116,8 @@ void buildWorld(World& w) {
     // revenue among others -- paid into an account that was wiped before it
     // could be spent. treasury() now reads m_monetary.treasury directly, which
     // is the field serialised here.
-    p0.monetary().treasury = 1234;
-    p1.monetary().treasury = 87;
+    p0.setTreasury(1234, aoc::sim::MoneyFlow::external());
+    p1.setTreasury(87, aoc::sim::MoneyFlow::external());
     // v34: private money pools and the chosen coinage metal, every value off
     // its default so a skipped field cannot round-trip by accident.
     p0.monetary().privateSpecie   = 410;

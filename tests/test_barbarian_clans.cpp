@@ -72,7 +72,7 @@ TEST_CASE("bribing a clan costs gold and buys quiet") {
 
     aoc::game::Player& payer  = *w.gameState.player(PlayerId{0});
     const int32_t cost        = aoc::sim::bribeCost(3);
-    payer.monetary().treasury = cost;
+    payer.setTreasury(cost, aoc::sim::MoneyFlow::external());
 
     REQUIRE(aoc::sim::bribeClan(w.gameState, 0, PlayerId{0}) == ErrorCode::Ok);
     CHECK(w.gameState.barbarianClans()[0].isBribed);
@@ -85,7 +85,7 @@ TEST_CASE("a clan that cannot be paid for is not bribed") {
     BarbarianClanComponent clan{};
     clan.strength = 3;
     w.gameState.barbarianClans().push_back(clan);
-    w.gameState.player(PlayerId{0})->monetary().treasury = 0;
+    w.gameState.player(PlayerId{0})->setTreasury(0, aoc::sim::MoneyFlow::external());
 
     CHECK(aoc::sim::bribeClan(w.gameState, 0, PlayerId{0}) != ErrorCode::Ok);
     CHECK_FALSE(w.gameState.barbarianClans()[0].isBribed);

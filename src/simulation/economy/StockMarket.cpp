@@ -68,8 +68,8 @@ ErrorCode investInEconomy(aoc::game::GameState& gameState,
         return ErrorCode::InsufficientResources;
     }
 
-    investorState.treasury -= amount;
-    targetState.treasury   += amount;
+    investorPlayer->addGold(-amount, aoc::sim::MoneyFlow::transfer(target));
+    targetPlayer->addGold(amount, aoc::sim::MoneyFlow::transfer(investor));
 
     EquityInvestment inv;
     inv.investor          = investor;
@@ -121,13 +121,15 @@ ErrorCode divestFromEconomy(aoc::game::GameState& gameState,
         return ErrorCode::InvalidArgument;
     }
 
-    investorState.treasury += totalValue;
+    // The target buys back what it can; outside buyers take the rest.
+    CurrencyAmount boughtBack = 0;
     if (targetPlayer != nullptr) {
-        MonetaryStateComponent& targetState = targetPlayer->monetary();
-        // Deduct only what the target actually has. A negative treasury would
-        // otherwise flip the std::min and MINT gold (treasury -= negative).
-        targetState.treasury -=
-            std::min(std::max<CurrencyAmount>(0, targetState.treasury), totalValue);
+        boughtBack = std::min(std::max<CurrencyAmount>(0, targetPlayer->treasury()), totalValue);
+        targetPlayer->addGold(-boughtBack, aoc::sim::MoneyFlow::transfer(investor));
+    }
+    investorPlayer->addGold(boughtBack, aoc::sim::MoneyFlow::transfer(target));
+    investorPlayer->addGold(totalValue - boughtBack, aoc::sim::MoneyFlow::external());
+    if (targetPlayer != nullptr) {
 
         std::vector<EquityInvestment>::iterator fIt =
             targetPlayer->stockPortfolio().foreignInvestments.begin();
@@ -225,13 +227,10 @@ void processStockMarket(aoc::game::GameState& gameState) {
 
             if (targetPlayer != nullptr) {
                 MonetaryStateComponent& targetState = targetPlayer->monetary();
-                CurrencyAmount actualDividend = std::min(targetState.treasury, dividend);
-                targetState.treasury -= actualDividend;
-
-                aoc::game::Player* invPlayer = gameState.player(playerPtr->id());
-                if (invPlayer != nullptr) {
-                    invPlayer->monetary().treasury += actualDividend;
-                }
+                CurrencyAmount actualDividend =
+                    std::min<CurrencyAmount>(std::max<CurrencyAmount>(0, targetState.treasury), dividend);
+                targetPlayer->addGold(-actualDividend, aoc::sim::MoneyFlow::transfer(playerPtr->id()));
+                playerPtr->addGold(actualDividend, aoc::sim::MoneyFlow::transfer(inv.target));
                 inv.totalDividends += actualDividend;
 
                 // Keep the target's foreignInvestments mirror in sync with

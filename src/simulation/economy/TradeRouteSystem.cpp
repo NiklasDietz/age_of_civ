@@ -1050,8 +1050,13 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             if (acceptToll) {
                 // Pay toll: credit territory owner, debit trader
                 aoc::game::Player* tollReceiver = gameState.player(te.owner);
-                if (tollReceiver != nullptr) { tollReceiver->addGold(totalToll, aoc::sim::MoneyFlow::unbacked()); }
-                if (traderPlayer != nullptr) { traderPlayer->addGold(-totalToll, aoc::sim::MoneyFlow::unbacked()); }
+                if (tollReceiver != nullptr && traderPlayer != nullptr) {
+                    // The treasury never overdraws; 2.4 pays the rest from the
+                    // trader's purse and cargo.
+                    totalToll = std::min(totalToll, std::max<CurrencyAmount>(0, traderPlayer->treasury()));
+                    traderPlayer->addGold(-totalToll, aoc::sim::MoneyFlow::transfer(te.owner));
+                    tollReceiver->addGold(totalToll, aoc::sim::MoneyFlow::transfer(trader.owner));
+                }
                 trader.tollPaidThisTurn += totalToll;
 
                 // Reputation: +1 for honoring toll. `diplomacy` is already
@@ -1318,14 +1323,20 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 MonetaryStateComponent& sellerMon = sellerPlayer->monetary();
                 const bool atHome = trader.isReturning;
                 if (atHome && trader.carriedGold > 0) {
-                    sellerMon.treasury += trader.carriedGold;
+                    // Purse to treasury: a move inside the civ, booked nowhere.
+                    sellerPlayer->addGold(trader.carriedGold, aoc::sim::MoneyFlow::transfer(trader.owner));
                     trader.carriedGold = 0;
                 }
                 if (goldEarned > 0) {
+                    // The sale still conjures its price; Phase 2.4 settles it
+                    // from the buyer's private money instead.
                     if (traderCarriesGoldOnReturn(sellerMon.system) && !atHome) {
                         trader.carriedGold += goldEarned;
+                        if (aoc::sim::MoneyLedger* book = sellerPlayer->moneyLedger(); book != nullptr) {
+                            book->record(trader.owner, aoc::sim::MoneyFlow::unbacked(), goldEarned);
+                        }
                     } else if (sellerMon.system != MonetarySystemType::Barter) {
-                        sellerMon.treasury += goldEarned;
+                        sellerPlayer->addGold(goldEarned, aoc::sim::MoneyFlow::unbacked());
                     }
                 }
             }
@@ -1598,7 +1609,7 @@ CurrencyAmount lootTraderCargo(aoc::game::GameState& gameState,
             stock.addGoods(c.goodId, c.amount);
         }
         if (stolenGold > 0) {
-            pillagerPlayer->monetary().treasury += stolenGold;
+            pillagerPlayer->addGold(stolenGold, aoc::sim::MoneyFlow::transfer(trader.owner));
         }
     }
     totalValue += stolenGold;

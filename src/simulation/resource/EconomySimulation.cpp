@@ -1184,7 +1184,7 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
                     const CurrencyAmount fireSaleGold = static_cast<CurrencyAmount>(
                         static_cast<float>(excess) * static_cast<float>(def.basePrice) * 0.2f);
                     if (fireSaleGold > 0) {
-                        playerPtr->addGold(fireSaleGold, aoc::sim::MoneyFlow::unbacked());
+                        takeFromPrivate(*playerPtr, fireSaleGold); // sold to our own people
                     }
                     this->m_market.reportSupply(entry.first, excess);
                     entry.second = cap;
@@ -1423,8 +1423,12 @@ void EconomySimulation::executeMonetaryPolicy(aoc::game::GameState& gameState) {
         MonetaryStateComponent& reserveState = playerPtr->monetary();
         CurrencyAmount foreignGDP   = totalGDP - reserveState.gdp;
         CurrencyAmount seigniorage  = computeSeigniorage(reserveState, true, foreignGDP);
-        if (seigniorage > 0) {
-            reserveState.treasury += seigniorage;
+        if (seigniorage <= 0 || foreignGDP <= 0) { continue; }
+        // Paid by the foreigners holding the currency, in proportion to their economies.
+        for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+            if (other == nullptr || other.get() == playerPtr.get() || other->monetary().gdp <= 0) { continue; }
+            const CurrencyAmount share = seigniorage * other->monetary().gdp / foreignGDP;
+            takeFromPrivate(gameState, other->id(), *playerPtr, share);
         }
     }
 }
@@ -1602,7 +1606,8 @@ void EconomySimulation::processCrisisAndBonds(aoc::game::GameState& gameState) {
             state.privateSpecie -= fromPrivate;
             this->m_ledger.record(playerPtr->id(), MoneyFlow::external(), -fromPrivate);
             if (fromPrivate < drained) {
-                playerPtr->addGold(-(drained - fromPrivate), MoneyFlow::external());
+                playerPtr->addGold(-std::min(drained - fromPrivate, std::max<CurrencyAmount>(0, playerPtr->treasury())),
+                                   MoneyFlow::external());
             }
         }
     }

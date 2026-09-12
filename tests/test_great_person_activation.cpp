@@ -463,7 +463,7 @@ TEST_CASE("patronage buys the offered person, in the right currency") {
         const int64_t price = aoc::sim::patronageGoldCost(w.gameState, GreatPersonType::Merchant);
         CHECK(price > 0);
         p.setTreasury(price + 50, aoc::sim::MoneyFlow::external());
-        p.monetary().treasury = price + 50;
+        p.setTreasury(price + 50, aoc::sim::MoneyFlow::external());
         const int32_t claimedBefore = w.gameState.greatPeopleRoster().claimed[
             static_cast<std::size_t>(GreatPersonType::Merchant)];
 
@@ -478,7 +478,7 @@ TEST_CASE("patronage buys the offered person, in the right currency") {
     SUBCASE("a prophet is bought with faith, not gold") {
         const float price = aoc::sim::patronageFaithCost(w.gameState, GreatPersonType::Prophet);
         CHECK(price > 0.0f);
-        p.monetary().treasury = 100000; // gold is no help here
+        p.setTreasury(100000, aoc::sim::MoneyFlow::external()); // gold is no help here
         CHECK(aoc::sim::requestPatronage(w.gameState, w.grid, PlayerId{0},
                                          GreatPersonType::Prophet)
               == aoc::ErrorCode::InsufficientResources);
