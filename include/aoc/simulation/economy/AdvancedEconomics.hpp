@@ -27,7 +27,7 @@ class Market;
 /// Per-player tariff and toll settings (ECS component).
 struct PlayerTariffComponent {
     PlayerId owner = INVALID_PLAYER;
-    float importTariffRate = 0.0f;  ///< 0.0 to 0.5 (0% to 50%)
+    float importTariffRate = 0.10f; ///< 0.0 to 0.5; customs on every foreign delivery (plan 3.3)
     float exportTariffRate = 0.0f;
     /// Per-player tariff overrides (e.g., higher tariff on specific rival).
     std::unordered_map<PlayerId, float> perPlayerTariffs;

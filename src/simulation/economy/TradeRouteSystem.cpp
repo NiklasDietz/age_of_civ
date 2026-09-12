@@ -27,6 +27,7 @@
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/simulation/tech/CivicEffects.hpp"
+#include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
@@ -35,6 +36,7 @@
 #include "aoc/core/Log.hpp"
 
 #include "aoc/simulation/monetary/MoneyFlow.hpp"
+#include "aoc/simulation/city/CitySiege.hpp"
 
 #include <algorithm>
 #include <array>
@@ -121,6 +123,12 @@ float routeYieldMultiplier(const aoc::game::GameState& gameState, const Diplomac
     // nobody trusts gets worse terms on the same cargo.
     yield *= bilateralTradeEfficiency(gameState, seller, buyer);
     return yield;
+}
+
+float importTariffRate(const aoc::game::Player& importer, PlayerId seller) {
+    const float rate = importer.tariffs().effectiveImportTariff(seller) *
+                       importer.tradeAgreements().tariffModifier(seller);
+    return std::clamp(rate, 0.0f, MAX_IMPORT_TARIFF);
 }
 
 int32_t legCargoSlots(const TraderComponent& trader, MonetarySystemType system, bool onRail,
@@ -583,10 +591,19 @@ CurrencyAmount computeCargoValue(const std::vector<TradeCargo>& cargo, const Mar
 ///   - +greatPeople.extraTradeSlots (Merchant GP)
 static int32_t computeTotalTradeSlotsImpl(const aoc::game::Player& player,
                                            const aoc::map::HexGrid& grid) {
+    // The regime's slots, plus the ones every other system declared and
+    // nobody added (plan 3.3): used Great Merchants and civics
+    // (extraTradeSlots), the government and its policies, the civ's trait,
+    // and standing trade agreements.
     int32_t total = player.monetary().maxTradeRoutes()
-                  + player.greatPeople().extraTradeSlots;
+                  + player.greatPeople().extraTradeSlots
+                  + computeGovernmentModifiers(player.government()).extraTradeRoutes
+                  + civDef(player.civId()).modifiers.extraTradeRoutes
+                  + player.tradeAgreements().bonusTradeRoutes();
     for (const std::unique_ptr<aoc::game::City>& cityPtr : player.cities()) {
-        if (cityPtr == nullptr) { continue; }
+        // A city that revolted or went free stays in this vector with another
+        // owner; its market is not ours to route through.
+        if (cityPtr == nullptr || cityPtr->owner() != player.id()) { continue; }
         for (const CityDistrictsComponent::PlacedDistrict& d
                 : cityPtr->districts().districts) {
             for (BuildingId bid : d.buildings) {
@@ -853,6 +870,20 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
         trader.routeType = TradeRouteType::Land;
     }
 
+    // A blockaded port signs no new sea contracts (plan 3.4). The component
+    // was already claimed above, so hand the Trader back its idle state:
+    // a claimed Trader with no path is invisible to the idle scan, holds a
+    // route slot for ever, and is processed every turn as a phantom arrival.
+    if (trader.routeType == TradeRouteType::Sea &&
+        (originCity->combat().blockadedBy != INVALID_PLAYER ||
+         destCity->combat().blockadedBy != INVALID_PLAYER)) {
+        LOG_INFO("Trade route rejected: a blockade closes the lane between %s and %s",
+                 originCity->name().c_str(), destCity->name().c_str());
+        trader       = TraderComponent{};
+        trader.owner = INVALID_PLAYER;
+        return ErrorCode::TradeRouteBlockaded;
+    }
+
     // Compute path based on route type
     aoc::hex::AxialCoord from = originCity->location();
     aoc::hex::AxialCoord to   = destCity->location();
@@ -1074,6 +1105,16 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     // O(players × cities) per arrival per trader.
     const CityRelayMap cityRelay = buildCityRelay(gameState);
 
+    // Customs are cleared here, at the start of the trade step, not at the top
+    // of the turn: the income breakdown runs BEFORE this step, so a counter
+    // cleared at the top of the turn would always read zero by the time
+    // anything asked for it. It therefore reports the turn just gone.
+    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+        if (p != nullptr) {
+            p->setTariffsLastTurn(0);
+        }
+    }
+
     // Collect all active trader units across all players
     std::vector<aoc::game::Unit*> traderUnits;
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
@@ -1099,6 +1140,27 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
 
         ++trader.turnsActive;
         trader.tollPaidThisTurn = 0;
+
+        // A blockade closes the lane: a Sea route waits at anchor, and gives
+        // up if the fleet does not leave (plan 3.4). Land and Air routes go
+        // round it. Decided before the transit tolls below, because a ship at
+        // anchor enters nobody's water and owes nobody passage.
+        if (trader.routeType == TradeRouteType::Sea) {
+            const aoc::game::City* originCity = lookupCity(cityRelay, trader.originCityLocation);
+            const aoc::game::City* destCity   = lookupCity(cityRelay, trader.destCityLocation);
+            const int32_t blockedTurns =
+                std::max(originCity != nullptr ? originCity->combat().blockadedTurns : 0,
+                         destCity != nullptr ? destCity->combat().blockadedTurns : 0);
+            if (blockedTurns >= BLOCKADE_ABANDON_TURNS) {
+                LOG_WARN("Trader P%u abandoned: the lane has been blockaded %d turns",
+                         static_cast<unsigned>(trader.owner), blockedTurns);
+                toRemove.push_back(unitPtr);
+                continue;
+            }
+            if (blockedTurns > 0) {
+                continue; // at anchor: no passage, no movement, no arrival
+            }
+        }
 
         // Compute cargo value once for toll calculation this turn
         CurrencyAmount cargoValue = computeCargoValue(trader.cargo, market);
@@ -1276,6 +1338,7 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         // emergency resupply from owner stockpile. After 20 idle turns, give
         // up — caller-side toRemove handles cargo recovery.
         bool stalled = false;
+
         if (trader.fuelGoodId != 0 && trader.fuelPerTile > 0.0f) {
             aoc::game::Player* tplayer = gameState.player(trader.owner);
             if (tplayer != nullptr && trader.fuelOnBoard <= 0) {
@@ -1423,6 +1486,10 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             // merchants, or to bullion for a civ still in Barter.
             aoc::game::Player* sellerPlayer = gameState.player(trader.owner);
             CurrencyAmount owedInGoods      = 0;
+            // What the purse already held when it reached this city is what
+            // came from abroad; anything this leg adds is our own people
+            // paying us (M3 counts the former).
+            const CurrencyAmount purseFromAbroad = trader.carriedGold;
             if (sellerPlayer != nullptr && goldEarned > 0) {
                 CurrencyAmount paid = 0;
                 if (cityOwner >= aoc::sim::CITY_STATE_PLAYER_BASE) {
@@ -1455,6 +1522,25 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                         bookExternal(*buyerPlayer, -paid); // a city-state's trader carries it out of the world
                     }
                     trader.carriedGold += paid;
+                    // Customs (plan 3.3): the importer's tariff comes out of the
+                    // purse into its treasury, a transfer, raised by its
+                    // tariffEfficiency (Mercantilism). Between major civs only.
+                    if (trader.owner != cityOwner && trader.owner < aoc::sim::CITY_STATE_PLAYER_BASE) {
+                        // The premium multiplies the rate, but the ceiling is
+                        // on what customs may actually take.
+                        const float efficiency =
+                            1.0f + computeGovernmentModifiers(buyerPlayer->government()).tariffEfficiency;
+                        const float rate = std::clamp(
+                            importTariffRate(*buyerPlayer, trader.owner) * efficiency, 0.0f, MAX_IMPORT_TARIFF);
+                        const CurrencyAmount tariff = std::min(
+                            trader.carriedGold,
+                            static_cast<CurrencyAmount>(static_cast<float>(paid) * rate));
+                        if (tariff > 0) {
+                            trader.carriedGold -= tariff;
+                            buyerPlayer->addGold(tariff, aoc::sim::MoneyFlow::transfer(trader.owner));
+                            buyerPlayer->setTariffsLastTurn(buyerPlayer->tariffsLastTurn() + tariff);
+                        }
+                    }
                     paid = -1; // handled
                 }
                 if (paid >= 0) {
@@ -1465,7 +1551,7 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             if (sellerPlayer != nullptr && (trader.isReturning || cityOwner == trader.owner)) {
                 // M3 counts coin brought home from abroad; a sale to our own
                 // people is a tax on them, not trade income.
-                trader.coinLandedThisTurn = trader.destOwner != trader.owner ? trader.carriedGold : 0;
+                trader.coinLandedThisTurn = purseFromAbroad;
                 trader.goldEarnedThisTurn =
                     receiveTradeCoin(*sellerPlayer, trader.carriedGold, trader.carriedMedium == 1);
                 trader.carriedGold        = 0;
@@ -2092,6 +2178,31 @@ TradeRouteEstimate estimateTradeRouteIncome(
     const CurrencyAmount grossGold =
         saleValueAt(gameState, market, cargo, destCity, estimate.routeType, routeYield);
 
+    // The medium is part of the price: a sale settled in trusted paper hands
+    // over notes at the exchange rate, and both the purse and the customs are
+    // in that money (plan 2.6). A coin sale leaves this at 1.
+    CurrencyAmount purse = grossGold;
+    if (destCity.owner() != traderUnit.owner() && destCity.owner() < CITY_STATE_PLAYER_BASE &&
+        ownerPlayer != nullptr) {
+        if (const aoc::game::Player* buyer = gameState.player(destCity.owner());
+            buyer != nullptr && settlesInNotes(*ownerPlayer, *buyer)) {
+            purse = static_cast<CurrencyAmount>(static_cast<float>(grossGold) *
+                                                settlementRate(*ownerPlayer, *buyer));
+        }
+    }
+
+    // The importer's customs come out of the purse at delivery (plan 3.3).
+    CurrencyAmount expectedTariff = 0;
+    if (destCity.owner() != traderUnit.owner() && destCity.owner() < CITY_STATE_PLAYER_BASE &&
+        traderUnit.owner() < CITY_STATE_PLAYER_BASE) {
+        if (const aoc::game::Player* importer = gameState.player(destCity.owner()); importer != nullptr) {
+            const float efficiency = 1.0f + computeGovernmentModifiers(importer->government()).tariffEfficiency;
+            const float rate = std::clamp(
+                importTariffRate(*importer, traderUnit.owner()) * efficiency, 0.0f, MAX_IMPORT_TARIFF);
+            expectedTariff = static_cast<CurrencyAmount>(static_cast<float>(purse) * rate);
+        }
+    }
+
     // C31: AI was booking routes at gross value. Subtract expected tolls so
     // the utility score matches realized profit — keeps AI from signing
     // negative-EV routes when partner raised their rate.
@@ -2107,7 +2218,7 @@ TradeRouteEstimate estimateTradeRouteIncome(
             }
         }
     }
-    estimate.estimatedGoldPerTrip = grossGold - expectedTolls;
+    estimate.estimatedGoldPerTrip = purse - expectedTolls - expectedTariff;
 
     return estimate;
 }

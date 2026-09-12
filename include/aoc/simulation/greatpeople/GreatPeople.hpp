@@ -215,7 +215,8 @@ struct PlayerGreatPeopleComponent {
     std::array<bool, static_cast<std::size_t>(GreatPersonType::Count)> exhausted = {};
 
     /// WP-A3 permanent effects:
-    ///  - extraTradeSlots: +1 per used Great Merchant. Added to monetary cap in
+    ///  - extraTradeSlots: +1 per used Great Merchant, and per civic with an
+    ///    ExtraTradeRoute effect (CivicEffects.cpp). Added to monetary cap in
     ///    TradeRouteSystem route-count check.
     ///  - pulseScienceAmount/Turns: Great Scientist activated in a Research
     ///    Lab city grants a sustained flat science bonus for N turns instead

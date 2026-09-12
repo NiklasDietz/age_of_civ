@@ -13,10 +13,13 @@
 #include "aoc/simulation/monetary/MoneyFlow.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/map/HexGrid.hpp"
+#include "aoc/map/Terrain.hpp"
 #include "aoc/simulation/city/CityBombardment.hpp"
+#include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/tech/EraProgression.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
@@ -56,6 +59,24 @@ constexpr float MELEE_WALL_SHARE = 0.15f;
         best = std::max(best, static_cast<int32_t>(unit->typeDef().combatStrength));
     }
     return best;
+}
+
+/// The tiles a fleet can close a port from: the water around the city, and
+/// any Harbor tile it works.
+[[nodiscard]] std::vector<hex::AxialCoord> blockadeStations(const aoc::map::HexGrid& grid,
+                                                            const aoc::game::City& city) {
+    std::vector<hex::AxialCoord> stations;
+    for (const hex::AxialCoord& nbr : hex::neighbors(city.location())) {
+        if (grid.isValid(nbr) && aoc::map::isWater(grid.terrain(grid.toIndex(nbr)))) {
+            stations.push_back(nbr);
+        }
+    }
+    for (const CityDistrictsComponent::PlacedDistrict& d : city.districts().districts) {
+        if (d.type == DistrictType::Harbor && grid.isValid(d.location)) {
+            stations.push_back(d.location);
+        }
+    }
+    return stations;
 }
 
 /// A civ with no city left is out, which the Domination ratio needs. `victor`
@@ -262,6 +283,73 @@ void captureCity(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, aoc::
              static_cast<unsigned>(captor.owner()), static_cast<unsigned>(previousOwner));
     // A fallen city leaves an antiquity site (v14 layer) for a later dig.
     grid.setAntiquitySite(grid.toIndex(location), 1);
+}
+
+PlayerId blockaderOf(const aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                     const DiplomacyManager* diplomacy, const aoc::game::City& city) {
+    if (diplomacy == nullptr || city.owner() == INVALID_PLAYER ||
+        city.owner() >= CITY_STATE_PLAYER_BASE) {
+        return INVALID_PLAYER;
+    }
+    const std::vector<hex::AxialCoord> stations = blockadeStations(grid, city);
+    if (stations.empty()) {
+        return INVALID_PLAYER; // an inland city has no port to close
+    }
+    // players() is ordered by id, so the lowest blockader wins a tie.
+    for (const std::unique_ptr<aoc::game::Player>& enemy : gameState.players()) {
+        if (enemy == nullptr || enemy->id() == city.owner() ||
+            !diplomacy->isAtWar(enemy->id(), city.owner())) {
+            continue;
+        }
+        // Scan the fleet, not the tiles: unitAt answers with whichever of a
+        // civ's units stands there first, so a warship sharing a tile with a
+        // transport or a settler would not be seen at all.
+        for (const std::unique_ptr<aoc::game::Unit>& ship : enemy->units()) {
+            if (ship == nullptr || !ship->isNaval() || !isMilitary(ship->typeDef().unitClass)) {
+                continue;
+            }
+            if (std::find(stations.begin(), stations.end(), ship->position()) != stations.end()) {
+                return enemy->id();
+            }
+        }
+    }
+    return INVALID_PLAYER;
+}
+
+void updateBlockades(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                     const DiplomacyManager* diplomacy) {
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) {
+            continue;
+        }
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+            if (cityPtr == nullptr) {
+                continue;
+            }
+            CityCombatState& combat = cityPtr->combat();
+            // A city that revolted or went free stays in its old holder's
+            // vector. Clear it rather than skipping it, or a frozen blockade
+            // would go on costing that holder an amenity for ever.
+            if (cityPtr->owner() != playerPtr->id()) {
+                combat.blockadedBy    = INVALID_PLAYER;
+                combat.blockadedTurns = 0;
+                continue;
+            }
+            const PlayerId blockader = blockaderOf(gameState, grid, diplomacy, *cityPtr);
+            if (blockader == INVALID_PLAYER) {
+                combat.blockadedBy    = INVALID_PLAYER;
+                combat.blockadedTurns = 0;
+                continue;
+            }
+            // A different fleet taking over does not give the city a breather.
+            ++combat.blockadedTurns;
+            if (combat.blockadedBy != blockader) {
+                combat.blockadedBy = blockader;
+                LOG_INFO("Player %u blockades %s (player %u)", static_cast<unsigned>(blockader),
+                         cityPtr->name().c_str(), static_cast<unsigned>(cityPtr->owner()));
+            }
+        }
+    }
 }
 
 void healCities(aoc::game::GameState& gameState, PlayerId player, int32_t currentTurn) {

@@ -1520,6 +1520,11 @@ void processTurn(TurnContext& turnContext) {
     // 2. Economy simulation (harvest, produce, trade, market prices)
     turnContext.economy->executeTurn(*turnContext.gameState, *turnContext.grid);
 
+    // 2b. Blockades: who has a fleet off whose port this turn. Computed once,
+    //     before the per-player work, so collection, amenities and the trade
+    //     step all read the same answer (plan 3.4).
+    updateBlockades(*turnContext.gameState, *turnContext.grid, turnContext.diplomacy);
+
     // 3. Per-player processing
     for (PlayerId player : turnContext.allPlayers) {
         processPlayerTurn(turnContext, player);

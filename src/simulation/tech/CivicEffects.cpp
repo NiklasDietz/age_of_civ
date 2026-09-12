@@ -33,6 +33,9 @@ void applyCivicEffect(aoc::game::GameState& gameState, PlayerId player, uint8_t 
                 break;
 
             case CivicEffectType::ExtraTradeRoute:
+                if (aoc::game::Player* p = gameState.player(player); p != nullptr) {
+                    p->greatPeople().extraTradeSlots += effect.value; // read by computeTotalTradeSlots
+                }
                 LOG_INFO("Player %u: civic effect +%d trade route capacity",
                          static_cast<unsigned>(player), effect.value);
                 break;

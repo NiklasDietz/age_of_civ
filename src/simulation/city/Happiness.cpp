@@ -21,6 +21,7 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
+#include "aoc/simulation/city/CitySiege.hpp"
 #include "aoc/game/Unit.hpp"
 
 #include <cmath>
@@ -161,6 +162,12 @@ void computeCityHappiness(aoc::game::Player& player, const GlobalReligionTracker
             const float satisfaction = std::clamp(happiness.consumerSatisfaction, 0.0f, 1.0f);
             happiness.amenities +=
                 (satisfaction - 0.5f) * CONSUMER_SATISFACTION_AMENITIES;
+        }
+
+        // A blockade starves a city of what the sea brings. The people bear
+        // it for a while, and then they do not (plan 3.4).
+        if (city->combat().blockadedTurns >= BLOCKADE_AMENITY_TURNS) {
+            happiness.amenities -= BLOCKADE_AMENITY_PENALTY;
         }
 
         // Specialist entertainers: +2 amenity each

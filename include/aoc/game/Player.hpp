@@ -139,6 +139,12 @@ public:
     /// Bills the treasury could not pay last turn (arrears); not saved.
     [[nodiscard]] CurrencyAmount unpaidLastTurn() const { return this->m_unpaidLastTurn; }
     void setUnpaidLastTurn(CurrencyAmount unpaid) { this->m_unpaidLastTurn = unpaid; }
+    /// Customs taken on foreign deliveries during the last trade step (the
+    /// breakdown's incomeTariffs). Like netGoldLastTurn and unpaidLastTurn it
+    /// reports the turn just gone: the trade step runs after the income step,
+    /// so reading it within the same turn would always read zero. Not saved.
+    [[nodiscard]] CurrencyAmount tariffsLastTurn() const { return this->m_tariffsLastTurn; }
+    void setTariffsLastTurn(CurrencyAmount tariffs) { this->m_tariffsLastTurn = tariffs; }
 
     [[nodiscard]] CurrencyAmount incomePerTurn() const { return this->m_incomePerTurn; }
     void setIncomePerTurn(CurrencyAmount income) { this->m_incomePerTurn = income; }
@@ -555,6 +561,7 @@ private:
     CurrencyAmount m_incomePerTurn = 0;
     CurrencyAmount m_netGoldLastTurn = 0; ///< Not saved; processTurn recomputes it
     CurrencyAmount m_unpaidLastTurn  = 0; ///< Not saved; maintenance recomputes it
+    CurrencyAmount m_tariffsLastTurn = 0; ///< Not saved; the trade step resets it
     aoc::sim::MoneyLedger* m_ledger = nullptr; ///< Not saved; set for the turn, may be null in tests
     aoc::sim::MonetaryStateComponent m_monetary;
 

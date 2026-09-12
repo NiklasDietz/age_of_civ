@@ -10,6 +10,7 @@
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/city/CityScience.hpp"
 #include "aoc/simulation/city/CityConnection.hpp"
+#include "aoc/simulation/city/CitySiege.hpp"
 #include "aoc/simulation/city/DistrictAdjacency.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
@@ -84,6 +85,22 @@ constexpr float INDUSTRIAL_POINT      = 0.02f; ///< per point of gold per citize
 constexpr float CONNECTION_EFFICIENCY = 0.02f; ///< per city connected to the capital by road
 constexpr float ROUTE_ABILITY_POINT   = 0.01f; ///< per point of a civ's goldFromTradeRoute, per route
 
+} // namespace
+
+int32_t unitUpkeep(const aoc::game::Player& player, const aoc::game::Unit& unit) {
+    const int32_t base = unit.typeDef().maintenanceGold();
+    if (base <= 0) {
+        return 0;
+    }
+    // Conscription and its kin: a flat reduction per paid unit (plan 3.3
+    // wires the policy; it was declared, summed, and read by nobody).
+    const int32_t reduction =
+        static_cast<int32_t>(computeGovernmentModifiers(player.government()).unitMaintenanceReduction);
+    return std::max(0, base - reduction);
+}
+
+namespace {
+
 /// Upkeep and stock, tallied the same way for money and barter civs so the
 /// diagnostic matches processUnitMaintenance and processBuildingMaintenance,
 /// nominal at the civ's price level.
@@ -106,7 +123,7 @@ void tallyUpkeepAndStock(const aoc::game::Player& player, EconomicBreakdown& bd)
         }
     }
     for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
-        const int32_t cost = unit->typeDef().maintenanceGold();
+        const int32_t cost = unitUpkeep(player, *unit);
         if (cost > 0) {
             bd.expenseUnits += static_cast<CurrencyAmount>(cost);
         }
@@ -198,13 +215,20 @@ void tallyUpkeepAndStock(const aoc::game::Player& player, EconomicBreakdown& bd)
     return bonus;
 }
 
-/// Worked-tile gold including the WP-G improvement cluster bonuses.
+/// Worked-tile gold including the WP-G improvement cluster bonuses. A
+/// blockaded city's water tiles yield nothing: that is what a blockade is.
 [[nodiscard]] int32_t cityTileGold(const aoc::game::City& city, const aoc::map::HexGrid& grid) {
+    const bool blockaded = city.combat().blockadedBy != INVALID_PLAYER;
     int32_t gold = 0;
     for (const aoc::hex::AxialCoord& tile : city.workedTiles()) {
-        if (grid.isValid(tile)) {
-            gold += effectiveTileYield(grid, grid.toIndex(tile)).gold;
+        if (!grid.isValid(tile)) {
+            continue;
         }
+        const int32_t index = grid.toIndex(tile);
+        if (blockaded && aoc::map::isWater(grid.terrain(index))) {
+            continue;
+        }
+        gold += effectiveTileYield(grid, index).gold;
     }
     return gold;
 }
@@ -220,7 +244,9 @@ void tallyUpkeepAndStock(const aoc::game::Player& player, EconomicBreakdown& bd)
         if (d.type == DistrictType::Commercial) {
             bonus += HUB_EFFICIENCY;
         }
-        if (d.type == DistrictType::Harbor) {
+        // A blockaded Harbor collects nothing: the ships it would tax are
+        // not coming in (plan 3.4).
+        if (d.type == DistrictType::Harbor && city.combat().blockadedBy == INVALID_PLAYER) {
             bonus += HARBOR_EFFICIENCY;
         }
         for (BuildingId bid : d.buildings) {
@@ -275,13 +301,15 @@ float collectionEfficiency(const aoc::game::Player& player, const aoc::map::HexG
                       cityGoldMultiplier(*city, grid, capital, govDef);
     }
     efficiency += CONNECTION_EFFICIENCY * static_cast<float>(connectedCityCount(player, grid));
-    // Civ ability: +N gold per active trade route, now N points of reach per route.
-    const int32_t perRoute = civDef(player.civId()).modifiers.goldFromTradeRoute;
-    if (perRoute > 0) {
-        efficiency += ROUTE_ABILITY_POINT * static_cast<float>(perRoute) *
-                      static_cast<float>(player.activeTradeRouteCount());
+    // Civ ability and the Caravansaries policy: +N gold per active trade
+    // route, now N points of reach per route (plan 3.3 wires the policy).
+    const GovernmentModifiers gov = computeGovernmentModifiers(player.government());
+    const float perRoute = static_cast<float>(civDef(player.civId()).modifiers.goldFromTradeRoute) +
+                           gov.tradeRouteBonus;
+    if (perRoute > 0.0f) {
+        efficiency += ROUTE_ABILITY_POINT * perRoute * static_cast<float>(player.activeTradeRouteCount());
     }
-    efficiency *= computeGovernmentModifiers(player.government()).goldMultiplier * allianceGoldMult;
+    efficiency *= gov.goldMultiplier * allianceGoldMult;
     return std::clamp(efficiency, 0.0f, 1.0f);
 }
 
@@ -295,6 +323,7 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
         bd.incomeSeigniorage         = book.seigniorage;
         bd.incomeExternal            = book.externalIn;
     }
+    bd.incomeTariffs = player.tariffsLastTurn();
     if (moneyless(player)) {
         bd.totalIncome = bd.incomeSeigniorage + bd.incomeTariffs + bd.incomeExternal + bd.incomeTradeRoutes;
         bd.totalExpense = bd.expenseUnits + bd.expenseBuildings;
@@ -390,15 +419,13 @@ CurrencyAmount processUnitMaintenance(aoc::game::GameState& gameState,
     constexpr int32_t MIN_GARRISON = 2;
     // Turns of unpaid bills the soldiers put up with before one lot walks.
     constexpr int32_t ARREARS_GRACE_TURNS = 5;
-    // Tax rate forced while in arrears (below the global ceiling).
-    constexpr float ARREARS_TAX_RATE = 0.40f;
 
     // Bills by province: each unit is paid where it stands, so a garrison in
     // a foreign province pays that civ's people. Unowned land pays our own.
     std::map<PlayerId, CurrencyAmount> bills;
     int32_t paidUnits = 0;
     for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
-        const int32_t cost = unit->typeDef().maintenanceGold();
+        const int32_t cost = unitUpkeep(player, *unit);
         if (cost <= 0) {
             continue;
         }
@@ -428,13 +455,11 @@ CurrencyAmount processUnitMaintenance(aoc::game::GameState& gameState,
     if (player.monetary().consecutiveNegativeTurns < ARREARS_GRACE_TURNS) {
         return unpaid;
     }
-    if (player.monetary().taxRate < ARREARS_TAX_RATE) {
-        setTaxRate(player.monetary(), ARREARS_TAX_RATE);
-        LOG_WARN("Player %u [Maintenance.cpp:processUnitMaintenance] %d turns in arrears: "
-                 "tax rate forced to %.2f",
-                 static_cast<unsigned>(player.id()), player.monetary().consecutiveNegativeTurns,
-                 static_cast<double>(ARREARS_TAX_RATE));
-    }
+    // No forced tax hike here any more: with money conserved a state in
+    // arrears is one whose people hold little coin, so a 40% rate collected
+    // next to nothing and cost two amenities a city, which is how an
+    // overstretched empire's arrears turned into a loyalty collapse. The
+    // disband below is the pressure relief.
     int32_t militaryCount = 0;
     for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
         if (isMilitary(unit->typeDef().unitClass)) {

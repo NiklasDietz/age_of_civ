@@ -248,11 +248,12 @@ TEST_CASE("seigniorage and the external sector are reported from the turn's ledg
     const EconomicBreakdown quiet = e.breakdown();
     ledger.civs[0].seigniorage    = 5;
     ledger.civs[0].externalIn     = 7;
+    e.player.setTariffsLastTurn(9); // customs the trade step took last turn
     const EconomicBreakdown paid  = e.breakdown();
     CHECK(paid.incomeSeigniorage == 5);
     CHECK(paid.incomeExternal == 7);
-    CHECK(paid.incomeTariffs == 0); // Phase 3.3
-    CHECK(paid.totalIncome == quiet.totalIncome + 12);
+    CHECK(paid.incomeTariffs == 9);
+    CHECK(paid.totalIncome == quiet.totalIncome + 21);
     CHECK(paid.effectiveIncome == quiet.effectiveIncome); // only the tax is moved here
 }
 

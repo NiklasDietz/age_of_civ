@@ -218,6 +218,7 @@ TEST_CASE("an unpaid bill is arrears, never a negative treasury; five turns of i
     }
     const int64_t upkeep = aoc::sim::unitTypeDef(WARRIOR).maintenanceGold();
     a.setTreasury(upkeep, MoneyFlow::external()); // enough for one of the three
+    const float taxBefore = a.monetary().taxRate;
 
     CHECK(aoc::sim::processUnitMaintenance(w.gameState, w.grid, a) == 2 * upkeep);
     CHECK(a.treasury() == 0);
@@ -229,6 +230,10 @@ TEST_CASE("an unpaid bill is arrears, never a negative treasury; five turns of i
     CHECK(a.units().size() == 3); // grace
     CHECK(aoc::sim::processUnitMaintenance(w.gameState, w.grid, a) == 3 * upkeep);
     CHECK(a.units().size() == 2); // the fifth turn in arrears: one lot walks, the garrison stays
+    // And arrears no longer reach for the tax lever: with money conserved, a
+    // state in arrears is one whose people hold little coin, so a forced rate
+    // collected nothing and cost two amenities a city.
+    CHECK(a.monetary().taxRate == doctest::Approx(taxBefore));
     CHECK(a.monetary().consecutiveNegativeTurns == 0);
     CHECK(a.treasury() == 0);
 

@@ -20,6 +20,7 @@
 #include "aoc/simulation/ai/AIBlackboard.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/economy/Maintenance.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
@@ -205,7 +206,10 @@ void updateEconomyAssessment(aoc::game::Player& player) {
     // Sum unit maintenance (military only pay; civilians are free).
     CurrencyAmount unitMaintenance = 0;
     for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
-        const int32_t cost = unit->typeDef().maintenanceGold();
+        // The same figure processUnitMaintenance charges, policy reductions
+        // included: an advisor reading the raw table would see a bill the
+        // treasury never pays.
+        const int32_t cost = aoc::sim::unitUpkeep(player, *unit);
         if (cost > 0) {
             unitMaintenance += static_cast<CurrencyAmount>(cost);
         }

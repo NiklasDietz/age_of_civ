@@ -60,6 +60,7 @@ enum class ErrorCode : uint16_t {
     TradeRouteOutOfRange       = 605,  ///< A leg of the path exceeds the trade range
     TradeRouteNoFuel           = 606,  ///< The origin cannot fuel the ship or aircraft
     TradeRouteNoDestination    = 607,  ///< No city an idle AI Trader may go to
+    TradeRouteBlockaded        = 608,  ///< An enemy fleet closes the port at one end
 
     // -- Simulation (700-799) --
     InvalidUnitAction          = 700,
@@ -116,6 +117,7 @@ enum class ErrorCode : uint16_t {
         case ErrorCode::TradeRouteOutOfRange:        return "Destination beyond trade range";
         case ErrorCode::TradeRouteNoFuel:            return "No fuel for the voyage";
         case ErrorCode::TradeRouteNoDestination:     return "No city to trade with";
+        case ErrorCode::TradeRouteBlockaded:         return "A blockade closes the sea lane";
 
         case ErrorCode::InvalidUnitAction:           return "Unit cannot perform this action";
         case ErrorCode::InvalidCityAction:           return "City cannot perform this action";

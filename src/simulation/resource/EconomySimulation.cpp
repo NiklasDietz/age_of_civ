@@ -609,17 +609,24 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
             // City by city, by the one rule local prices read too
             // (cityConsumptionNeed): wheat, consumer goods, processed food,
             // clothing, advanced consumer goods.
+            int32_t consumerGoods = 0;
+            int32_t advConsumer   = 0;
             for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
                 if (cityPtr == nullptr || cityPtr->owner() != playerPtr->id()) { continue; }
                 const int32_t pop = cityPtr->population();
                 econ.totalNeeds[goods::WHEAT] += cityConsumptionNeed(goods::WHEAT, pop);
                 econ.totalNeeds[goods::CLOTHING] += cityConsumptionNeed(goods::CLOTHING, pop);
                 econ.totalNeeds[goods::PROCESSED_FOOD] += cityConsumptionNeed(goods::PROCESSED_FOOD, pop);
-                econ.totalNeeds[goods::CONSUMER_GOODS] +=
-                    scaleLuxury(cityConsumptionNeed(goods::CONSUMER_GOODS, pop));
-                econ.totalNeeds[goods::ADV_CONSUMER_GOODS] +=
-                    scaleLuxury(cityConsumptionNeed(goods::ADV_CONSUMER_GOODS, pop));
+                consumerGoods += cityConsumptionNeed(goods::CONSUMER_GOODS, pop);
+                advConsumer += cityConsumptionNeed(goods::ADV_CONSUMER_GOODS, pop);
             }
+            // The multiplier scales the EMPIRE's discretionary demand, once.
+            // Per city it truncated a need of 1 to 0, and since the default
+            // real rate is +5% (Barter pins inflation at 0 and nothing lowers
+            // the rate), that silently deleted all consumer-goods demand for
+            // every city of population 4 or 5, in every game.
+            econ.totalNeeds[goods::CONSUMER_GOODS] += scaleLuxury(consumerGoods);
+            econ.totalNeeds[goods::ADV_CONSUMER_GOODS] += scaleLuxury(advConsumer);
 
             // Actually consume these goods from stockpiles each turn
             // (not just register as demand — actually deplete them). C33:

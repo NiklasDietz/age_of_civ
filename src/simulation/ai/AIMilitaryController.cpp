@@ -954,6 +954,66 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
             }
 
             if (weakestNeighbour != INVALID_PLAYER) {
+                // Blockade (plan 3.4): a navy that outnumbers theirs parks on
+                // the water beside their coastal cities instead of joining a
+                // land march it cannot walk. Ships move by the naval path,
+                // which the neighbour-step below cannot compute for them.
+                const aoc::game::Player* victim = gameState.player(weakestNeighbour);
+                if (victim != nullptr) {
+                    int32_t myNavy    = 0;
+                    int32_t theirNavy = 0;
+                    for (const std::unique_ptr<aoc::game::Unit>& u : gsPlayer->units()) {
+                        if (u != nullptr && u->isNaval()) { ++myNavy; }
+                    }
+                    for (const std::unique_ptr<aoc::game::Unit>& u : victim->units()) {
+                        if (u != nullptr && u->isNaval()) { ++theirNavy; }
+                    }
+                    if (myNavy > theirNavy) {
+                        // Snapshot first: moving can resolve combat, and that
+                        // frees units out from under an iterator.
+                        std::vector<aoc::hex::AxialCoord> fleet;
+                        for (const std::unique_ptr<aoc::game::Unit>& u : gsPlayer->units()) {
+                            if (u != nullptr && u->isNaval() && u->movementRemaining() > 0) {
+                                fleet.push_back(u->position());
+                            }
+                        }
+                        for (const aoc::hex::AxialCoord& berth : fleet) {
+                            // unitAt answers with whichever of ours stands
+                            // there first; find the ship itself.
+                            aoc::game::Unit* ship = nullptr;
+                            for (const std::unique_ptr<aoc::game::Unit>& u : gsPlayer->units()) {
+                                if (u != nullptr && u->isNaval() && u->position() == berth &&
+                                    u->movementRemaining() > 0) {
+                                    ship = u.get();
+                                    break;
+                                }
+                            }
+                            if (ship == nullptr) { continue; }
+                            aoc::hex::AxialCoord station = berth;
+                            int32_t bestDist = std::numeric_limits<int32_t>::max();
+                            for (const std::unique_ptr<aoc::game::City>& c : victim->cities()) {
+                                if (c == nullptr || c->owner() != weakestNeighbour) { continue; }
+                                for (const aoc::hex::AxialCoord& nbr : aoc::hex::neighbors(c->location())) {
+                                    if (!grid.isValid(nbr) ||
+                                        !aoc::map::isWater(grid.terrain(grid.toIndex(nbr)))) {
+                                        continue;
+                                    }
+                                    const int32_t d = grid.distance(berth, nbr);
+                                    if (d < bestDist) {
+                                        bestDist = d;
+                                        station  = nbr;
+                                    }
+                                }
+                            }
+                            if (station == berth) {
+                                continue; // on station already, or nothing to close
+                            }
+                            aoc::sim::orderUnitMove(*ship, station, grid);
+                            aoc::sim::moveUnitAlongPath(gameState, *ship, grid);
+                        }
+                    }
+                }
+
                 // Move every military unit toward the nearest enemy city.
                 for (const OwnedUnitSnapshot& snap : ownedSnapshots) {
                     aoc::game::Unit* unit = gsPlayer->unitAt(snap.position);
@@ -963,6 +1023,9 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                     const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(unit->typeId());
                     if (!aoc::sim::isMilitary(def.unitClass)) {
                         continue;
+                    }
+                    if (aoc::sim::isNaval(def.unitClass)) {
+                        continue; // the blockade pass above has the fleet
                     }
 
                     // Supply-line check: don't push a unit farther than its

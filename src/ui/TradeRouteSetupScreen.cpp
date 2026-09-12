@@ -304,7 +304,7 @@ void TradeRouteSetupScreen::buildRoutePreview(UIManager& ui, WidgetId innerPanel
     // Compute estimate
     aoc::sim::TradeRouteEstimate estimate = aoc::sim::estimateTradeRouteIncome(
         *this->m_gameState, *this->m_grid, *this->m_market,
-        *this->m_selectedTrader, *this->m_selectedDest);
+        *this->m_selectedTrader, *this->m_selectedDest, this->m_diplomacy);
 
     // Route type name
     const char* routeTypeNames[] = {"Land", "Sea", "Air"};

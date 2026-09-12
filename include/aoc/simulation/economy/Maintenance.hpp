@@ -20,6 +20,7 @@ namespace aoc::game {
 class Player;
 class GameState;
 class City;
+class Unit;
 }
 
 namespace aoc::sim {
@@ -55,7 +56,7 @@ struct EconomicBreakdown {
     // Income: what reaches the treasury this turn
     CurrencyAmount incomeTax         = 0;  ///< The tax the treasury keeps (goldAllocation share)
     CurrencyAmount incomeSeigniorage = 0;  ///< The Mint's share of coin struck this turn (ledger)
-    CurrencyAmount incomeTariffs     = 0;  ///< Customs at delivery (Phase 3.3; zero until then)
+    CurrencyAmount incomeTariffs     = 0;  ///< Customs on foreign deliveries last turn (Player::tariffsLastTurn)
     CurrencyAmount incomeExternal    = 0;  ///< City-states, ruins, camps, endowments this turn (ledger)
     CurrencyAmount incomeTradeRoutes = 0;  ///< Customs share of coin the civ's Traders landed this turn
                                            ///< (moved by the Trader system on arrival; counted here)
@@ -87,6 +88,10 @@ inline constexpr float SCIENCE_FUNDING_COST = 0.1f;
 
 /// What a state with no commerce at all still reaches of its people's money.
 inline constexpr float BASE_COLLECTION_EFFICIENCY = 0.50f;
+
+/// What one unit costs its owner a turn: its era upkeep less the
+/// government's flat reduction per unit (Conscription), never below zero.
+[[nodiscard]] int32_t unitUpkeep(const aoc::game::Player& player, const aoc::game::Unit& unit);
 
 /// A building's contribution to collection efficiency: Market 0.08, Bank
 /// 0.12, Stock Exchange 0.18, Telecom Hub 0.10, any other 0.01 per point of

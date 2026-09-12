@@ -17,10 +17,13 @@
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/economy/AdvancedEconomics.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
+
+#include <cmath>
 
 using aoc::PlayerId;
 using aoc::sim::DistrictType;
@@ -74,6 +77,16 @@ TEST_CASE("a local price rises with want and falls with stock, inside the band")
     city.stockpile().addGoods(WHEAT, 10); // exactly covered: the market price
     CHECK(aoc::sim::localPrice(market, WHEAT, city) == base);
 
+    // A probe between the clamps, where the exponent alone decides the answer:
+    // need 6 against an empty store is a ratio of 4, and 4^0.6 = 2.30 sits
+    // inside [0.5, 2.5]. A different elasticity gives a different integer.
+    CHECK(aoc::sim::LOCAL_PRICE_ELASTICITY == doctest::Approx(0.6f));
+    aoc::test::World w2    = aoc::test::makeWorld(1);
+    aoc::game::City& probe = aoc::test::addCityAt(w2, P0, 5, 5, "Beta");
+    probe.setPopulation(18); // needs 6 wheat, holds none
+    CHECK(aoc::sim::localPrice(market, WHEAT, probe) ==
+          static_cast<int32_t>(static_cast<float>(base) * std::pow(4.0f, 0.6f) + 0.5f));
+
     city.stockpile().addGoods(WHEAT, 500); // glutted: the floor
     const int32_t glutted = aoc::sim::localPrice(market, WHEAT, city);
     CHECK(glutted < base);
@@ -108,6 +121,7 @@ TEST_CASE("the estimate prefers the destination that lacks what we carry, and va
     home.stockpile().addGoods(WHEAT, 40);
     fed.stockpile().addGoods(WHEAT, 200);
     aoc::game::Unit& trader = aoc::test::addUnitAt(w, P0, TRADER, 5, 5);
+    w.gameState.player(P1)->tariffs().importTariffRate = 0.0f; // customs are 3.3's subject
     const aoc::sim::Market market = marketAtBase();
 
     const aoc::sim::TradeRouteEstimate toHungry =

@@ -78,6 +78,10 @@ struct Route {
         abroad = &aoc::test::addCityAt(w, BUYER, 9, 5, "Beta");
         w.gameState.player(SELLER)->monetary().system = aoc::sim::MonetarySystemType::CommodityMoney;
         w.gameState.player(BUYER)->monetary().system  = aoc::sim::MonetarySystemType::CommodityMoney;
+        // Customs are test_trade_policy_hooks' subject; here the purse is
+        // the whole price.
+        w.gameState.player(BUYER)->tariffs().importTariffRate  = 0.0f;
+        w.gameState.player(SELLER)->tariffs().importTariffRate = 0.0f;
         unit                             = &aoc::test::addUnitAt(w, SELLER, TRADER_UNIT, 8, 5);
         aoc::sim::TraderComponent& tc    = unit->trader();
         tc.owner                         = SELLER;

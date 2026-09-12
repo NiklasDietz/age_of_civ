@@ -359,6 +359,14 @@ inline constexpr int32_t SEA_SLOTS_WITHOUT_HARBOR = 4;
 [[nodiscard]] int32_t legCargoSlots(const TraderComponent& trader, MonetarySystemType system,
                                     bool onRail, float tradeMult, const aoc::game::City& unloadingAt);
 
+/// Most of a delivery's price customs may ever take, premium included.
+inline constexpr float MAX_IMPORT_TARIFF = 0.5f;
+
+/// The importer's customs on a foreign delivery, as a share of the price:
+/// its tariff rate on the seller, times its best trade agreement with the
+/// seller, clamped to [0, 0.5]; a Customs Union makes it zero.
+[[nodiscard]] float importTariffRate(const aoc::game::Player& importer, PlayerId seller);
+
 /// The sale value of `cargo` at `destination` before the goods land: each
 /// unit at the destination's local price, the monopolist's markup on the
 /// buyer, the destination's sale multiplier and the route's yield.

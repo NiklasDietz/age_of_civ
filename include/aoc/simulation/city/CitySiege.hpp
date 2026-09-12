@@ -36,11 +36,19 @@ class HexGrid;
 
 namespace aoc::sim {
 
+class DiplomacyManager;
+
 /// A city's own hit points, behind whatever walls it has.
 struct CityCombatState {
     int32_t hp               = 120;
     int32_t maxHP            = 120;
     int32_t lastAttackedTurn = -1000; ///< Healing waits for a quiet turn.
+
+    // -- Blockade (plan 3.4). Transient: recomputed every turn by
+    //    updateBlockades, and deliberately not serialized, like
+    //    lastAttackedTurn. A reloaded game recomputes both on its first turn.
+    PlayerId blockadedBy    = INVALID_PLAYER; ///< The civ whose navy sits off the port
+    int32_t  blockadedTurns = 0;              ///< Consecutive turns under blockade
 
     [[nodiscard]] bool isAlive() const { return this->hp > 0; }
     [[nodiscard]] float hpFraction() const {
@@ -54,6 +62,15 @@ inline constexpr int32_t CITY_BASE_HP = 120;
 
 /// Hit points a city regains per quiet turn.
 inline constexpr int32_t CITY_HEAL_PER_TURN = 10;
+
+/// Turns of blockade the people bear before the shortages show (plan 3.4).
+inline constexpr int32_t BLOCKADE_AMENITY_TURNS = 5;
+
+/// The amenity a blockaded city loses once it has borne that long.
+inline constexpr float BLOCKADE_AMENITY_PENALTY = 1.0f;
+
+/// Turns a blockaded sea lane keeps a Trader waiting before it gives up.
+inline constexpr int32_t BLOCKADE_ABANDON_TURNS = 20;
 
 /// Turns after an attack during which a city does not heal.
 inline constexpr int32_t CITY_HEAL_DELAY_TURNS = 4;
@@ -102,6 +119,21 @@ void captureCity(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, aoc::
 /// Per-turn regeneration for every city `player` owns, skipping those attacked
 /// within CITY_HEAL_DELAY_TURNS.
 void healCities(aoc::game::GameState& gameState, PlayerId player, int32_t currentTurn);
+
+/// The civ blockading `city`, or INVALID_PLAYER. A blockade is a military
+/// naval unit of a civ at war with the city's owner, sitting on water beside
+/// the city or on one of its Harbor tiles. Lowest player id wins a tie, so
+/// the answer does not depend on iteration order.
+[[nodiscard]] PlayerId blockaderOf(const aoc::game::GameState& gameState,
+                                   const aoc::map::HexGrid& grid,
+                                   const DiplomacyManager* diplomacy,
+                                   const aoc::game::City& city);
+
+/// Recompute every city's blockade state for this turn: who is blockading it
+/// and for how long unbroken. Runs once, before the turn's per-player work,
+/// so income, amenities and the trade step all see the same answer.
+void updateBlockades(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                     const DiplomacyManager* diplomacy);
 
 /// What a conqueror does with a city it holds.
 enum class CityDisposition : uint8_t {
