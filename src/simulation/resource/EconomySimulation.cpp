@@ -15,6 +15,7 @@
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/economy/InternalTrade.hpp"
+#include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/simulation/economy/EnvironmentModifier.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/Inflation.hpp"
@@ -595,8 +596,6 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
         // This is the core demand driver that makes production meaningful.
         // Without it, goods pile up in stockpiles with no purpose.
         {
-            const int32_t totalPop = playerPtr->totalPopulation();
-
             // Real interest rate scales discretionary demand. Necessities
             // (wheat, clothing, processed food) stay inelastic; consumer
             // goods and advanced consumer goods respond to monetary policy.
@@ -607,27 +606,19 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
                     static_cast<float>(n) * luxuryMult));
             };
 
-            // Food: 1 Wheat per 3 citizens (supplementing tile food yields)
-            econ.totalNeeds[goods::WHEAT] += totalPop / 3;
-
-            // Consumer Goods: modern citizens expect manufactured products
-            if (totalPop > 3) {
-                econ.totalNeeds[goods::CONSUMER_GOODS]
-                    += scaleLuxury((totalPop - 3) / 3 + 1);
-            }
-
-            // Processed Food: larger cities need processed food, not just raw wheat
-            if (totalPop > 8) {
-                econ.totalNeeds[goods::PROCESSED_FOOD] += (totalPop - 8) / 4 + 1;
-            }
-
-            // Clothing: all citizens need clothing
-            econ.totalNeeds[goods::CLOTHING] += totalPop / 5 + 1;
-
-            // Advanced Consumer Goods: wealthy large populations
-            if (totalPop > 15) {
-                econ.totalNeeds[goods::ADV_CONSUMER_GOODS]
-                    += scaleLuxury((totalPop - 15) / 5 + 1);
+            // City by city, by the one rule local prices read too
+            // (cityConsumptionNeed): wheat, consumer goods, processed food,
+            // clothing, advanced consumer goods.
+            for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+                if (cityPtr == nullptr || cityPtr->owner() != playerPtr->id()) { continue; }
+                const int32_t pop = cityPtr->population();
+                econ.totalNeeds[goods::WHEAT] += cityConsumptionNeed(goods::WHEAT, pop);
+                econ.totalNeeds[goods::CLOTHING] += cityConsumptionNeed(goods::CLOTHING, pop);
+                econ.totalNeeds[goods::PROCESSED_FOOD] += cityConsumptionNeed(goods::PROCESSED_FOOD, pop);
+                econ.totalNeeds[goods::CONSUMER_GOODS] +=
+                    scaleLuxury(cityConsumptionNeed(goods::CONSUMER_GOODS, pop));
+                econ.totalNeeds[goods::ADV_CONSUMER_GOODS] +=
+                    scaleLuxury(cityConsumptionNeed(goods::ADV_CONSUMER_GOODS, pop));
             }
 
             // Actually consume these goods from stockpiles each turn

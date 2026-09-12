@@ -316,6 +316,28 @@ int32_t cancelRoutesToCity(aoc::game::GameState& gameState, aoc::hex::AxialCoord
  */
 void processLogisticsUnits(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
 
+/// Local prices (plan B5, 3.1): no state, derived from what a city needs and
+/// holds, so a route's worth is the spread between two cities.
+inline constexpr float LOCAL_PRICE_ELASTICITY = 0.6f;
+inline constexpr float LOCAL_PRICE_MIN        = 0.5f; ///< of the market price
+inline constexpr float LOCAL_PRICE_MAX        = 2.5f;
+inline constexpr float DESTINATION_SALE_CAP   = 1.40f;
+
+/// What a city of `population` consumes of `good` each turn, the population
+/// rule computePlayerNeeds sums: wheat, clothing, consumer goods, processed
+/// food and advanced consumer goods; zero for everything else.
+[[nodiscard]] int32_t cityConsumptionNeed(uint16_t goodId, int32_t population);
+
+/// The price `good` fetches in `city`: the market price scaled by how short
+/// the city is of it, ((need + 2) / (have + 2)) ^ elasticity, clamped to
+/// [0.5, 2.5] of the market. Need is the city's consumption, have its stock.
+[[nodiscard]] int32_t localPrice(const Market& market, uint16_t goodId, const aoc::game::City& city);
+
+/// What a destination's commerce adds to a sale there: Commercial Hub 0.10,
+/// Market 0.05, Bank 0.10, Stock Exchange 0.15, and a Harbor 0.10 for Sea
+/// routes; capped at 1.40.
+[[nodiscard]] float destinationSaleMultiplier(const aoc::game::City& city, TradeRouteType routeType);
+
 /// Preview information for a potential trade route (no side effects).
 struct TradeRouteEstimate {
     int32_t distanceTiles               = 0; ///< Path length in tiles.
@@ -327,9 +349,10 @@ struct TradeRouteEstimate {
 /**
  * @brief Estimate trade route income without establishing the route.
  *
- * Computes distance, route type, and a rough gold estimate based on
- * market price differentials between origin and destination stockpiles.
- * Used by the UI to show previews before the player confirms.
+ * Computes distance, route type, and a gold estimate from the spread
+ * between the origin's local prices and the destination's (times its sale
+ * multiplier) over the goods a trader would carry. Used by the UI to show
+ * previews before the player confirms, and by the AI's route choice.
  */
 [[nodiscard]] TradeRouteEstimate estimateTradeRouteIncome(const aoc::game::GameState& gameState,
                                                           const aoc::map::HexGrid& grid,

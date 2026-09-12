@@ -44,17 +44,62 @@
 
 namespace aoc::sim {
 
+int32_t cityConsumptionNeed(uint16_t goodId, int32_t population) {
+    const int32_t pop = std::max(0, population);
+    switch (goodId) {
+        case goods::WHEAT:              return pop / 3;
+        case goods::CLOTHING:           return pop / 5 + 1;
+        case goods::CONSUMER_GOODS:     return pop > 3 ? (pop - 3) / 3 + 1 : 0;
+        case goods::PROCESSED_FOOD:     return pop > 8 ? (pop - 8) / 4 + 1 : 0;
+        case goods::ADV_CONSUMER_GOODS: return pop > 15 ? (pop - 15) / 5 + 1 : 0;
+        default:                        return 0;
+    }
+}
+
+int32_t localPrice(const Market& market, uint16_t goodId, const aoc::game::City& city) {
+    const int32_t base = std::max(1, market.marketData(goodId).currentPrice);
+    const float need   = static_cast<float>(cityConsumptionNeed(goodId, city.population()));
+    const float have   = static_cast<float>(std::max(0, city.stockpile().getAmount(goodId)));
+    const float scale  = std::clamp(std::pow((need + 2.0f) / (have + 2.0f), LOCAL_PRICE_ELASTICITY),
+                                    LOCAL_PRICE_MIN, LOCAL_PRICE_MAX);
+    return std::max(1, static_cast<int32_t>(static_cast<float>(base) * scale + 0.5f));
+}
+
+float destinationSaleMultiplier(const aoc::game::City& city, TradeRouteType routeType) {
+    constexpr uint16_t MARKET         = 6u;
+    constexpr uint16_t BANK           = 20u;
+    constexpr uint16_t STOCK_EXCHANGE = 21u;
+    float mult = 1.0f;
+    for (const CityDistrictsComponent::PlacedDistrict& d : city.districts().districts) {
+        if (d.type == DistrictType::Commercial) {
+            mult += 0.10f;
+        }
+        if (d.type == DistrictType::Harbor && routeType == TradeRouteType::Sea) {
+            mult += 0.10f;
+        }
+        for (BuildingId bid : d.buildings) {
+            mult += (bid.value == MARKET) ? 0.05f : 0.0f;
+            mult += (bid.value == BANK) ? 0.10f : 0.0f;
+            mult += (bid.value == STOCK_EXCHANGE) ? 0.15f : 0.0f;
+        }
+    }
+    return std::min(mult, DESTINATION_SALE_CAP);
+}
+
 namespace {
 
-/// Select goods for trade, prioritizing what the destination needs most.
-/// Score: surplus * max(1, destDeficit) * marketPrice.
-/// This ensures traders carry high-value goods the destination actually wants.
-void selectTradeGoods(const CityStockpileComponent& originStock,
-                       const CityStockpileComponent* destStock,
+/// Select goods for trade by the spread between the two cities' local
+/// prices: what sells dearer there than here, weighted by the surplus. With
+/// no destination in view (a pickup reserved for a later leg) the market
+/// price stands in, and so it does when nothing has a positive spread.
+void selectTradeGoods(const aoc::game::City& origin,
+                       const aoc::game::City* dest,
                        const Market& market,
                        std::vector<TradeCargo>& outCargo,
                        int32_t maxGoods) {
     outCargo.clear();
+    const CityStockpileComponent& originStock = origin.stockpile();
+    const CityStockpileComponent* destStock   = dest != nullptr ? &dest->stockpile() : nullptr;
 
     struct ScoredGood {
         uint16_t goodId;
@@ -62,6 +107,7 @@ void selectTradeGoods(const CityStockpileComponent& originStock,
         float    score;
     };
     std::vector<ScoredGood> candidates;
+    std::vector<ScoredGood> fallback;
     candidates.reserve(originStock.goods.size() + originStock.exportBuffer.size());
 
     // WP-O: scan buffer + stockpile combined. Buffer entries are "ready
@@ -70,18 +116,14 @@ void selectTradeGoods(const CityStockpileComponent& originStock,
     // and tracking which goodIds have been seen.
     auto scoreCandidate = [&](uint16_t gid, int32_t total) {
         if (total <= 1) { return; }
-        int32_t surplus = total - 1;
-        int32_t destDeficit = 1;
-        if (destStock != nullptr) {
-            int32_t destAmount = destStock->getAmount(gid);
-            destDeficit = std::max(1, 5 - destAmount);
+        const int32_t surplus = total - 1;
+        const int32_t price   = std::max(1, market.marketData(gid).currentPrice);
+        fallback.push_back({gid, surplus, static_cast<float>(surplus) * static_cast<float>(price)});
+        if (dest == nullptr) { return; }
+        const int32_t spread = localPrice(market, gid, *dest) - localPrice(market, gid, origin);
+        if (spread > 0) {
+            candidates.push_back({gid, surplus, static_cast<float>(surplus) * static_cast<float>(spread)});
         }
-        int32_t price = market.marketData(gid).currentPrice;
-        if (price <= 0) { price = 1; }
-        float score = static_cast<float>(surplus)
-                    * static_cast<float>(destDeficit)
-                    * static_cast<float>(price);
-        candidates.push_back({gid, surplus, score});
     };
     std::unordered_map<uint16_t, int32_t> combined;
     for (const std::pair<const uint16_t, int32_t>& entry : originStock.goods) {
@@ -94,6 +136,9 @@ void selectTradeGoods(const CityStockpileComponent& originStock,
     }
     for (const std::pair<const uint16_t, int32_t>& entry : combined) {
         scoreCandidate(entry.first, entry.second);
+    }
+    if (candidates.empty()) {
+        candidates.swap(fallback);
     }
 
     // Total order: goodId breaks score ties. `candidates` is built by
@@ -249,7 +294,7 @@ void commitPickupReservation(aoc::game::City& seller,
     const int32_t slots = trader.maxCargoSlots(rail);
 
     std::vector<TradeCargo> planned;
-    selectTradeGoods(sellerStock, /*destStock*/ nullptr, market, planned, slots);
+    selectTradeGoods(seller, /*dest*/ nullptr, market, planned, slots);
 
     trader.pendingPickupCargo.clear();
     trader.pendingPickupCargo.reserve(planned.size());
@@ -896,7 +941,6 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     // Effective cargo = raw - moneyWeight (metal coins hog bay space under
     // CommodityMoney; paper/digital cost nothing).
     CityStockpileComponent& originStock = originCity->stockpile();
-    const CityStockpileComponent& destStock = destCity->stockpile();
     aoc::game::Player* ownerPtrForCargo = gameState.player(trader.owner);
     const MonetarySystemType ownerSys = (ownerPtrForCargo != nullptr)
         ? ownerPtrForCargo->monetary().system
@@ -912,7 +956,7 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     const int32_t baseSlots  = trader.effectiveCargoSlots(ownerSys, railOutbound);
     const int32_t cargoSlots = std::max(
         1, static_cast<int32_t>(static_cast<float>(baseSlots) * tradeMult));
-    selectTradeGoods(originStock, &destStock, market, trader.cargo, cargoSlots);
+    selectTradeGoods(*originCity, destCity, market, trader.cargo, cargoSlots);
     for (TradeCargo& c : trader.cargo) {
         // WP-O: pull from exportBuffer first (drains the queue), then
         // stockpile if buffer underflows. May load less than requested
@@ -2035,13 +2079,12 @@ TradeRouteEstimate estimateTradeRouteIncome(
     if (speed <= 0) { speed = 2; }
     estimate.roundTripTurns = (estimate.distanceTiles * 2) / speed + 1;
 
-    // Gold estimate: sum market value of top surplus goods that would be traded.
-    // Simple heuristic: look at origin surplus goods, price them at market value,
-    // then apply route type multiplier.
+    // Gold estimate: the spread on the goods a trader would carry, half the
+    // surplus of each, sold at the destination's local price and its sale
+    // multiplier, bought at the origin's.
     const CityStockpileComponent& originStock = originCity->stockpile();
-    const CityStockpileComponent& destStock   = destCity.stockpile();
+    const float saleMult = destinationSaleMultiplier(destCity, estimate.routeType);
 
-    // Collect origin surplus, scored by demand at destination
     struct ScoredGood {
         uint16_t goodId;
         int32_t  value;
@@ -2050,24 +2093,13 @@ TradeRouteEstimate estimateTradeRouteIncome(
 
     for (const std::pair<const uint16_t, int32_t>& entry : originStock.goods) {
         if (isCoinGood(entry.first)) { continue; } // money, not cargo: the sweep takes it
-        if (entry.second <= 0) { continue; }
-        int32_t marketPrice = market.price(entry.first);
-        if (marketPrice <= 0) { continue; }
-
-        // Demand multiplier: goods the destination lacks are worth more
-        int32_t destAmount = 0;
-        const std::unordered_map<uint16_t, int32_t>::const_iterator it =
-            destStock.goods.find(entry.first);
-        if (it != destStock.goods.end()) {
-            destAmount = it->second;
-        }
-        float demandMult = (destAmount == 0) ? 2.0f : 1.0f;
-
-        int32_t tradeAmount = entry.second / 2;  // Ship half surplus
-        if (tradeAmount <= 0) { tradeAmount = 1; }
-        int32_t value = static_cast<int32_t>(
-            static_cast<float>(tradeAmount * marketPrice) * demandMult);
-        scoredGoods.push_back({entry.first, value});
+        if (entry.second <= 1) { continue; }
+        const int32_t sells = static_cast<int32_t>(
+            static_cast<float>(localPrice(market, entry.first, destCity)) * saleMult);
+        const int32_t spread = sells - localPrice(market, entry.first, *originCity);
+        if (spread <= 0) { continue; }
+        const int32_t tradeAmount = std::min(12, std::max(1, (entry.second - 1) / 2)); // half the surplus, one slot
+        scoredGoods.push_back({entry.first, tradeAmount * spread});
     }
 
     // goodId tie-break for the same reason as the scoreCandidate sort above:

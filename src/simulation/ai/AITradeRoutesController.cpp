@@ -22,6 +22,7 @@
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <unordered_map>
 
 namespace aoc::sim::ai {
@@ -78,76 +79,81 @@ void AIController::manageTradeRoutes(aoc::game::GameState& gameState, aoc::map::
         }
     }
 
-    const aoc::sim::PlayerEconomyComponent& myEcon = gsPlayer->economy();
+    // Local prices per (city, good), memoised for this call: the scorer
+    // asks for the same city's price for every trader and every partner.
+    std::unordered_map<const aoc::game::City*, std::unordered_map<uint16_t, int32_t>> priceMemo;
+    const auto priceAt = [&](const aoc::game::City& city, uint16_t good) {
+        std::unordered_map<uint16_t, int32_t>& row = priceMemo[&city];
+        const std::unordered_map<uint16_t, int32_t>::iterator it = row.find(good);
+        if (it != row.end()) { return it->second; }
+        const int32_t price = localPrice(market, good, city);
+        row.emplace(good, price);
+        return price;
+    };
+    // The spread a leg earns: what `from` holds beyond one unit, sold at
+    // `to` (with its sale multiplier) against what it fetches at `from`.
+    const auto legValue = [&](const aoc::game::City& from, const aoc::game::City& to, float saleMult) {
+        float value = 0.0f;
+        for (const std::pair<const uint16_t, int32_t>& entry : from.stockpile().goods) {
+            if (entry.second <= 1 || isCoinGood(entry.first)) { continue; }
+            const float sells = static_cast<float>(priceAt(to, entry.first)) * saleMult;
+            const float spread = sells - static_cast<float>(priceAt(from, entry.first));
+            if (spread > 0.0f) {
+                value += spread * static_cast<float>(std::min(12, entry.second - 1));
+            }
+        }
+        return value;
+    };
 
     for (aoc::game::Unit* traderUnit : idleTraders) {
-        // Score each city as a trade destination based on complementary resources
+        // The route starts at the nearest own city, where the cargo is.
+        aoc::game::City* origin = nullptr;
+        int32_t originDist      = std::numeric_limits<int32_t>::max();
+        for (const std::unique_ptr<aoc::game::City>& c : gsPlayer->cities()) {
+            if (c == nullptr || c->owner() != this->m_player) { continue; }
+            const int32_t d = grid.distance(traderUnit->position(), c->location());
+            if (d < originDist) {
+                originDist = d;
+                origin     = c.get();
+            }
+        }
+        if (origin == nullptr) { continue; }
+        const bool originCoastal = grid.isCoastal(origin->location());
+
+        // Score each city as a destination by the spread on both legs.
         aoc::game::City* bestCity = nullptr;
         float bestScore = -1.0f;
 
         for (const std::unique_ptr<aoc::game::Player>& pPtr : gameState.players()) {
             for (const std::unique_ptr<aoc::game::City>& cityPtr : pPtr->cities()) {
-                if (cityPtr->location() == traderUnit->position()) { continue; }
+                if (cityPtr.get() == origin) { continue; }
                 // 2026-05-02: skip razed / invalid-owner cities. Founder list
                 // retains captured-then-razed cities with owner == INVALID;
                 // every trade-route attempt against those rejected as
                 // "no benefit / hostile" because gameState.player(255)==null.
                 if (cityPtr->owner() == aoc::INVALID_PLAYER) { continue; }
-                // 2026-05-02: skip cities owned by civs we're at war with or
-                // embargoing. Audit: 14k Trade-route-rejected logs were all
-                // from this collision — AI proposed routes to enemy capitals
-                // because score formula ignored war state. Pre-filter here
-                // so traders pick a peaceful partner immediately.
+                // Skip cities owned by civs we're at war with or embargoing.
                 if (cityPtr->owner() != this->m_player
                     && (diplomacy.isAtWar(this->m_player, cityPtr->owner())
                         || diplomacy.hasAnyEmbargo(this->m_player, cityPtr->owner()))) {
                     continue;
                 }
 
-                float score = 0.0f;
-                const int32_t dist =
-                    grid.distance(traderUnit->position(), cityPtr->location());
-                const float distPenalty =
-                    1.0f / static_cast<float>(std::max(1, dist));
-
+                const int32_t dist = grid.distance(origin->location(), cityPtr->location());
+                const float distPenalty = 1.0f / static_cast<float>(std::max(1, dist));
+                const TradeRouteType routeType =
+                    originCoastal && grid.isCoastal(cityPtr->location())
+                        ? TradeRouteType::Sea
+                        : TradeRouteType::Land;
+                float score = legValue(*origin, *cityPtr, destinationSaleMultiplier(*cityPtr, routeType)) +
+                              legValue(*cityPtr, *origin, destinationSaleMultiplier(*origin, routeType));
                 if (cityPtr->owner() != this->m_player) {
-                    const aoc::game::Player* destPlayerObj = gameState.player(cityPtr->owner());
-                    if (destPlayerObj != nullptr) {
-                        for (const std::pair<const uint16_t, int32_t>& need : myEcon.totalNeeds) {
-                            const int32_t destHas =
-                                cityPtr->stockpile().getAmount(need.first);
-                            if (destHas > 1) {
-                                score +=
-                                    static_cast<float>(std::min(destHas, need.second))
-                                    * static_cast<float>(
-                                          market.marketData(need.first).currentPrice);
-                            }
-                        }
-                        const aoc::sim::PlayerEconomyComponent& destEcon = destPlayerObj->economy();
-                        for (const std::pair<const uint16_t, int32_t>& theirNeed :
-                                 destEcon.totalNeeds) {
-                            int32_t weHave = 0;
-                            std::unordered_map<uint16_t, int32_t>::const_iterator supIt =
-                                myEcon.lastTurnProduction.find(theirNeed.first);
-                            if (supIt != myEcon.lastTurnProduction.end()) { weHave = supIt->second; }
-                            if (weHave > 1) {
-                                score +=
-                                    static_cast<float>(std::min(weHave, theirNeed.second))
-                                    * static_cast<float>(
-                                          market.marketData(theirNeed.first).currentPrice)
-                                    * 0.5f;
-                            }
-                        }
-                    }
-                    score += 50.0f;  // Foreign trade base bonus
-                } else {
-                    score += 10.0f;  // Internal trade: lower priority
+                    score += 10.0f; // foreign trade: the customs come home
                 }
-
                 score *= distPenalty;
                 if (score > bestScore) {
                     bestScore = score;
-                    bestCity = cityPtr.get();
+                    bestCity  = cityPtr.get();
                 }
             }
         }
