@@ -10,7 +10,9 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
+#include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 
@@ -132,7 +134,57 @@ std::vector<CasusBelliType> availableCasusBelli(const aoc::game::GameState& game
     return out;
 }
 
-bool aiAcceptsPeace(const aoc::game::GameState& gameState, PlayerId ai, PlayerId other) {
+int32_t economicCostOfWar(const aoc::game::GameState& gameState, const DiplomacyManager& diplomacy,
+                          PlayerId me, PlayerId target) {
+    if (me == target || me == INVALID_PLAYER || target == INVALID_PLAYER
+        || gameState.player(me) == nullptr || gameState.player(target) == nullptr) {
+        return 0;
+    }
+    // The tie a delivery refreshes already counts the value shipped and the
+    // routes running, and it decays once the shipments stop, so a war costs
+    // what the trade was recently worth rather than what it once was.
+    int32_t value = diplomacy.modifierAmount(me, target, TRADE_PARTNER_REASON);
+    for (const DiplomaticDeal& deal : gameState.deals().activeDeals) {
+        if (!deal.isAccepted || deal.isBroken) {
+            continue;
+        }
+        const bool thisPair = (deal.playerA == me && deal.playerB == target)
+                              || (deal.playerA == target && deal.playerB == me);
+        if (!thisPair) {
+            continue;
+        }
+        for (const DealTerm& term : deal.terms) {
+            if (term.toPlayer != me) {
+                continue; // only what comes to us is ours to lose
+            }
+            value += term.goldPerTurn;
+            if (term.type == DealTermType::SupplyContract
+                || term.type == DealTermType::GoodsExchange) {
+                value += term.goodAmount; // the goods we lean on them to ship
+            }
+        }
+    }
+    return value;
+}
+
+int32_t warCostRelationPoints(const aoc::game::GameState& gameState,
+                              const DiplomacyManager& diplomacy, PlayerId me, PlayerId target) {
+    const aoc::game::Player* p = gameState.player(me);
+    if (p == nullptr) {
+        return 0;
+    }
+    const int32_t value = economicCostOfWar(gameState, diplomacy, me, target);
+    if (value <= 0) {
+        return 0;
+    }
+    const LeaderBehavior& beh = leaderPersonality(p->civId()).behavior;
+    const int32_t points =
+        static_cast<int32_t>(static_cast<float>(value) * beh.economicFocus) / WAR_COST_VALUE_DIVISOR;
+    return std::min(WAR_COST_MAX_POINTS, points);
+}
+
+bool aiAcceptsPeace(const aoc::game::GameState& gameState, const DiplomacyManager& diplomacy,
+                    PlayerId ai, PlayerId other) {
     const aoc::game::Player* me   = gameState.player(ai);
     const aoc::game::Player* them = gameState.player(other);
     if (me == nullptr || them == nullptr) {
@@ -145,6 +197,13 @@ bool aiAcceptsPeace(const aoc::game::GameState& gameState, PlayerId ai, PlayerId
     // behind it takes the peace it is offered; without this the winning side
     // always refused and the loser had no way out but destruction.
     if (me->warWeariness().weariness >= PEACE_WEARINESS_TURNS) {
+        return true;
+    }
+
+    // A partner worth keeping buys peace (plan 4.2). The tie decays across the
+    // war, so what this reads is the trade that was still running when it
+    // started, not a memory of one long finished.
+    if (economicCostOfWar(gameState, diplomacy, ai, other) >= PEACE_TRADE_VALUE) {
         return true;
     }
 
@@ -186,6 +245,14 @@ ErrorCode requestDeclareWar(aoc::game::GameState& gameState, DiplomacyManager& d
     if (justified != ErrorCode::Ok) {
         return justified;
     }
+    // Trade is a reason not to fight (plan 4.2). Every AI war path reaches the
+    // field through this request, the relation-gated roll, the opportunistic
+    // one and the Domination campaign alike, so one check covers all three. A
+    // human is told the cost and decides for itself.
+    if (actor != gameState.humanPlayerId()
+        && warCostRelationPoints(gameState, diplomacy, actor, target) > WAR_COST_VETO_POINTS) {
+        return ErrorCode::InvalidState;
+    }
     diplomacy.declareWar(actor, target, cb, obligations, &gameState, currentTurn);
     return ErrorCode::Ok;
 }
@@ -203,7 +270,7 @@ ErrorCode requestMakePeace(aoc::game::GameState& gameState, DiplomacyManager& di
     if (rel.warDeclaredOnTurn >= 0 && currentTurn - rel.warDeclaredOnTurn < WAR_MIN_TURNS) {
         return ErrorCode::InvalidState;
     }
-    if (target != gameState.humanPlayerId() && !aiAcceptsPeace(gameState, target, actor)) {
+    if (target != gameState.humanPlayerId() && !aiAcceptsPeace(gameState, diplomacy, target, actor)) {
         return ErrorCode::InvalidState; // they are winning and refuse
     }
     diplomacy.makePeace(actor, target);

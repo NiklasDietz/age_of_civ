@@ -50,6 +50,21 @@ inline constexpr int32_t EMBASSY_GOLD           = 50;
 inline constexpr int32_t FRIENDSHIP_MIN_SCORE   = 10; ///< Friendly stance
 inline constexpr int32_t OPEN_BORDERS_MIN_SCORE = 10;
 inline constexpr int32_t COLONIAL_ERA_GAP       = 2;
+
+/// Trade is a reason not to fight (plan B6, 4.2).
+///
+/// economicCostOfWar values what a civ stands to lose by fighting a partner:
+/// the decayed "Trade partner" tie that every delivery refreshes, which already
+/// carries both the value shipped and the routes running, plus the gold
+/// standing deals pay it each turn and the goods it leans on them to ship.
+/// warCostRelationPoints turns that into relation points, weighted by how much
+/// the leader cares about commerce at all. An AI declaration is refused above
+/// WAR_COST_VETO_POINTS, and a war worth PEACE_TRADE_VALUE a turn is one the AI
+/// will end when asked.
+inline constexpr int32_t WAR_COST_MAX_POINTS    = 30;
+inline constexpr int32_t WAR_COST_VALUE_DIVISOR = 4;
+inline constexpr int32_t WAR_COST_VETO_POINTS   = 10;
+inline constexpr int32_t PEACE_TRADE_VALUE      = 8;
 inline constexpr int32_t DENOUNCE_PENALTY       = -20;
 inline constexpr int32_t FRIENDSHIP_BONUS       = 15;
 inline constexpr int32_t DELEGATION_BONUS       = 3;
@@ -73,7 +88,19 @@ inline constexpr int32_t EMBASSY_BONUS          = 5;
 
 /// The AI's own peace rule (AIDiplomacyController): it agrees when the other
 /// side's military outnumbers its own beyond its personality threshold.
-[[nodiscard]] bool aiAcceptsPeace(const aoc::game::GameState& gameState, PlayerId ai, PlayerId other);
+[[nodiscard]] bool aiAcceptsPeace(const aoc::game::GameState& gameState,
+                                  const DiplomacyManager& diplomacy, PlayerId ai, PlayerId other);
+
+/// What `me` would lose by going to war with `target`, in gold a turn.
+[[nodiscard]] int32_t economicCostOfWar(const aoc::game::GameState& gameState,
+                                        const DiplomacyManager& diplomacy, PlayerId me,
+                                        PlayerId target);
+
+/// economicCostOfWar as relation points, weighted by the leader's economicFocus
+/// and capped at WAR_COST_MAX_POINTS. Zero when the two do not trade.
+[[nodiscard]] int32_t warCostRelationPoints(const aoc::game::GameState& gameState,
+                                            const DiplomacyManager& diplomacy, PlayerId me,
+                                            PlayerId target);
 
 ErrorCode requestDeclareWar(aoc::game::GameState& gameState, DiplomacyManager& diplomacy, PlayerId actor,
                             PlayerId target, CasusBelliType cb, int32_t currentTurn,

@@ -276,14 +276,14 @@ TEST_CASE("an AI refuses peace while it is winning and accepts when outnumbered"
     aoc::test::addUnitAt(f.world, PlayerId{0}, WARRIOR, 5, 4);
     REQUIRE(aoc::sim::requestDeclareWar(gs, f.d, PlayerId{1}, PlayerId{0},
                                         CasusBelliType::SurpriseWar, 10) == ErrorCode::Ok);
-    CHECK_FALSE(aoc::sim::aiAcceptsPeace(gs, PlayerId{1}, PlayerId{0}));
+    CHECK_FALSE(aoc::sim::aiAcceptsPeace(gs, f.d, PlayerId{1}, PlayerId{0}));
     CHECK(aoc::sim::requestMakePeace(gs, f.d, PlayerId{0}, PlayerId{1}, 30) ==
           ErrorCode::InvalidState);
 
     for (int32_t i = 0; i < 12; ++i) {
         aoc::test::addUnitAt(f.world, PlayerId{0}, WARRIOR, 3 + (i % 6), 2 + i / 6);
     }
-    CHECK(aoc::sim::aiAcceptsPeace(gs, PlayerId{1}, PlayerId{0}));
+    CHECK(aoc::sim::aiAcceptsPeace(gs, f.d, PlayerId{1}, PlayerId{0}));
     CHECK(aoc::sim::requestMakePeace(gs, f.d, PlayerId{0}, PlayerId{1}, 30) == ErrorCode::Ok);
 }
 
