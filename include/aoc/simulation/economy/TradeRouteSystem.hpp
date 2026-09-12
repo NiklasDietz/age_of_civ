@@ -359,6 +359,22 @@ inline constexpr int32_t SEA_SLOTS_WITHOUT_HARBOR = 4;
 [[nodiscard]] int32_t legCargoSlots(const TraderComponent& trader, MonetarySystemType system,
                                     bool onRail, float tradeMult, const aoc::game::City& unloadingAt);
 
+/// Trade ties the two courts together (plan B6, 4.1). Every foreign delivery
+/// refreshes a "Trade partner" relation modifier on both directions, worth the
+/// delivered value over TRADE_PARTNER_VALUE_DIVISOR plus TRADE_PARTNER_PER_ROUTE
+/// a route, capped, and decaying over TRADE_PARTNER_TURNS once the deliveries
+/// stop. It is refreshed rather than stacked, so a standing route is worth a
+/// standing bonus and not an ever-growing one.
+inline constexpr char TRADE_PARTNER_REASON[]        = "Trade partner";
+inline constexpr int32_t TRADE_PARTNER_TURNS        = 20;
+inline constexpr int32_t TRADE_PARTNER_MAX          = 15;
+inline constexpr int32_t TRADE_PARTNER_VALUE_DIVISOR = 40;
+inline constexpr int32_t TRADE_PARTNER_PER_ROUTE    = 2;
+
+/// Live Trader routes running between `a` and `b`, either direction. What
+/// makes two civs trade partners (LeaderPersonality's IsTradePartner agenda).
+[[nodiscard]] int32_t routesBetween(const aoc::game::GameState& gameState, PlayerId a, PlayerId b);
+
 /// Most of a delivery's price customs may ever take, premium included.
 inline constexpr float MAX_IMPORT_TARIFF = 0.5f;
 

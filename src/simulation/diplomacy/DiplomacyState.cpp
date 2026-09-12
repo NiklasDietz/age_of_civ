@@ -98,6 +98,34 @@ void DiplomacyManager::addModifier(PlayerId a, PlayerId b, RelationModifier modi
     }
 }
 
+void DiplomacyManager::refreshModifier(PlayerId a, PlayerId b, const std::string& reason,
+                                       int32_t amount, int32_t turnsRemaining) {
+    const auto refreshOne = [&](PlayerId from, PlayerId to) {
+        std::vector<RelationModifier>& mods = this->relation(from, to).modifiers;
+        for (RelationModifier& existing : mods) {
+            if (existing.reason == reason) {
+                existing.amount         = amount;
+                existing.turnsRemaining = turnsRemaining;
+                return;
+            }
+        }
+        mods.push_back(RelationModifier{reason, amount, turnsRemaining});
+    };
+    refreshOne(a, b);
+    if (a != b) {
+        refreshOne(b, a);
+    }
+}
+
+int32_t DiplomacyManager::modifierAmount(PlayerId a, PlayerId b, const std::string& reason) const {
+    for (const RelationModifier& existing : this->relation(a, b).modifiers) {
+        if (existing.reason == reason) {
+            return existing.amount;
+        }
+    }
+    return 0;
+}
+
 void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target,
                                    CasusBelliType cb,
                                    AllianceObligationTracker* allianceTracker,

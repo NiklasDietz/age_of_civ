@@ -4,6 +4,7 @@
  */
 
 #include "aoc/game/GameState.hpp"
+#include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/game/Unit.hpp"
@@ -161,7 +162,10 @@ static bool checkCondition(const aoc::game::GameState& gameState,
             return false;  // Would need government comparison
 
         case AgendaCondition::IsTradePartner:
-            return false;  // Would need trade route check
+            // A live Trader running either way is what makes them partners
+            // (plan 4.1). This returned false for every leader and every
+            // target, so the agenda existed on paper only.
+            return aoc::sim::routesBetween(gameState, leader, target) > 0;
 
         case AgendaCondition::HasNuclearWeapons: {
             const aoc::game::Player* targetPlayer = gameState.player(target);

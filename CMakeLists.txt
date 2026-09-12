@@ -1054,6 +1054,7 @@ if(AOC_BUILD_TESTS)
         test_route_margin
         test_trade_policy_hooks
         test_blockade
+        test_trade_interdependence
         test_tax_rate_clamp
         test_ai_goods_purchase
         test_ai_offers_goods

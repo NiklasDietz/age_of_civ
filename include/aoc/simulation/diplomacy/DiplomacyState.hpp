@@ -258,6 +258,17 @@ public:
     /// Add a relation modifier between two players.
     void addModifier(PlayerId a, PlayerId b, RelationModifier modifier);
 
+    /// Add or refresh the modifier named `reason` on both directions: if one
+    /// is already there its amount and timer are replaced, otherwise it is
+    /// appended. For standing facts that recur every turn, like a live trade
+    /// route, where addModifier would stack a new entry per delivery until
+    /// the relation was pinned at its cap. Grievances refresh the same way.
+    void refreshModifier(PlayerId a, PlayerId b, const std::string& reason, int32_t amount,
+                         int32_t turnsRemaining);
+
+    /// The amount of the modifier named `reason`, or 0 if there is none.
+    [[nodiscard]] int32_t modifierAmount(PlayerId a, PlayerId b, const std::string& reason) const;
+
     /// Add a reputation modifier between two players. Reputation is separate from
     /// relation score: it tracks behavioral trustworthiness (toll payment, border
     /// respect, agreement honoring). AI reads it for toll rates and diplomacy.

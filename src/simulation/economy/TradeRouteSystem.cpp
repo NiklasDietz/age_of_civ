@@ -125,6 +125,28 @@ float routeYieldMultiplier(const aoc::game::GameState& gameState, const Diplomac
     return yield;
 }
 
+int32_t routesBetween(const aoc::game::GameState& gameState, PlayerId a, PlayerId b) {
+    if (a == b || a == INVALID_PLAYER || b == INVALID_PLAYER) {
+        return 0;
+    }
+    int32_t routes = 0;
+    for (int32_t side = 0; side < 2; ++side) {
+        const PlayerId owner = side == 0 ? a : b;
+        const PlayerId other = side == 0 ? b : a;
+        const aoc::game::Player* p = gameState.player(owner);
+        if (p == nullptr) {
+            continue;
+        }
+        for (const std::unique_ptr<aoc::game::Unit>& u : p->units()) {
+            if (u != nullptr && u->typeDef().unitClass == UnitClass::Trader &&
+                u->trader().owner != INVALID_PLAYER && u->trader().destOwner == other) {
+                ++routes;
+            }
+        }
+    }
+    return routes;
+}
+
 float importTariffRate(const aoc::game::Player& importer, PlayerId seller) {
     const float rate = importer.tariffs().effectiveImportTariff(seller) *
                        importer.tradeAgreements().tariffModifier(seller);
@@ -1577,6 +1599,18 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 if (sellerPlayer != nullptr && buyerPlayer != nullptr) {
                     sellerPlayer->currencyExchange().tradeBalance += goldEarned;
                     buyerPlayer->currencyExchange().tradeBalance  -= goldEarned;
+                }
+
+                // And the two courts notice (plan 4.1): a standing trade tie is
+                // worth a standing goodwill, refreshed by each delivery and
+                // decayed by tickModifiers once the deliveries stop.
+                if (diplomacy != nullptr) {
+                    const int32_t worth = std::min(
+                        TRADE_PARTNER_MAX,
+                        static_cast<int32_t>(goldEarned / TRADE_PARTNER_VALUE_DIVISOR) +
+                            TRADE_PARTNER_PER_ROUTE * routesBetween(gameState, trader.owner, cityOwner));
+                    diplomacy->refreshModifier(trader.owner, cityOwner, TRADE_PARTNER_REASON, worth,
+                                               TRADE_PARTNER_TURNS);
                 }
             }
 
