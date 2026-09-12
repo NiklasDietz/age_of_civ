@@ -674,12 +674,15 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         // A Barter civ with no coins has no money to fund research with and
         // no way to earn any; charging it drove every such civ to the 50%
         // floor for the half of a game most of them spend in Barter.
-        // Nominal at the civ's price level: scholars charge what things cost.
+        // No money, no funding charged (plan 2.5): a civ whose treasury and
+        // people hold no coin at all is not charged and not penalised; one
+        // with money pays what its treasury can, nominal at its price level.
+        const bool hasMoney = gsPlayer->treasury() +
+                                  std::max<CurrencyAmount>(0, gsPlayer->monetary().privateSpecie) > 0;
         const CurrencyAmount fundingCost =
-            moneyless(*gsPlayer)
-                ? 0
-                : static_cast<CurrencyAmount>(science * SCIENCE_FUNDING_COST *
-                                              gsPlayer->monetary().priceLevel);
+            hasMoney ? static_cast<CurrencyAmount>(science * SCIENCE_FUNDING_COST *
+                                                   gsPlayer->monetary().priceLevel)
+                     : 0;
         if (fundingCost > 0) {
             if (gsPlayer->treasury() >= fundingCost) {
                 gsPlayer->addGold(-fundingCost, aoc::sim::MoneyFlow::domestic(player)); // scholars are our people

@@ -1979,8 +1979,6 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
     if (gsPlayer == nullptr) { return; }
 
     aoc::sim::MonetaryStateComponent& myState = gsPlayer->monetary();
-    const int32_t cityCount = gsPlayer->ownedCityCount();
-    const int32_t playerCount = gameState.playerCount();
 
     // Dynamic gold allocation: raise goldAllocation when treasury is low,
     // lower it when flush with gold to boost science/luxury. If any city is
@@ -2007,40 +2005,6 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
             myState.luxuryAllocation  = 1.0f - myState.goldAllocation - myState.scienceAllocation;
         }
         myState.luxuryAllocation = std::max(myState.luxuryAllocation, 0.10f);
-    }
-
-    // Count distinct trade partners from global trade routes. PlayerId is a
-    // small bounded index, so a stack bitset replaces the per-call heap-backed
-    // unordered_set while producing the identical distinct count (audit WP-10 #6).
-    int32_t tradePartnerCount = 0;
-    {
-        std::array<bool, MAX_PLAYERS> partnerSeen{};
-        auto markPartner = [&](PlayerId pid) {
-            if (pid < MAX_PLAYERS && !partnerSeen[pid]) {
-                partnerSeen[pid] = true;
-                ++tradePartnerCount;
-            }
-        };
-        // Live Traders, major civs only: markPartner's MAX_PLAYERS guard
-        // leaves city-state destinations out.
-        const aoc::game::Player* me = gameState.player(this->m_player);
-        if (me != nullptr) {
-            for (const std::unique_ptr<aoc::game::Unit>& unit : me->units()) {
-                const aoc::sim::TraderComponent& trader = unit->trader();
-                if (trader.owner != INVALID_PLAYER && trader.destOwner != INVALID_PLAYER &&
-                    trader.destOwner != this->m_player) {
-                    markPartner(trader.destOwner);
-                }
-            }
-        }
-    }
-
-    // Compute GDP rank among all players
-    int32_t gdpRank = 1;
-    for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
-        if (other->id() != this->m_player && other->monetary().gdp > myState.gdp) {
-            ++gdpRank;
-        }
     }
 
     // Fiat money printing: if on fiat and in deficit, print money to cover
@@ -2093,78 +2057,8 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
         }
     }
 
-    MonetarySystemType nextTarget = MonetarySystemType::Count;
-    switch (myState.system) {
-        case MonetarySystemType::Barter:
-            nextTarget = MonetarySystemType::CommodityMoney;
-            break;
-        case MonetarySystemType::CommodityMoney:
-            nextTarget = MonetarySystemType::GoldStandard;
-            break;
-        case MonetarySystemType::GoldStandard:
-            nextTarget = MonetarySystemType::FiatMoney;
-            break;
-        case MonetarySystemType::FiatMoney:
-            nextTarget = MonetarySystemType::Digital;
-            break;
-        default:
-            return;
-    }
-
-    if ((nextTarget == MonetarySystemType::FiatMoney
-         || nextTarget == MonetarySystemType::Digital)
-        && gdpRank > 2) {
-        return;
-    }
-
-    // Digital requires a working electric grid: at least one city with
-    // energySupply >= energyDemand (i.e. actually powered, not just built).
-    if (nextTarget == MonetarySystemType::Digital) {
-        bool hasPower = false;
-        for (const std::unique_ptr<aoc::game::City>& cityPtr : gsPlayer->cities()) {
-            if (cityPtr == nullptr) { continue; }
-            const CityPowerComponent pw = computeCityPower(gameState, grid, *cityPtr);
-            if (pw.energySupply > 0 && pw.energySupply >= pw.energyDemand) {
-                hasPower = true;
-                break;
-            }
-        }
-        if (!hasPower) {
-            if (myState.turnsInCurrentSystem % 50 == 0 && myState.turnsInCurrentSystem > 0) {
-                LOG_INFO("AI player %u cannot transition to Digital: no power plants built",
-                         static_cast<unsigned>(this->m_player));
-            }
-            return;
-        }
-    }
-
-    const aoc::game::Player* techPlayer = gameState.player(this->m_player);
-    const ErrorCode result               = myState.canTransition(
-        nextTarget, cityCount,
-        [techPlayer](aoc::TechId t) {
-            return techPlayer != nullptr && techPlayer->hasResearched(t);
-        },
-        tradePartnerCount, gdpRank, playerCount);
-    if (result == ErrorCode::Ok) {
-        myState.transitionTo(nextTarget);
-
-        LOG_INFO("AI player %u transitioned to %.*s",
-                 static_cast<unsigned>(this->m_player),
-                 static_cast<int>(monetarySystemName(nextTarget).size()),
-                 monetarySystemName(nextTarget).data());
-    } else {
-        if (myState.turnsInCurrentSystem % 50 == 0 && myState.turnsInCurrentSystem > 0) {
-            LOG_INFO("AI player %u cannot transition to %.*s: "
-                     "strength=%d coins=%d cities=%d trades=%d inflation=%.2f",
-                     static_cast<unsigned>(this->m_player),
-                     static_cast<int>(monetarySystemName(nextTarget).size()),
-                     monetarySystemName(nextTarget).data(),
-                     myState.currencyStrength(),
-                     myState.totalCoinCount(),
-                     cityCount, tradePartnerCount,
-                     static_cast<double>(myState.inflationRate));
-        }
-    }
+    // Adoption of the next regime is aiChooseMonetaryRegime's call
+    // (AIEconomicStrategy.cpp), through the same request a human uses.
 }
 
 // ============================================================================

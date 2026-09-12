@@ -1,4 +1,5 @@
 #include "aoc/debug/GameControlValidation.hpp"
+#include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/city/DistrictAdjacency.hpp"
 
 #include "aoc/simulation/city/District.hpp"  // BUILDING_DEFS, DISTRICT_TYPE_COUNT
@@ -70,6 +71,26 @@ std::string_view dealCommandError(const ProposeDealCommand& cmd) {
         if (cmd.contractTurns <= 0 || cmd.contractTurns > aoc::sim::SUPPLY_CONTRACT_MAX_TURNS) {
             return "contractTurns out of range";
         }
+    }
+    return {};
+}
+
+std::string_view regimeCommandError(const MonetaryRegimeCommand& cmd) {
+    if (cmd.player >= MAX_PLAYERS) {
+        return "player out of range";
+    }
+    if (cmd.target == 0 || cmd.target >= static_cast<uint8_t>(aoc::sim::MonetarySystemType::Count)) {
+        return "target must be a monetary system above Barter";
+    }
+    if (cmd.tier > static_cast<uint8_t>(aoc::sim::CoinTier::Gold)) {
+        return "tier must be None, Copper, Silver or Gold";
+    }
+    const bool coinage = cmd.target == static_cast<uint8_t>(aoc::sim::MonetarySystemType::CommodityMoney);
+    if (coinage && cmd.tier == static_cast<uint8_t>(aoc::sim::CoinTier::None)) {
+        return "coinage needs a metal";
+    }
+    if (!coinage && cmd.tier != static_cast<uint8_t>(aoc::sim::CoinTier::None)) {
+        return "only coinage takes a metal";
     }
     return {};
 }

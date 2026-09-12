@@ -4,6 +4,7 @@
  */
 
 #include "aoc/app/Application.hpp"
+#include "aoc/simulation/monetary/MonetaryActions.hpp"
 #include "aoc/simulation/city/CityActions.hpp"
 #include "aoc/app/UnitSelection.hpp"
 #include "aoc/core/PathGuard.hpp"
@@ -7279,6 +7280,15 @@ void Application::handleEndTurn() {
                 this->m_techScreen.setGrid(&this->m_hexGrid);
                 this->m_techScreen.open(this->m_uiManager);
             }
+        }
+
+        // Coinage first within reach: a Mint, metal in hand, the stock to
+        // carry a treasury. The Economy screen holds the decision.
+        if (!this->m_coinageNotified && aoc::sim::coinageWithinReach(this->m_gameState, 0)) {
+            this->m_coinageNotified = true;
+            this->m_eventLog.addEvent("Coinage is within reach");
+            this->m_notificationManager.push(
+                "Coinage is within reach: adopt it on the Economy screen", 5.0f, 0.9f, 0.75f, 0.3f);
         }
 
         // Units waiting for the human to pick a promotion (they no longer auto-promote).

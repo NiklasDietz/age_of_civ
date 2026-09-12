@@ -251,10 +251,12 @@ inline constexpr std::array<MonetaryTransitionReq, 4> MONETARY_TRANSITIONS = {{
     {MonetarySystemType::GoldStandard,   TechId{9}, 20,   2, 0, 0, 1.0f},
     // Gold Standard -> Fiat: Banking (TechId{9}). Printing is TechId{55} and
     // Economics TechId{13}; neither is checked by this row.
-    // Lowered currency strength requirement. Needs 3+ trade partners (the trade
-    // volume that makes metal coins impractical, like Song Dynasty Sichuan).
-    // Max inflation 15%: must demonstrate monetary discipline first.
-    {MonetarySystemType::FiatMoney,      TechId{9}, 75,   2, 5, 3, 0.15f},
+    // Lowered currency strength requirement. Needs 2 live trade partners (the
+    // trade volume that makes metal coins impractical, like Song Dynasty
+    // Sichuan; the threshold was 3, which seed-42 maps fence most land off
+    // from). Inflation under 5%: must demonstrate monetary discipline first.
+    // requestSetMonetaryRegime adds Printing or Economics on top of Banking.
+    {MonetarySystemType::FiatMoney,      TechId{9}, 75,   2, 5, 2, 0.05f},
     // Fiat -> Digital: late-game electronic settlement. Needs sustained
     // stability. "Computers" (TechId{16}) gates access; low inflation and a
     // mature economy are required.
@@ -420,6 +422,12 @@ struct MonetaryStateComponent {
 
     /// Recompute the effective coin tier from actual coin reserves.
     void updateCoinTier() {
+        // A standard chosen at adoption (plan 2.5) is the coinage, whatever
+        // else has been minted since.
+        if (this->coinageStandard != CoinTier::None) {
+            this->effectiveCoinTier = this->coinageStandard;
+            return;
+        }
         if (this->goldBarReserves >= COIN_TIER_THRESHOLD) {
             this->effectiveCoinTier = CoinTier::Gold;
         } else if (this->silverCoinReserves >= COIN_TIER_THRESHOLD) {

@@ -8,6 +8,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/economy/MonopolyPricing.hpp"
 #include "aoc/simulation/ai/AIEconomicStrategy.hpp"
+#include "aoc/simulation/monetary/MonetaryActions.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/FiscalPolicy.hpp"
 #include "aoc/simulation/monetary/CentralBank.hpp"
@@ -257,6 +258,39 @@ void aiPrepareIndustrialRevolution(aoc::game::GameState& /*gameState*/,
 // Master economic strategy
 // ============================================================================
 
+/// The regime decision (plan 2.5), through the one request. Coinage as soon
+/// as it is within reach, in the metal the Mint has favoured; notes once the
+/// people hold twenty coin and a partner trades with us; fiat when the gates
+/// pass and inflation is under five percent; digital when it can.
+void aiChooseMonetaryRegime(aoc::game::GameState& gameState, PlayerId player) {
+    const aoc::game::Player* p = gameState.player(player);
+    if (p == nullptr) { return; }
+    const MonetaryStateComponent& state = p->monetary();
+    switch (state.system) {
+        case MonetarySystemType::Barter:
+            if (coinageWithinReach(gameState, player)) {
+                (void)requestSetMonetaryRegime(gameState, player, MonetarySystemType::CommodityMoney,
+                                               preferredCoinTier(state));
+            }
+            break;
+        case MonetarySystemType::CommodityMoney:
+            if (state.privateSpecie >= 20 && livePartnerCount(gameState, player) >= 1) {
+                (void)requestSetMonetaryRegime(gameState, player, MonetarySystemType::GoldStandard);
+            }
+            break;
+        case MonetarySystemType::GoldStandard:
+            if (state.inflationRate < 0.05f) {
+                (void)requestSetMonetaryRegime(gameState, player, MonetarySystemType::FiatMoney);
+            }
+            break;
+        case MonetarySystemType::FiatMoney:
+            (void)requestSetMonetaryRegime(gameState, player, MonetarySystemType::Digital);
+            break;
+        default:
+            break;
+    }
+}
+
 void aiEconomicStrategy(aoc::game::GameState& gameState,
                         aoc::map::HexGrid& grid,
                         const Market& market,
@@ -271,6 +305,7 @@ void aiEconomicStrategy(aoc::game::GameState& gameState,
     aiManageInfrastructure(gameState, grid, player);
     aiCrisisResponse(gameState, player);
     aiPrepareIndustrialRevolution(gameState, market, player);
+    aiChooseMonetaryRegime(gameState, player);
 }
 
 } // namespace aoc::sim

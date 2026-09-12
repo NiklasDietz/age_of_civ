@@ -638,6 +638,7 @@ private:
     /// wins would silently drop one. Drained fully, in received order,
     /// once per frame on the main thread; `EndTurnCommand`s run last
     /// within a drain pass regardless of queue position.
+    bool m_coinageNotified = false; ///< the "coinage within reach" notice, once per game
     std::mutex m_pendingCommandsMutex;
     std::deque<aoc::debug::GameControlCommand> m_pendingCommands;
     /// Main thread only: drain and execute every queued command.
@@ -654,6 +655,7 @@ private:
     void executeGameControlCommand(const aoc::debug::MergeUnitsCommand& cmd);
     void executeGameControlCommand(const aoc::debug::CityDispositionCommand& cmd);
     void executeGameControlCommand(const aoc::debug::RetireGreatPersonCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::MonetaryRegimeCommand& cmd);
     void executeGameControlCommand(const aoc::debug::NuclearStrikeCommand& cmd);
     void executeGameControlCommand(const aoc::debug::AssignGovernorCommand& cmd);
     void executeGameControlCommand(const aoc::debug::PromoteGovernorCommand& cmd);

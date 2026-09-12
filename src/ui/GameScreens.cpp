@@ -5,6 +5,7 @@
 
 #include "aoc/simulation/city/CityScience.hpp"
 #include "aoc/ui/GameScreens.hpp"
+#include "aoc/simulation/monetary/MonetaryActions.hpp"
 #include "aoc/ui/StyleTokens.hpp"
 #include "aoc/ui/Theme.hpp"
 #include "aoc/ui/UIManager.hpp"
@@ -2095,6 +2096,43 @@ void EconomyScreen::open(UIManager& ui) {
 
         (void)ui.createButton(taxRow, {0.0f, 0.0f, 80.0f, 22.0f}, std::move(minusBtn));
         (void)ui.createButton(taxRow, {0.0f, 0.0f, 80.0f, 22.0f}, std::move(plusBtn));
+
+        // The regime row (plan 2.5): where the money stands, and the one
+        // decision that moves it to the next stage.
+        {
+            std::string pools = "Treasury " + std::to_string(monetary->treasury) + "  People " +
+                                std::to_string(monetary->privateSpecie) + "  Notes " +
+                                std::to_string(monetary->privateNotes) + "  Bullion " +
+                                std::to_string(monetary->bullion) + "  Arrears " +
+                                std::to_string(owningPlayer->unpaidLastTurn());
+            (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 16.0f},
+                                 LabelData{std::move(pools), tokens::TEXT_HEADER, 11.0f});
+            const uint8_t nextOrd = static_cast<uint8_t>(monetary->system) + 1u;
+            if (nextOrd < static_cast<uint8_t>(aoc::sim::MonetarySystemType::Count)) {
+                const aoc::sim::MonetarySystemType next =
+                    static_cast<aoc::sim::MonetarySystemType>(nextOrd);
+                const aoc::sim::CoinTier tier =
+                    next == aoc::sim::MonetarySystemType::CommodityMoney
+                        ? aoc::sim::preferredCoinTier(*monetary)
+                        : aoc::sim::CoinTier::None;
+                ButtonData regimeBtn;
+                regimeBtn.label = "Adopt " + std::string(aoc::sim::monetarySystemName(next)) +
+                                  (tier != aoc::sim::CoinTier::None
+                                       ? " (" + std::string(aoc::sim::coinTierName(tier)) + ")"
+                                       : std::string());
+                regimeBtn.fontSize     = 11.0f;
+                regimeBtn.normalColor  = tokens::BRONZE_BASE;
+                regimeBtn.cornerRadius = 3.0f;
+                regimeBtn.onClick      = [gsPtr, player, next, tier]() {
+                    const aoc::ErrorCode rc =
+                        aoc::sim::requestSetMonetaryRegime(*gsPtr, player, next, tier);
+                    LOG_INFO("Adopt %.*s: %.*s", static_cast<int>(aoc::sim::monetarySystemName(next).size()),
+                             aoc::sim::monetarySystemName(next).data(),
+                             static_cast<int>(aoc::describeError(rc).size()), aoc::describeError(rc).data());
+                };
+                (void)ui.createButton(innerPanel, {0.0f, 0.0f, 220.0f, 22.0f}, std::move(regimeBtn));
+            }
+        }
     }
 
     // "Create Trade Route" button

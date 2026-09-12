@@ -1049,6 +1049,7 @@ if(AOC_BUILD_TESTS)
         test_one_treasury
         test_money_conservation
         test_price_anchor
+        test_monetary_regime
         test_tax_rate_clamp
         test_ai_goods_purchase
         test_ai_offers_goods

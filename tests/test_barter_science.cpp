@@ -49,6 +49,10 @@ Progress researchAfterOneTurn(aoc::sim::MonetarySystemType system0,
     b.monetary().system = system1;
     a.setTreasury(0, aoc::sim::MoneyFlow::external());
     b.setTreasury(0, aoc::sim::MoneyFlow::external());
+    // A civ with no money at all is charged nothing (plan 2.5); the coinage
+    // twin's people hold one coin, so its funding charge is real and its
+    // empty treasury cannot meet it.
+    b.monetary().privateSpecie = 1;
     // Nothing reaches either treasury during the turn, so the funding step
     // sees exactly the zero it was given.
     a.monetary().goldAllocation = 0.0f;

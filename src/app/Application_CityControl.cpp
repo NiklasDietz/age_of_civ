@@ -9,6 +9,7 @@
 #include "aoc/app/Application.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/debug/GameControlValidation.hpp"
+#include "aoc/simulation/monetary/MonetaryActions.hpp"
 
 #include "aoc/core/Log.hpp"
 #include "aoc/debug/DebugServer.hpp"
@@ -947,6 +948,34 @@ void Application::registerDealRoutes() {
     using Query = std::unordered_map<std::string, std::string>;
 
     this->m_debugServer->routeJson(
+        DSM::Post, "/game/monetary/regime", [this](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t target = 0;
+            int32_t tier   = 0;
+            std::string err;
+            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "target", target, err) ||
+                !readOptionalInt(q, "tier", 0, tier, err)) {
+                return err;
+            }
+            if (player < 0 || player >= MAX_PLAYERS || target < 0 || target > 255 || tier < 0 || tier > 255) {
+                return std::string("{\"error\":\"player, target or tier out of range\"}");
+            }
+            aoc::debug::MonetaryRegimeCommand cmd{};
+            cmd.player = static_cast<aoc::PlayerId>(player);
+            cmd.target = static_cast<uint8_t>(target);
+            cmd.tier   = static_cast<uint8_t>(tier);
+            const std::string_view why = aoc::debug::regimeCommandError(cmd);
+            if (!why.empty()) {
+                return "{\"error\":\"" + std::string(why) + "\"}";
+            }
+            std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+            this->m_pendingCommands.push_back(cmd);
+            return std::string("{\"queued\":true}");
+        });
+    this->m_debugServer->routeJson(
         DSM::Post, "/game/deal/propose", [this](const Query& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
@@ -1108,6 +1137,16 @@ void Application::registerDealRoutes() {
             }
             return json + "]}";
         });
+}
+
+void Application::executeGameControlCommand(const aoc::debug::MonetaryRegimeCommand& cmd) {
+    const aoc::ErrorCode rc = aoc::sim::requestSetMonetaryRegime(
+        this->m_gameState, cmd.player, static_cast<aoc::sim::MonetarySystemType>(cmd.target),
+        static_cast<aoc::sim::CoinTier>(cmd.tier));
+    LOG_INFO("Monetary regime request (player %u, target %u, tier %u): %.*s",
+             static_cast<unsigned>(cmd.player), static_cast<unsigned>(cmd.target),
+             static_cast<unsigned>(cmd.tier), static_cast<int>(aoc::describeError(rc).size()),
+             aoc::describeError(rc).data());
 }
 
 void Application::executeGameControlCommand(const aoc::debug::ProposeDealCommand& cmd) {

@@ -6,13 +6,24 @@
 
 #include "aoc/simulation/monetary/MonetaryActions.hpp"
 
+#include "aoc/game/City.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
-#include "aoc/simulation/monetary/CentralBank.hpp"
-#include "aoc/simulation/monetary/MonetarySystem.hpp"
-#include <algorithm>
-#include "aoc/simulation/monetary/CurrencyCrisis.hpp"
+#include "aoc/game/Unit.hpp"
+#include "aoc/simulation/ai/AIConstants.hpp"
+#include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/economy/SpeculationBubble.hpp"
+#include "aoc/simulation/economy/TradeRouteSystem.hpp"
+#include "aoc/simulation/monetary/CentralBank.hpp"
+#include "aoc/simulation/monetary/CurrencyCrisis.hpp"
+#include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
+
+#include "aoc/core/Log.hpp"
+
+#include <algorithm>
+#include <array>
+#include <string>
 
 namespace aoc::sim {
 
@@ -28,7 +39,141 @@ namespace {
     return s == MonetarySystemType::FiatMoney || s == MonetarySystemType::Digital;
 }
 
+constexpr TechId TECH_PRINTING{55};
+constexpr TechId TECH_ECONOMICS{13};
+constexpr int32_t GOLD_BARS_FOR_A_GOLD_STANDARD = 3;
+
+[[nodiscard]] bool hasMint(const aoc::game::Player& player) {
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        if (city != nullptr && city->owner() == player.id() && city->hasBuilding(ai::BUILDING_MINT)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] int32_t mintedOf(const MonetaryStateComponent& state, CoinTier tier) {
+    switch (tier) {
+        case CoinTier::Copper: return state.copperCoinReserves;
+        case CoinTier::Silver: return state.silverCoinReserves;
+        case CoinTier::Gold:   return state.goldBarReserves;
+        default:               return 0;
+    }
+}
+
+[[nodiscard]] int32_t gdpRankOf(const aoc::game::GameState& gameState, const aoc::game::Player& player) {
+    int32_t rank = 1;
+    for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+        if (other != nullptr && other->id() != player.id() && other->monetary().gdp > player.monetary().gdp) {
+            ++rank;
+        }
+    }
+    return rank;
+}
+
 } // namespace
+
+int32_t livePartnerCount(const aoc::game::GameState& gameState, PlayerId player) {
+    const aoc::game::Player* me = gameState.player(player);
+    if (me == nullptr) {
+        return 0;
+    }
+    std::array<bool, MAX_PLAYERS> seen{};
+    int32_t count = 0;
+    const auto mark = [&](PlayerId other) {
+        if (other != player && other < MAX_PLAYERS && !seen[other]) {
+            seen[other] = true;
+            ++count;
+        }
+    };
+    for (const std::unique_ptr<aoc::game::Unit>& unit : me->units()) {
+        if (unitTypeDef(unit->typeId()).unitClass != UnitClass::Trader) {
+            continue;
+        }
+        const TraderComponent& trader = unit->trader();
+        if (trader.owner != INVALID_PLAYER && trader.destOwner != INVALID_PLAYER) {
+            mark(trader.destOwner);
+        }
+    }
+    for (const DiplomaticDeal& deal : gameState.deals().activeDeals) {
+        if (!deal.isAccepted || deal.isBroken || (deal.playerA != player && deal.playerB != player)) {
+            continue;
+        }
+        for (const DealTerm& term : deal.terms) {
+            if (term.type == DealTermType::SupplyContract && term.duration > 0) {
+                mark(deal.playerA == player ? deal.playerB : deal.playerA);
+                break;
+            }
+        }
+    }
+    return count;
+}
+
+CoinTier preferredCoinTier(const MonetaryStateComponent& state) {
+    if (state.goldBarReserves >= GOLD_BARS_FOR_A_GOLD_STANDARD) {
+        return CoinTier::Gold;
+    }
+    if (state.silverCoinReserves > 0 && state.silverCoinReserves >= state.copperCoinReserves) {
+        return CoinTier::Silver;
+    }
+    if (state.copperCoinReserves > 0) {
+        return CoinTier::Copper;
+    }
+    return CoinTier::None;
+}
+
+bool coinageWithinReach(const aoc::game::GameState& gameState, PlayerId player) {
+    const aoc::game::Player* p = player < CITY_STATE_PLAYER_BASE ? gameState.player(player) : nullptr;
+    if (p == nullptr || p->monetary().system != MonetarySystemType::Barter) {
+        return false;
+    }
+    const MonetaryStateComponent& state = p->monetary();
+    if (!hasMint(*p) || state.bullion <= 0 || preferredCoinTier(state) == CoinTier::None) {
+        return false;
+    }
+    return state.canTransition(MonetarySystemType::CommodityMoney, p->ownedCityCount(),
+                               [p](TechId t) { return p->hasResearched(t); }) == ErrorCode::Ok;
+}
+
+ErrorCode requestSetMonetaryRegime(aoc::game::GameState& gameState, PlayerId player,
+                                   MonetarySystemType target, CoinTier tier) {
+    aoc::game::Player* p = actor(gameState, player);
+    if (p == nullptr) { return ErrorCode::EntityNotFound; }
+    MonetaryStateComponent& state = p->monetary();
+    if (target >= MonetarySystemType::Count ||
+        static_cast<uint8_t>(target) != static_cast<uint8_t>(state.system) + 1u) {
+        return ErrorCode::InvalidMonetaryTransition; // not the next stage, or already there
+    }
+    if (target == MonetarySystemType::CommodityMoney) {
+        if (tier == CoinTier::None || tier > CoinTier::Gold) { return ErrorCode::InvalidArgument; }
+        if (!hasMint(*p)) { return ErrorCode::InvalidState; }
+        if (state.bullion <= 0 || mintedOf(state, tier) <= 0) { return ErrorCode::InsufficientResources; }
+    }
+    if (target == MonetarySystemType::FiatMoney && !p->hasResearched(TECH_PRINTING) &&
+        !p->hasResearched(TECH_ECONOMICS)) {
+        return ErrorCode::InvalidMonetaryTransition; // paper needs a press or the theory
+    }
+    const ErrorCode gate = state.canTransition(
+        target, p->ownedCityCount(), [p](TechId t) { return p->hasResearched(t); },
+        livePartnerCount(gameState, player), gdpRankOf(gameState, *p), gameState.playerCount());
+    if (gate != ErrorCode::Ok) { return gate; }
+
+    if (target == MonetarySystemType::CommodityMoney) {
+        // The metal held back for this day becomes the people's coin; the
+        // standard is fixed from here on.
+        state.privateSpecie += state.bullion;
+        state.bullion         = 0;
+        state.coinageStandard = tier;
+        state.updateCoinTier();
+    }
+    state.transitionTo(target);
+    LOG_INFO("Player %u adopted %.*s%s", static_cast<unsigned>(player),
+             static_cast<int>(monetarySystemName(target).size()), monetarySystemName(target).data(),
+             target == MonetarySystemType::CommodityMoney
+                 ? (std::string(" on the ") + std::string(coinTierName(tier)) + " standard").c_str()
+                 : "");
+    return ErrorCode::Ok;
+}
 
 /// Systems with a central bank able to set a policy rate. Commodity coinage
 /// has no such institution, and Barter has no money to price.

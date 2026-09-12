@@ -163,6 +163,43 @@ TEST_CASE("processSpyMissions records one outcome per resolved mission, capped a
 }
 
 // ---------------------------------------------------------------------------
+// regimeCommandError (POST /game/monetary/regime)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("regimeCommandError: coinage with a metal, and any later stage without one, pass") {
+    aoc::debug::MonetaryRegimeCommand cmd{};
+    cmd.player = aoc::PlayerId{0};
+    cmd.target = 1; // Commodity Money
+    cmd.tier   = 2; // Silver
+    CHECK(aoc::debug::regimeCommandError(cmd).empty());
+    cmd.target = 3; // Fiat
+    cmd.tier   = 0;
+    CHECK(aoc::debug::regimeCommandError(cmd).empty());
+}
+
+TEST_CASE("regimeCommandError: one refusal per parameter") {
+    aoc::debug::MonetaryRegimeCommand cmd{};
+    cmd.player = aoc::PlayerId{0};
+    cmd.target = 1;
+    cmd.tier   = 1;
+    cmd.player = aoc::MAX_PLAYERS;
+    CHECK(aoc::debug::regimeCommandError(cmd) == "player out of range");
+    cmd.player = aoc::PlayerId{0};
+    cmd.target = 0; // Barter is not a target
+    CHECK(aoc::debug::regimeCommandError(cmd) == "target must be a monetary system above Barter");
+    cmd.target = 9;
+    CHECK(aoc::debug::regimeCommandError(cmd) == "target must be a monetary system above Barter");
+    cmd.target = 1;
+    cmd.tier   = 7;
+    CHECK(aoc::debug::regimeCommandError(cmd) == "tier must be None, Copper, Silver or Gold");
+    cmd.tier = 0;
+    CHECK(aoc::debug::regimeCommandError(cmd) == "coinage needs a metal");
+    cmd.target = 2;
+    cmd.tier   = 1;
+    CHECK(aoc::debug::regimeCommandError(cmd) == "only coinage takes a metal");
+}
+
+// ---------------------------------------------------------------------------
 // dealCommandError (POST /game/deal/propose)
 // ---------------------------------------------------------------------------
 

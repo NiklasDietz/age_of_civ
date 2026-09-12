@@ -1359,50 +1359,9 @@ void EconomySimulation::executeMonetaryPolicy(aoc::game::GameState& gameState) {
         anchorPriceLevel(state, playerPtr->totalPopulation());
         applyInflationEffects(state);
 
-        // Monetary system advancement. Civs upgrade currency systems
-        // when prerequisite techs are researched. Without this all
-        // civs stayed in Barter through end-game (audit 2026-05-02).
-        // Tech tree: Currency=5, Banking=9, Industrialization=11,
-        // Computers=16.
-        // Advance the monetary ladder through the REAL gate.
-        //
-        // This used to be four hardcoded `if researched(tech) then
-        // state.system = next` lines that assigned the field directly. That
-        // bypassed canTransition entirely, so MONETARY_TRANSITIONS -- currency
-        // strength, city count, turns in the current system, trade partners,
-        // maximum inflation, GDP rank -- was enforced by nothing, and
-        // transitionTo never ran, so its side effects never happened either:
-        // goldBackingRatio was never set on entry, moneySupply was never
-        // seeded, turnsInCurrentSystem was never reset and debasement was never
-        // cleared. Measured consequence: civs held a "gold standard" with
-        // CoinTier None, i.e. no metal whatsoever, for the whole of that stage.
-        //
-        // The tech ordering the old lines provided is preserved, and better:
-        // requiredTech now lives in the transition table where the rest of the
-        // requirements are, and is checked by canTransition. Note this loop
-        // runs for EVERY player, so a human advances on the same terms as an AI
-        // -- the only other caller of canTransition is in AIController and
-        // never ran for a human at all.
-        // turnsInCurrentSystem is already ticked later in this same turn (see
-        // tickMonetaryMechanics); incrementing here as well would double-count
-        // and let minTurnsInCurrent pass in half the intended time.
-        {
-            const uint8_t nextOrd = static_cast<uint8_t>(state.system) + 1u;
-            if (nextOrd < static_cast<uint8_t>(MonetarySystemType::Count)) {
-                const MonetarySystemType next = static_cast<MonetarySystemType>(nextOrd);
-                const aoc::game::Player* p    = playerPtr.get();
-                const int32_t cityCount       = p->ownedCityCount();
-                if (state.canTransition(next, cityCount,
-                                        [p](aoc::TechId t) { return p->hasResearched(t); })
-                    == ErrorCode::Ok) {
-                    state.transitionTo(next);
-                    LOG_INFO("Player %u monetary system -> %.*s",
-                             static_cast<unsigned>(p->id()),
-                             static_cast<int>(monetarySystemName(next).size()),
-                             monetarySystemName(next).data());
-                }
-            }
-        }
+        // The regime is a decision now (requestSetMonetaryRegime, plan 2.5);
+        // the automatic ladder that ran here is gone. The crisis suspension
+        // in processReserveStress is the one forced transition left.
 
         this->m_previousGDP[playerPtr->id()]         = currentGDP;
         this->m_previousMoneySupply[playerPtr->id()] = state.moneySupply;

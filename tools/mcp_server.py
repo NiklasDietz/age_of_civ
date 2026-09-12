@@ -657,6 +657,18 @@ def aoc_propose_deal(player: int, target: int, give_gold: int = 0, ask_gold: int
 
 
 @mcp.tool()
+def aoc_set_monetary_regime(player: int, target: int, tier: int = 0) -> dict:
+    """Adopt the next monetary regime for `player`. `target` is the stage after the current one:
+    1 Commodity Money (coinage; needs a Mint, bullion and a `tier` metal 1 Copper, 2 Silver, 3 Gold
+    that the Mint has struck), 2 Gold Standard (Banking), 3 Fiat (Banking plus Printing or
+    Economics, two live trade partners, inflation under 5%), 4 Digital (Computers). Adopting
+    coinage turns the civ's bullion into its people's coin. Refused gates change nothing; the
+    result is logged. Queues the request.
+    """
+    return _post("/game/monetary/regime", player=player, target=target, tier=tier)
+
+
+@mcp.tool()
 def aoc_world_market(player: int) -> dict:
     """The world market as `player` sees it: for every good some met civ holds or needs, who holds
     how much and who has an unmet need. The ids feed aoc_propose_deal's goods legs.

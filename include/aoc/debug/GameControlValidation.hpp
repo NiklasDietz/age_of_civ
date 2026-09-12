@@ -28,4 +28,8 @@ namespace aoc::debug {
 /// Whether the deal is acceptable is the simulation's call, not this one's.
 [[nodiscard]] std::string_view dealCommandError(const ProposeDealCommand& cmd);
 
+/// Why a regime command cannot be queued: an unknown target, a tier that is
+/// not a metal, or a tier given for anything but coinage. Empty when sound.
+[[nodiscard]] std::string_view regimeCommandError(const MonetaryRegimeCommand& cmd);
+
 } // namespace aoc::debug

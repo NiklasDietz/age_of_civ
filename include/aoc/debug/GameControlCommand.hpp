@@ -275,6 +275,15 @@ struct ProposeDealCommand {
     int32_t exclusiveGood   = -1;
     bool exclusiveSell      = true;
 };
+/// Adopt the next monetary regime (requestSetMonetaryRegime). `target` is a
+/// MonetarySystemType, `tier` a CoinTier (coinage only). Validated by
+/// regimeCommandError.
+struct MonetaryRegimeCommand {
+    aoc::PlayerId player;
+    uint8_t target;
+    uint8_t tier;
+};
+
 /// Answer proposal `index` of the human's inbox.
 struct RespondProposalCommand {
     aoc::PlayerId player;
@@ -336,6 +345,7 @@ using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, Foun
                                         CongressVoteCommand, CongressProposalCommand,
                                         MergeUnitsCommand, CityDispositionCommand,
                                         RetireGreatPersonCommand, NuclearStrikeCommand,
+                                        MonetaryRegimeCommand,
                                         AssignGovernorCommand,
                                         PromoteGovernorCommand, SlotPolicyCommand,
                                         ChangeGovernmentCommand, CityPurchaseCommand,

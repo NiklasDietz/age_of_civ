@@ -8,6 +8,7 @@
  */
 
 #include "aoc/net/GameServer.hpp"
+#include "aoc/simulation/monetary/MonetaryActions.hpp"
 #include "aoc/simulation/turn/TurnProcessor.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -539,7 +540,14 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
                     aoc::sim::setTaxRate(gsPlayer->monetary(), cmd.rate);
                 }
             } else if constexpr (std::is_same_v<T, TransitionMonetaryCommand>) {
-                // Monetary transition -- validate and execute
+                const aoc::sim::MonetarySystemType target =
+                    static_cast<aoc::sim::MonetarySystemType>(cmd.targetSystem);
+                aoc::game::Player* gsPlayer = this->m_gameState.player(cmd.player);
+                const aoc::sim::CoinTier tier =
+                    (gsPlayer != nullptr && target == aoc::sim::MonetarySystemType::CommodityMoney)
+                        ? aoc::sim::preferredCoinTier(gsPlayer->monetary())
+                        : aoc::sim::CoinTier::None;
+                (void)aoc::sim::requestSetMonetaryRegime(this->m_gameState, cmd.player, target, tier);
             }
         },
         command);
