@@ -105,6 +105,17 @@ since it applies only inside combat resolution -- produced a 2.3x war rate
 (64 -> 145 declarations over 350 turns on seed 42). Any combat buff will be
 amplified this way until the target choice weighs strength.
 
+Phase 4 of the money and trade programme (2026-09-12) changed the declaration
+rather than the choice, and the distinction matters for this finding.
+`requestDeclareWar` now refuses an AI actor whose trade with the target is
+worth more than `WAR_COST_VETO_POINTS` (plan 4.2), and because all three AI
+war paths go through that request, this one included, a partner worth keeping
+is skipped before any target is committed to. The choice itself still reads
+raw `militaryUnitCount()`, so the amplification described above is unchanged
+for every civ we do not trade with, and weighing strength there is still the
+fix. Measured at 200 turns and 4 players on the native preset: 18
+declarations on seed 42 and 14 on seed 43.
+
 ---
 
 ## Gameplay Features
