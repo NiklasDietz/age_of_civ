@@ -13,6 +13,8 @@
 
 #include "support/World.hpp"
 
+#include "aoc/simulation/economy/Maintenance.hpp"
+
 #include "aoc/core/Random.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/game/Player.hpp"
@@ -82,7 +84,7 @@ Progress researchAfterOneTurn(aoc::sim::MonetarySystemType system0,
 TEST_CASE("a Barter civ with no coins researches at full speed") {
     using aoc::sim::MonetarySystemType;
     const Progress p = researchAfterOneTurn(MonetarySystemType::Barter, MonetarySystemType::CommodityMoney);
-    REQUIRE(p.science * 0.2f >= 1.0f); // the funding charge is real, or the control proves nothing
+    REQUIRE(p.science * aoc::sim::SCIENCE_FUNDING_COST >= 1.0f); // the charge is real, or the control proves nothing
     REQUIRE(p.barter > 0.0f);
     // The coinage twin holds no money, so it still hits the 50% floor:
     // that is the positive control, and the gap that used to hit Barter too.

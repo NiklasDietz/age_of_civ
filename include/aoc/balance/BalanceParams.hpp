@@ -133,11 +133,12 @@ struct BalanceParams {
 
     /// Price anchor for specie regimes (Inflation.hpp anchorPriceLevel):
     /// `P* = M x V / (K x population)`. K is the money per citizen at which
-    /// prices sit at 1.0. Calibrated 2026-09-12 on the seed-42 200-turn run
-    /// after 2.3: the median money per citizen over every coinage
-    /// player-turn was 16.4 at velocity 0.8, so K = 13 puts the median at
-    /// P = 1 (plan B1, 2.3). The 2.7 balance pass re-measures it.
-    float   priceAnchorK             = 13.0f;
+    /// prices sit at 1.0. Recalibrated 2026-09-12 in the 2.7 balance pass on
+    /// the seed-42 200-turn run after settlement, notes and the Mint's new
+    /// output: the median money per citizen over every coinage player-turn
+    /// was 29 (quartiles 22 and 41), so K = 25 puts the median near P = 1
+    /// (plan B1). Bless-time runs re-measure it.
+    float   priceAnchorK             = 25.0f;
 };
 
 /// Access the single global balance-params instance.

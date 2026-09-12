@@ -79,8 +79,11 @@ struct EconomicBreakdown {
     int32_t goodsStockpiled  = 0;  ///< Total goods in all city stockpiles
 };
 
-/// Gold charged per point of science generated, at price level 1: the research budget.
-inline constexpr float SCIENCE_FUNDING_COST = 0.2f;
+/// Gold charged per point of science generated, at price level 1: the
+/// research budget. Spend-back, not destruction (the scholars are our own
+/// people), and 0.1 rather than the old 0.2 so adopting coinage is not a
+/// science penalty (plan 2.7).
+inline constexpr float SCIENCE_FUNDING_COST = 0.1f;
 
 /// What a state with no commerce at all still reaches of its people's money.
 inline constexpr float BASE_COLLECTION_EFFICIENCY = 0.50f;

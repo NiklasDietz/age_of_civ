@@ -115,7 +115,8 @@ struct TraderComponent {
 
     /// The treasury's share of coin this trader landed at home this turn.
     CurrencyAmount goldEarnedThisTurn = 0;
-    /// The whole purse it landed this turn (M3: coin brought home). Per-turn scratch, not saved.
+    /// The whole purse it landed this turn from a foreign destination (M3:
+    /// coin brought home). Per-turn scratch, not saved.
     CurrencyAmount coinLandedThisTurn = 0;
 
     /// The purse: coin the buyer's people paid, riding home with the trader.

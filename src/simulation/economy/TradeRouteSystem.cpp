@@ -1429,7 +1429,9 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 }
             }
             if (sellerPlayer != nullptr && (trader.isReturning || cityOwner == trader.owner)) {
-                trader.coinLandedThisTurn = trader.carriedGold;
+                // M3 counts coin brought home from abroad; a sale to our own
+                // people is a tax on them, not trade income.
+                trader.coinLandedThisTurn = trader.destOwner != trader.owner ? trader.carriedGold : 0;
                 trader.goldEarnedThisTurn =
                     receiveTradeCoin(*sellerPlayer, trader.carriedGold, trader.carriedMedium == 1);
                 trader.carriedGold        = 0;

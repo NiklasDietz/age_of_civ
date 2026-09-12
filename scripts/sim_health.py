@@ -338,6 +338,56 @@ def evaluate(rows: list[dict[str, str]], events: list[dict[str, str]] | None = N
         f"{', '.join(conjured[:6]) if conjured else 'none'}",
     )
 
+    # T6 (M7) The state pays its bills: rows in arrears after turn 50 are
+    #     at most a tenth. Arrears are bills the treasury could not pay that
+    #     turn; five of them in a row disband a unit.
+    late_rows = [r for r in rows if int(r["Turn"]) > 50]
+    in_arrears = sum(1 for r in late_rows if float(r.get("Arrears", "0") or 0) > 0)
+    share = in_arrears / len(late_rows) if late_rows else 0.0
+    target(
+        "T6 arrears rows after turn 50 <= 10%",
+        share <= 0.10,
+        f"{in_arrears} of {len(late_rows)} rows = {share:.1%}",
+    )
+
+    # T7 (M7) Regimes are lived in, not skipped: Barter is 20-45% of
+    #     player-turns, and at least one civ reaches paper money (the Gold
+    #     Standard or beyond) by its own decision.
+    systems = [int(r.get("MonetarySystem", "0") or 0) for r in rows]
+    barter_share = (sum(1 for s in systems if s == 0) / len(systems)) if systems else 0.0
+    target(
+        "T7a Barter share of player-turns in 20-45%",
+        0.20 <= barter_share <= 0.45,
+        f"{barter_share:.1%} of {len(systems)} player-turns",
+    )
+    paper = sorted({int(r["Player"]) for r, s in zip(rows, systems) if s >= 2})
+    fiat = sorted({int(r["Player"]) for r, s in zip(rows, systems) if s >= 3})
+    target(
+        "T7b at least one civ on paper money",
+        bool(paper),
+        f"on the Gold Standard or beyond: {paper if paper else 'nobody'}; fiat: {fiat if fiat else 'nobody'}",
+    )
+
+    # T8 (M7) Prices stay in a band: the median price level over coinage
+    #     player-turns is in [0.5, 3].
+    levels = sorted(float(r.get("PriceLevel", "1") or 1) for r, s in zip(rows, systems) if s >= 1)
+    median_level = levels[len(levels) // 2] if levels else 1.0
+    target(
+        "T8 median price level of coinage turns in [0.5, 3]",
+        0.5 <= median_level <= 3.0,
+        f"{median_level:.2f} over {len(levels)} coinage player-turns",
+    )
+
+    # T9 (M7) Trade settles across civs early: some Trader brings foreign
+    #     coin home by turn 100.
+    landed = [int(r["Turn"]) for r in rows if float(r.get("TradeCoinLanded", "0") or 0) > 0]
+    first_landing = min(landed) if landed else None
+    target(
+        "T9 first foreign coin brought home by turn 100",
+        first_landing is not None and first_landing <= 100,
+        f"first landing on turn {first_landing}" if first_landing is not None else "never",
+    )
+
     if not quiet:
         for line in report.notes:
             print(line)
@@ -358,7 +408,7 @@ COLUMNS = [
     "TotalIncome", "BarbarianUnits",
     "IncomeTradeRoutes", "ActiveRoutes", "DealsActive", "LuxuryTypesHeld",
     "Circulation", "Arrears", "PriceLevel", "MintedTurn", "UnbackedTurn",
-    "CollectionEfficiency", "TradeCoinLanded",
+    "CollectionEfficiency", "TradeCoinLanded", "MonetarySystem",
 ]
 
 EVENT_COLUMNS = ["Turn", "SubStep", "EventType", "Player", "OtherPlayer",
@@ -373,7 +423,8 @@ def _row(turn: int, player: int, **over: object) -> dict[str, str]:
                  "ActiveRoutes": "2", "DealsActive": "1",
                  "TotalIncome": "140", "IncomeTax": "100",
                  "IncomeTradeRoutes": "40", "TradeCoinLanded": "260",
-                 "MintedTurn": "100"})
+                 "MintedTurn": "100", "PriceLevel": "1",
+                 "MonetarySystem": "0" if turn == 1 else ("1" if turn == 100 else "2")})
     base.update({k: str(v) for k, v in over.items()})
     return base
 
@@ -522,6 +573,38 @@ def selftest() -> int:
     # T5: wars spike past the band.
     add("T5 war spike", _healthy(), "MISSED: T5",
         events=_healthy_events() + [_event(t, "WarDeclared") for t in range(90, 150, 10)])
+
+    # T6: the state cannot pay its bills.
+    rows = _healthy()
+    for r in rows:
+        if int(r["Turn"]) > 50:
+            r["Arrears"] = "5"
+    add("T6 arrears everywhere", rows, "MISSED: T6")
+
+    # T7a: nobody ever leaves Barter.
+    rows = _healthy()
+    for r in rows:
+        r["MonetarySystem"] = "0"
+    add("T7a all Barter", rows, "MISSED: T7a")
+
+    # T7b: everybody coins, nobody prints.
+    rows = _healthy()
+    for r in rows:
+        r["MonetarySystem"] = "1" if int(r["Turn"]) > 1 else "0"
+    add("T7b no paper", rows, "MISSED: T7b")
+
+    # T8: prices run away.
+    rows = _healthy()
+    for r in rows:
+        r["PriceLevel"] = "9"
+    add("T8 price level out of band", rows, "MISSED: T8")
+
+    # T9: no foreign coin comes home before turn 100.
+    rows = _healthy()
+    for r in rows:
+        if int(r["Turn"]) <= 100:
+            r["TradeCoinLanded"] = "0"
+    add("T9 late first landing", rows, "MISSED: T9")
 
     ok = True
     baseline = evaluate(_healthy(), _healthy_events(), WAR_BASELINE, quiet=True)
