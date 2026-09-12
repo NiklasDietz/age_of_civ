@@ -338,6 +338,35 @@ inline constexpr float DESTINATION_SALE_CAP   = 1.40f;
 /// routes; capped at 1.40.
 [[nodiscard]] float destinationSaleMultiplier(const aoc::game::City& city, TradeRouteType routeType);
 
+/// Sea cargo needs a quay: without a Harbor at the city a leg unloads at, a
+/// Sea route carries at most this many slots (plan 3.2).
+inline constexpr int32_t SEA_SLOTS_WITHOUT_HARBOR = 4;
+
+/// What a route's cargo fetches per unit of local price: the distance decay
+/// (floor 0.5 at thirty tiles), the relation between seller and buyer (war
+/// 0.20, hostile 0.50, unfriendly 0.75, friendly 1.15, allied 1.30, open
+/// borders +0.10, an economic alliance +0.15) and the quality of the money
+/// the sale settles in (bilateralTradeEfficiency). The last two apply only
+/// between two major civs; a domestic or city-state sale decays with
+/// distance alone.
+[[nodiscard]] float routeYieldMultiplier(const aoc::game::GameState& gameState,
+                                         const DiplomacyManager* diplomacy, PlayerId seller,
+                                         PlayerId buyer, int32_t distance);
+
+/// Cargo slots a trader loads for a leg that unloads at `unloadingAt`: the
+/// route's raw slots less the coin's weight, times the industrial multiplier,
+/// and capped for a Sea leg without a Harbor at the far end.
+[[nodiscard]] int32_t legCargoSlots(const TraderComponent& trader, MonetarySystemType system,
+                                    bool onRail, float tradeMult, const aoc::game::City& unloadingAt);
+
+/// The sale value of `cargo` at `destination` before the goods land: each
+/// unit at the destination's local price, the monopolist's markup on the
+/// buyer, the destination's sale multiplier and the route's yield.
+[[nodiscard]] CurrencyAmount saleValueAt(const aoc::game::GameState& gameState, const Market& market,
+                                         const std::vector<TradeCargo>& cargo,
+                                         const aoc::game::City& destination, TradeRouteType routeType,
+                                         float routeYield);
+
 /// Preview information for a potential trade route (no side effects).
 struct TradeRouteEstimate {
     int32_t distanceTiles               = 0; ///< Path length in tiles.
@@ -358,6 +387,7 @@ struct TradeRouteEstimate {
                                                           const aoc::map::HexGrid& grid,
                                                           const Market& market,
                                                           const aoc::game::Unit& traderUnit,
-                                                          const aoc::game::City& destCity);
+                                                          const aoc::game::City& destCity,
+                                                          const DiplomacyManager* diplomacy = nullptr);
 
 } // namespace aoc::sim

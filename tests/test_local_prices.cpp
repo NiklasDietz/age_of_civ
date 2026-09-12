@@ -116,9 +116,13 @@ TEST_CASE("the estimate prefers the destination that lacks what we carry, and va
         aoc::sim::estimateTradeRouteIncome(w.gameState, w.grid, market, trader, fed);
     CHECK(toHungry.estimatedGoldPerTrip > 0);
     CHECK(toHungry.estimatedGoldPerTrip > toFed.estimatedGoldPerTrip);
-    // Half the surplus, one slot, at the spread: exactly what the helper says.
-    const int32_t spread = aoc::sim::localPrice(market, WHEAT, hungry) - aoc::sim::localPrice(market, WHEAT, home);
-    CHECK(toHungry.estimatedGoldPerTrip == std::min(12, 39 / 2) * spread);
+    // The preview is the sale of the cargo the route would load (twelve
+    // wheat: half the surplus doubled for a city short of it, capped), by
+    // the same function the delivery uses.
+    const std::vector<aoc::sim::TradeCargo> cargo{{WHEAT, 12}};
+    const float yield = aoc::sim::routeYieldMultiplier(w.gameState, nullptr, P0, P1, 10);
+    CHECK(toHungry.estimatedGoldPerTrip ==
+          aoc::sim::saleValueAt(w.gameState, market, cargo, hungry, TradeRouteType::Land, yield));
 }
 
 TEST_CASE("cargo is chosen by the spread: the good the destination is short of goes first") {

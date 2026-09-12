@@ -86,6 +86,66 @@ float destinationSaleMultiplier(const aoc::game::City& city, TradeRouteType rout
     return std::min(mult, DESTINATION_SALE_CAP);
 }
 
+float routeYieldMultiplier(const aoc::game::GameState& gameState, const DiplomacyManager* diplomacy,
+                           PlayerId seller, PlayerId buyer, int32_t distance) {
+    // Distance: long routes lose more cargo in transit. Floor 0.50x at 30+
+    // tiles. Physical attrition, nothing to do with the money supply.
+    float yield = std::max(0.50f, 1.0f - 0.0167f * static_cast<float>(std::max(0, distance)));
+    const bool twoMajors = seller != buyer && seller != INVALID_PLAYER && buyer != INVALID_PLAYER &&
+                           seller < CITY_STATE_PLAYER_BASE && buyer < CITY_STATE_PLAYER_BASE;
+    if (!twoMajors) {
+        return yield;
+    }
+    // Relations: hostile civs impose tariffs and seizures, friendly ones
+    // grant favourable terms.
+    if (diplomacy != nullptr) {
+        const PairwiseRelation& rel = diplomacy->relation(seller, buyer);
+        float relMult;
+        if (rel.isAtWar) {
+            relMult = 0.20f; // most cargo seized
+        } else {
+            switch (rel.stance()) {
+                case DiplomaticStance::Hostile:    relMult = 0.50f; break;
+                case DiplomaticStance::Unfriendly: relMult = 0.75f; break;
+                case DiplomaticStance::Neutral:    relMult = 1.00f; break;
+                case DiplomaticStance::Friendly:   relMult = 1.15f; break;
+                case DiplomaticStance::Allied:     relMult = 1.30f; break;
+                default:                           relMult = 1.00f; break;
+            }
+            if (rel.hasOpenBorders)      { relMult += 0.10f; }
+            if (rel.hasEconomicAlliance) { relMult += 0.15f; }
+        }
+        yield *= relMult;
+    }
+    // The quality of the money the sale settles in: a civ whose currency
+    // nobody trusts gets worse terms on the same cargo.
+    yield *= bilateralTradeEfficiency(gameState, seller, buyer);
+    return yield;
+}
+
+int32_t legCargoSlots(const TraderComponent& trader, MonetarySystemType system, bool onRail,
+                      float tradeMult, const aoc::game::City& unloadingAt) {
+    const int32_t base = trader.effectiveCargoSlots(system, onRail);
+    int32_t slots      = std::max(1, static_cast<int32_t>(static_cast<float>(base) * tradeMult));
+    if (trader.routeType == TradeRouteType::Sea && !unloadingAt.districts().hasDistrict(DistrictType::Harbor)) {
+        slots = std::min(slots, SEA_SLOTS_WITHOUT_HARBOR);
+    }
+    return slots;
+}
+
+CurrencyAmount saleValueAt(const aoc::game::GameState& gameState, const Market& market,
+                           const std::vector<TradeCargo>& cargo, const aoc::game::City& destination,
+                           TradeRouteType routeType, float routeYield) {
+    const float saleMult = destinationSaleMultiplier(destination, routeType);
+    float value          = 0.0f;
+    for (const TradeCargo& c : cargo) {
+        const float gouge = gameState.monopoly().buyerPriceMultiplier(c.goodId, destination.owner());
+        value += static_cast<float>(c.amount) * static_cast<float>(localPrice(market, c.goodId, destination)) *
+                 gouge;
+    }
+    return static_cast<CurrencyAmount>(value * saleMult * routeYield);
+}
+
 namespace {
 
 /// Select goods for trade by the spread between the two cities' local
@@ -953,9 +1013,7 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     const float tradeMult = (ownerPtrForCargo != nullptr)
                                 ? ownerPtrForCargo->industrial().cumulativeTradeMultiplier()
                                 : 1.0f;
-    const int32_t baseSlots  = trader.effectiveCargoSlots(ownerSys, railOutbound);
-    const int32_t cargoSlots = std::max(
-        1, static_cast<int32_t>(static_cast<float>(baseSlots) * tradeMult));
+    const int32_t cargoSlots = legCargoSlots(trader, ownerSys, railOutbound, tradeMult, *destCity);
     selectTradeGoods(*originCity, destCity, market, trader.cargo, cargoSlots);
     for (TradeCargo& c : trader.cargo) {
         // WP-O: pull from exportBuffer first (drains the queue), then
@@ -1315,27 +1373,26 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 (void)violated;
             }
 
-            // Unload cargo and earn gold based on market prices
-            CurrencyAmount goldEarned = 0;
+            // The sale (plan 3.2): priced at the destination's local prices
+            // before the goods land, with the monopolist's markup, the
+            // destination's commerce and the route's yield, the same
+            // function the preview uses.
+            const int32_t routeDist = grid.distance(trader.originCityLocation, trader.destCityLocation);
+            const float routeYield =
+                routeYieldMultiplier(gameState, diplomacy, trader.owner, cityOwner, routeDist);
+            CurrencyAmount goldEarned =
+                saleValueAt(gameState, market, trader.cargo, *targetCity, trader.routeType, routeYield);
             int32_t totalUnits = 0;
             for (const TradeCargo& c : trader.cargo) {
                 targetStock.addGoods(c.goodId, c.amount);
                 totalUnits += c.amount;
-                // Gold = 20% of market value per unit traded
-                int32_t price = market.marketData(c.goodId).currentPrice;
-                if (price <= 0) { price = 1; }
-                // A monopolist's chosen markup falls on the buyer.
-                // buyerPriceMultiplier had no readers anywhere, so holding a
-                // monopoly changed nothing about what anyone paid.
-                const float gouge =
-                    gameState.monopoly().buyerPriceMultiplier(c.goodId, cityOwner);
-                price = static_cast<int32_t>(static_cast<float>(price) * gouge);
                 // Squeezing is not free. The buyer resents the civ that cornered
                 // the good, which is what makes the markup a decision rather
                 // than free gold -- see aiChooseMonopolyPrices. Charged on the
                 // delivery so it follows real transactions, and addGrievance
                 // dedups by (type, against), so a standing markup refreshes one
                 // grievance instead of stacking a new one every shipment.
+                const float gouge = gameState.monopoly().buyerPriceMultiplier(c.goodId, cityOwner);
                 if (gouge > 1.0f && cityOwner != INVALID_PLAYER
                     && cityOwner < aoc::sim::CITY_STATE_PLAYER_BASE) {
                     const PlayerId squeezer = gameState.monopoly().monopolistOf(c.goodId);
@@ -1347,73 +1404,6 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                             GrievanceType::PriceGouged, squeezer);
                     }
                 }
-                goldEarned += static_cast<CurrencyAmount>(c.amount)
-                            * static_cast<CurrencyAmount>(price) / 5;
-            }
-            // Distance penalty: long routes lose more cargo in transit.
-            // Floor 0.50× at 30+ tile distance. Models physical attrition,
-            // doesn't touch underlying money supply.
-            {
-                const int32_t dist = grid.distance(trader.originCityLocation,
-                                                    trader.destCityLocation);
-                const float distMult = std::max(0.50f, 1.0f - 0.0167f * static_cast<float>(dist));
-                goldEarned = static_cast<CurrencyAmount>(
-                    static_cast<float>(goldEarned) * distMult);
-            }
-            // Diplomatic relation modifier: hostile civs impose tariffs/seizures,
-            // friendly civs grant favorable terms. Skip city-states.
-            if (diplomacy != nullptr
-                && trader.owner != INVALID_PLAYER && cityOwner != INVALID_PLAYER
-                && trader.owner != cityOwner
-                && trader.owner < aoc::sim::CITY_STATE_PLAYER_BASE
-                && cityOwner < aoc::sim::CITY_STATE_PLAYER_BASE) {
-                const PairwiseRelation& rel = diplomacy->relation(trader.owner, cityOwner);
-                float relMult;
-                if (rel.isAtWar) {
-                    relMult = 0.20f;  // most cargo seized
-                } else {
-                    switch (rel.stance()) {
-                        case aoc::sim::DiplomaticStance::Hostile:    relMult = 0.50f; break;
-                        case aoc::sim::DiplomaticStance::Unfriendly: relMult = 0.75f; break;
-                        case aoc::sim::DiplomaticStance::Neutral:    relMult = 1.00f; break;
-                        case aoc::sim::DiplomaticStance::Friendly:   relMult = 1.15f; break;
-                        case aoc::sim::DiplomaticStance::Allied:     relMult = 1.30f; break;
-                        default:                                     relMult = 1.00f; break;
-                    }
-                    if (rel.hasOpenBorders)     { relMult += 0.10f; }
-                    if (rel.hasEconomicAlliance){ relMult += 0.15f; }
-                }
-                goldEarned = static_cast<CurrencyAmount>(
-                    static_cast<float>(goldEarned) * relMult);
-            }
-            // Monetary settlement quality. A civ whose currency nobody trusts
-            // gets worse terms on the same cargo -- which is what
-            // bilateralTradeEfficiency computes, from both sides' monetary
-            // systems, their fiat trust, and the exchange-rate risk between
-            // them.
-            //
-            // Until 2026-09-11 its only caller was the legacy settleTradeInCoins,
-            // which walked a route list only the human's trade screen filled,
-            // and that list is gone. So in an AI game the
-            // function was never called, and currency trust -- computed every
-            // turn, saved, penalised by crises, gating reserve status -- had no
-            // route to anyone's treasury at all. Traders are how the AI trades,
-            // so the multiplier belongs here.
-            //
-            // This is a third multiplier on the same cargo and they measure
-            // different things: distance is physical attrition, the relation
-            // multiplier is tariffs and seizure, and this is the quality of the
-            // money the sale settles in. City-states are skipped, matching the
-            // relation block above.
-            if (goldEarned > 0
-                && trader.owner != cityOwner
-                && trader.owner != INVALID_PLAYER && cityOwner != INVALID_PLAYER
-                && trader.owner < aoc::sim::CITY_STATE_PLAYER_BASE
-                && cityOwner < aoc::sim::CITY_STATE_PLAYER_BASE) {
-                const float monetaryEfficiency =
-                    bilateralTradeEfficiency(gameState, trader.owner, cityOwner);
-                goldEarned = static_cast<CurrencyAmount>(
-                    static_cast<float>(goldEarned) * monetaryEfficiency);
             }
 
             // WP-K3: throughput log per route type for audit ratio analysis.
@@ -1510,7 +1500,15 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 ? sellerPlayer->monetary().system
                 : MonetarySystemType::Barter;
             const bool railReturn = pathOnRail(trader, grid);
-            const int32_t returnSlots = trader.effectiveCargoSlots(sellerSys, railReturn);
+            const aoc::hex::AxialCoord nextUnloadLoc =
+                trader.isReturning ? trader.destCityLocation : trader.originCityLocation;
+            const aoc::game::City* nextUnload = lookupCity(cityRelay, nextUnloadLoc);
+            const float sellerTradeMult =
+                sellerPlayer != nullptr ? sellerPlayer->industrial().cumulativeTradeMultiplier() : 1.0f;
+            const int32_t returnSlots =
+                nextUnload != nullptr
+                    ? legCargoSlots(trader, sellerSys, railReturn, sellerTradeMult, *nextUnload)
+                    : trader.effectiveCargoSlots(sellerSys, railReturn);
             trader.cargo.clear();
             int32_t loaded = 0;
             for (const TradeCargo& planned : trader.pendingPickupCargo) {
@@ -2027,7 +2025,8 @@ TradeRouteEstimate estimateTradeRouteIncome(
     const aoc::map::HexGrid& grid,
     const Market& market,
     const aoc::game::Unit& traderUnit,
-    const aoc::game::City& destCity) {
+    const aoc::game::City& destCity,
+    const DiplomacyManager* diplomacy) {
 
     TradeRouteEstimate estimate{};
 
@@ -2079,57 +2078,23 @@ TradeRouteEstimate estimateTradeRouteIncome(
     if (speed <= 0) { speed = 2; }
     estimate.roundTripTurns = (estimate.distanceTiles * 2) / speed + 1;
 
-    // Gold estimate: the spread on the goods a trader would carry, half the
-    // surplus of each, sold at the destination's local price and its sale
-    // multiplier, bought at the origin's.
-    const CityStockpileComponent& originStock = originCity->stockpile();
-    const float saleMult = destinationSaleMultiplier(destCity, estimate.routeType);
-
-    struct ScoredGood {
-        uint16_t goodId;
-        int32_t  value;
-    };
-    std::vector<ScoredGood> scoredGoods;
-
-    for (const std::pair<const uint16_t, int32_t>& entry : originStock.goods) {
-        if (isCoinGood(entry.first)) { continue; } // money, not cargo: the sweep takes it
-        if (entry.second <= 1) { continue; }
-        const int32_t sells = static_cast<int32_t>(
-            static_cast<float>(localPrice(market, entry.first, destCity)) * saleMult);
-        const int32_t spread = sells - localPrice(market, entry.first, *originCity);
-        if (spread <= 0) { continue; }
-        const int32_t tradeAmount = std::min(12, std::max(1, (entry.second - 1) / 2)); // half the surplus, one slot
-        scoredGoods.push_back({entry.first, tradeAmount * spread});
-    }
-
-    // goodId tie-break for the same reason as the scoreCandidate sort above:
-    // scoredGoods comes from unordered_map iteration, so a value-only
-    // comparator made equal-value ties resolve in non-portable hash order.
-    std::sort(scoredGoods.begin(), scoredGoods.end(),
-              [](const ScoredGood& a, const ScoredGood& b) {
-                  if (a.value != b.value) { return a.value > b.value; }
-                  return a.goodId < b.goodId;
-              });
-
+    // The preview is the sale: the cargo establishTradeRoute would choose,
+    // sold by the function the delivery uses (plan 3.2), so what the screen
+    // shows is what the purse brings home when nothing changes in between.
+    // Rail is not assumed: the path is not known here.
     const MonetarySystemType estSys = ownerPlayer->monetary().system;
-    // Estimate uses optimistic rail-tier capacity for Land routes — actual
-    // capacity at load time depends on path coverage, but this matches the
-    // potential gain so the AI utility doesn't undervalue future-rail lanes.
-    const bool estRail = (estimate.routeType == TradeRouteType::Land)
-        && ownerPlayer->tech().hasResearched(TechId{11});
-    int32_t maxSlots = tempTrader.effectiveCargoSlots(estSys, estRail);
-    int32_t totalValue = 0;
-    int32_t slotCount = 0;
-    for (const ScoredGood& sg : scoredGoods) {
-        if (slotCount >= maxSlots) { break; }
-        totalValue += sg.value;
-        ++slotCount;
-    }
+    const int32_t maxSlots =
+        legCargoSlots(tempTrader, estSys, false, ownerPlayer->industrial().cumulativeTradeMultiplier(), destCity);
+    std::vector<TradeCargo> cargo;
+    selectTradeGoods(*originCity, &destCity, market, cargo, maxSlots);
+    const float routeYield =
+        routeYieldMultiplier(gameState, diplomacy, traderUnit.owner(), destCity.owner(), straightDist);
+    const CurrencyAmount grossGold =
+        saleValueAt(gameState, market, cargo, destCity, estimate.routeType, routeYield);
 
     // C31: AI was booking routes at gross value. Subtract expected tolls so
     // the utility score matches realized profit — keeps AI from signing
     // negative-EV routes when partner raised their rate.
-    const CurrencyAmount grossGold = static_cast<CurrencyAmount>(totalValue);
     CurrencyAmount expectedTolls = 0;
     if (destCity.owner() != traderUnit.owner()) {
         const aoc::game::Player* destPlayer = gameState.player(destCity.owner());
