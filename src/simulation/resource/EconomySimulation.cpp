@@ -1475,17 +1475,10 @@ void EconomySimulation::sweepCoins(aoc::game::GameState& gameState) {
                      coinTierName(state.effectiveCoinTier).data());
         }
 
-        // Money supply for display, trade efficiency and inflation (Phase 2.6
-        // redefines it as treasury + private specie + notes).
-        if (state.system == MonetarySystemType::CommodityMoney) {
-            state.moneySupply = static_cast<CurrencyAmount>(state.totalCoinValue());
-        } else if (state.system == MonetarySystemType::GoldStandard) {
-            // Notes are issued against the coinage at a statutory multiple, not
-            // against the measured backing ratio (that closed a loop with
-            // CurrencyCrisis, which derives the ratio from this figure).
-            const int32_t coinWealth = state.totalCoinValue();
-            state.moneySupply        = static_cast<CurrencyAmount>(
-                static_cast<float>(coinWealth) * (1.0f + GOLD_STANDARD_NOTE_ISSUE));
+        // The money supply is the money: treasury, the people's coin and their
+        // notes (plan 2.6). The Fisher path reads its growth.
+        if (state.system != MonetarySystemType::Barter) {
+            state.moneySupply = state.treasury + state.privateSpecie + state.privateNotes;
         }
     }
 }
@@ -1519,16 +1512,6 @@ void EconomySimulation::tickMonetaryMechanics(aoc::game::GameState& gameState) {
                 trust.trustScore = 0.30f;
             }
             computeCurrencyTrust(gameState, state, trust, playerCount);
-            // Floor Fiat money supply at the physical coin base. Tax > spending
-            // drift otherwise drains moneySupply toward zero across long games,
-            // which breaks currencyStrength() and the Digital transition gate.
-            // Physical coins still circulate under fiat -- they're just no longer
-            // redeemable for gold.
-            const CurrencyAmount coinFloor =
-                static_cast<CurrencyAmount>(state.totalCoinValue());
-            if (state.moneySupply < coinFloor) {
-                state.moneySupply = coinFloor;
-            }
         }
     }
 

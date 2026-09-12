@@ -248,10 +248,12 @@ void executeCurrencyReform(MonetaryStateComponent& state,
 // Reserve-ratio stress on GoldStandard civs
 // ============================================================================
 
-// The gold standard enters with `moneySupply = 2 * strength`, so designed
-// backing ratio at entry is 0.5. Stress kicks in only once printing drives the
-// ratio meaningfully below that equilibrium. Collapse is reserved for genuine
-// reserve exhaustion.
+// The gold standard enters with notes issued one for one against the
+// people's coin, so the backing ratio at entry is 1.0. The metal that could
+// redeem the notes is the coin still in the country (the people's specie and
+// the treasury); the claims on it are the notes outstanding and the treasury.
+// Specie leaving the country -- a fiat buyer paying abroad in coin, a crisis
+// drain -- is what erodes it. Collapse is reserved for genuine exhaustion.
 constexpr float RESERVE_STRESS_THRESHOLD   = 0.40f;  // below: stress starts
 constexpr float RESERVE_RUN_THRESHOLD      = 0.25f;  // below: redemption drain
 constexpr float RESERVE_COLLAPSE_THRESHOLD = 0.10f;  // below: forced suspension
@@ -266,7 +268,8 @@ void processReserveStress(MonetaryStateComponent& state,
         return;
     }
 
-    if (state.moneySupply <= 0) {
+    const CurrencyAmount claims = std::max<CurrencyAmount>(0, state.privateNotes) + state.treasury;
+    if (claims <= 0) {
         return;
     }
 
@@ -281,12 +284,8 @@ void processReserveStress(MonetaryStateComponent& state,
         return;
     }
 
-    // Historic gold-standard era was bimetallic: silver coins in circulation
-    // counted toward backing alongside gold bars held at the central bank.
-    const int32_t metalBacking = state.silverCoinReserves * SILVER_COIN_VALUE
-                               + state.goldBarReserves   * GOLD_BAR_VALUE;
-    const float ratio = static_cast<float>(metalBacking)
-                      / static_cast<float>(state.moneySupply);
+    const CurrencyAmount metal = std::max<CurrencyAmount>(0, state.privateSpecie) + state.treasury;
+    const float ratio          = static_cast<float>(metal) / static_cast<float>(claims);
 
     // Mirror the true ratio so trade partners see current backing.
     state.goldBackingRatio = std::clamp(ratio, 0.0f, 1.0f);

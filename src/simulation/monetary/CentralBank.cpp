@@ -77,8 +77,6 @@ ErrorCode debaseCurrency(MonetaryStateComponent& state, float ratio) {
             break;
     }
 
-    // Update money supply to reflect the new coins
-    state.moneySupply = static_cast<CurrencyAmount>(state.totalCoinValue());
     state.updateCoinTier();
 
     return ErrorCode::Ok;

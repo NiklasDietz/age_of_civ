@@ -9,6 +9,8 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
+#include "aoc/simulation/monetary/ForexMarket.hpp"
+#include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 
 #include <algorithm>
@@ -73,8 +75,11 @@ bool MoneyLedger::backed() const {
 
 namespace {
 
+/// Coin, and under a paper regime the notes too: what a tax can reach.
 [[nodiscard]] CurrencyAmount privateMoneyOf(const aoc::game::Player& civ) {
-    return std::max<CurrencyAmount>(0, civ.monetary().privateSpecie);
+    const MonetaryStateComponent& m = civ.monetary();
+    return std::max<CurrencyAmount>(0, m.privateSpecie) +
+           (notesInUse(m.system) ? std::max<CurrencyAmount>(0, m.privateNotes) : 0);
 }
 
 /// City-state seats and the barbarian seat hold money the world does not
@@ -198,30 +203,52 @@ CurrencyAmount plunder(aoc::game::GameState& gameState, PlayerId victim, aoc::ga
 }
 
 CurrencyAmount payInSpecie(aoc::game::Player& buyer, CurrencyAmount price) {
-    const CurrencyAmount paid = std::min(price, privateMoneyOf(buyer));
+    const CurrencyAmount paid = std::min(price, std::max<CurrencyAmount>(0, buyer.monetary().privateSpecie));
     if (paid > 0) {
         buyer.monetary().privateSpecie -= paid;
     }
     return paid;
 }
 
-CurrencyAmount receiveTradeCoin(aoc::game::Player& seller, CurrencyAmount coin) {
-    if (coin <= 0) {
+CurrencyAmount payInNotes(aoc::game::Player& buyer, CurrencyAmount price) {
+    const CurrencyAmount paid = std::min(price, std::max<CurrencyAmount>(0, buyer.monetary().privateNotes));
+    if (paid > 0) {
+        buyer.monetary().privateNotes -= paid;
+    }
+    return paid;
+}
+
+bool settlesInNotes(const aoc::game::Player& seller, const aoc::game::Player& buyer) {
+    if (!notesInUse(seller.monetary().system) || !notesInUse(buyer.monetary().system)) {
+        return false;
+    }
+    return buyer.currencyTrust().trustScore >= 0.5f || seller.currencyTrust().isReserveCurrency;
+}
+
+float settlementRate(const aoc::game::Player& seller, const aoc::game::Player& buyer) {
+    const float sellerRate = std::max(0.01f, seller.currencyExchange().exchangeRate);
+    const float buyerRate  = std::max(0.01f, buyer.currencyExchange().exchangeRate);
+    return std::clamp(sellerRate / buyerRate, 0.5f, 2.0f);
+}
+
+CurrencyAmount receiveTradeCoin(aoc::game::Player& seller, CurrencyAmount amount, bool notes) {
+    if (amount <= 0) {
         return 0;
     }
     if (moneyless(seller)) {
-        seller.monetary().bullion += coin;
+        seller.monetary().bullion += amount; // paper never reaches a Barter seller
         return 0;
     }
-    seller.monetary().privateSpecie += coin; // the merchants' proceeds
+    (notes ? seller.monetary().privateNotes : seller.monetary().privateSpecie) += amount; // the merchants' proceeds
     const CurrencyAmount share =
-        static_cast<CurrencyAmount>(static_cast<float>(coin) * seller.monetary().taxRate);
+        static_cast<CurrencyAmount>(static_cast<float>(amount) * seller.monetary().taxRate);
     return takeFromPrivate(seller, share); // and the customs on them
 }
 
-void giveToPrivate(aoc::game::Player& civ, CurrencyAmount coin) {
-    if (coin > 0) {
-        civ.monetary().privateSpecie += coin;
+void giveToPrivate(aoc::game::Player& civ, CurrencyAmount amount, bool notes) {
+    if (amount > 0) {
+        (notes && notesInUse(civ.monetary().system) ? civ.monetary().privateNotes
+                                                    : civ.monetary().privateSpecie) += amount;
     }
 }
 

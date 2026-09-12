@@ -97,14 +97,26 @@ void Player::addGold(CurrencyAmount amount, aoc::sim::MoneyFlow flow) {
                         (flow.counterparty == this->m_id || flow.counterparty == INVALID_PLAYER);
     if (ownCiv) {
         // The other side is our own private money: a tax draws it down, a
-        // payment puts it back. A tax the people cannot pay is unbacked.
+        // payment puts it back. Under a paper regime the state pays in notes
+        // and taxes notes before coin. A tax the people cannot pay is unbacked.
+        const bool paper = aoc::sim::notesInUse(this->m_monetary.system);
         if (amount > 0) {
-            const CurrencyAmount backed =
-                std::min(amount, std::max<CurrencyAmount>(0, this->m_monetary.privateSpecie));
-            this->m_monetary.privateSpecie -= backed;
-            if (backed < amount && this->m_ledger != nullptr) {
-                this->m_ledger->record(this->m_id, aoc::sim::MoneyFlow::unbacked(), amount - backed);
+            CurrencyAmount left = amount;
+            if (paper) {
+                const CurrencyAmount notes =
+                    std::min(left, std::max<CurrencyAmount>(0, this->m_monetary.privateNotes));
+                this->m_monetary.privateNotes -= notes;
+                left -= notes;
             }
+            const CurrencyAmount coin =
+                std::min(left, std::max<CurrencyAmount>(0, this->m_monetary.privateSpecie));
+            this->m_monetary.privateSpecie -= coin;
+            left -= coin;
+            if (left > 0 && this->m_ledger != nullptr) {
+                this->m_ledger->record(this->m_id, aoc::sim::MoneyFlow::unbacked(), left);
+            }
+        } else if (paper) {
+            this->m_monetary.privateNotes -= amount;
         } else {
             this->m_monetary.privateSpecie -= amount;
         }

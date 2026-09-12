@@ -307,8 +307,10 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
     // rest it spends straight back on luxuries and learning.
     const MonetaryStateComponent& money = player.monetary();
     bd.collectionEfficiency = collectionEfficiency(player, grid, allianceGoldMult);
-    bd.taxBase = toGold(static_cast<float>(std::max<CurrencyAmount>(0, money.privateSpecie)) *
-                        money.taxableMoneyShare());
+    const CurrencyAmount privateMoney =
+        std::max<CurrencyAmount>(0, money.privateSpecie) +
+        (notesInUse(money.system) ? std::max<CurrencyAmount>(0, money.privateNotes) : 0);
+    bd.taxBase = toGold(static_cast<float>(privateMoney) * money.taxableMoneyShare());
     const float due = static_cast<float>(bd.taxBase) * money.taxRate * bd.collectionEfficiency;
     bd.incomeTax    = toGold(due * money.goldAllocation);
 

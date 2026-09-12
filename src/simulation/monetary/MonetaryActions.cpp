@@ -17,6 +17,7 @@
 #include "aoc/simulation/monetary/CentralBank.hpp"
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/monetary/MoneyFlow.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 
 #include "aoc/core/Log.hpp"
@@ -166,7 +167,18 @@ ErrorCode requestSetMonetaryRegime(aoc::game::GameState& gameState, PlayerId pla
         state.coinageStandard = tier;
         state.updateCoinTier();
     }
+    if (target == MonetarySystemType::GoldStandard) {
+        // Convertible notes, issued one for one against the people's coin:
+        // paper money created, and booked as printed.
+        const CurrencyAmount issued = static_cast<CurrencyAmount>(
+            static_cast<float>(std::max<CurrencyAmount>(0, state.privateSpecie)) * GOLD_STANDARD_NOTE_ISSUE);
+        state.privateNotes += issued;
+        if (p->moneyLedger() != nullptr) {
+            p->moneyLedger()->record(player, MoneyFlow::printed(), issued);
+        }
+    }
     state.transitionTo(target);
+    state.moneySupply = state.treasury + state.privateSpecie + state.privateNotes;
     LOG_INFO("Player %u adopted %.*s%s", static_cast<unsigned>(player),
              static_cast<int>(monetarySystemName(target).size()), monetarySystemName(target).data(),
              target == MonetarySystemType::CommodityMoney

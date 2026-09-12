@@ -104,13 +104,26 @@ CurrencyAmount plunder(aoc::game::GameState& gameState, PlayerId victim, aoc::ga
 /// holds (a Trader's carried coin). Returns what they could pay.
 CurrencyAmount payInSpecie(aoc::game::Player& buyer, CurrencyAmount price);
 
-/// Coin arriving home from a trade: a Barter civ's goes to bullion (the
-/// metal waits for coinage); otherwise the tax-rate share goes to the
-/// treasury and the rest to the merchants. Returns the treasury's share.
-CurrencyAmount receiveTradeCoin(aoc::game::Player& seller, CurrencyAmount coin);
+/// The same in notes, from the buyer's paper.
+CurrencyAmount payInNotes(aoc::game::Player& buyer, CurrencyAmount price);
 
-/// Coin into the people's hands: loot, a windfall found on the road.
-void giveToPrivate(aoc::game::Player& civ, CurrencyAmount coin);
+/// Whether a sale between these two settles in notes (plan B2): both on a
+/// paper regime, and the buyer's paper trusted (trust at least 0.5) or the
+/// seller the reserve currency. Otherwise specie, and goods failing that.
+[[nodiscard]] bool settlesInNotes(const aoc::game::Player& seller, const aoc::game::Player& buyer);
+
+/// Notes the buyer hands over per unit of price: the sellers' rate over the
+/// buyer's, capped to [0.5, 2] so no currency is worthless or priceless.
+[[nodiscard]] float settlementRate(const aoc::game::Player& seller, const aoc::game::Player& buyer);
+
+/// Coin (or notes, when `notes`) arriving home from a trade: a Barter civ's
+/// coin goes to bullion (the metal waits for coinage); otherwise the
+/// tax-rate share goes to the treasury and the rest to the merchants.
+/// Returns the treasury's share.
+CurrencyAmount receiveTradeCoin(aoc::game::Player& seller, CurrencyAmount amount, bool notes = false);
+
+/// Coin (or notes) into the people's hands: loot, a windfall found on the road.
+void giveToPrivate(aoc::game::Player& civ, CurrencyAmount amount, bool notes = false);
 
 /// Coin leaving the world with its carrier (a Trader killed by barbarians,
 /// expired abroad, deleted): booked as a loss on the owner's ledger. The

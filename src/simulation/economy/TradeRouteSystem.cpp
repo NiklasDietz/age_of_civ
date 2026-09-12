@@ -1397,18 +1397,43 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                         book->record(trader.owner, aoc::sim::MoneyFlow::external(), paid);
                     }
                 } else if (aoc::game::Player* buyerPlayer = gameState.player(cityOwner); buyerPlayer != nullptr) {
-                    paid = payInSpecie(*buyerPlayer, goldEarned);
+                    // Two rungs and a fallback (plan B2): trusted paper between
+                    // paper regimes, at the capped exchange rate; else coin; and
+                    // goods for what neither covers. A purse holds one medium.
+                    const bool notes = trader.carriedGold > 0
+                                           ? trader.carriedMedium == 1
+                                           : settlesInNotes(*sellerPlayer, *buyerPlayer);
+                    if (notes) {
+                        const CurrencyAmount inNotes = static_cast<CurrencyAmount>(
+                            static_cast<float>(goldEarned) * settlementRate(*sellerPlayer, *buyerPlayer));
+                        paid = payInNotes(*buyerPlayer, inNotes);
+                        // Owed in goods is measured in price, not notes.
+                        owedInGoods = goldEarned - static_cast<CurrencyAmount>(
+                                                       static_cast<float>(paid) /
+                                                       settlementRate(*sellerPlayer, *buyerPlayer));
+                        trader.carriedMedium = 1;
+                    } else {
+                        paid                 = payInSpecie(*buyerPlayer, goldEarned);
+                        owedInGoods          = goldEarned - paid;
+                        trader.carriedMedium = 0;
+                    }
                     if (trader.owner >= aoc::sim::CITY_STATE_PLAYER_BASE) {
                         bookExternal(*buyerPlayer, -paid); // a city-state's trader carries it out of the world
                     }
+                    trader.carriedGold += paid;
+                    paid = -1; // handled
                 }
-                trader.carriedGold += paid;
-                owedInGoods = goldEarned - paid;
+                if (paid >= 0) {
+                    trader.carriedGold += paid;
+                    owedInGoods = goldEarned - paid;
+                }
             }
             if (sellerPlayer != nullptr && (trader.isReturning || cityOwner == trader.owner)) {
                 trader.coinLandedThisTurn = trader.carriedGold;
-                trader.goldEarnedThisTurn = receiveTradeCoin(*sellerPlayer, trader.carriedGold);
+                trader.goldEarnedThisTurn =
+                    receiveTradeCoin(*sellerPlayer, trader.carriedGold, trader.carriedMedium == 1);
                 trader.carriedGold        = 0;
+                trader.carriedMedium      = 0;
                 owedInGoods               = 0; // our own people, delivering to themselves
             }
 
@@ -1689,7 +1714,7 @@ CurrencyAmount lootTraderCargo(aoc::game::GameState& gameState,
     }
     aoc::game::Player* victim = gameState.player(trader.owner);
     if (pillagerPlayer != nullptr && pillager < aoc::sim::CITY_STATE_PLAYER_BASE) {
-        giveToPrivate(*pillagerPlayer, stolenGold);
+        giveToPrivate(*pillagerPlayer, stolenGold, trader.carriedMedium == 1);
     } else if (pillagerPlayer != nullptr && victim != nullptr) {
         bookExternal(*victim, -stolenGold); // a city-state's soldiers: out of the world
     } else if (victim != nullptr) {

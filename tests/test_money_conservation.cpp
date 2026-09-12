@@ -262,6 +262,32 @@ TEST_CASE("plunder comes out of the loser's pockets first, then its treasury; no
     CHECK(ledger.civs[1].externalIn == 100); // the endowment above
 }
 
+TEST_CASE("printed notes and the Gold Standard's issue keep the invariant: booked as printed") {
+    aoc::test::World w   = aoc::test::makeWorld(1);
+    aoc::game::Player& p = *w.gameState.player(P0);
+    MoneyLedger ledger;
+    p.setMoneyLedger(&ledger);
+    p.monetary().system        = aoc::sim::MonetarySystemType::FiatMoney;
+    p.monetary().gdp           = 1000;
+    p.monetary().privateSpecie = 40;
+    const int64_t before       = aoc::sim::worldMoney(w.gameState);
+
+    const aoc::CurrencyAmount issued = p.monetary().printMoney(50);
+    CHECK(issued == 50);
+    p.addGold(issued, MoneyFlow::printed());
+    CHECK(ledger.civs[0].printed == 50);
+    CHECK(aoc::sim::moneyConserved(before, aoc::sim::worldMoney(w.gameState), ledger));
+
+    // Under paper the state pays its people in notes and taxes the notes first.
+    p.addGold(-30, MoneyFlow::domestic(P0));
+    CHECK(p.monetary().privateNotes == 30);
+    CHECK(p.monetary().privateSpecie == 40);
+    p.addGold(50, MoneyFlow::domestic(P0));
+    CHECK(p.monetary().privateNotes == 0);
+    CHECK(p.monetary().privateSpecie == 20);
+    CHECK(aoc::sim::moneyConserved(before, aoc::sim::worldMoney(w.gameState), ledger));
+}
+
 TEST_CASE("a tithe or a levy draws what the people hold and no more") {
     aoc::test::World w   = aoc::test::makeWorld(2);
     aoc::game::Player& a = *w.gameState.player(P0);

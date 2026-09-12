@@ -2104,7 +2104,8 @@ void EconomyScreen::open(UIManager& ui) {
                                 std::to_string(monetary->privateSpecie) + "  Notes " +
                                 std::to_string(monetary->privateNotes) + "  Bullion " +
                                 std::to_string(monetary->bullion) + "  Arrears " +
-                                std::to_string(owningPlayer->unpaidLastTurn());
+                                std::to_string(owningPlayer->unpaidLastTurn()) + "  Backing " +
+                                std::to_string(static_cast<int>(monetary->goldBackingRatio * 100.0f)) + "%";
             (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 16.0f},
                                  LabelData{std::move(pools), tokens::TEXT_HEADER, 11.0f});
             const uint8_t nextOrd = static_cast<uint8_t>(monetary->system) + 1u;

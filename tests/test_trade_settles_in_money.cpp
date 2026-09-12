@@ -167,6 +167,69 @@ TEST_CASE("a Barter seller's coin comes home as bullion, the metal it will adopt
     CHECK(r.seller().monetary().privateSpecie == 0);
 }
 
+TEST_CASE("a trusted paper pair settles in notes, at the capped exchange rate") {
+    Route r;
+    r.seller().monetary().system        = aoc::sim::MonetarySystemType::GoldStandard;
+    r.buyer().monetary().system         = aoc::sim::MonetarySystemType::FiatMoney;
+    r.buyer().currencyTrust().trustScore = 0.9f;
+    r.buyer().monetary().privateNotes    = 1000;
+    r.buyer().monetary().privateSpecie   = 1000;
+    r.seller().currencyExchange().exchangeRate = 1.0f;
+    r.buyer().currencyExchange().exchangeRate  = 0.25f; // weak paper: pays double, capped
+    CHECK(aoc::sim::settlesInNotes(r.seller(), r.buyer()));
+    CHECK(aoc::sim::settlementRate(r.seller(), r.buyer()) == doctest::Approx(2.0f));
+    const int64_t worldBefore = aoc::sim::worldMoney(r.w.gameState);
+
+    r.turn();
+    const aoc::CurrencyAmount purse = r.unit->trader().carriedGold;
+    CHECK(purse > 0);
+    CHECK(r.unit->trader().carriedMedium == 1);
+    CHECK(r.buyer().monetary().privateNotes == 1000 - purse); // paper, not coin
+    CHECK(r.buyer().monetary().privateSpecie == 1000);
+    REQUIRE(r.comeHome());
+    const aoc::CurrencyAmount customs = static_cast<aoc::CurrencyAmount>(
+        static_cast<float>(purse) * r.seller().monetary().taxRate);
+    CHECK(r.seller().monetary().privateNotes == purse - customs); // lands as paper
+    CHECK(r.seller().treasury() == customs);
+    CHECK(aoc::sim::worldMoney(r.w.gameState) == worldBefore);
+}
+
+TEST_CASE("a fiat buyer facing a coinage seller pays in coin: it draws down its reserves") {
+    Route r;
+    r.buyer().monetary().system          = aoc::sim::MonetarySystemType::FiatMoney;
+    r.buyer().currencyTrust().trustScore = 0.9f;
+    r.buyer().monetary().privateNotes    = 1000;
+    r.buyer().monetary().privateSpecie   = 1000;
+    CHECK_FALSE(aoc::sim::settlesInNotes(r.seller(), r.buyer())); // the seller is on coin
+    r.turn();
+    const aoc::CurrencyAmount purse = r.unit->trader().carriedGold;
+    CHECK(purse > 0);
+    CHECK(r.unit->trader().carriedMedium == 0);
+    CHECK(r.buyer().monetary().privateSpecie == 1000 - purse);
+    CHECK(r.buyer().monetary().privateNotes == 1000);
+}
+
+TEST_CASE("distrusted paper and no coin means goods for goods; a reserve currency is trusted regardless") {
+    Route r;
+    r.seller().monetary().system         = aoc::sim::MonetarySystemType::FiatMoney;
+    r.buyer().monetary().system          = aoc::sim::MonetarySystemType::FiatMoney;
+    r.buyer().currencyTrust().trustScore = 0.2f;
+    r.buyer().monetary().privateNotes    = 1000;
+    r.buyer().monetary().privateSpecie   = 0;
+    r.abroad->stockpile().addGoods(aoc::sim::goods::SILK, 50);
+    CHECK_FALSE(aoc::sim::settlesInNotes(r.seller(), r.buyer()));
+    r.turn();
+    CHECK(r.unit->trader().carriedGold == 0);
+    CHECK(r.buyer().monetary().privateNotes == 1000);
+    int32_t silk = 0;
+    for (const aoc::sim::TradeCargo& c : r.unit->trader().cargo) {
+        silk += c.goodId == aoc::sim::goods::SILK ? c.amount : 0;
+    }
+    CHECK(silk > 0);
+    r.seller().currencyTrust().isReserveCurrency = true;
+    CHECK(aoc::sim::settlesInNotes(r.seller(), r.buyer()));
+}
+
 TEST_CASE("money crossing to or from a city-state's hoard is an external flow for the civ inside") {
     aoc::test::World w = aoc::test::makeWorld(2);
     w.gameState.initializeCityStateSlots(1);

@@ -40,12 +40,10 @@ aoc::sim::MonetaryStateComponent collapsedGoldCiv() {
     aoc::sim::MonetaryStateComponent s;
     s.system               = MonetarySystemType::GoldStandard;
     s.turnsInCurrentSystem = 20;
-    // Almost all base metal: backing lands under the 0.20 collapse threshold.
-    s.copperCoinReserves = 1000;
-    s.silverCoinReserves = 0;
-    s.goldBarReserves    = 0;
-    s.moneySupply = static_cast<aoc::CurrencyAmount>(static_cast<float>(s.totalCoinValue()) *
-                                                     (1.0f + aoc::sim::GOLD_STANDARD_NOTE_ISSUE));
+    // The coin has left the country; the paper remains: backing lands under
+    // the collapse threshold.
+    s.privateSpecie = 10;
+    s.privateNotes  = 1000;
     return s;
 }
 
@@ -77,11 +75,8 @@ TEST_CASE("a civ on a healthy gold standard keeps its credit") {
     aoc::sim::MonetaryStateComponent s;
     s.system               = MonetarySystemType::GoldStandard;
     s.turnsInCurrentSystem = 20;
-    s.copperCoinReserves   = 0;
-    s.silverCoinReserves   = 100;
-    s.goldBarReserves      = 10;
-    s.moneySupply = static_cast<aoc::CurrencyAmount>(static_cast<float>(s.totalCoinValue()) *
-                                                     (1.0f + aoc::sim::GOLD_STANDARD_NOTE_ISSUE));
+    s.privateSpecie        = 1000; // the coin the notes were issued against, still at home
+    s.privateNotes         = 1000;
 
     aoc::sim::CurrencyTrustComponent trust;
     const float before = trust.trustScore;

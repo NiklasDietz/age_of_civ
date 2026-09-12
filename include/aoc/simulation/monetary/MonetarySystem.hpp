@@ -149,15 +149,11 @@ enum class CoinTier : uint8_t {
     }
 }
 
-/// Trade efficiency multiplier for each coin tier (legacy, used as fallback).
-[[nodiscard]] constexpr float coinTierTradeEfficiency(CoinTier tier) {
-    switch (tier) {
-        case CoinTier::None:   return 0.50f;   // Barter: 50%
-        case CoinTier::Copper: return 0.65f;   // Local trade
-        case CoinTier::Silver: return 0.80f;   // Regional trade
-        case CoinTier::Gold:   return 0.95f;   // International trade
-        default:               return 0.50f;
-    }
+/// Regimes whose people hold paper: the state pays in notes and taxes them
+/// back, and a trusted pair settles trade in them (plan 2.6).
+[[nodiscard]] constexpr bool notesInUse(MonetarySystemType type) {
+    return type == MonetarySystemType::GoldStandard || type == MonetarySystemType::FiatMoney ||
+           type == MonetarySystemType::Digital;
 }
 
 /// Minimum coin reserves to qualify for a tier.
@@ -308,7 +304,10 @@ struct MonetaryStateComponent {
     CoinTier effectiveCoinTier = CoinTier::None;
 
     // -- Money supply (paper/fiat currency in GoldStandard/Fiat) --
-    CurrencyAmount moneySupply    = 0;    ///< Total currency in circulation
+    /// Total currency in circulation: DERIVED, treasury + private specie +
+    /// private notes, set every turn by the coin sweep (plan 2.6). The
+    /// Fisher path reads its growth; nothing else should write it.
+    CurrencyAmount moneySupply    = 0;
     TreasuryAccount treasury;             ///< Government cash; see TreasuryAccount
 
     // -- Private money (v34) --
@@ -528,8 +527,7 @@ struct MonetaryStateComponent {
             static_cast<CurrencyAmount>(this->gdp / 10));
         const CurrencyAmount actualPrint = std::min(amount, maxPrint);
 
-        this->moneySupply += actualPrint;
-        this->printAmountThisTurn = actualPrint;
+        this->printAmountThisTurn = actualPrint; // the supply follows the pools
 
         // Direct inflation impact: printed money / GDP
         if (this->gdp > 0) {
@@ -627,47 +625,25 @@ struct MonetaryStateComponent {
         this->turnsInCurrentSystem = 0;
 
         switch (target) {
+            // The money supply is derived from the pools every turn (2.6), so
+            // no stage seeds it here.
             case MonetarySystemType::CommodityMoney:
-                // Active legal tender coins ARE money. Demonetized coins are commodities.
-                this->moneySupply = static_cast<CurrencyAmount>(this->currencyStrength());
                 this->goldBackingRatio = 1.0f;
                 this->debasement = {};
                 break;
 
             case MonetarySystemType::GoldStandard:
-                // Paper notes backed by silver coins + gold bars at 2:1 ratio.
-                // Copper coins (if any remain) are demonetized commodities.
-                // Reserves are re-synced from city stockpiles every turn, so
-                // seeding goldBarReserves here is pointless -- the reserve
-                // stress check treats silver + gold as backing, and the
-                // designed 0.5 entry ratio is below the stress threshold.
-                this->moneySupply = static_cast<CurrencyAmount>(this->currencyStrength()) * 2;
-                this->goldBackingRatio = 0.5f;
+                // Notes issued one for one against the people's coin
+                // (requestSetMonetaryRegime does the issue): full backing on
+                // entry, eroded by whatever specie leaves the country.
+                this->goldBackingRatio = 1.0f;
                 this->debasement = {};  // Paper money, debasement no longer applies
                 break;
 
             case MonetarySystemType::FiatMoney:
-                // Money is no longer backed by gold. Keep current supply.
-                // Gold bars become a commodity (raw material for gold contacts).
-                this->goldBackingRatio = 0.0f;
-                // Seed money supply if the civ arrives with M == 0 (e.g. after
-                // sovereign default, crisis reform, or aggressive gold-buy).
-                // Fisher / trust / maxTradeRoutes all assume M > 0.
-                if (this->moneySupply < MONEY_SUPPLY_FLOOR) {
-                    this->moneySupply = std::max<CurrencyAmount>(
-                        static_cast<CurrencyAmount>(this->currencyStrength()) * 2,
-                        MONEY_SUPPLY_FLOOR);
-                }
-                break;
-
             case MonetarySystemType::Digital:
-                // Same ledger semantics as fiat; all settlement is electronic.
+                // Money is no longer backed by gold.
                 this->goldBackingRatio = 0.0f;
-                if (this->moneySupply < MONEY_SUPPLY_FLOOR) {
-                    this->moneySupply = std::max<CurrencyAmount>(
-                        static_cast<CurrencyAmount>(this->currencyStrength()) * 2,
-                        MONEY_SUPPLY_FLOOR);
-                }
                 break;
 
             default:

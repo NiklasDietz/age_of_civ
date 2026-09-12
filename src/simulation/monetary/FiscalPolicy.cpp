@@ -103,9 +103,10 @@ ErrorCode monetizeDebt(MonetaryStateComponent& state, CurrencyAmount amount) {
         return ErrorCode::InvalidArgument;
     }
 
-    // Print money to pay debt
+    // Print notes to pay the creditors: the debt is gone and the paper is in
+    // their hands. (The caller books the issue as printed on the ledger.)
     state.governmentDebt -= amount;
-    adjustMoneySupply(state, amount, "monetizeDebt");  // New money enters circulation
+    state.privateNotes += amount;
 
     return ErrorCode::Ok;
 }

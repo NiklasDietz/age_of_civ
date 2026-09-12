@@ -18,6 +18,7 @@
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/ai/AIConstants.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
+#include "aoc/simulation/monetary/MoneyFlow.hpp"
 #include "aoc/simulation/monetary/MonetaryActions.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 
@@ -137,8 +138,18 @@ TEST_CASE("the Gold Standard needs Banking; Fiat needs a press or the theory, pa
     aoc::test::addCityAt(r.w, P0, 9, 5, "Gamma"); // the table wants two cities
     CHECK(r.adopt(MonetarySystemType::GoldStandard) == ErrorCode::InvalidMonetaryTransition); // no Banking
     r.p.tech().completedTechs[BANKING.value] = true;
+    aoc::sim::MoneyLedger ledger;
+    r.p.setMoneyLedger(&ledger);
+    const int64_t worldBefore = aoc::sim::worldMoney(r.w.gameState);
     REQUIRE(r.adopt(MonetarySystemType::GoldStandard) == ErrorCode::Ok);
     CHECK(r.p.monetary().system == MonetarySystemType::GoldStandard);
+    // Notes issued one for one against the people's coin, booked as printed.
+    CHECK(r.p.monetary().privateNotes == 120);
+    CHECK(r.p.monetary().privateSpecie == 120);
+    CHECK(ledger.civs[0].printed == 120);
+    CHECK(r.p.monetary().goldBackingRatio == doctest::Approx(1.0f));
+    CHECK(r.p.monetary().moneySupply == 240);
+    CHECK(aoc::sim::moneyConserved(worldBefore, aoc::sim::worldMoney(r.w.gameState), ledger));
 
     // Fiat: the row wants 75 face, 5 turns in, 2 partners, inflation under 5%.
     r.p.monetary().turnsInCurrentSystem = 5;
