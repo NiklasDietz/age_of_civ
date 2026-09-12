@@ -100,6 +100,28 @@ CurrencyAmount takeFromPrivate(aoc::game::GameState& gameState, PlayerId civ,
 CurrencyAmount plunder(aoc::game::GameState& gameState, PlayerId victim, aoc::game::Player& captor,
                        CurrencyAmount amount);
 
+/// The buyer's people pay up to `price` in specie into a purse the caller
+/// holds (a Trader's carried coin). Returns what they could pay.
+CurrencyAmount payInSpecie(aoc::game::Player& buyer, CurrencyAmount price);
+
+/// Coin arriving home from a trade: a Barter civ's goes to bullion (the
+/// metal waits for coinage); otherwise the tax-rate share goes to the
+/// treasury and the rest to the merchants. Returns the treasury's share.
+CurrencyAmount receiveTradeCoin(aoc::game::Player& seller, CurrencyAmount coin);
+
+/// Coin into the people's hands: loot, a windfall found on the road.
+void giveToPrivate(aoc::game::Player& civ, CurrencyAmount coin);
+
+/// Coin leaving the world with its carrier (a Trader killed by barbarians,
+/// expired abroad, deleted): booked as a loss on the owner's ledger. The
+/// caller zeroes the purse.
+void loseCoin(const aoc::game::Player& owner, CurrencyAmount coin);
+
+/// Money that crossed into or out of the external sector (city-states,
+/// barbarians, ruins) by a path that is not a treasury mutation: a purse
+/// paid by a city-state buyer (+), a purse looted by a city-state (-).
+void bookExternal(const aoc::game::Player& civ, CurrencyAmount delta);
+
 /// Sum of every money pool in the world: treasuries, private specie and
 /// notes, bullion, and coin carried by Traders on the road.
 [[nodiscard]] int64_t worldMoney(const aoc::game::GameState& gameState);

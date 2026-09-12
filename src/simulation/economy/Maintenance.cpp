@@ -116,8 +116,8 @@ void tallyUpkeepAndStock(const aoc::game::Player& player, EconomicBreakdown& bd)
     bd.expenseBuildings = static_cast<CurrencyAmount>(static_cast<float>(bd.expenseBuildings) * priceMult);
 }
 
-/// Coin the civ's Traders brought home this turn. The Trader system credits
-/// it on arrival, so it is reported beside the income rather than inside it.
+/// The treasury's customs share of the coin the civ's Traders landed this
+/// turn; the Trader system moves it on arrival, so it is counted, not moved, here.
 [[nodiscard]] CurrencyAmount routeGoldEarned(const aoc::game::Player& player) {
     CurrencyAmount gold = 0;
     for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
@@ -296,7 +296,7 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
         bd.incomeExternal            = book.externalIn;
     }
     if (moneyless(player)) {
-        bd.totalIncome  = bd.incomeSeigniorage + bd.incomeTariffs + bd.incomeExternal;
+        bd.totalIncome = bd.incomeSeigniorage + bd.incomeTariffs + bd.incomeExternal + bd.incomeTradeRoutes;
         bd.totalExpense = bd.expenseUnits + bd.expenseBuildings;
         bd.netFlow      = -bd.totalExpense;
         return bd;
@@ -313,7 +313,8 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
     bd.incomeTax    = toGold(due * money.goldAllocation);
 
     bd.effectiveIncome = bd.incomeTax;
-    bd.totalIncome = bd.incomeTax + bd.incomeSeigniorage + bd.incomeTariffs + bd.incomeExternal;
+    bd.totalIncome = bd.incomeTax + bd.incomeSeigniorage + bd.incomeTariffs + bd.incomeExternal +
+                     bd.incomeTradeRoutes;
     bd.expenseScience =
         toGold(computePlayerScience(player, grid) * SCIENCE_FUNDING_COST * money.priceLevel);
     bd.totalExpense = bd.expenseUnits + bd.expenseBuildings + bd.expenseScience;

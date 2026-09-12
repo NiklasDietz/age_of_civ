@@ -113,13 +113,15 @@ struct TraderComponent {
     /// Maximum round trips before the Trader expires (like Builder charges).
     int32_t maxTrips = -1; ///< -1 = permanent (route persists until trader killed)
 
-    /// Gold earned this turn from trade.
+    /// The treasury's share of coin this trader landed at home this turn.
     CurrencyAmount goldEarnedThisTurn = 0;
+    /// The whole purse it landed this turn (M3: coin brought home). Per-turn scratch, not saved.
+    CurrencyAmount coinLandedThisTurn = 0;
 
-    /// Physical gold/coin riding with the trader between sell at destination
-    /// and return home. Only populated under CommodityMoney (metal coins).
-    /// Paper/fiat/digital settle electronically -- this field stays zero.
-    /// Stolen in full on pillage; credited to the owner's treasury on arrival.
+    /// The purse: coin the buyer's people paid, riding home with the trader.
+    /// Pays tolls on the way, is looted whole on pillage, and lands at home
+    /// as the treasury's customs share plus the merchants' proceeds
+    /// (MoneyFlow.hpp receiveTradeCoin). Counted as money in the world.
     CurrencyAmount carriedGold = 0;
 
     /// What `carriedGold` is made of (v34): 0 = specie, 1 = notes. Decides

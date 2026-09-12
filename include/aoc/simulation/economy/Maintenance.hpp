@@ -57,10 +57,9 @@ struct EconomicBreakdown {
     CurrencyAmount incomeSeigniorage = 0;  ///< The Mint's share of coin struck this turn (ledger)
     CurrencyAmount incomeTariffs     = 0;  ///< Customs at delivery (Phase 3.3; zero until then)
     CurrencyAmount incomeExternal    = 0;  ///< City-states, ruins, camps, endowments this turn (ledger)
-    CurrencyAmount incomeTradeRoutes = 0;  ///< Coin the civ's Traders brought home this turn. Credited by
-                                           ///< the Trader system on arrival, so reported beside
-                                           ///< totalIncome, never inside it
-    CurrencyAmount totalIncome       = 0;  ///< tax + seigniorage + tariffs + external
+    CurrencyAmount incomeTradeRoutes = 0;  ///< Customs share of coin the civ's Traders landed this turn
+                                           ///< (moved by the Trader system on arrival; counted here)
+    CurrencyAmount totalIncome       = 0;  ///< tax + seigniorage + tariffs + external + trade routes
     CurrencyAmount effectiveIncome   = 0;  ///< What processGoldIncome moves: the tax
     CurrencyAmount taxBase           = 0;  ///< Private money x taxable share: the flow a rate applies to
     float collectionEfficiency       = 0.0f; ///< Share of that flow the state can reach, [0, 1]

@@ -374,18 +374,25 @@ std::vector<ProductionRecipe> buildRecipes() {
     // ================================================================
     // Minting: raw metal ore -> coins (requires Mint building)
     // ================================================================
+    // Since the conserved ledger (plan Phase 2) the Mint is the only source
+    // of money, and a state's upkeep runs at gold per unit per turn against
+    // a tax of a few percent of the coin stock. At the old 3 coins per two
+    // ore a coinage civ never held more than tens of gold and sat in arrears
+    // for the whole game (measured 2026-09-12: 20-64 coins struck per
+    // 4-player run). A run now yields 30 face of copper, 100 of silver or
+    // 100 of gold, so a mine and a Mint carry a treasury.
     recipes.push_back({34, "Mint Copper Coins",
         {{goods::COPPER_ORE, 2}},
-        goods::COPPER_COINS, 3, BuildingId{24}, 1});
+        goods::COPPER_COINS, 30, BuildingId{24}, 1});
 
     recipes.push_back({35, "Mint Silver Coins",
         {{goods::SILVER_ORE, 2}},
-        goods::SILVER_COINS, 2, BuildingId{24}, 1,
+        goods::SILVER_COINS, 20, BuildingId{24}, 1,
         1, TechId{5}});  // Requires Currency tech
 
     recipes.push_back({36, "Smelt Gold Bars",
         {{goods::GOLD_ORE, 2}},
-        goods::GOLD_BARS, 1, BuildingId{24}, 1,
+        goods::GOLD_BARS, 4, BuildingId{24}, 1,
         1, TechId{8}});  // Requires Metallurgy tech
 
     // ================================================================

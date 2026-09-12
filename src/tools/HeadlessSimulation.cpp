@@ -39,6 +39,7 @@
 #include "aoc/simulation/ai/TunedLeaderIO.hpp"
 #include "aoc/simulation/barbarian/BarbarianController.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
+#include "aoc/simulation/monetary/MoneyFlow.hpp"
 #include "aoc/simulation/city/CityGrowth.hpp"
 #include "aoc/simulation/city/CityScience.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
@@ -111,6 +112,18 @@ static void printProgressBar(int32_t current, int32_t total, int32_t barWidth = 
 
 namespace {
 
+/// treasury, private specie, notes, bullion, and the purses of the civ's Traders.
+[[nodiscard]] std::array<int64_t, 5> moneyPools(const aoc::game::Player& player) {
+    const aoc::sim::MonetaryStateComponent& m = player.monetary();
+    int64_t purses = 0;
+    for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+        if (unit->typeDef().unitClass == aoc::sim::UnitClass::Trader) {
+            purses += unit->trader().carriedGold;
+        }
+    }
+    return {m.treasury, m.privateSpecie, m.privateNotes, m.bullion, purses};
+}
+
 struct PlayerSnapshot {
     aoc::PlayerId player;
     aoc::CurrencyAmount gdp = 0;
@@ -152,6 +165,7 @@ struct PlayerSnapshot {
     float priceLevel = 1.0f;
     int64_t mintedTurn = 0;        ///< face value swept from the Mint this turn
     int64_t unbackedTurn = 0;      ///< money the old model conjured minus destroyed this turn
+    int64_t coinLanded = 0;        ///< purses the civ's Traders brought home this turn (M3)
 };
 
 /**
@@ -176,6 +190,11 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
     snap.treasury = player->treasury();  // Use Player::m_treasury (actual spending account)
     snap.circulation = ms.treasury + ms.privateSpecie + ms.privateNotes + ms.bullion;
     snap.arrears     = player->unpaidLastTurn();
+    for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
+        if (unit->typeDef().unitClass == aoc::sim::UnitClass::Trader) {
+            snap.coinLanded += unit->trader().coinLandedThisTurn;
+        }
+    }
     snap.priceLevel  = ms.priceLevel;
     snap.coinTier = static_cast<uint8_t>(ms.effectiveCoinTier);
     snap.monetarySystem = static_cast<uint8_t>(ms.system);
@@ -378,7 +397,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         << "FoodPerTurn,FamineCities,ScienceDiffusion,CultureDiffusion,BarbarianUnits,"
         << "IncomeTradeRoutes,ExpenseScience,"
         << "ActiveRoutes,DealsActive,LuxuryTypesHeld,"
-        << "Circulation,Arrears,PriceLevel,MintedTurn,UnbackedTurn,CollectionEfficiency\n";
+        << "Circulation,Arrears,PriceLevel,MintedTurn,UnbackedTurn,CollectionEfficiency,"
+        << "TradeCoinLanded\n";
 
     aoc::map::HexGrid grid;
     // 2026-05-03: honour --seed CLI/yaml override so audit_matrix.sh sims are
@@ -715,13 +735,48 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     }
     // Why idle AI Traders found no route, by reason, over the whole run.
     std::map<int32_t, int32_t> routeRejections;
+    // Turns on which the world's money changed by other than what the ledger
+    // books (plan M7): the conserved economy's own gate.
+    int32_t moneyViolations = 0;
 
     // === Main simulation loop ===
     for (int32_t turn = 1; turn <= maxTurns; ++turn) {
         turnCtx.currentTurn = static_cast<aoc::TurnNumber>(turn);
         eventLog.clear();
 
+        const int64_t moneyBefore = aoc::sim::worldMoney(gameState);
+        std::vector<std::array<int64_t, 5>> poolsBefore;
+        for (const std::unique_ptr<aoc::game::Player>& pl : gameState.players()) {
+            poolsBefore.push_back(moneyPools(*pl));
+        }
         aoc::sim::processTurn(turnCtx);
+        {
+            const int64_t moneyAfter = aoc::sim::worldMoney(gameState);
+            if (!aoc::sim::moneyConserved(moneyBefore, moneyAfter, economy.moneyLedger())) {
+                ++moneyViolations;
+                const aoc::sim::MoneyLedger::Civ t = economy.moneyLedger().total();
+                LOG_WARN("Money not conserved on turn %d: world %lld -> %lld (delta %lld, ledger %lld, "
+                         "unbacked +%lld -%lld)",
+                         turn, static_cast<long long>(moneyBefore), static_cast<long long>(moneyAfter),
+                         static_cast<long long>(moneyAfter - moneyBefore),
+                         static_cast<long long>(economy.moneyLedger().expectedDelta()),
+                         static_cast<long long>(t.unbackedIn), static_cast<long long>(t.unbackedOut));
+                // Which civ, which pool: the leak's address.
+                std::size_t i = 0;
+                for (const std::unique_ptr<aoc::game::Player>& pl : gameState.players()) {
+                    const std::array<int64_t, 5> now = moneyPools(*pl);
+                    const std::array<int64_t, 5>& was = poolsBefore[i++];
+                    const aoc::sim::MoneyLedger::Civ& b = economy.moneyLedger().civs[static_cast<std::size_t>(pl->id())];
+                    LOG_WARN("  P%u treasury %+lld private %+lld notes %+lld bullion %+lld purse %+lld | "
+                             "ledger minted %lld ext +%lld -%lld lost %lld",
+                             static_cast<unsigned>(pl->id()), static_cast<long long>(now[0] - was[0]),
+                             static_cast<long long>(now[1] - was[1]), static_cast<long long>(now[2] - was[2]),
+                             static_cast<long long>(now[3] - was[3]), static_cast<long long>(now[4] - was[4]),
+                             static_cast<long long>(b.minted), static_cast<long long>(b.externalIn),
+                             static_cast<long long>(b.externalOut), static_cast<long long>(b.lost));
+                }
+            }
+        }
 
         // --- Goody hut exploration ---
         // Snapshot unit positions first because claiming a hut can add a free
@@ -968,7 +1023,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             csv << "," << snap.activeRoutes << "," << snap.dealsActive << ","
                 << snap.luxuryTypesHeld;
             csv << "," << snap.circulation << "," << snap.arrears << "," << snap.priceLevel << ","
-                << snap.mintedTurn << "," << snap.unbackedTurn << "," << bd.collectionEfficiency;
+                << snap.mintedTurn << "," << snap.unbackedTurn << "," << bd.collectionEfficiency << ","
+                << snap.coinLanded;
             csv << "\n";
         }
 
@@ -1005,6 +1061,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         }
         std::fprintf(stderr, "\n  Trade route rejections (idle AI Traders, whole run):%s\n",
                      summary.empty() ? " none" : summary.c_str());
+        std::fprintf(stderr, "  Money conservation: %d of %d turns violated\n", moneyViolations, maxTurns);
     }
 
     // WP-L1: tile snapshot dump for AI / analysis tooling. One row per

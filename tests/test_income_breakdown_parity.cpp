@@ -225,7 +225,7 @@ TEST_CASE("the government and an economic alliance multiply the reach") {
     CHECK(aoc::sim::collectionEfficiency(e.player, e.world.grid, 100.0f) <= 1.0f); // capped
 }
 
-TEST_CASE("route gold is reported beside the income, not counted in it") {
+TEST_CASE("the customs on landed trade coin are counted in the income, moved by the Trader system") {
     Empire e;
     const EconomicBreakdown quiet = e.breakdown();
     CHECK(quiet.incomeTradeRoutes == 0);
@@ -237,7 +237,8 @@ TEST_CASE("route gold is reported beside the income, not counted in it") {
     }
     const EconomicBreakdown landed = e.breakdown();
     CHECK(landed.incomeTradeRoutes == 37);
-    CHECK(landed.totalIncome == quiet.totalIncome);
+    CHECK(landed.totalIncome == quiet.totalIncome + 37);
+    CHECK(landed.effectiveIncome == quiet.effectiveIncome); // processGoldIncome moves only the tax
 }
 
 TEST_CASE("seigniorage and the external sector are reported from the turn's ledger") {

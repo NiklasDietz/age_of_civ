@@ -114,10 +114,6 @@ inline constexpr float GOLD_STANDARD_NOTE_ISSUE = 1.0f;
 }
 
 /// Whether gold physically rides with traders (vulnerable to pillage) on this tier.
-/// CommodityMoney: metal coins are the money. GoldStandard+ pays via paper/ledger.
-[[nodiscard]] constexpr bool traderCarriesGoldOnReturn(MonetarySystemType type) {
-    return type == MonetarySystemType::CommodityMoney;
-}
 
 [[nodiscard]] constexpr std::string_view monetarySystemName(MonetarySystemType type) {
     switch (type) {
@@ -244,7 +240,11 @@ struct MonetaryTransitionReq {
 /// Both require 5+ turns in Gold Standard for stability track record.
 inline constexpr std::array<MonetaryTransitionReq, 4> MONETARY_TRANSITIONS = {{
     // Barter -> Commodity Money: need any coins worth >= 3 currency units
-    {MonetarySystemType::CommodityMoney, TechId{},  3,    1, 0, 0, 1.0f},
+    // A state that adopts coinage starts paying its upkeep in coin, so it
+    // needs a stock that can carry it: three coppers (the old gate) left a
+    // civ in arrears for the whole game once money was conserved. 100 face
+    // is a few turns of a fed Mint.
+    {MonetarySystemType::CommodityMoney, TechId{},  100,  1, 0, 0, 1.0f},
     // Commodity -> Gold Standard: need banking tech, moderate reserves, 2 cities.
     // 20 copper coins (strength 20) or 4 silver coins is achievable before
     // copper ore depletes (~80 turns of mining at 1 ore/turn).

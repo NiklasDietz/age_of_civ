@@ -10,6 +10,7 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/monetary/MoneyFlow.hpp"
+#include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
@@ -107,7 +108,8 @@ ErrorCode requestDeleteUnit(aoc::game::GameState& gameState, const aoc::map::Hex
     if (unit == nullptr) {
         return ErrorCode::InvalidArgument;
     }
-    // No refund: the gold it would conjure came from nowhere (plan 2.2).
+    // No refund: the gold it would conjure came from nowhere (plan 2.2). A
+    // trader's purse leaves with it (Player::removeUnit books the loss).
     (void)grid;
     LOG_INFO("Player %u disbanded %.*s at (%d,%d)", static_cast<unsigned>(player),
              static_cast<int>(unit->typeDef().name.size()), unit->typeDef().name.data(), at.q, at.r);

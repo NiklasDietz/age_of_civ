@@ -227,7 +227,8 @@ def evaluate(rows: list[dict[str, str]], events: list[dict[str, str]] | None = N
     #     omit a channel, so the parts never summed to TotalIncome. Since the
     #     conserved ledger (2.3) the channels are the tax on private money,
     #     seigniorage, tariffs and the external sector.
-    channels = ("IncomeTax", "IncomeSeigniorage", "IncomeTariffs", "IncomeExternal")
+    channels = ("IncomeTax", "IncomeSeigniorage", "IncomeTariffs", "IncomeExternal",
+                "IncomeTradeRoutes")
     mismatches = []
     for row in rows:
         parts = sum(float(row[c]) for c in channels)
@@ -273,11 +274,13 @@ def evaluate(rows: list[dict[str, str]], events: list[dict[str, str]] | None = N
         f"{connected:.0%} of {len(shares)} civs",
     )
 
-    # T3 (M3) Trade brings home real money. Until Phase 2 IncomeTradeRoutes is
-    #     the coin Traders delivered this turn, reported beside TotalIncome.
+    # T3 (M3) Trade brings home real money: the coin Traders carried home as a
+    #     share of every inflow of money to the civs (minting, trade, the
+    #     external sector) over the last quarter.
     window = [r for r in rows if int(r["Turn"]) >= max(1, (3 * last_turn) // 4)]
-    route_gold = sum(float(r["IncomeTradeRoutes"]) for r in window)
-    all_income = sum(float(r["TotalIncome"]) for r in window) + route_gold
+    route_gold = sum(float(r.get("TradeCoinLanded", "0") or 0) for r in window)
+    all_income = route_gold + sum(float(r.get("MintedTurn", "0") or 0) +
+                                  float(r.get("IncomeExternal", "0") or 0) for r in window)
     share = route_gold / all_income if all_income > 0 else 0.0
     target(
         "T3 route gold share of income over the last quarter >= 25%",
@@ -322,14 +325,18 @@ def evaluate(rows: list[dict[str, str]], events: list[dict[str, str]] | None = N
                 f"{wars} declared, baseline {war_baseline}, band {lo:.1f}..{hi:.1f}",
             )
 
-    # N16 (M7) Money the old model still conjures or destroys, netted per turn
-    # from the ledger (Phase 2.1). Phases 2.2-2.4 bring it to zero; until then
-    # the figure is the programme's progress meter, so a note, not a target.
-    unbacked = sum(float(r.get("UnbackedTurn", "0") or 0) for r in rows if int(r["Turn"]) > late_from)
-    minted = sum(float(r.get("MintedTurn", "0") or 0) for r in rows if int(r["Turn"]) > late_from)
-    report.notes.append(
-        f"NOTE: N16 after turn {late_from}: {minted:.0f} minted, {unbacked:+.0f} unbacked net "
-        f"(M7 wants 0)")
+    # H16 (M7) Money is neither conjured nor destroyed: every treasury flow
+    #     names its counterparty, so the ledger's unbacked column is zero on
+    #     every row (Phase 2.4 closed the last site, the trade sale).
+    conjured = [f"T{r['Turn']}P{r['Player']} {float(r.get('UnbackedTurn', '0') or 0):+g}"
+                for r in rows if float(r.get("UnbackedTurn", "0") or 0) != 0]
+    minted = sum(float(r.get("MintedTurn", "0") or 0) for r in rows)
+    check(
+        "H16 no money conjured or destroyed",
+        not conjured,
+        f"{minted:.0f} minted over the run; unbacked rows: "
+        f"{', '.join(conjured[:6]) if conjured else 'none'}",
+    )
 
     if not quiet:
         for line in report.notes:
@@ -351,7 +358,7 @@ COLUMNS = [
     "TotalIncome", "BarbarianUnits",
     "IncomeTradeRoutes", "ActiveRoutes", "DealsActive", "LuxuryTypesHeld",
     "Circulation", "Arrears", "PriceLevel", "MintedTurn", "UnbackedTurn",
-    "CollectionEfficiency",
+    "CollectionEfficiency", "TradeCoinLanded",
 ]
 
 EVENT_COLUMNS = ["Turn", "SubStep", "EventType", "Player", "OtherPlayer",
@@ -364,8 +371,9 @@ def _row(turn: int, player: int, **over: object) -> dict[str, str]:
                  "Era": "4", "MetPlayersMask": "3", "TradePartners": "1",
                  "BarbarianUnits": "2" if turn <= 30 else "0",
                  "ActiveRoutes": "2", "DealsActive": "1",
-                 "TotalIncome": "100", "IncomeTax": "100",
-                 "IncomeTradeRoutes": "40"})
+                 "TotalIncome": "140", "IncomeTax": "100",
+                 "IncomeTradeRoutes": "40", "TradeCoinLanded": "260",
+                 "MintedTurn": "100"})
     base.update({k: str(v) for k, v in over.items()})
     return base
 
@@ -492,8 +500,8 @@ def selftest() -> int:
     # T3: routes bring no money home.
     rows = _healthy()
     for r in rows:
-        r["IncomeTradeRoutes"] = "0"
-    add("T3 no route gold", rows, "MISSED: T3")
+        r["TradeCoinLanded"] = "0"
+    add("T3 no coin comes home", rows, "MISSED: T3")
 
     # T4a: no deal is ever accepted.
     add("T4a no deals", _healthy(), "MISSED: T4a",
@@ -509,7 +517,7 @@ def selftest() -> int:
     rows = _healthy()
     for r in rows:
         r["UnbackedTurn"] = "5"
-    add("N16 unbacked money noted", rows, "NOTE: N16 after turn")
+    add("H16 conjured money", rows, "FAIL: H16 no money")
 
     # T5: wars spike past the band.
     add("T5 war spike", _healthy(), "MISSED: T5",

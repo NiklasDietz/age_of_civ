@@ -77,6 +77,13 @@ namespace {
     return std::max<CurrencyAmount>(0, civ.monetary().privateSpecie);
 }
 
+/// City-state seats and the barbarian seat hold money the world does not
+/// count (worldMoney walks players() only): any flow across this line is
+/// external for the civ inside it.
+[[nodiscard]] bool outsideWorld(PlayerId id) {
+    return id != INVALID_PLAYER && id >= CITY_STATE_PLAYER_BASE;
+}
+
 /// The other civ's people, when `civ` names a major civ other than `self`.
 [[nodiscard]] aoc::game::Player* foreignPeople(aoc::game::GameState& gameState, PlayerId civ,
                                                const aoc::game::Player& self) {
@@ -102,7 +109,21 @@ CurrencyAmount payFromTreasury(aoc::game::Player& payer, CurrencyAmount amount) 
 
 CurrencyAmount payFromTreasury(aoc::game::GameState& gameState, aoc::game::Player& payer,
                                CurrencyAmount amount, PlayerId civ) {
-    if (civ != INVALID_PLAYER && civ >= CITY_STATE_PLAYER_BASE) {
+    if (outsideWorld(payer.id())) {
+        // A city-state's coin arriving in a major civ's province comes from
+        // beyond the ledger.
+        aoc::game::Player* locals = outsideWorld(civ) ? nullptr : gameState.player(civ);
+        const CurrencyAmount paid = std::min(amount, std::max<CurrencyAmount>(0, payer.treasury()));
+        if (paid > 0) {
+            payer.addGold(-paid, MoneyFlow::external());
+            if (locals != nullptr) {
+                locals->monetary().privateSpecie += paid;
+                bookExternal(*locals, paid);
+            }
+        }
+        return paid;
+    }
+    if (outsideWorld(civ)) {
         const CurrencyAmount paid = std::min(amount, std::max<CurrencyAmount>(0, payer.treasury()));
         if (paid > 0) {
             payer.addGold(-paid, MoneyFlow::external()); // a city-state's people are the external sector
@@ -144,6 +165,9 @@ CurrencyAmount takeFromPrivate(aoc::game::GameState& gameState, PlayerId civ,
     const CurrencyAmount taken = std::min(amount, privateMoneyOf(*people));
     if (taken > 0) {
         people->monetary().privateSpecie -= taken;
+        if (outsideWorld(taker.id())) {
+            bookExternal(*people, -taken); // a barbarian's or city-state's hoard: out of the world
+        }
         taker.addGold(taken, MoneyFlow::domestic(civ));
     }
     return taken;
@@ -154,8 +178,10 @@ CurrencyAmount plunder(aoc::game::GameState& gameState, PlayerId victim, aoc::ga
     if (amount <= 0) {
         return 0;
     }
-    aoc::game::Player* loser =
-        (victim == captor.id() || victim == BARBARIAN_PLAYER) ? nullptr : gameState.player(victim);
+    aoc::game::Player* loser = (victim == captor.id() || victim == BARBARIAN_PLAYER ||
+                                (victim != INVALID_PLAYER && victim >= CITY_STATE_PLAYER_BASE))
+                                   ? nullptr
+                                   : gameState.player(victim);
     if (loser == nullptr) {
         captor.addGold(amount, MoneyFlow::external());
         return amount;
@@ -169,6 +195,46 @@ CurrencyAmount plunder(aoc::game::GameState& gameState, PlayerId victim, aoc::ga
         taken += fromTreasury;
     }
     return taken;
+}
+
+CurrencyAmount payInSpecie(aoc::game::Player& buyer, CurrencyAmount price) {
+    const CurrencyAmount paid = std::min(price, privateMoneyOf(buyer));
+    if (paid > 0) {
+        buyer.monetary().privateSpecie -= paid;
+    }
+    return paid;
+}
+
+CurrencyAmount receiveTradeCoin(aoc::game::Player& seller, CurrencyAmount coin) {
+    if (coin <= 0) {
+        return 0;
+    }
+    if (moneyless(seller)) {
+        seller.monetary().bullion += coin;
+        return 0;
+    }
+    seller.monetary().privateSpecie += coin; // the merchants' proceeds
+    const CurrencyAmount share =
+        static_cast<CurrencyAmount>(static_cast<float>(coin) * seller.monetary().taxRate);
+    return takeFromPrivate(seller, share); // and the customs on them
+}
+
+void giveToPrivate(aoc::game::Player& civ, CurrencyAmount coin) {
+    if (coin > 0) {
+        civ.monetary().privateSpecie += coin;
+    }
+}
+
+void loseCoin(const aoc::game::Player& owner, CurrencyAmount coin) {
+    if (coin > 0 && owner.moneyLedger() != nullptr) {
+        owner.moneyLedger()->record(owner.id(), MoneyFlow::loss(), coin);
+    }
+}
+
+void bookExternal(const aoc::game::Player& civ, CurrencyAmount delta) {
+    if (delta != 0 && civ.moneyLedger() != nullptr) {
+        civ.moneyLedger()->record(civ.id(), MoneyFlow::external(), delta);
+    }
 }
 
 int64_t worldMoney(const aoc::game::GameState& gameState) {

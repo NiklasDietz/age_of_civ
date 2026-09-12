@@ -9,6 +9,8 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -107,6 +109,12 @@ void Player::addGold(CurrencyAmount amount, aoc::sim::MoneyFlow flow) {
             this->m_monetary.privateSpecie -= amount;
         }
         return;
+    }
+    // A city-state's treasury is outside the world's money: a transfer with
+    // one is an external flow for us.
+    if (flow.kind == aoc::sim::MoneyFlowKind::Transfer && flow.counterparty != INVALID_PLAYER &&
+        flow.counterparty >= aoc::sim::CITY_STATE_PLAYER_BASE) {
+        flow = aoc::sim::MoneyFlow::external();
     }
     if (this->m_ledger != nullptr) {
         this->m_ledger->record(this->m_id, flow, amount);
@@ -251,6 +259,17 @@ void Player::removeUnit(Unit* unit) {
         std::find_if(this->m_units.begin(), this->m_units.end(),
                      [unit](const std::unique_ptr<Unit>& owned) { return owned.get() == unit; });
     if (it != this->m_units.end()) {
+        // A trader's purse leaves the world with it (expired, cancelled,
+        // deleted, killed by nobody who could loot it): the owner's loss.
+        // The loot and landing paths empty the purse first.
+        if (unit->typeDef().unitClass == aoc::sim::UnitClass::Trader &&
+            unit->trader().carriedGold > 0) {
+            if (this->m_ledger != nullptr) {
+                this->m_ledger->record(this->m_id, aoc::sim::MoneyFlow::loss(),
+                                       unit->trader().carriedGold);
+            }
+            unit->trader().carriedGold = 0;
+        }
         if (g_unitRemovalObserver) {
             g_unitRemovalObserver(unit);
         }

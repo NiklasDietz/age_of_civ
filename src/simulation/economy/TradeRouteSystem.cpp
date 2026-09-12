@@ -34,6 +34,8 @@
 #include "aoc/simulation/event/GameNotifications.hpp"
 #include "aoc/core/Log.hpp"
 
+#include "aoc/simulation/monetary/MoneyFlow.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -390,6 +392,73 @@ bool evaluateTradeConsent(const aoc::game::GameState& gameState,
 }
 
 /// Compute total market value of cargo currently carried by a trader.
+namespace {
+
+[[nodiscard]] int32_t unitPrice(const Market& market, uint16_t goodId) {
+    return std::max(1, market.marketData(goodId).currentPrice);
+}
+
+/// Take goods worth `value` at market prices out of `cargo` (priciest first)
+/// into `into` when there is one. Returns the value taken.
+CurrencyAmount takeCargoWorth(std::vector<TradeCargo>& cargo, const Market& market,
+                              CurrencyAmount value, CityStockpileComponent* into) {
+    std::stable_sort(cargo.begin(), cargo.end(), [&market](const TradeCargo& a, const TradeCargo& b) {
+        const int32_t pa = unitPrice(market, a.goodId);
+        const int32_t pb = unitPrice(market, b.goodId);
+        return pa != pb ? pa > pb : a.goodId < b.goodId;
+    });
+    CurrencyAmount taken = 0;
+    for (std::vector<TradeCargo>::iterator it = cargo.begin(); it != cargo.end() && taken < value;) {
+        const int32_t price = unitPrice(market, it->goodId);
+        const int32_t units = static_cast<int32_t>(
+            std::min<CurrencyAmount>(it->amount, (value - taken + price - 1) / price));
+        if (into != nullptr && units > 0) {
+            into->addGoods(it->goodId, units);
+        }
+        it->amount -= units;
+        taken += static_cast<CurrencyAmount>(units) * price;
+        it = it->amount <= 0 ? cargo.erase(it) : it + 1;
+    }
+    return taken;
+}
+
+/// Take goods worth `value` at market prices out of a stockpile (priciest
+/// first, never coin) onto a trader, one cargo slot per good, `slots` at
+/// most. Returns the value taken.
+CurrencyAmount takeGoodsWorth(CityStockpileComponent& from, const Market& market, CurrencyAmount value,
+                              std::vector<TradeCargo>& cargo, int32_t slots) {
+    std::vector<std::pair<uint16_t, int32_t>> held;
+    for (const std::pair<const uint16_t, int32_t>& entry : from.goods) {
+        if (entry.second > 0 && !isCoinGood(entry.first)) {
+            held.emplace_back(entry.first, entry.second);
+        }
+    }
+    std::sort(held.begin(), held.end(), [&market](const std::pair<uint16_t, int32_t>& a,
+                                                  const std::pair<uint16_t, int32_t>& b) {
+        const int32_t pa = unitPrice(market, a.first);
+        const int32_t pb = unitPrice(market, b.first);
+        return pa != pb ? pa > pb : a.first < b.first;
+    });
+    CurrencyAmount taken = 0;
+    for (const std::pair<uint16_t, int32_t>& good : held) {
+        if (taken >= value || slots <= 0) {
+            break;
+        }
+        const int32_t price = unitPrice(market, good.first);
+        const int32_t units = static_cast<int32_t>(
+            std::min<CurrencyAmount>(good.second, (value - taken + price - 1) / price));
+        if (units <= 0 || !from.consumeGoods(good.first, units)) {
+            continue;
+        }
+        cargo.push_back({good.first, units});
+        --slots;
+        taken += static_cast<CurrencyAmount>(units) * price;
+    }
+    return taken;
+}
+
+} // namespace
+
 CurrencyAmount computeCargoValue(const std::vector<TradeCargo>& cargo, const Market& market) {
     CurrencyAmount total = 0;
     for (const TradeCargo& c : cargo) {
@@ -914,6 +983,7 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             // breakdown sums it as this turn's route gold, and a Trader that
             // came home and went idle would otherwise report its last sale forever.
             u->trader().goldEarnedThisTurn = 0;
+            u->trader().coinLandedThisTurn = 0;
             if (u->trader().owner != INVALID_PLAYER) {
                 traderUnits.push_back(u.get());
             }
@@ -1049,13 +1119,16 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
 
             if (acceptToll) {
                 // Pay toll: credit territory owner, debit trader
+                // Paid on the road: out of the purse first, then out of the
+                // cargo at market prices into the toll-keeper's first city.
                 aoc::game::Player* tollReceiver = gameState.player(te.owner);
-                if (tollReceiver != nullptr && traderPlayer != nullptr) {
-                    // The treasury never overdraws; 2.4 pays the rest from the
-                    // trader's purse and cargo.
-                    totalToll = std::min(totalToll, std::max<CurrencyAmount>(0, traderPlayer->treasury()));
-                    traderPlayer->addGold(-totalToll, aoc::sim::MoneyFlow::transfer(te.owner));
-                    tollReceiver->addGold(totalToll, aoc::sim::MoneyFlow::transfer(trader.owner));
+                if (tollReceiver != nullptr) {
+                    const CurrencyAmount fromPurse = std::min(totalToll, trader.carriedGold);
+                    trader.carriedGold -= fromPurse;
+                    tollReceiver->addGold(fromPurse, aoc::sim::MoneyFlow::transfer(trader.owner));
+                    CityStockpileComponent* tollCity =
+                        tollReceiver->cities().empty() ? nullptr : &tollReceiver->cities().front()->stockpile();
+                    totalToll = fromPurse + takeCargoWorth(trader.cargo, market, totalToll - fromPurse, tollCity);
                 }
                 trader.tollPaidThisTurn += totalToll;
 
@@ -1308,37 +1381,35 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                      routeTag, totalUnits,
                      static_cast<long long>(goldEarned));
 
-            trader.goldEarnedThisTurn = goldEarned;
-
-            // Settle the sale against the owner's monetary system.
-            //   CommodityMoney: coins earned at FOREIGN leg ride home in
-            //                    `carriedGold` (at risk from pillage). Arrival
-            //                    at HOME flushes carried coins to treasury and
-            //                    home-leg revenue credits directly.
-            //   GoldStandard / Fiat / Digital: paper or electronic settlement.
-            //                    Treasury is credited immediately, nothing carried.
-            //   Barter: no money -- only the goods swap counts; no gold credit.
+            // Settlement (plan 2.4): the buyer's people pay the price in specie
+            // into the trader's purse; what they cannot pay they owe in goods
+            // (fetched below, once the return cargo is loaded). A city-state
+            // buys with money from beyond the ledger. The purse lands when the
+            // coin is home: the customs share to the treasury, the rest to the
+            // merchants, or to bullion for a civ still in Barter.
             aoc::game::Player* sellerPlayer = gameState.player(trader.owner);
-            if (sellerPlayer != nullptr) {
-                MonetaryStateComponent& sellerMon = sellerPlayer->monetary();
-                const bool atHome = trader.isReturning;
-                if (atHome && trader.carriedGold > 0) {
-                    // Purse to treasury: a move inside the civ, booked nowhere.
-                    sellerPlayer->addGold(trader.carriedGold, aoc::sim::MoneyFlow::transfer(trader.owner));
-                    trader.carriedGold = 0;
-                }
-                if (goldEarned > 0) {
-                    // The sale still conjures its price; Phase 2.4 settles it
-                    // from the buyer's private money instead.
-                    if (traderCarriesGoldOnReturn(sellerMon.system) && !atHome) {
-                        trader.carriedGold += goldEarned;
-                        if (aoc::sim::MoneyLedger* book = sellerPlayer->moneyLedger(); book != nullptr) {
-                            book->record(trader.owner, aoc::sim::MoneyFlow::unbacked(), goldEarned);
-                        }
-                    } else if (sellerMon.system != MonetarySystemType::Barter) {
-                        sellerPlayer->addGold(goldEarned, aoc::sim::MoneyFlow::unbacked());
+            CurrencyAmount owedInGoods      = 0;
+            if (sellerPlayer != nullptr && goldEarned > 0) {
+                CurrencyAmount paid = 0;
+                if (cityOwner >= aoc::sim::CITY_STATE_PLAYER_BASE) {
+                    paid = goldEarned;
+                    if (aoc::sim::MoneyLedger* book = sellerPlayer->moneyLedger(); book != nullptr) {
+                        book->record(trader.owner, aoc::sim::MoneyFlow::external(), paid);
+                    }
+                } else if (aoc::game::Player* buyerPlayer = gameState.player(cityOwner); buyerPlayer != nullptr) {
+                    paid = payInSpecie(*buyerPlayer, goldEarned);
+                    if (trader.owner >= aoc::sim::CITY_STATE_PLAYER_BASE) {
+                        bookExternal(*buyerPlayer, -paid); // a city-state's trader carries it out of the world
                     }
                 }
+                trader.carriedGold += paid;
+                owedInGoods = goldEarned - paid;
+            }
+            if (sellerPlayer != nullptr && (trader.isReturning || cityOwner == trader.owner)) {
+                trader.coinLandedThisTurn = trader.carriedGold;
+                trader.goldEarnedThisTurn = receiveTradeCoin(*sellerPlayer, trader.carriedGold);
+                trader.carriedGold        = 0;
+                owedInGoods               = 0; // our own people, delivering to themselves
             }
 
             // Record the sale as an export for the seller and an import for the
@@ -1383,6 +1454,12 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 }
             }
             trader.pendingPickupCargo.clear();
+
+            // Goods for goods: what the buyer could not pay in coin it pays in
+            // kind, as far as the return cargo has room.
+            if (owedInGoods > 0) {
+                takeGoodsWorth(targetStock, market, owedInGoods, trader.cargo, returnSlots - loaded);
+            }
         }
 
         // Science/culture spread: trade spreads ideas
@@ -1590,7 +1667,7 @@ CurrencyAmount lootTraderCargo(aoc::game::GameState& gameState,
     // WP-O: pillaged trader can't pick up. Release the seller's reservation.
     releasePickupReservation(gameState, traderUnit->trader());
 
-    const TraderComponent& trader = traderUnit->trader();
+    TraderComponent& trader = traderUnit->trader();
 
     // Calculate cargo value
     CurrencyAmount totalValue = 0;
@@ -1598,20 +1675,27 @@ CurrencyAmount lootTraderCargo(aoc::game::GameState& gameState,
         totalValue += static_cast<CurrencyAmount>(c.amount) * 3;  // Loot value
     }
 
-    // Transfer loot to pillager's first city + any metal coin on board to
-    // pillager's treasury. Under paper/fiat/digital this is always zero, so
-    // pillaging a digital-tier trader yields goods only.
-    aoc::game::Player* pillagerPlayer = gameState.player(pillager);
+    // The crates go to the pillager's first city; the purse goes to the
+    // soldiers who took it (the pillager's people). A barbarian purse leaves
+    // the world: the owner's loss.
+    aoc::game::Player* pillagerPlayer =
+        pillager == BARBARIAN_PLAYER ? nullptr : gameState.player(pillager);
     const CurrencyAmount stolenGold = trader.carriedGold;
     if (pillagerPlayer != nullptr && !pillagerPlayer->cities().empty()) {
         CityStockpileComponent& stock = pillagerPlayer->cities().front()->stockpile();
         for (const TradeCargo& c : trader.cargo) {
             stock.addGoods(c.goodId, c.amount);
         }
-        if (stolenGold > 0) {
-            pillagerPlayer->addGold(stolenGold, aoc::sim::MoneyFlow::transfer(trader.owner));
-        }
     }
+    aoc::game::Player* victim = gameState.player(trader.owner);
+    if (pillagerPlayer != nullptr && pillager < aoc::sim::CITY_STATE_PLAYER_BASE) {
+        giveToPrivate(*pillagerPlayer, stolenGold);
+    } else if (pillagerPlayer != nullptr && victim != nullptr) {
+        bookExternal(*victim, -stolenGold); // a city-state's soldiers: out of the world
+    } else if (victim != nullptr) {
+        loseCoin(*victim, stolenGold);
+    }
+    trader.carriedGold = 0;
     totalValue += stolenGold;
 
     LOG_INFO("Trader pillaged! Player %u captured %lld gold worth (coins: %lld) from player %u",
