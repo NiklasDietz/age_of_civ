@@ -12,15 +12,24 @@
 
 #include "support/World.hpp"
 
+#include "aoc/game/City.hpp"
 #include "aoc/game/Player.hpp"
+#include "aoc/game/Unit.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/WorldCongress.hpp"
+#include "aoc/simulation/economy/Market.hpp"
+#include "aoc/simulation/economy/TradeRouteSystem.hpp"
+#include "aoc/simulation/resource/ResourceComponent.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
 
 using aoc::PlayerId;
 
 namespace {
 
 constexpr uint8_t SEATS = 4;
+constexpr aoc::UnitTypeId TRADER{30};
+constexpr uint16_t WHEAT = aoc::sim::goods::WHEAT;
 
 } // namespace
 
@@ -109,5 +118,104 @@ TEST_CASE("lifting a sanction clears what it set") {
             continue;
         }
         CHECK_FALSE(dip.hasEmbargo(id, TARGET));
+    }
+}
+
+TEST_CASE("a per-good embargo binds only the civ that declared it") {
+    // It used to be written into both halves of the pair, so a civ denying a
+    // rival its iron also stopped the rival selling iron back: one court's
+    // leverage became a boycott neither had chosen.
+    aoc::sim::DiplomacyManager dip;
+    dip.initialize(SEATS);
+
+    dip.setResourceEmbargo(PlayerId{0}, PlayerId{1}, WHEAT, true);
+    CHECK(dip.hasResourceEmbargo(PlayerId{0}, PlayerId{1}, WHEAT));
+    CHECK_FALSE(dip.hasResourceEmbargo(PlayerId{1}, PlayerId{0}, WHEAT));
+
+    // Declaring it twice is still one refusal.
+    dip.setResourceEmbargo(PlayerId{0}, PlayerId{1}, WHEAT, true);
+    CHECK(dip.relation(PlayerId{0}, PlayerId{1}).embargoedGoods.size() == 1);
+
+    // And lifting touches only the side that declared it.
+    dip.setResourceEmbargo(PlayerId{1}, PlayerId{0}, WHEAT, true);
+    dip.setResourceEmbargo(PlayerId{0}, PlayerId{1}, WHEAT, false);
+    CHECK_FALSE(dip.hasResourceEmbargo(PlayerId{0}, PlayerId{1}, WHEAT));
+    CHECK(dip.hasResourceEmbargo(PlayerId{1}, PlayerId{0}, WHEAT));
+}
+
+TEST_CASE("a blanket embargo answers for every good in that direction") {
+    aoc::sim::DiplomacyManager dip;
+    dip.initialize(SEATS);
+    dip.setEmbargo(PlayerId{0}, PlayerId{1}, true);
+    CHECK(dip.hasResourceEmbargo(PlayerId{0}, PlayerId{1}, WHEAT));
+    CHECK_FALSE(dip.hasResourceEmbargo(PlayerId{1}, PlayerId{0}, WHEAT));
+}
+
+TEST_CASE("an embargo ends the routes between the pair and leaves the rest running") {
+    aoc::test::World w = aoc::test::makeWorld(3);
+    aoc::game::City& home  = aoc::test::addCityAt(w, PlayerId{0}, 4, 4, "Alpha");
+    aoc::game::City& beta  = aoc::test::addCityAt(w, PlayerId{1}, 14, 8, "Beta");
+    aoc::game::City& gamma = aoc::test::addCityAt(w, PlayerId{2}, 20, 12, "Gamma");
+
+    // auto required: the helper returns a reference into the unit store.
+    auto route = [&](aoc::game::City& from, aoc::game::City& to, int32_t q,
+                     int32_t r) -> aoc::game::Unit& {
+        aoc::game::Unit& u            = aoc::test::addUnitAt(w, PlayerId{0}, TRADER, q, r);
+        u.trader().owner              = PlayerId{0};
+        u.trader().destOwner          = to.owner();
+        u.trader().originCityLocation = from.location();
+        u.trader().destCityLocation   = to.location();
+        u.autoRenewRoute              = true;
+        return u;
+    };
+    aoc::game::Unit& banned = route(home, beta, 5, 4);
+    aoc::game::Unit& spared = route(home, gamma, 6, 4);
+
+    CHECK(aoc::sim::cancelRoutesBetween(w.gameState, PlayerId{0}, PlayerId{1}) == 1);
+    CHECK_FALSE(banned.autoRenewRoute); // turned round, and it will not renew
+    CHECK(banned.trader().isReturning);
+    CHECK(spared.autoRenewRoute); // a third civ's lane is nobody else's quarrel
+    CHECK_FALSE(spared.trader().isReturning);
+
+    CHECK(aoc::sim::cancelRoutesBetween(w.gameState, PlayerId{0}, PlayerId{0}) == 0);
+    CHECK(aoc::sim::cancelRoutesBetween(w.gameState, PlayerId{0}, aoc::INVALID_PLAYER) == 0);
+}
+
+TEST_CASE("a shipper does not load what the receiving court refuses") {
+    // The cargo would only be seized at customs, so loading it means hauling
+    // goods across the map to lose them at the gate.
+    aoc::test::World w = aoc::test::makeWorld(2, 40, 24);
+    aoc::sim::DiplomacyManager dip;
+    dip.initialize(2);
+    dip.meetPlayers(PlayerId{0}, PlayerId{1}, 1);
+    aoc::sim::Market market;
+    market.initialize();
+
+    aoc::game::City& home   = aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Alpha");
+    aoc::game::City& abroad = aoc::test::addCityAt(w, PlayerId{1}, 11, 5, "Beta");
+    abroad.setPopulation(20);
+    home.stockpile().addGoods(WHEAT, 40);
+
+    SUBCASE("with no embargo the wagon loads") {
+        aoc::game::Unit& unit = aoc::test::addUnitAt(w, PlayerId{0}, TRADER, 5, 5);
+        REQUIRE(aoc::sim::establishTradeRoute(w.gameState, w.grid, market, &dip, unit, abroad) ==
+                aoc::ErrorCode::Ok);
+        CHECK_FALSE(unit.trader().cargo.empty());
+    }
+
+    SUBCASE("the buyer's own refusal is read, not just the seller's") {
+        dip.setResourceEmbargo(PlayerId{1}, PlayerId{0}, WHEAT, true);
+        aoc::game::Unit& unit = aoc::test::addUnitAt(w, PlayerId{0}, TRADER, 5, 5);
+        REQUIRE(aoc::sim::establishTradeRoute(w.gameState, w.grid, market, &dip, unit, abroad) ==
+                aoc::ErrorCode::Ok);
+        CHECK(unit.trader().cargo.empty());
+    }
+
+    SUBCASE("and so is the seller's own") {
+        dip.setResourceEmbargo(PlayerId{0}, PlayerId{1}, WHEAT, true);
+        aoc::game::Unit& unit = aoc::test::addUnitAt(w, PlayerId{0}, TRADER, 5, 5);
+        REQUIRE(aoc::sim::establishTradeRoute(w.gameState, w.grid, market, &dip, unit, abroad) ==
+                aoc::ErrorCode::Ok);
+        CHECK(unit.trader().cargo.empty());
     }
 }

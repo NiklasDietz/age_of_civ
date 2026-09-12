@@ -82,6 +82,10 @@ class Report:
         return not self.failures
 
 
+# How long before a declaration an embargo still counts as its run-up.
+EMBARGO_BEFORE_WAR_TURNS = 30
+
+
 def evaluate(rows: list[dict[str, str]], events: list[dict[str, str]] | None = None,
              war_baseline: int | None = None, quiet: bool = False) -> Report:
     """Run every check and target over `rows` (and `events`, if given)."""
@@ -388,6 +392,30 @@ def evaluate(rows: list[dict[str, str]], events: list[dict[str, str]] | None = N
         f"first landing on turn {first_landing}" if first_landing is not None else "never",
     )
 
+    # T10 (M6) A trade war comes before a shooting one: an aggressor that
+    #      embargoed its target within the last EMBARGO_BEFORE_WAR_TURNS turns
+    #      has escalated rather than lunged.
+    if events is None:
+        target("T10 wars preceded by the aggressor's own embargo >= 50%", False,
+               "no events file")
+    else:
+        embargoes = [e for e in events if e["EventType"] == "EmbargoDeclared"]
+        declarations = [e for e in events if e["EventType"] == "WarDeclared"]
+        preceded = 0
+        for war in declarations:
+            war_turn = int(war["Turn"])
+            if any(e["Player"] == war["Player"] and e["OtherPlayer"] == war["OtherPlayer"]
+                   and 0 <= war_turn - int(e["Turn"]) <= EMBARGO_BEFORE_WAR_TURNS
+                   for e in embargoes):
+                preceded += 1
+        share = (preceded / len(declarations)) if declarations else 1.0
+        target(
+            "T10 wars preceded by the aggressor's own embargo >= 50%",
+            share >= 0.5,
+            f"{preceded} of {len(declarations)} declarations, {share:.0%}"
+            if declarations else "no wars declared",
+        )
+
     if not quiet:
         for line in report.notes:
             print(line)
@@ -449,6 +477,7 @@ def _healthy_events() -> list[dict[str, str]]:
     """One deal every ten turns after turn 50, four wars."""
     events = [_event(turn, "DealAccepted") for turn in range(60, 201, 10)]
     events += [_event(turn, "WarDeclared") for turn in (30, 80, 130, 180)]
+    events += [_event(turn - 5, "EmbargoDeclared") for turn in (30, 80, 130, 180)]
     return events
 
 
@@ -569,6 +598,10 @@ def selftest() -> int:
     for r in rows:
         r["UnbackedTurn"] = "5"
     add("H16 conjured money", rows, "FAIL: H16 no money")
+
+    # T10: the wars arrive with no embargo behind them.
+    add("T10 war without an embargo", _healthy(), "MISSED: T10",
+        events=[e for e in _healthy_events() if e["EventType"] != "EmbargoDeclared"])
 
     # T5: wars spike past the band.
     add("T5 war spike", _healthy(), "MISSED: T5",

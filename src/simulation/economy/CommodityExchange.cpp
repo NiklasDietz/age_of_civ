@@ -152,6 +152,10 @@ void processAICommodityExchange(aoc::game::GameState& gameState,
             if (toIdx == fromIdx) { continue; }
             Snapshot& toSnap = snapshots[toIdx];
             const PairwiseRelation& rel = diplomacy->relation(fromSnap.id, toSnap.id);
+            // Per-good embargoes are directional (plan 4.3), so a swap needs
+            // both courts asked: either one refusing a good is enough to stop
+            // it moving.
+            const PairwiseRelation& back = diplomacy->relation(toSnap.id, fromSnap.id);
             if (!rel.hasMet || rel.isAtWar) { continue; }
             if (rel.totalScore() < 0)       { continue; }
 
@@ -160,7 +164,7 @@ void processAICommodityExchange(aoc::game::GameState& gameState,
             // re-scanning all `goodsCount` goods.
             int32_t offerGood = -1;
             for (uint16_t g : surplusGoods[fromIdx]) {
-                if (rel.isGoodEmbargoed(g)) { continue; }
+                if (rel.isGoodEmbargoed(g) || back.isGoodEmbargoed(g)) { continue; }
                 if (toSnap.stockpile[g] > kShortageThreshold) { continue; }
                 offerGood = static_cast<int32_t>(g);
                 break;
@@ -171,7 +175,7 @@ void processAICommodityExchange(aoc::game::GameState& gameState,
             int32_t requestGood = -1;
             for (uint16_t g : surplusGoods[toIdx]) {
                 if (static_cast<int32_t>(g) == offerGood) { continue; }
-                if (rel.isGoodEmbargoed(g)) { continue; }
+                if (rel.isGoodEmbargoed(g) || back.isGoodEmbargoed(g)) { continue; }
                 if (fromSnap.stockpile[g] > kShortageThreshold) { continue; }
                 requestGood = static_cast<int32_t>(g);
                 break;

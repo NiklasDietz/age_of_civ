@@ -353,7 +353,9 @@ public:
     /// trade code wants: a route needs both ends willing.
     [[nodiscard]] bool hasAnyEmbargo(PlayerId a, PlayerId b) const;
 
-    /// Set or lift a per-resource embargo between two players.
+    /// `a` refuses to ship `goodId` to `b`. ONE DIRECTION ONLY, like
+    /// setEmbargo: ask the other way round for the reverse. Writing both
+    /// halves turned one civ's leverage into a boycott neither had chosen.
     void setResourceEmbargo(PlayerId a, PlayerId b, uint16_t goodId, bool embargo);
 
     /// Check if a specific resource is embargoed between two players.

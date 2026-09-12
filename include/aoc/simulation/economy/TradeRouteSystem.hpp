@@ -295,7 +295,13 @@ CurrencyAmount lootTraderCargo(aoc::game::GameState& gameState, aoc::game::Unit&
  * @return Number of routes ended.
  */
 int32_t cancelRoutesToCity(aoc::game::GameState& gameState, aoc::hex::AxialCoord at,
-                           PlayerId newOwner);
+                           PlayerId newOwner, PlayerId onlyOwner = INVALID_PLAYER);
+
+/// End every route running between `a` and `b`, in both directions, and leave
+/// everyone else's alone. What an embargo does to the traffic it forbids
+/// (plan 4.3): the wagons turn round and carry their cargo home.
+/// @return Number of routes ended.
+int32_t cancelRoutesBetween(aoc::game::GameState& gameState, PlayerId a, PlayerId b);
 
 /**
  * @brief Count active trade routes for a player.

@@ -227,10 +227,15 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
             }
 
             // Standard war declaration: military advantage + strained relations.
+            // The trade war comes first (plan 4.3): a civ that has not even
+            // closed its ports to this rival has not exhausted what it can do
+            // short of an army, so the roll is not open to it yet. The embargo
+            // block below sets one the turn relations reach the same depth.
             if (!easyAI && !rel.isAtWar && ourMilitary > 0 && theirMilitary >= 0 &&
                 static_cast<float>(ourMilitary) >
                     milRatioThreshold * static_cast<float>(std::max(1, theirMilitary)) &&
-                relationScore < relationThreshold) {
+                relationScore < relationThreshold &&
+                diplomacy.hasAnyEmbargo(this->m_player, other)) {
                 // Roll on the deterministic per-turn AI rng (see
                 // TurnProcessor::turnContext.rng -- xoshiro256**, seeded
                 // per game). The previous (military*weights)%100 hash had
@@ -320,8 +325,11 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
             // a cultural alliance and a zealot doesn't chase a research one.
             const bool openToAlliance = beh.allianceDesire > 0.5f && beh.diplomaticOpenness > 0.5f;
 
+            // An economic alliance needs trade actually running between the
+            // two (plan 4.3), not merely complementary prices on the market.
             if (openToAlliance && !rel.hasEconomicAlliance && relationScore > 20 &&
-                beh.economicFocus > 0.5f) {
+                beh.economicFocus > 0.5f
+                && aoc::sim::routesBetween(gameState, this->m_player, other) > 0) {
                 int32_t complementaryGoods = 0;
                 const uint16_t totalGoods  = market.goodsCount();
                 for (uint16_t g = 0; g < totalGoods; ++g) {
@@ -723,6 +731,18 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
                 }
             }
 
+            // An embargo is lifted when the quarrel that set it has passed
+            // (plan 4.3). Without this the first bad patch closed a pair's
+            // ports for the rest of the game, because nothing ever reopened
+            // them, and the war gate below would stay armed for ever with it.
+            if (!rel.isAtWar && relationScore > -10
+                && diplomacy.hasEmbargo(this->m_player, other)) {
+                diplomacy.setEmbargo(this->m_player, other, false);
+                LOG_INFO("AI %u lifted its embargo on player %u (relation %d)",
+                         static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
+                         relationScore);
+            }
+
             // ----------------------------------------------------------------
             // Hostile economic actions: resource embargo + bond dump.
             // ----------------------------------------------------------------
@@ -730,7 +750,25 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
             // These are one-shots (per turn per pair), not continuous, and
             // gated on the reputation/aggression personality to keep
             // peaceful AIs from torching economic ties.
-            if ((rel.isAtWar || relationScore < -40) && beh.militaryAggression > 0.5f) {
+            // militaryAggression no longer gates this (plan 4.3). A peaceful
+            // leader still closes its ports to a civ it has fallen out with;
+            // refusing to trade is the alternative to fighting, not a milder
+            // form of it, and gating it on aggression meant the leaders most
+            // likely to reach for an army were the only ones who tried
+            // anything short of one first.
+            if (rel.isAtWar || relationScore < -40) {
+                // The blanket refusal, and the traffic it forbids: the routes
+                // between the two end here rather than running on under an
+                // embargo that forbids them.
+                if (!diplomacy.hasEmbargo(this->m_player, other)) {
+                    diplomacy.setEmbargo(this->m_player, other, true);
+                    const int32_t ended =
+                        aoc::sim::cancelRoutesBetween(gameState, this->m_player, other);
+                    LOG_INFO("AI %u embargoed player %u (relation %d, %d routes ended)",
+                             static_cast<unsigned>(this->m_player), static_cast<unsigned>(other),
+                             relationScore, ended);
+                }
+
                 // Resource embargo: blanket the largest export flow to
                 // this rival. MVP picks the first good we produce that
                 // they are price-dependent on (market price > 1.2x base).

@@ -638,28 +638,30 @@ bool DiplomacyManager::hasAnyEmbargo(PlayerId a, PlayerId b) const {
 void DiplomacyManager::setResourceEmbargo(PlayerId a, PlayerId b,
                                             uint16_t goodId, bool embargo) {
     PairwiseRelation& relAB = this->relation(a, b);
-    PairwiseRelation& relBA = this->relation(b, a);
 
     if (embargo) {
-        // Add to both directions (symmetric)
-        relAB.embargoedGoods.push_back(goodId);
-        relBA.embargoedGoods.push_back(goodId);
+        // ONE DIRECTION, as setEmbargo already is (plan 4.3): `a` refuses to
+        // ship `goodId` to `b`, and `b` has decided nothing. Writing both
+        // halves fabricated the reply, so an AI denying a rival its iron also
+        // stopped the rival selling iron back, and an act of leverage became a
+        // mutual boycott neither court had chosen.
+        if (std::find(relAB.embargoedGoods.begin(), relAB.embargoedGoods.end(), goodId)
+            == relAB.embargoedGoods.end()) {
+            relAB.embargoedGoods.push_back(goodId);
+        }
         if (this->m_eventLog != nullptr) {
             this->m_eventLog->record(TurnEventType::EmbargoDeclared, a, b,
                                      static_cast<int32_t>(goodId), 0, "Resource embargo");
         }
-        LOG_INFO("Resource embargo set: Player %u <-> Player %u, good %u",
+        LOG_INFO("Resource embargo set: Player %u -> Player %u, good %u",
                  static_cast<unsigned>(a), static_cast<unsigned>(b),
                  static_cast<unsigned>(goodId));
     } else {
-        // Remove from both directions
-        // auto required: lambda type is unnameable
-        auto removeGood = [goodId](std::vector<uint16_t>& goods) {
-            goods.erase(std::remove(goods.begin(), goods.end(), goodId), goods.end());
-        };
-        removeGood(relAB.embargoedGoods);
-        removeGood(relBA.embargoedGoods);
-        LOG_INFO("Resource embargo lifted: Player %u <-> Player %u, good %u",
+        // Lift only what this civ imposed; the other's refusal is its own.
+        relAB.embargoedGoods.erase(
+            std::remove(relAB.embargoedGoods.begin(), relAB.embargoedGoods.end(), goodId),
+            relAB.embargoedGoods.end());
+        LOG_INFO("Resource embargo lifted: Player %u -> Player %u, good %u",
                  static_cast<unsigned>(a), static_cast<unsigned>(b),
                  static_cast<unsigned>(goodId));
     }

@@ -186,7 +186,8 @@ void selectTradeGoods(const aoc::game::City& origin,
                        const aoc::game::City* dest,
                        const Market& market,
                        std::vector<TradeCargo>& outCargo,
-                       int32_t maxGoods) {
+                       int32_t maxGoods,
+                       const DiplomacyManager* diplomacy = nullptr) {
     outCargo.clear();
     const CityStockpileComponent& originStock = origin.stockpile();
     const CityStockpileComponent* destStock   = dest != nullptr ? &dest->stockpile() : nullptr;
@@ -204,8 +205,25 @@ void selectTradeGoods(const aoc::game::City& origin,
     // for export" so they get scored first, but the loader pulls from
     // both transparently. Avoid double-counting by walking buffer first
     // and tracking which goodIds have been seen.
+    // A shipper does not load what either court has embargoed (plan 4.3).
+    // The cargo would only be seized at customs, so loading it means hauling
+    // goods across the map to lose them at the gate. City-state and barbarian
+    // seats are outside the relation matrix, so they are never asked.
+    const bool foreignLeg = dest != nullptr && diplomacy != nullptr
+                            && origin.owner() != dest->owner()
+                            && origin.owner() != INVALID_PLAYER
+                            && dest->owner() != INVALID_PLAYER
+                            && origin.owner() < aoc::sim::CITY_STATE_PLAYER_BASE
+                            && dest->owner() < aoc::sim::CITY_STATE_PLAYER_BASE;
+    auto embargoed = [&](uint16_t gid) {
+        return foreignLeg
+               && (diplomacy->hasResourceEmbargo(origin.owner(), dest->owner(), gid)
+                   || diplomacy->hasResourceEmbargo(dest->owner(), origin.owner(), gid));
+    };
+
     auto scoreCandidate = [&](uint16_t gid, int32_t total) {
         if (total <= 1) { return; }
+        if (embargoed(gid)) { return; }
         const int32_t surplus = total - 1;
         const int32_t price   = std::max(1, market.marketData(gid).currentPrice);
         fallback.push_back({gid, surplus, static_cast<float>(surplus) * static_cast<float>(price)});
@@ -1067,7 +1085,7 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
                                 ? ownerPtrForCargo->industrial().cumulativeTradeMultiplier()
                                 : 1.0f;
     const int32_t cargoSlots = legCargoSlots(trader, ownerSys, railOutbound, tradeMult, *destCity);
-    selectTradeGoods(*originCity, destCity, market, trader.cargo, cargoSlots);
+    selectTradeGoods(*originCity, destCity, market, trader.cargo, cargoSlots, diplomacy);
     for (TradeCargo& c : trader.cargo) {
         // WP-O: pull from exportBuffer first (drains the queue), then
         // stockpile if buffer underflows. May load less than requested
@@ -1429,13 +1447,17 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 && traderOwner < aoc::sim::CITY_STATE_PLAYER_BASE
                 && cityOwner < aoc::sim::CITY_STATE_PLAYER_BASE) {
                 const PairwiseRelation& rel = diplomacy->relation(traderOwner, cityOwner);
+                // Per-good embargoes are one-directional (plan 4.3), so customs
+                // asks the receiving court's own list as well as the shipper's.
+                const PairwiseRelation& back = diplomacy->relation(cityOwner, traderOwner);
                 // C29: embargo was toothless — grievance + rep hit but cargo
                 // still delivered. Seize embargoed cargo so violation costs
                 // the trip's goods, not just reputation. Keeps physical
                 // interdiction teeth without needing a separate customs pass.
                 bool violated = false;
                 for (auto cargoIt = trader.cargo.begin(); cargoIt != trader.cargo.end();) {
-                    if (rel.isGoodEmbargoed(cargoIt->goodId)) {
+                    if (rel.isGoodEmbargoed(cargoIt->goodId)
+                        || back.isGoodEmbargoed(cargoIt->goodId)) {
                         diplomacy->addReputationModifier(traderOwner, cityOwner, -5, 30);
 
                         aoc::game::Player* embargoPartner = gameState.player(cityOwner);
@@ -1904,8 +1926,35 @@ CurrencyAmount lootTraderCargo(aoc::game::GameState& gameState,
     return totalValue;
 }
 
+int32_t cancelRoutesBetween(aoc::game::GameState& gameState, PlayerId a, PlayerId b) {
+    if (a == b || a == INVALID_PLAYER || b == INVALID_PLAYER) {
+        return 0;
+    }
+    int32_t cancelled = 0;
+    for (int32_t side = 0; side < 2; ++side) {
+        const PlayerId host  = side == 0 ? a : b;
+        const PlayerId guest = side == 0 ? b : a;
+        const aoc::game::Player* hostPtr = gameState.player(host);
+        if (hostPtr == nullptr) {
+            continue;
+        }
+        // Collect the markets first: cancelRoutesToCity removes units, and a
+        // city list walked across that is a list walked while it changes.
+        std::vector<aoc::hex::AxialCoord> markets;
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : hostPtr->cities()) {
+            if (cityPtr != nullptr && cityPtr->owner() == host) {
+                markets.push_back(cityPtr->location());
+            }
+        }
+        for (aoc::hex::AxialCoord at : markets) {
+            cancelled += cancelRoutesToCity(gameState, at, host, guest);
+        }
+    }
+    return cancelled;
+}
+
 int32_t cancelRoutesToCity(aoc::game::GameState& gameState, aoc::hex::AxialCoord at,
-                           PlayerId newOwner) {
+                           PlayerId newOwner, PlayerId onlyOwner) {
     int32_t cancelled = 0;
     // Collect first, act after: removeUnit frees the unique_ptr storage and
     // would invalidate the iteration.
@@ -1924,6 +1973,10 @@ int32_t cancelRoutesToCity(aoc::game::GameState& gameState, aoc::hex::AxialCoord
                 continue;
             }
             TraderComponent& trader = unitPtr->trader();
+            // An embargo ends one pair's routes, not every route to the city.
+            if (onlyOwner != INVALID_PLAYER && trader.owner != onlyOwner) {
+                continue;
+            }
             const bool destTaken    = (trader.destCityLocation == at);
             const bool originTaken  = (trader.originCityLocation == at);
             if (!destTaken && !originTaken) {
@@ -2206,7 +2259,7 @@ TradeRouteEstimate estimateTradeRouteIncome(
     const int32_t maxSlots =
         legCargoSlots(tempTrader, estSys, false, ownerPlayer->industrial().cumulativeTradeMultiplier(), destCity);
     std::vector<TradeCargo> cargo;
-    selectTradeGoods(*originCity, &destCity, market, cargo, maxSlots);
+    selectTradeGoods(*originCity, &destCity, market, cargo, maxSlots, diplomacy);
     const float routeYield =
         routeYieldMultiplier(gameState, diplomacy, traderUnit.owner(), destCity.owner(), straightDist);
     const CurrencyAmount grossGold =
