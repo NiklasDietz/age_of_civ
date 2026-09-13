@@ -166,6 +166,8 @@ struct PlayerSnapshot {
     int64_t mintedTurn = 0;        ///< face value swept from the Mint this turn
     int64_t unbackedTurn = 0;      ///< money the old model conjured minus destroyed this turn
     int64_t coinLanded = 0;        ///< purses the civ's Traders brought home this turn (M3)
+    int64_t metalOreHeld = 0;      ///< silver + gold ore across this civ's stockpiles
+    int64_t mintOreConsumed = 0;   ///< ore the three Mint recipes ate this turn
 };
 
 /**
@@ -222,6 +224,20 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
             }
         }
         snap.luxuryTypesHeld = static_cast<int32_t>(luxuries.size());
+    }
+    // The metal that could be money: nothing measured whether a civ ever holds
+    // silver or gold ore past the Mint's turn, so nothing could say whether the
+    // Mint is where it goes.
+    for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
+        const aoc::sim::CityStockpileComponent& stock = city->stockpile();
+        // The export buffer counts too. The soft-cap pass moves surplus there
+        // and exempts neither ore, so reading only the stockpile would report
+        // nothing held for a civ whose metal is merely parked above the cap,
+        // which is the false negative this column exists to avoid.
+        snap.metalOreHeld += stock.getAmount(aoc::sim::goods::SILVER_ORE)
+                           + stock.getAmount(aoc::sim::goods::GOLD_ORE)
+                           + stock.getBufferAmount(aoc::sim::goods::SILVER_ORE)
+                           + stock.getBufferAmount(aoc::sim::goods::GOLD_ORE);
     }
 
     // Happiness: average across all cities with a happiness component
@@ -398,7 +414,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         << "IncomeTradeRoutes,ExpenseScience,"
         << "ActiveRoutes,DealsActive,LuxuryTypesHeld,"
         << "Circulation,Arrears,PriceLevel,MintedTurn,UnbackedTurn,CollectionEfficiency,"
-        << "TradeCoinLanded\n";
+        << "TradeCoinLanded,MetalOreHeld,MintOreConsumed\n";
 
     aoc::map::HexGrid grid;
     // 2026-05-03: honour --seed CLI/yaml override so audit_matrix.sh sims are
@@ -960,6 +976,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 snap.mintedTurn   = book.minted;
                 snap.unbackedTurn = book.unbackedIn - book.unbackedOut;
             }
+            snap.mintOreConsumed = economy.mintOreConsumed()[static_cast<std::size_t>(p)];
             // Game-level context columns
             const aoc::game::Player* snapPlayer = gameState.player(static_cast<aoc::PlayerId>(p));
             const uint8_t civId = (snapPlayer != nullptr)
@@ -1025,6 +1042,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             csv << "," << snap.circulation << "," << snap.arrears << "," << snap.priceLevel << ","
                 << snap.mintedTurn << "," << snap.unbackedTurn << "," << bd.collectionEfficiency << ","
                 << snap.coinLanded;
+            csv << "," << snap.metalOreHeld << "," << snap.mintOreConsumed;
             csv << "\n";
         }
 
@@ -1063,6 +1081,10 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                      summary.empty() ? " none" : summary.c_str());
         std::fprintf(stderr, "  Money conservation: %d of %d turns violated\n", moneyViolations, maxTurns);
     }
+
+    // Which clause refused each monetary transition this run
+    // (AOC_DUMP_MONETARY_GATES). Silent unless the variable is set.
+    aoc::sim::dumpMonetaryGates();
 
     // WP-L1: tile snapshot dump for AI / analysis tooling. One row per
     // tile with ownership + improvement + resource + reserves. Pairs with

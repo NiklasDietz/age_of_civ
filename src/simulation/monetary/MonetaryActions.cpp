@@ -129,7 +129,14 @@ bool coinageWithinReach(const aoc::game::GameState& gameState, PlayerId player) 
         return false;
     }
     const MonetaryStateComponent& state = p->monetary();
-    if (!hasMint(*p) || state.bullion <= 0 || preferredCoinTier(state) == CoinTier::None) {
+    // Recorded so the gate dump's denominator is every Barter player-turn, not
+    // just the ones that reached the table: these two return before it.
+    if (!hasMint(*p)) {
+        recordGateRefusal(MonetarySystemType::CommodityMoney, GateRefusal::NoMint);
+        return false;
+    }
+    if (state.bullion <= 0 || preferredCoinTier(state) == CoinTier::None) {
+        recordGateRefusal(MonetarySystemType::CommodityMoney, GateRefusal::NoBullion);
         return false;
     }
     return state.canTransition(MonetarySystemType::CommodityMoney, p->ownedCityCount(),
@@ -143,15 +150,26 @@ ErrorCode requestSetMonetaryRegime(aoc::game::GameState& gameState, PlayerId pla
     MonetaryStateComponent& state = p->monetary();
     if (target >= MonetarySystemType::Count ||
         static_cast<uint8_t>(target) != static_cast<uint8_t>(state.system) + 1u) {
+        recordGateRefusal(target, GateRefusal::NotNextStage);
         return ErrorCode::InvalidMonetaryTransition; // not the next stage, or already there
     }
     if (target == MonetarySystemType::CommodityMoney) {
-        if (tier == CoinTier::None || tier > CoinTier::Gold) { return ErrorCode::InvalidArgument; }
-        if (!hasMint(*p)) { return ErrorCode::InvalidState; }
-        if (state.bullion <= 0 || mintedOf(state, tier) <= 0) { return ErrorCode::InsufficientResources; }
+        if (tier == CoinTier::None || tier > CoinTier::Gold) {
+            recordGateRefusal(target, GateRefusal::BadTier);
+            return ErrorCode::InvalidArgument;
+        }
+        if (!hasMint(*p)) {
+            recordGateRefusal(target, GateRefusal::NoMint);
+            return ErrorCode::InvalidState;
+        }
+        if (state.bullion <= 0 || mintedOf(state, tier) <= 0) {
+            recordGateRefusal(target, GateRefusal::NoBullion);
+            return ErrorCode::InsufficientResources;
+        }
     }
     if (target == MonetarySystemType::FiatMoney && !p->hasResearched(TECH_PRINTING) &&
         !p->hasResearched(TECH_ECONOMICS)) {
+        recordGateRefusal(target, GateRefusal::PaperTech);
         return ErrorCode::InvalidMonetaryTransition; // paper needs a press or the theory
     }
     const ErrorCode gate = state.canTransition(

@@ -38,6 +38,8 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 
@@ -271,6 +273,132 @@ inline constexpr std::array<MonetaryTransitionReq, 4> MONETARY_TRANSITIONS = {{
     // constraint and a power gate would sit behind an unreachable one.
     {MonetarySystemType::Digital,        TechId{16}, 200,  3, 10, 4, 0.10f},
 }};
+
+// ============================================================================
+// Gate diagnostics (AOC_DUMP_MONETARY_GATES)
+// ============================================================================
+
+/// Which clause refused a monetary transition.
+///
+/// Every gate in canTransition returns the same ErrorCode, so a refusal
+/// carries no reason: nothing could say whether fiat was out of reach for want
+/// of tech, partners, calm prices or a top-half economy, and a motive for fiat
+/// is worthless if the gate is shut for some other cause. The enumerator is
+/// recorded beside the refusal; what canTransition returns is unchanged.
+///
+/// The last four are the request's own pre-gates (requestSetMonetaryRegime),
+/// which return BEFORE canTransition runs. Without them a stage blocked there
+/// would read as "never refused" rather than "never asked".
+enum class GateRefusal : uint8_t {
+    NotNextStage = 0,  ///< target is not the stage after the current one
+    Tech,              ///< the row's requiredTech is not researched
+    CurrencyStrength,  ///< debasement-discounted strength under the row minimum
+    CityCount,         ///< fewer cities than the row wants
+    TurnsInCurrent,    ///< not long enough in the current system
+    TradePartners,     ///< too few live trade partners
+    Inflation,         ///< prices above the row's ceiling
+    GdpRank,           ///< Fiat/Digital only: outside the top half by GDP
+    NoTableRow,        ///< no MONETARY_TRANSITIONS row for the target at all
+    NoMint,            ///< pre-gate: the civ has no Mint
+    NoBullion,         ///< pre-gate: nothing struck in the chosen metal
+    BadTier,           ///< pre-gate: coinage asked for without naming a metal
+    PaperTech,         ///< pre-gate: fiat without Printing or Economics
+
+    Count
+};
+
+inline constexpr std::array<std::string_view, static_cast<std::size_t>(GateRefusal::Count)>
+    GATE_REFUSAL_NAMES = {"notNextStage", "tech",      "strength",  "cities",
+                          "turnsIn",      "partners",  "inflation", "gdpRank",
+                          "noTableRow",   "noMint",    "noBullion", "badTier",
+                          "paperTech"};
+
+/// One run's gate outcomes, by target stage. Cumulative, never reset, and
+/// written only while the dump is enabled, so an unset environment costs one
+/// predictable branch per call and nothing else. Same opt-in-by-env-var shape
+/// as AOC_DUMP_ECONOMY. Written from the turn loop, which is single-threaded.
+struct MonetaryGateCounters {
+    static constexpr std::size_t STAGES  = static_cast<std::size_t>(MonetarySystemType::Count);
+    static constexpr std::size_t REASONS = static_cast<std::size_t>(GateRefusal::Count);
+
+    std::array<std::array<int64_t, REASONS>, STAGES> refused{};
+    std::array<int64_t, STAGES>                      asked{};   ///< canTransition evaluations
+    std::array<int64_t, STAGES>                      passed{};  ///< of those, the ones it allowed
+};
+
+[[nodiscard]] inline MonetaryGateCounters& monetaryGateCounters() {
+    static MonetaryGateCounters counters;
+    return counters;
+}
+
+/// True when AOC_DUMP_MONETARY_GATES is set in the environment. Read once.
+[[nodiscard]] inline bool monetaryGateDumpEnabled() {
+    static const bool enabled = std::getenv("AOC_DUMP_MONETARY_GATES") != nullptr;
+    return enabled;
+}
+
+/// Stage index, or STAGES for anything outside the ladder (the request accepts
+/// a target from outside it, and refuses it).
+[[nodiscard]] inline std::size_t gateStageIndex(MonetarySystemType target) {
+    const std::size_t idx = static_cast<std::size_t>(target);
+    return idx < MonetaryGateCounters::STAGES ? idx : MonetaryGateCounters::STAGES;
+}
+
+inline void recordGateAsked(MonetarySystemType target) {
+    if (!monetaryGateDumpEnabled()) { return; }
+    const std::size_t idx = gateStageIndex(target);
+    if (idx >= MonetaryGateCounters::STAGES) { return; }
+    monetaryGateCounters().asked[idx] += 1;
+}
+
+inline void recordGatePassed(MonetarySystemType target) {
+    if (!monetaryGateDumpEnabled()) { return; }
+    const std::size_t idx = gateStageIndex(target);
+    if (idx >= MonetaryGateCounters::STAGES) { return; }
+    monetaryGateCounters().passed[idx] += 1;
+}
+
+inline void recordGateRefusal(MonetarySystemType target, GateRefusal why) {
+    if (!monetaryGateDumpEnabled()) { return; }
+    const std::size_t idx = gateStageIndex(target);
+    if (idx >= MonetaryGateCounters::STAGES) { return; }
+    monetaryGateCounters().refused[idx][static_cast<std::size_t>(why)] += 1;
+}
+
+/// Print the run's gate outcomes to stderr. A no-op unless the dump is on.
+///
+/// `asked` counts canTransition evaluations, so the four pre-gate reasons can
+/// exceed it: those refusals never reach the table.
+inline void dumpMonetaryGates() {
+    if (!monetaryGateDumpEnabled()) { return; }
+    const MonetaryGateCounters& counters = monetaryGateCounters();
+    for (std::size_t stage = 0; stage < MonetaryGateCounters::STAGES; ++stage) {
+        const MonetarySystemType target = static_cast<MonetarySystemType>(stage);
+        int64_t refusedTotal = 0;
+        for (const int64_t count : counters.refused[stage]) { refusedTotal += count; }
+        if (counters.asked[stage] == 0 && refusedTotal == 0) { continue; }
+        const std::string_view name = monetarySystemName(target);
+        std::fprintf(stderr, "[monetarygate] -> %.*s asked=%lld passed=%lld refused=%lld",
+                     static_cast<int>(name.size()), name.data(),
+                     static_cast<long long>(counters.asked[stage]),
+                     static_cast<long long>(counters.passed[stage]),
+                     static_cast<long long>(refusedTotal));
+        if (refusedTotal > counters.asked[stage]) {
+            // The pre-gate refusals recorded before canTransition is reached
+            // (no Mint, no bullion, a bad tier, no press) have no matching ask,
+            // so this line is not an accounting error.
+            std::fprintf(stderr, " (incl. pre-gate)");
+        }
+        for (std::size_t reason = 0; reason < MonetaryGateCounters::REASONS; ++reason) {
+            if (counters.refused[stage][reason] == 0) { continue; }
+            std::fprintf(stderr, " %.*s=%lld",
+                         static_cast<int>(GATE_REFUSAL_NAMES[reason].size()),
+                         GATE_REFUSAL_NAMES[reason].data(),
+                         static_cast<long long>(counters.refused[stage][reason]));
+        }
+        std::fprintf(stderr, "\n");
+    }
+}
 
 // ============================================================================
 // Debasement state
@@ -566,16 +694,20 @@ struct MonetaryStateComponent {
                                            int32_t tradePartnerCount = 0,
                                            int32_t gdpRank = 1,
                                            int32_t playerCount = 1) const {
+        recordGateAsked(target);
+
         // Must be the next stage in sequence
         uint8_t currentOrd = static_cast<uint8_t>(this->system);
         uint8_t targetOrd  = static_cast<uint8_t>(target);
         if (targetOrd != currentOrd + 1) {
+            recordGateRefusal(target, GateRefusal::NotNextStage);
             return ErrorCode::InvalidMonetaryTransition;
         }
 
         for (const MonetaryTransitionReq& req : MONETARY_TRANSITIONS) {
             if (req.target == target) {
                 if (req.requiredTech.isValid() && !hasTech(req.requiredTech)) {
+                    recordGateRefusal(target, GateRefusal::Tech);
                     return ErrorCode::InvalidMonetaryTransition;
                 }
                 // G8: read raw (pre-debasement) strength. Debasement inflates
@@ -587,18 +719,23 @@ struct MonetaryStateComponent {
                     static_cast<float>(this->currencyStrength())
                     * (1.0f - this->debasement.debasementRatio));
                 if (rawStrength < req.minCurrencyStrength) {
+                    recordGateRefusal(target, GateRefusal::CurrencyStrength);
                     return ErrorCode::InvalidMonetaryTransition;
                 }
                 if (cityCount < req.minCityCount) {
+                    recordGateRefusal(target, GateRefusal::CityCount);
                     return ErrorCode::InvalidMonetaryTransition;
                 }
                 if (this->turnsInCurrentSystem < req.minTurnsInCurrent) {
+                    recordGateRefusal(target, GateRefusal::TurnsInCurrent);
                     return ErrorCode::InvalidMonetaryTransition;
                 }
                 if (tradePartnerCount < req.minTradePartners) {
+                    recordGateRefusal(target, GateRefusal::TradePartners);
                     return ErrorCode::InvalidMonetaryTransition;
                 }
                 if (this->inflationRate > req.maxInflation) {
+                    recordGateRefusal(target, GateRefusal::Inflation);
                     return ErrorCode::InvalidMonetaryTransition;
                 }
                 // Fiat/Digital require GDP rank in top half of players.
@@ -606,12 +743,15 @@ struct MonetaryStateComponent {
                     || target == MonetarySystemType::Digital) {
                     int32_t topHalf = std::max(1, playerCount / 2);
                     if (gdpRank > topHalf) {
+                        recordGateRefusal(target, GateRefusal::GdpRank);
                         return ErrorCode::InvalidMonetaryTransition;
                     }
                 }
+                recordGatePassed(target);
                 return ErrorCode::Ok;
             }
         }
+        recordGateRefusal(target, GateRefusal::NoTableRow);
         return ErrorCode::InvalidMonetaryTransition;
     }
 

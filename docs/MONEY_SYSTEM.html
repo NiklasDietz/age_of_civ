@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Money in Age of Civ</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1e1b16; --muted: #6b6357; --rule: #ddd6c8;
+    --card: #ffffff; --accent: #8a5a20; --accentbg: #f5ecdd;
+    --warn: #8c3a2e; --warnbg: #f9e9e5; --ok: #3d6b43; --code: #f2efe8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16140f; --fg: #ece7dc; --muted: #a29884; --rule: #34302a;
+      --card: #1d1a14; --accent: #d9a45c; --accentbg: #2a2318;
+      --warn: #e08a78; --warnbg: #2d1e1a; --ok: #8fc096; --code: #211d17;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #16140f; --fg: #ece7dc; --muted: #a29884; --rule: #34302a;
+    --card: #1d1a14; --accent: #d9a45c; --accentbg: #2a2318;
+    --warn: #e08a78; --warnbg: #2d1e1a; --ok: #8fc096; --code: #211d17;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.65 ui-serif, Georgia, "Times New Roman", serif;
+  }
+  .wrap { max-width: 54rem; margin: 0 auto; padding-block: 3rem 6rem; padding-left: 20px; padding-right: 20px; }
+  h1 { font-size: 2.1rem; line-height: 1.2; margin: 0 0 .3rem; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 2.5rem; font-size: .95rem; }
+  h2 {
+    font-size: 1.32rem; margin: 3rem 0 .9rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--rule);
+  }
+  h3 { font-size: 1.05rem; margin: 1.8rem 0 .5rem; }
+  p, li { font-size: 1rem; }
+  ul, ol { padding-left: 1.3rem; }
+  li { margin: .4rem 0; }
+  code, pre, .mono {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .87em;
+  }
+  pre {
+    background: var(--code); border: 1px solid var(--rule); border-radius: 6px;
+    padding: .85rem 1rem; overflow-x: auto; line-height: 1.5;
+  }
+  code:not(pre code) { background: var(--code); padding: .1em .35em; border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .92rem; }
+  th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+  .scroll { overflow-x: auto; }
+  .note, .warn {
+    border-left: 3px solid var(--accent); background: var(--accentbg);
+    padding: .8rem 1rem; margin: 1.2rem 0; border-radius: 0 5px 5px 0;
+  }
+  .warn { border-left-color: var(--warn); background: var(--warnbg); }
+  .note p:first-child, .warn p:first-child { margin-top: 0; }
+  .note p:last-child, .warn p:last-child { margin-bottom: 0; }
+  .toc { background: var(--card); border: 1px solid var(--rule); border-radius: 7px; padding: 1rem 1.2rem; }
+  .toc ol { margin: .3rem 0 0; }
+  .toc a { color: var(--fg); }
+  a { color: var(--accent); }
+  .lede { font-size: 1.08rem; }
+  .tag {
+    display: inline-block; font: 600 .7rem/1 ui-sans-serif, system-ui, sans-serif;
+    text-transform: uppercase; letter-spacing: .06em; padding: .25em .5em;
+    border-radius: 3px; background: var(--accentbg); color: var(--accent);
+    vertical-align: middle; margin-right: .4em;
+  }
+  .tag.bad { background: var(--warnbg); color: var(--warn); }
+  footer { margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .85rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Money in Age of Civ</h1>
+<p class="sub">How the conserved-money economy works, verified against <span class="mono">develop</span> at commit <span class="mono">c050023</span> on 2026-09-12.</p>
+
+<div class="toc">
+  <strong>Contents</strong>
+  <ol>
+    <li><a href="#invariant">The invariant</a></li>
+    <li><a href="#pools">Where money sits</a></li>
+    <li><a href="#circuit">The circuit</a></li>
+    <li><a href="#order">Turn order</a></li>
+    <li><a href="#regimes">Regimes</a></li>
+    <li><a href="#prices">The price level</a></li>
+    <li><a href="#trade">Trade settlement</a></li>
+    <li><a href="#checks">How conservation is checked</a></li>
+    <li><a href="#outside">Money that moves outside the income account</a></li>
+    <li><a href="#misread">Common misreadings</a></li>
+    <li><a href="#risks">Known weaknesses</a></li>
+  </ol>
+</div>
+
+<h2 id="invariant">1. The invariant</h2>
+
+<p class="lede">Money is conserved. Nothing appears from nowhere, and spending does not delete it. Every creation and destruction is booked on a per-turn ledger, and the identity is checked once a turn.</p>
+
+<pre>worldMoneyAfter - worldMoneyBefore
+    == minted + printed + externalIn - externalOut - lost + unbackedIn - unbackedOut</pre>
+
+<p>Two rules make this hold by construction rather than by discipline.</p>
+
+<ul>
+  <li><strong>One seam.</strong> Every treasury change goes through three methods on <span class="mono">Player</span>: <span class="mono">addGold</span>, <span class="mono">spendGold</span> and <span class="mono">setTreasury</span>. Each takes a mandatory <span class="mono">MoneyFlow</span> tag naming the counterparty, with no default argument, so every call site must declare where the money came from or went.</li>
+  <li><strong>A compile-time lock.</strong> The treasury field is a <span class="mono">TreasuryAccount</span>, a private integer with an implicit read conversion and exactly two friends: <span class="mono">Player</span> and the save loader's <span class="mono">TreasuryRestore</span>. Writing <span class="mono">m.treasury = 5</span> or <span class="mono">+= 5</span> does not compile.</li>
+</ul>
+
+<p>The seven flow kinds are <span class="mono">Domestic</span>, <span class="mono">Transfer</span>, <span class="mono">External</span>, <span class="mono">Minted</span>, <span class="mono">Printed</span>, <span class="mono">Loss</span> and <span class="mono">Unbacked</span>. Domestic and Transfer move money inside the world and book nothing. The other five cross the world's boundary and are the only entries the ledger records.</p>
+
+<div class="note">
+<p><span class="tag">Subtle</span> <strong>Domestic does not mean "inside this civ".</strong> A cross-civ tithe, monopoly rent or garrison payment is tagged <span class="mono">domestic(otherCiv)</span> and the helper moves that civ's private coin by hand. Only a counterparty equal to yourself, or unset, triggers the own-private-money branch that makes spending a spend-back.</p>
+</div>
+
+<h2 id="pools">2. Where money sits</h2>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Location</th><th>Held by</th><th>Live under</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td class="mono">treasury</td><td>the state</td><td>every regime</td><td>The only pool the player spends from</td></tr>
+<tr><td class="mono">privateSpecie</td><td>the people, as coin</td><td>every regime</td><td>The tax base, and what a foreign buyer pays with</td></tr>
+<tr><td class="mono">privateNotes</td><td>the people, as paper</td><td>gold standard, fiat, digital</td><td>Counted in the tax base only under those regimes</td></tr>
+<tr><td class="mono">bullion</td><td>nobody, in effect</td><td>Barter only</td><td>Struck metal that cannot be spent or taxed</td></tr>
+<tr><td class="mono">carriedGold</td><td>a Trader in transit</td><td>every regime</td><td>Real money on the map, counted by <span class="mono">worldMoney</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<p><span class="mono">worldMoney</span> sums those five over <span class="mono">players()</span> only. City-state seats, which are ids at or above 200, and the barbarian seat at 254, are outside the world by construction. Two independent mechanisms keep them out: the turn loop binds a ledger only to major seats, and the ledger drops any seat id at or above the player maximum.</p>
+
+<p>Consequences of that boundary are asymmetric and deliberate:</p>
+<ul>
+  <li>A city-state or barbarian <strong>buyer</strong> pays the full asking price with no ability-to-pay check and no customs. That is a money faucet, booked as external income for the seller.</li>
+  <li>A barbarian <strong>pillager</strong> destroys both the cargo and the purse. The purse is booked as a loss.</li>
+</ul>
+
+<h2 id="circuit">3. The circuit</h2>
+
+<h3>Ore becomes coin</h3>
+<p>A Mint fires each of its recipes at most once per city per turn, because production loops recipes on the outside and cities on the inside.</p>
+<pre>2 copper ore -> 30 copper coins
+2 silver ore -> 20 silver coins
+2 gold ore   ->  4 gold bars</pre>
+<p>Output is then scaled by infrastructure, power, experience and supply multipliers, so the realised strike varies at runtime.</p>
+
+<h3>The sweep turns coin goods into money</h3>
+<p>At the end of every economy turn the sweep empties all three coin goods out of every owned city stockpile and values them at face.</p>
+<pre>face = copper x 1 + silver x 5 + gold x 25</pre>
+<ul>
+  <li><strong>Under Barter</strong> the whole face goes to <span class="mono">bullion</span> and the treasury receives nothing at all. There is no seigniorage before adoption.</li>
+  <li><strong>Once coinage is adopted</strong> leftover bullion flushes into private coin, the treasury takes 10 percent as seigniorage, and the people keep the remaining 90 percent.</li>
+</ul>
+
+<h3>Income is a tax on your own people's money</h3>
+<pre>taxBase = (privateSpecie + privateNotes, the latter only under a paper regime) x 0.35 x velocity
+income  = taxBase x taxRate x collectionEfficiency x goldAllocation</pre>
+<p>Defaults are a tax rate of 0.15 with a 0.60 ceiling, a collection efficiency starting at 0.50, and a gold allocation of 0.70. One call moves the money, and it is clamped to what the people actually hold. Reach without money collects exactly zero.</p>
+
+<p>Collection efficiency is the share of circulating money the state can reach. Per-city terms are population-weighted, then the whole sum is multiplied by government and alliance multipliers and clamped to the range 0 to 1.</p>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Term</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>Base</td><td>0.50</td></tr>
+<tr><td>Palace</td><td>0.10</td></tr>
+<tr><td>Commercial district, each</td><td>0.05</td></tr>
+<tr><td>Harbor district, each, suppressed while blockaded</td><td>0.03</td></tr>
+<tr><td>Market / Bank / Stock Exchange / Telecom Hub</td><td>0.08 / 0.12 / 0.18 / 0.10</td></tr>
+<tr><td>Any other building, per point of its gold bonus</td><td>0.01</td></tr>
+<tr><td>Tile, adjacency and goods gold, per point, capped per city at 0.10</td><td>0.01</td></tr>
+<tr><td>Wonders, per point, decaying with era gap and zero at a gap of 4</td><td>0.02</td></tr>
+<tr><td>Road-connected city, each</td><td>0.02</td></tr>
+<tr><td>Trade-route ability, per point per dispatched Trader</td><td>0.01</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note">
+<p><span class="tag">Important</span> <strong>No building anywhere in the income path creates gold.</strong> A Market does not produce 6 gold. It makes the people's money 0.08 easier to tax. The gold pips the city screen still draws for Market, Bank, Stock Exchange and Telecom Hub are dead for income, because the efficiency table switches on the building id before ever reading the gold-bonus column.</p>
+</div>
+
+<h3>Spending returns the money to circulation</h3>
+<p>A debit tagged Domestic to your own civ moves the amount straight into your people's pockets, into notes under a paper regime and coin otherwise. Buying a warrior at a price level of 1 costs 420 gold and creates 420 of private money, which the next tax partly collects back. That is the whole answer to "where does the mined gold go when the state spends it".</p>
+
+<h3>Upkeep is paid where the soldier stands</h3>
+<ul>
+  <li>Your own or unowned territory pays your own people.</li>
+  <li>A foreign major civ's province credits <em>that civ's</em> private coin. This is the deliberate specie drain of a garrison abroad.</li>
+  <li>A city-state's province is external, and nobody is credited.</li>
+  <li>Building maintenance has no province rule at all. It always pays the owner's own people.</li>
+</ul>
+
+<h3>Arrears, not debt</h3>
+<p>When the treasury cannot pay a bill it pays what it has, and the shortfall becomes arrears. A specie treasury does not go negative through any pay path. Arrears are transient and not saved; only a counter of consecutive unpaid turns persists, and its name is a legacy of the save layout. On the fifth consecutive unpaid turn the costliest military unit is disbanded, ranked by raw upkeep so the government's maintenance reduction does not influence who walks.</p>
+
+<h2 id="order">4. Turn order</h2>
+
+<p>Several behaviours only make sense once the order is clear.</p>
+
+<ol>
+  <li>The money ledger is reset and bound to every major seat.</li>
+  <li><strong>AI decisions</strong>, including purchases.</li>
+  <li><strong>The economy step</strong>: harvest, production and <em>the Mint strikes</em>, the stockpile soft-cap block, market prices, <em>the coin sweep</em>, crisis and bonds, then monetary policy, which computes inflation and then the price anchor.</li>
+  <li><strong>Per-player turn</strong>: <em>the tax</em>, then unit and building maintenance, then growth, religion including the per-city tithe, then science funding.</li>
+  <li><strong>Global systems</strong>, including the trade step, monopoly rent and world events.</li>
+  <li>The late tail: diplomacy, espionage, congress, city-states, victory check.</li>
+</ol>
+
+<ul>
+  <li><strong>The AI spends last turn's money</strong>, because purchases happen in step 2 while the mint and the tax are in steps 3 and 4.</li>
+  <li><strong>Seigniorage is this turn's</strong>, because the mint runs before the tax reads the ledger.</li>
+  <li><strong>Customs lag by a turn at tax time</strong>, because the trade step runs after the tax. The counter is deliberately reset inside the trade step rather than at turn top.</li>
+</ul>
+
+<h2 id="regimes">5. Regimes</h2>
+
+<p>The ladder is one-way and moves one rung at a time, through a single request that every surface calls: the Economy screen button, the AI, the REST route, the MCP tool and the multiplayer command.</p>
+
+<div class="scroll">
+<table>
+<thead><tr><th>From</th><th>To</th><th>Tech</th><th>Min strength</th><th>Cities</th><th>Turns in system</th><th>Partners</th><th>Max inflation</th></tr></thead>
+<tbody>
+<tr><td>Barter</td><td>Commodity money</td><td>none</td><td>100</td><td>1</td><td>0</td><td>0</td><td>1.00</td></tr>
+<tr><td>Commodity money</td><td>Gold standard</td><td>Banking</td><td>20</td><td>2</td><td>0</td><td>0</td><td>1.00</td></tr>
+<tr><td>Gold standard</td><td>Fiat</td><td>Banking</td><td>75</td><td>2</td><td>5</td><td>2</td><td>0.05</td></tr>
+<tr><td>Fiat</td><td>Digital</td><td>Computers</td><td>200</td><td>3</td><td>10</td><td>4</td><td>0.10</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Three requirements do not appear in that table:</p>
+<ul>
+  <li><strong>Coinage</strong> also needs a Mint, a non-empty bullion pool, and struck metal of the chosen tier.</li>
+  <li><strong>Fiat</strong> also needs Printing or Economics, enforced in the request rather than the table row.</li>
+  <li><strong>Fiat and digital</strong> also need a place in the top half of the economy by GDP, hard-coded in the gate with no table column.</li>
+</ul>
+
+<p>Adoption has two side effects. Coinage converts the whole bullion pool into private coin and freezes the coinage standard permanently. The gold standard issues convertible notes one for one against private coin, booked as printed money.</p>
+
+<div class="warn">
+<p><span class="tag bad">Trap</span> <strong>The chosen metal is permanent and outranks reserves.</strong> A civ that adopts on copper reads copper for ever, so a later silver hoard contributes nothing toward the gold-standard strength gate. The Economy screen offers only the preferred tier, with no way for a human to pick a different metal.</p>
+</div>
+
+<p>Two other things can change a regime. A reserve-stress collapse forces a suspension onto fiat, bypassing every gate including tech and partner count. And the debug console can set any stage in either direction, including straight back to Barter, skipping every gate and leaving the entry values stale.</p>
+
+<h2 id="prices">6. The price level</h2>
+
+<p>For commodity money and the gold standard the price level is an anchor rather than a Fisher equation.</p>
+
+<pre>P* = M x V / (K x population)      M = treasury + privateSpecie + privateNotes, K = 25
+target clamped to [0.5, 4]
+the level moves 3 percent of the remaining gap each turn
+inflationRate = the level's actual fractional change, clamped to [-0.20, 0.50]</pre>
+
+<p>For every other non-Barter regime a Fisher calculation sets the rate and the level compounds it, clamped to the range 0.1 to 10.</p>
+
+<p>What scales with the price level: purchase costs, science funding, building maintenance, the AI's gold gates and its return-on-investment horizons. What does not: trade revenue, which has no price-level term anywhere, and unit upkeep as actually charged.</p>
+
+<pre>priceLevelMaintenanceMultiplier = clamp(0.5 + 0.5 x sqrt(P), 0.8, 3.0)
+    P = 1 -> 1.00x     P = 2 -> 1.21x     P = 4 -> 1.50x     P = 10 -> 2.08x</pre>
+
+<p>The 3.0 ceiling is unreachable, since it would need a price level of 25 and no writer can exceed 10.</p>
+
+<div class="note">
+<p><span class="tag">Counter-intuitive</span> Three anchor behaviours read backwards at first glance.</p>
+<ul>
+<li><strong>A level pinned at the ceiling reports zero inflation</strong>, because the rate is the realised step and the step goes to zero at the target. A civ drowning in money per citizen signals perfect price stability to happiness, crises and the AI.</li>
+<li><strong>Losing a city raises the price level</strong>, because population is the denominator and the money stock is untouched. A civ in collapse gets more expensive purchases on top of the loss.</li>
+<li><strong>Inflation is a pure cost shock to a trading civ</strong>, because trade revenue stays in real terms while every cost scales.</li>
+</ul>
+</div>
+
+<h2 id="trade">7. Trade settlement</h2>
+
+<p>A cargo is priced at the destination before the goods land, and paid for by the buyer's <em>people</em>. The buyer's treasury is never debited by a sale.</p>
+
+<pre>saleValue   = sum(amount x localPrice(destination) x monopolyGouge) x destinationMult x routeYield
+localPrice  = marketPrice x clamp(((need + 2) / (have + 2)) ^ 0.6, 0.5, 2.5)
+destMult    = commerce bonuses at the destination, capped at 1.40
+routeYield  = max(0.5, 1 - 0.0167 x distance) x relation x bilateralTradeEfficiency</pre>
+
+<p>The relation term runs from 0.20 at war to 1.30 allied, plus 0.10 for open borders and 0.15 for an economic alliance, so a friendly route can sell above local prices. Distance is straight-line, not path length, so a long detour is not penalised. A sale into a city belonging to a civ you are at war with still happens, at a fifth of the value.</p>
+
+<p>The money then moves in three steps.</p>
+<ol>
+  <li><strong>Into the purse.</strong> The buyer's private coin or notes pay into the trader's <span class="mono">carriedGold</span>. Whatever the people cannot cover becomes a goods debt, settled out of the destination's stockpile, which by then already contains the shipment just delivered.</li>
+  <li><strong>Customs.</strong> The importer's treasury takes <span class="mono">clamp(importTariffRate x (1 + tariffEfficiency), 0, 0.5)</span> of what was actually paid, straight out of the purse.</li>
+  <li><strong>Home.</strong> The whole purse lands in the seller's private money, and the state then draws its tax rate back out as the trade-route income channel.</li>
+</ol>
+
+<p>The medium is notes only when both civs are on paper and either the buyer's trust is at least 0.5 or the seller holds the reserve currency, at an exchange rate clamped between 0.5 and 2.0. A purse holds one medium for the whole trip, fixed by the first city that pays.</p>
+
+<div class="note">
+<p><span class="tag">Note</span> <strong>A Barter seller's purse goes to bullion and the treasury share is zero</strong>, so trade-route income reports nothing at all for that civ even on a profitable route. Delivering to your own city still runs the full settlement, netting only the tax draw, which the code calls a tax on your own people rather than trade income.</p>
+</div>
+
+<h2 id="checks">8. How conservation is checked</h2>
+
+<ul>
+  <li><strong>In the headless tool</strong>, once per turn, comparing world money before and after against the ledger. It is a counted warning with a per-civ dump, not an assertion, and the exit code is unaffected.</li>
+  <li><strong>In the health script</strong>, as the one hard money gate, reading the unbacked column of the CSV.</li>
+  <li><strong>In the tests</strong>, where <span class="mono">test_money_conservation.cpp</span> proves the invariant piecewise and a mid-script save and reload proves traders carry their purses across it.</li>
+  <li><strong>Nowhere in the interactive game.</strong> Neither the turn processor nor the GUI checks conservation at all.</li>
+</ul>
+
+<p>A test that never binds a ledger still moves all the money, silently, because every ledger write is null-guarded. Tests that assert the invariant must bind one explicitly.</p>
+
+<h2 id="outside">9. Money that moves outside the income account</h2>
+
+<p>The five reported income channels are tax, seigniorage, tariffs, external and trade routes. A great deal of real money moves outside them, all of it booked and therefore conservation-safe, but none of it visible in the breakdown or the CSV.</p>
+
+<ul>
+  <li><strong>Bonds and IOUs</strong>, the largest concentration of treasury mutations outside the seam itself, including coupons, calls and expiry settlements.</li>
+  <li><strong>The stock market</strong>, where divestment beyond the target's treasury is credited from the external sector.</li>
+  <li><strong>Futures, insurance and forex</strong>, a per-turn faucet and drain that conservation permits because it is booked, not because it nets out.</li>
+  <li><strong>Espionage</strong>, whose fund siphon is the one live unclamped treasury debit, sized from gross income the victim never received.</li>
+  <li><strong>World events</strong>, deals including gold lumps, supply contracts and reparations, delegations and embassies, and sanctions, which seize a quarter of the target's treasury.</li>
+  <li><strong>Monopoly rent and reserve-currency seigniorage</strong>, both of which take from every other civ's private money every turn and book nothing, because they are tagged as internal flows.</li>
+  <li><strong>The religious tithe</strong>, a second tax on private money in the same turn as the main one, plus founder beliefs drawing from follower civs.</li>
+  <li><strong>City-states and Great People</strong>, both recurring external income.</li>
+</ul>
+
+<h2 id="misread">10. Common misreadings</h2>
+
+<p>Each of these was believed, checked against the code, and corrected.</p>
+
+<ul>
+  <li><strong>A deleted Trader's purse is not lost unbooked.</strong> Unit removal books any remaining purse as a loss on the owner's ledger and zeroes it, on every removal path.</li>
+  <li><strong>Taking from "nobody's" people taxes your own.</strong> The cross-civ take refuses only city-state and barbarian seats; an unset player falls through to the taker's own people. Pillaging an unowned tile is therefore a self-tax, not a transfer from a victim.</li>
+  <li><strong>The Mint is the only source of coin, not of money.</strong> Paper is created at five other sites, which is why the ledger keeps minted, printed and unbacked as separate columns.</li>
+  <li><strong>Bullion is structurally zero outside Barter.</strong> The sweep flushes it into private coin every turn for every non-Barter civ, not only at adoption, so the Economy screen's bullion row is necessarily zero past Barter.</li>
+  <li><strong>The fire sale takes money from the people into the treasury</strong>, not the other way round.</li>
+  <li><strong>Velocity drifts.</strong> Commodity money and Barter target a velocity of 0.8, so the taxable share slides from 0.35 toward roughly 0.28 over a few dozen turns. A fresh game's collection rate is not the steady-state one.</li>
+  <li><strong>The money supply is derived once per turn, in the sweep, and never for a Barter civ.</strong> The supply-adjustment chokepoint is overwritten by that derivation, so its callers, including a crisis that halves the supply, are effectively no-ops.</li>
+  <li><strong>Customs report different turns to different readers.</strong> Last turn's at tax time, this turn's in the CSV, because the CSV row is written after the turn completes.</li>
+  <li><strong>Loss has seven sites, not one.</strong></li>
+  <li><strong>A Mint cannot fire the same recipe twice in a turn</strong>, so its per-turn capacity never binds.</li>
+</ul>
+
+<h2 id="risks">11. Known weaknesses</h2>
+
+<div class="warn">
+<p><span class="tag bad">Headline</span> <strong>The hundred-face coinage gate decides whether money exists in a game at all.</strong> Every civ starts on Barter with an empty treasury. Before adoption the Mint feeds only bullion, with no seigniorage, so the state has no spendable income whatsoever. On the blessed seed 42 run the whole world struck 20 face across 500 turns and never left Barter; on seed 43 it struck over 5000 and reached the gold standard.</p>
+</div>
+
+<ul>
+  <li><strong>The health gate is weaker than the in-process check.</strong> The unbacked CSV column is a net, so a turn that conjures five and destroys five logs zero and passes.</li>
+  <li><strong>The CSV cannot see the world boundary.</strong> There is no column for external flows or losses, so money crossing to a city-state or vanishing with a dead trader is invisible to the health script.</li>
+  <li><strong>Three payment sites invert their sign on a negative treasury.</strong> They take the minimum of treasury and amount owed without flooring at zero, so a debtor already underwater is credited while its creditor is debited, and the balance owed grows.</li>
+  <li><strong>The espionage siphon is unclamped</strong> and is what can drive a treasury negative in the first place.</li>
+  <li><strong>The sub-unit remainder specified in the plan was never built.</strong> At a price level of 0.5 a one-gold building upkeep truncates to zero.</li>
+  <li><strong>Cross-civ takes only ever touch private coin, never notes</strong>, so taking from a paper-regime civ that holds little coin drives its coin pool negative. The floor on the next read quietly erases the debt.</li>
+  <li><strong>Coin can escape the sweep</strong> through the stockpile export buffer, and a city that revolted but still sits in its former owner's city list is never swept at all.</li>
+  <li><strong>The regime source-sweep test cannot see the debug console</strong>, because it greps for a call the console does not make.</li>
+</ul>
+
+<footer>
+Generated from a code-reading pass over the money subsystems: the money seam, the pools and minting, taxation, spending and arrears, regimes and paper money, the price anchor, and trade settlement. Every constant and formula above was re-checked against the source by an independent verification pass.
+</footer>
+
+</div>
+</body>
+</html>

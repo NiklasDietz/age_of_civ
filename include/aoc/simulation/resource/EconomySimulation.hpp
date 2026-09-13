@@ -145,6 +145,12 @@ private:
     static constexpr std::size_t MAX_RECIPES = 128;
     std::array<int32_t, MAX_RECIPES> m_recipeFireCount = {};
 
+    /// Ore units the three Mint recipes ate this turn, per civ. Transient like
+    /// the money ledger: cleared at the top of every turn, never saved. It
+    /// answers whether a civ's silver and gold go to the Mint at all, which
+    /// nothing measured before.
+    std::array<int64_t, MAX_PLAYERS> m_mintOreConsumed = {};
+
 public:
     /// Access the per-game recipe fire counter (read-only for UI / CSV dump).
     [[nodiscard]] const std::array<int32_t, MAX_RECIPES>& recipeFireCount() const {
@@ -152,6 +158,10 @@ public:
     }
     [[nodiscard]] std::array<int32_t, MAX_RECIPES>& recipeFireCount() {
         return this->m_recipeFireCount;
+    }
+    /// Ore the Mint recipes consumed this turn, indexed by PlayerId.
+    [[nodiscard]] const std::array<int64_t, MAX_PLAYERS>& mintOreConsumed() const {
+        return this->m_mintOreConsumed;
     }
     [[nodiscard]] GlobalSanctionTracker& sanctions() { return this->m_sanctions; }
     [[nodiscard]] const GlobalSanctionTracker& sanctions() const { return this->m_sanctions; }

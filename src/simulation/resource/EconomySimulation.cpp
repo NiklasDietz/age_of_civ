@@ -78,6 +78,21 @@ namespace {
     return miners;
 }
 
+/// The Mint's three recipes: Mint Copper (34), Mint Silver (35), Smelt Gold
+/// (36). Ore they consume is metal that left industry to become money.
+[[nodiscard]] constexpr bool isMintRecipe(uint16_t recipeId) {
+    return recipeId == 34 || recipeId == 35 || recipeId == 36;
+}
+
+/// The two money-metal mints, silver and gold. Recipe 34 mints copper, which
+/// the commodity money plan deliberately leaves outside the money fiction
+/// because copper already feeds four industrial recipes. Excluding it keeps
+/// this counter measuring the same metals as the CSV's MetalOreHeld column,
+/// so the two can be read against each other.
+[[nodiscard]] constexpr bool isMoneyMetalMintRecipe(uint16_t recipeId) {
+    return recipeId == 35 || recipeId == 36;
+}
+
 [[nodiscard]] bool playerCanProduceConsumerGoods(const aoc::game::Player& player) {
     constexpr BuildingId WORKSHOP{1};
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
@@ -138,6 +153,7 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
         playerPtr->economy().lastTurnConsumption.clear();
         playerPtr->economy().lastTurnHarvest.clear();
     }
+    this->m_mintOreConsumed.fill(0);
 
     this->harvestResources(gameState, grid);
     this->applyResourceDepletion(gameState, grid);
@@ -929,6 +945,10 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                                      "prior availability check", city->name().c_str(),
                                      static_cast<unsigned>(input.goodId));
                             continue;
+                        }
+                        if (isMoneyMetalMintRecipe(recipe->recipeId)) {
+                            this->m_mintOreConsumed[static_cast<std::size_t>(playerPtr->id())] +=
+                                input.amount;
                         }
                         float q = quality.consumeGoods(input.goodId, input.amount);
                         inputQualitySum += q;
