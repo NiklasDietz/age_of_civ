@@ -1,6 +1,8 @@
 # Emergent Commodity Money: a plan
 
-**Status**: proposed, not approved. Nothing below has been built.
+**Status**: Phase 0 built and committed as `d4ac0a2` on 2026-09-13. Phase 1 was
+built, measured and reverted. **Phase 2 is blocked by Phase 0's own result, see
+section 5.0.** Phases 3 and 4 are unchanged and unbuilt.
 **Written**: 2026-09-13, against `develop` at `c050023`.
 **Investigation**: six implementation areas, each read from the code and then
 independently checked for buildability, plus two design critics. All six areas
@@ -162,7 +164,59 @@ had to be reverted. This phase exists so that does not happen again.
 motive, fix that first and revisit this plan. Giving fiat a motive does nothing
 if the gate is shut.
 
+### 5.0 What Phase 0 measured, and why Phase 2 is now blocked
+
+Phase 0 shipped and answered its question. Over 200 turns at six players on
+seed 42:
+
+| Target | Asked | Passed | Refused, by clause |
+|---|---|---|---|
+| Commodity money | 136 | 10 | no Mint 378, strength 126, no bullion 79 |
+| Gold standard | 5 | 5 | never refused |
+| Fiat | 34 | 0 | no Printing or Economics 153, strength 34 |
+| Digital | 55 | 0 | tech 55 |
+
+**Fiat is refused for tech and currency strength alone.** Partners, inflation,
+GDP rank, city count and turns-in-system never refuse it once, and no civ has
+ever passed that gate. The two civs observed on fiat were forced there by the
+crisis suspension, which bypasses the gate entirely.
+
+This trips the gate written into this plan: the motive is not what is missing,
+so **Phase 2 must not be built yet**. Three things block the ladder, in order:
+
+1. **No Mint gets built.** 378 of 583 Barter refusals, against 126 for the
+   hundred-face threshold. Two thirds of Barter time is spent without a Mint.
+2. **Printing and Economics are never researched.** 153 of 187 fiat refusals.
+   This is a tech-priority problem, not a monetary one.
+3. **Currency strength is blind to copper.** Every observed civ adopted the
+   copper standard, and the gold-standard branch of `currencyStrength` counts
+   only silver and gold, so a copper civ sits near zero against a required 75
+   for ever. Read from the code, not instrumented; worth confirming before it
+   is treated as fact.
+
+A fourth finding changes the design's premise in its favour. The metal ore
+column first read identically zero on both four-player golden runs, which was a
+false negative caused by reading only the stockpile and not the export buffer.
+Corrected, metal is held on 166 of 744 rows on seed 42 and 216 of 744 on seed
+43, peaking at 12 and 20 units, while the silver and gold mints consume 0 and
+14 units respectively. **The metal exists and is idle.** It simply never
+reaches a Mint, which is exactly the unclaimed resource an industrial use would
+take.
+
 ### Phase 1: give the metals somewhere to go (data only)
+
+**BUILT, MEASURED AND REVERTED on 2026-09-13.** The two recipes below were
+implemented exactly as specified, with the ranker ratios confirmed against real
+base prices: Work Gold 3.60 against Smelt Gold Bars 2.00, Work Silver 2.05
+against Mint Silver 2.27. They then measured **zero firings** in every run
+tested, at 300 turns with six players and 500 turns with four, on both seeds,
+while still moving seed 43 from turn 350 to turn 190 by perturbing the ranker's
+topological tie-break. Section 8's first risk forbids landing a condition with a
+measured firing count of zero, so they were reverted.
+
+They never fired because the ore is in the export buffer rather than the
+stockpile, and because a Forge recipe competes for worker slots it rarely wins.
+Restoring them is nine lines once the ore actually reaches a recipe.
 
 Two recipes appended at the end of `buildRecipes` so push order does not perturb
 topological tie-breaks. Use recipe 35's positional form; putting the tech
