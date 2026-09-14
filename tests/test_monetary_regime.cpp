@@ -202,7 +202,8 @@ TEST_CASE("with three civs, two live partners and Economics, Fiat is adopted, an
     aoc::test::addCityAt(w, P1, 14, 8, "Beta");
     aoc::test::addCityAt(w, PlayerId{2}, 18, 12, "Delta");
     p.monetary().system               = MonetarySystemType::GoldStandard;
-    p.monetary().goldBarReserves      = 4; // 100 face; copper is not legal tender on the standard
+    p.monetary().goldBarReserves      = 4;   // the gold that backs the notes
+    p.monetary().moneySupply          = 400; // fiat is judged on its own measure, not on metal
     p.monetary().turnsInCurrentSystem = 5;
     p.monetary().inflationRate        = 0.01f;
     p.monetary().gdp                  = 1000; // top half
@@ -218,6 +219,26 @@ TEST_CASE("with three civs, two live partners and Economics, Fiat is adopted, an
     CHECK(p.monetary().system == MonetarySystemType::FiatMoney);
     CHECK(aoc::sim::requestSetMonetaryRegime(w.gameState, P0, MonetarySystemType::Digital) ==
           ErrorCode::InvalidMonetaryTransition); // no Computers, no ten turns in
+}
+
+TEST_CASE("a transition is judged by the measure of the regime it moves to") {
+    aoc::sim::MonetaryStateComponent m{};
+    m.copperCoinReserves = 30; // the everyday coin of a copper civ
+
+    // Under a gold standard copper stays in hand as subsidiary coin. Leaving it
+    // out of that branch priced a copper civ's whole circulating currency at
+    // zero the turn it adopted the standard, which put fiat's threshold of 75
+    // permanently out of reach.
+    CHECK(m.strengthUnder(MonetarySystemType::GoldStandard) == 30);
+
+    // Fiat runs on money supply, so that is what a fiat candidate is measured
+    // on. Asking it for gold reserves it will not use gates the wrong quantity.
+    m.moneySupply = 500;
+    CHECK(m.strengthUnder(MonetarySystemType::FiatMoney) == 500);
+
+    // currencyStrength() still reports the system the civ is actually running.
+    m.system = MonetarySystemType::CommodityMoney;
+    CHECK(m.currencyStrength() == 30);
 }
 
 TEST_CASE("the preferred metal follows what the Mint has struck") {

@@ -581,10 +581,20 @@ struct MonetaryStateComponent {
     ///
     ///   Barter/early CommodityMoney: copper coins only
     ///   CommodityMoney (silver tier): silver coins only (copper is demonetized)
-    ///   GoldStandard: silver coins + gold bars (silver circulates, gold backs paper)
+    ///   GoldStandard: copper and silver coin + gold bars (subsidiary coin
+    ///                 circulates, gold backs the paper)
     ///   Fiat: based on money supply, metals are just commodities
     [[nodiscard]] int32_t currencyStrength() const {
-        switch (this->system) {
+        return this->strengthUnder(this->system);
+    }
+
+    /// Currency strength as it would be measured under an arbitrary system,
+    /// rather than the one the civ is running. Each regime funds itself on a
+    /// different thing, so a candidate has to be judged on the measure of the
+    /// regime it is moving TO: asking a fiat candidate for the gold reserves
+    /// fiat does not use gates it on the wrong quantity.
+    [[nodiscard]] int32_t strengthUnder(MonetarySystemType system) const {
+        switch (system) {
             case MonetarySystemType::Barter:
                 // Any coinage counts toward exiting barter (copper, silver, or gold bars)
                 return this->copperCoinReserves * COPPER_COIN_VALUE
@@ -599,8 +609,12 @@ struct MonetaryStateComponent {
                 return this->copperCoinReserves * COPPER_COIN_VALUE;
 
             case MonetarySystemType::GoldStandard:
-                // Silver remains everyday currency; gold bars back paper notes
-                return this->silverCoinReserves * SILVER_COIN_VALUE
+                // Gold bars back the notes; silver and copper stay in hand as
+                // subsidiary coin, as they did under every real gold standard.
+                // Omitting copper here priced a copper civ's whole circulating
+                // currency at zero the turn it adopted the standard.
+                return this->copperCoinReserves * COPPER_COIN_VALUE
+                     + this->silverCoinReserves * SILVER_COIN_VALUE
                      + this->goldBarReserves   * GOLD_BAR_VALUE;
 
             case MonetarySystemType::FiatMoney:
@@ -716,7 +730,7 @@ struct MonetaryStateComponent {
                 // threshold by mixing base metal into its coinage rather than
                 // actually accumulating reserves.
                 const int32_t rawStrength = static_cast<int32_t>(
-                    static_cast<float>(this->currencyStrength())
+                    static_cast<float>(this->strengthUnder(target))
                     * (1.0f - this->debasement.debasementRatio));
                 if (rawStrength < req.minCurrencyStrength) {
                     recordGateRefusal(target, GateRefusal::CurrencyStrength);

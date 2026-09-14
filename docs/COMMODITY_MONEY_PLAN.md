@@ -221,6 +221,35 @@ so **Phase 2 must not be built yet**. Three things block the ladder, in order:
    strength requirement from the fiat row entirely and let the tech and the
    motive carry it.
 
+   **RESOLVED 2026-09-15, and it took two of the three, not one.** The user
+   chose to judge a transition by the target regime's measure, so
+   `canTransition` now reads `strengthUnder(target)` and a fiat candidate is
+   measured on `moneySupply`, which is what fiat actually runs on. Measured
+   alone, that change did not open the ladder: it moved the wall down a rung.
+   Judging a gold-standard candidate by the gold-standard branch asks a copper
+   civ for silver and gold it does not have, so the rung went from 5 asked and
+   5 passed to 234 asked and 3 passed, all 231 refusals on strength, and the
+   fiat rung stopped being reached at all (0 asked).
+
+   Counting copper as subsidiary coinage in the gold-standard branch was
+   therefore added as the complement, which is what every real gold standard
+   did anyway: gold backs the notes, silver and copper stay in hand. With both
+   changes the rungs below return to their measured baseline exactly and the
+   strength refusal at the fiat rung disappears.
+
+   | Rung | Baseline | Target measure alone | Both changes |
+   |---|---|---|---|
+   | Commodity money | 136 asked, 10 passed | 136, 10 | 136, 10 |
+   | Gold standard | 5 asked, 5 passed | 234, 3 | 5, 5 |
+   | Fiat, seed 42 | 34 asked, 0 passed, strength 34 | 0 asked | 34, 0, **strength 0** |
+   | Fiat, seed 43 | — | — | 21 asked, **2 passed** |
+
+   Seed 43 is the first time in this programme that any civ has reached fiat
+   through the gate rather than by crisis suspension. On seed 42 fiat is still
+   refused, but now on gdpRank 33 and paperTech 153, which are designed gates
+   rather than a measure contradicting itself. Blocker 3 is closed; blockers 1,
+   2 and 4 stand.
+
 4. **Nothing ever aims at the fiat techs.** Printing is era 3 behind Education,
    Economics is era 4 behind Banking, and a grep for either id across the AI
    and monetary code returns nothing. No planner targets them, so they arrive
