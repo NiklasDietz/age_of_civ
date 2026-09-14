@@ -188,11 +188,45 @@ so **Phase 2 must not be built yet**. Three things block the ladder, in order:
    hundred-face threshold. Two thirds of Barter time is spent without a Mint.
 2. **Printing and Economics are never researched.** 153 of 187 fiat refusals.
    This is a tech-priority problem, not a monetary one.
-3. **Currency strength is blind to copper.** Every observed civ adopted the
-   copper standard, and the gold-standard branch of `currencyStrength` counts
-   only silver and gold, so a copper civ sits near zero against a required 75
-   for ever. Read from the code, not instrumented; worth confirming before it
-   is treated as fact.
+3. **The ladder zeroes its own metric at rung three. CONFIRMED 2026-09-14.**
+   Each branch of `currencyStrength` is defensible alone; the combination is
+   not. Under commodity money a copper civ is measured on copper. Under the
+   gold standard the branch returns silver plus gold, and copper is absent from
+   the expression, so a copper civ's strength drops to zero on the transition
+   turn and fiat's requirement of 75 becomes unreachable.
+
+   Measured over 846 player-turns, 6 players, seed 42: **every civ that left
+   Barter carries Copper tier**, 201 player-turns on the gold standard and 57
+   on fiat, with Silver and Gold tier never held by anyone. The gate dump
+   agrees: the gold standard is asked 5 times and passes 5, then fiat is asked
+   34 times and passes none, refused on strength every time.
+
+   The whole chain, end to end and all of it measured:
+
+   - silver and gold ore almost never reach a Mint (0 and 14 units consumed),
+   - so `preferredCoinTier` returns Copper for everyone,
+   - so every civ adopts the copper standard,
+   - which clears the gold standard's threshold of 20 because copper counts there,
+   - and is then worth zero under the gold standard's own branch,
+   - so fiat's 75 is permanently out of reach.
+
+   Not impossible in principle, since minting any silver would fix it; simply
+   unreachable in practice on every seed measured.
+
+   Three ways out, and the choice is a design decision rather than an obvious
+   bug fix. Count copper as subsidiary coinage in the gold-standard branch,
+   which is historically ordinary and the smallest change. Or judge a
+   transition by the TARGET regime's measure rather than the current one, since
+   `canTransition` today measures a fiat candidate by its metal. Or drop the
+   strength requirement from the fiat row entirely and let the tech and the
+   motive carry it.
+
+4. **Nothing ever aims at the fiat techs.** Printing is era 3 behind Education,
+   Economics is era 4 behind Banking, and a grep for either id across the AI
+   and monetary code returns nothing. No planner targets them, so they arrive
+   only by accident of general research order. This is the second, independent
+   lock on the same door: 153 of the 187 fiat refusals are for the tech, 34 for
+   the strength above.
 
 A fourth finding changes the design's premise in its favour. The metal ore
 column first read identically zero on both four-player golden runs, which was a
