@@ -257,6 +257,37 @@ so **Phase 2 must not be built yet**. Three things block the ladder, in order:
    lock on the same door: 153 of the 187 fiat refusals are for the tech, 34 for
    the strength above.
 
+**CORRECTION 2026-09-15: blockers 1, 2 and 4 above are wrong, and the run data
+says so.** They were read off refusal COUNTS, which say how many turns a civ
+spent short of something, not whether it ever got it. Measured per civ instead:
+
+- **Mints do get built and civs do leave Barter.** On seed 42 five of six civs
+  reach commodity money, between turns 78 and 100; on seed 43 four of six,
+  between turns 62 and 139. The 378 noMint refusals are the turns before the
+  capital finishes 70 hammers, not a wall. The AI already force-queues a Mint
+  in the original capital at score 4.0 while in Barter
+  (`AIController.cpp:1595`). This is a PACING problem, not a missing behaviour.
+- **Economics is researched by every civ, on both seeds.** Tech ids complete in
+  ascending order and Economics is id 13, so it lands between turns 27 and 48
+  on seed 42, long before any civ leaves Barter. Since the fiat tech gate is
+  Banking AND (Printing OR Economics), it is satisfied for everyone well before
+  it could matter. The 153 paperTech refusals are entirely the pre-turn-48
+  window. Nothing targets the fiat techs, which is true, but it does not lock
+  anything: id-order research delivers Economics anyway.
+
+**The real remaining blocker is gdpRank.** With blocker 3 fixed, seed 42's 34
+fiat asks break down as 33 refused on gdpRank and 1 on partners: the GDP gate is
+now the whole of it. `canTransition` admits fiat only to civs in the top half by
+GDP (`topHalf = max(1, playerCount / 2)`, so 3 of 6), while the AI's fiat branch
+is triggered by economic stress. The AI asks when it is poor and the gate answers
+only when it is rich.
+
+That is also backwards from the history this plan is trying to model. Britain
+suspended convertibility in 1797 under war finance, the Union issued greenbacks
+in 1862, the belligerents left gold in 1914 and Nixon closed the window in 1971:
+fiat came from fiscal stress every time, not from prosperity. Whether to invert,
+relax or keep the GDP gate is a design decision and is open.
+
 A fourth finding changes the design's premise in its favour. The metal ore
 column first read identically zero on both four-player golden runs, which was a
 false negative caused by reading only the stockpile and not the export buffer.
