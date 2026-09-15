@@ -14,33 +14,52 @@
 namespace aoc::game {
 class GameState;
 class Player;
-}
+} // namespace aoc::game
 
 namespace aoc::sim {
 
 /// Where money comes from or goes when a treasury moves. Every Player
 /// treasury mutator takes one, with no default, so a call site has to say.
 enum class MoneyFlowKind : uint8_t {
-    Domestic, ///< Between this treasury and a civ's private money (own civ unless said otherwise)
-    Transfer, ///< Between two treasuries; the other civ books its own side
-    External, ///< The external sector: city-states, barbarian hoards, goody huts, endowments
-    Minted,   ///< New coin from the Mint (the sweep's seigniorage share)
-    Printed,  ///< Notes issued against nothing (fiat)
-    Loss,     ///< Money that leaves the world: melted, sunk, plundered by nobody
-    Unbacked, ///< Money the old model conjures or destroys; Phase 2.2 retires every use
+    Domestic,  ///< Between this treasury and a civ's private money (own civ unless said otherwise)
+    Transfer,  ///< Between two treasuries; the other civ books its own side
+    External,  ///< The external sector: city-states, barbarian hoards, goody huts, endowments
+    Monetised, ///< A good adopted as money: its face value enters the money supply
+    Demonetised, ///< A money good retired: its face value leaves the money supply
+    Printed,     ///< Notes issued against nothing (fiat)
+    Loss,        ///< Money that leaves the world: melted, sunk, plundered by nobody
+    Unbacked,    ///< Money the old model conjures or destroys; Phase 2.2 retires every use
 };
 
 struct MoneyFlow {
-    MoneyFlowKind kind    = MoneyFlowKind::Unbacked;
-    PlayerId counterparty = INVALID_PLAYER; ///< Domestic: whose private money; Transfer: the other treasury
+    MoneyFlowKind kind = MoneyFlowKind::Unbacked;
+    PlayerId counterparty =
+        INVALID_PLAYER; ///< Domestic: whose private money; Transfer: the other treasury
 
-    [[nodiscard]] static constexpr MoneyFlow domestic(PlayerId civ) { return {MoneyFlowKind::Domestic, civ}; }
-    [[nodiscard]] static constexpr MoneyFlow transfer(PlayerId other) { return {MoneyFlowKind::Transfer, other}; }
-    [[nodiscard]] static constexpr MoneyFlow external() { return {MoneyFlowKind::External, INVALID_PLAYER}; }
-    [[nodiscard]] static constexpr MoneyFlow minted() { return {MoneyFlowKind::Minted, INVALID_PLAYER}; }
-    [[nodiscard]] static constexpr MoneyFlow printed() { return {MoneyFlowKind::Printed, INVALID_PLAYER}; }
-    [[nodiscard]] static constexpr MoneyFlow loss() { return {MoneyFlowKind::Loss, INVALID_PLAYER}; }
-    [[nodiscard]] static constexpr MoneyFlow unbacked() { return {MoneyFlowKind::Unbacked, INVALID_PLAYER}; }
+    [[nodiscard]] static constexpr MoneyFlow domestic(PlayerId civ) {
+        return {MoneyFlowKind::Domestic, civ};
+    }
+    [[nodiscard]] static constexpr MoneyFlow transfer(PlayerId other) {
+        return {MoneyFlowKind::Transfer, other};
+    }
+    [[nodiscard]] static constexpr MoneyFlow external() {
+        return {MoneyFlowKind::External, INVALID_PLAYER};
+    }
+    [[nodiscard]] static constexpr MoneyFlow monetised() {
+        return {MoneyFlowKind::Monetised, INVALID_PLAYER};
+    }
+    [[nodiscard]] static constexpr MoneyFlow demonetised() {
+        return {MoneyFlowKind::Demonetised, INVALID_PLAYER};
+    }
+    [[nodiscard]] static constexpr MoneyFlow printed() {
+        return {MoneyFlowKind::Printed, INVALID_PLAYER};
+    }
+    [[nodiscard]] static constexpr MoneyFlow loss() {
+        return {MoneyFlowKind::Loss, INVALID_PLAYER};
+    }
+    [[nodiscard]] static constexpr MoneyFlow unbacked() {
+        return {MoneyFlowKind::Unbacked, INVALID_PLAYER};
+    }
 };
 
 /// What entered and left the world's money this turn, per civ. Transient:
@@ -48,8 +67,6 @@ struct MoneyFlow {
 /// inside the world and book nothing here.
 struct MoneyLedger {
     struct Civ {
-        int64_t minted      = 0; ///< face value swept from the Mint's coin goods
-        int64_t seigniorage = 0; ///< the treasury's share of that (part of minted)
         int64_t printed     = 0;
         int64_t externalIn  = 0;
         int64_t externalOut = 0;
@@ -120,7 +137,8 @@ CurrencyAmount payInNotes(aoc::game::Player& buyer, CurrencyAmount price);
 /// coin goes to bullion (the metal waits for coinage); otherwise the
 /// tax-rate share goes to the treasury and the rest to the merchants.
 /// Returns the treasury's share.
-CurrencyAmount receiveTradeCoin(aoc::game::Player& seller, CurrencyAmount amount, bool notes = false);
+CurrencyAmount receiveTradeCoin(aoc::game::Player& seller, CurrencyAmount amount,
+                                bool notes = false);
 
 /// Coin (or notes) into the people's hands: loot, a windfall found on the road.
 void giveToPrivate(aoc::game::Player& civ, CurrencyAmount amount, bool notes = false);
@@ -141,9 +159,7 @@ void bookExternal(const aoc::game::Player& civ, CurrencyAmount delta);
 
 /// The invariant for one turn: the world's money changed by exactly what the
 /// ledger books, and none of it was conjured or destroyed.
-[[nodiscard]] bool moneyConserved(int64_t worldMoneyBefore, int64_t worldMoneyAfter, const MoneyLedger& ledger);
-
-/// Treasury share of freshly minted coin, the rest is the minter's private money.
-inline constexpr int32_t SEIGNIORAGE_PCT = 10;
+[[nodiscard]] bool moneyConserved(int64_t worldMoneyBefore, int64_t worldMoneyAfter,
+                                  const MoneyLedger& ledger);
 
 } // namespace aoc::sim

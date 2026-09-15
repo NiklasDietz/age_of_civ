@@ -81,9 +81,9 @@ constexpr float HARBOR_EFFICIENCY     = 0.03f;
 constexpr float GOLD_POINT_EFFICIENCY = 0.01f; ///< per point of tile, adjacency or goods gold
 constexpr float CITY_GOLD_CAP         = 0.10f; ///< cap on a city's tile, adjacency and goods gold
 constexpr float WONDER_GOLD_POINT     = 0.02f;
-constexpr float INDUSTRIAL_POINT      = 0.02f; ///< per point of gold per citizen from industrialisation
+constexpr float INDUSTRIAL_POINT = 0.02f; ///< per point of gold per citizen from industrialisation
 constexpr float CONNECTION_EFFICIENCY = 0.02f; ///< per city connected to the capital by road
-constexpr float ROUTE_ABILITY_POINT   = 0.01f; ///< per point of a civ's goldFromTradeRoute, per route
+constexpr float ROUTE_ABILITY_POINT = 0.01f; ///< per point of a civ's goldFromTradeRoute, per route
 
 } // namespace
 
@@ -94,8 +94,8 @@ int32_t unitUpkeep(const aoc::game::Player& player, const aoc::game::Unit& unit)
     }
     // Conscription and its kin: a flat reduction per paid unit (plan 3.3
     // wires the policy; it was declared, summed, and read by nobody).
-    const int32_t reduction =
-        static_cast<int32_t>(computeGovernmentModifiers(player.government()).unitMaintenanceReduction);
+    const int32_t reduction = static_cast<int32_t>(
+        computeGovernmentModifiers(player.government()).unitMaintenanceReduction);
     return std::max(0, base - reduction);
 }
 
@@ -129,8 +129,9 @@ void tallyUpkeepAndStock(const aoc::game::Player& player, EconomicBreakdown& bd)
         }
     }
     const float priceMult = priceLevelMaintenanceMultiplier(player.monetary().priceLevel);
-    bd.expenseUnits     = static_cast<CurrencyAmount>(static_cast<float>(bd.expenseUnits) * priceMult);
-    bd.expenseBuildings = static_cast<CurrencyAmount>(static_cast<float>(bd.expenseBuildings) * priceMult);
+    bd.expenseUnits = static_cast<CurrencyAmount>(static_cast<float>(bd.expenseUnits) * priceMult);
+    bd.expenseBuildings =
+        static_cast<CurrencyAmount>(static_cast<float>(bd.expenseBuildings) * priceMult);
 }
 
 /// The treasury's customs share of the coin the civ's Traders landed this
@@ -219,7 +220,7 @@ void tallyUpkeepAndStock(const aoc::game::Player& player, EconomicBreakdown& bd)
 /// blockaded city's water tiles yield nothing: that is what a blockade is.
 [[nodiscard]] int32_t cityTileGold(const aoc::game::City& city, const aoc::map::HexGrid& grid) {
     const bool blockaded = city.combat().blockadedBy != INVALID_PLAYER;
-    int32_t gold = 0;
+    int32_t gold         = 0;
     for (const aoc::hex::AxialCoord& tile : city.workedTiles()) {
         if (!grid.isValid(tile)) {
             continue;
@@ -270,11 +271,16 @@ void tallyUpkeepAndStock(const aoc::game::Player& player, EconomicBreakdown& bd)
 
 float buildingCollectionBonus(BuildingId building) {
     switch (building.value) {
-        case MARKET:         return 0.08f;
-        case BANK:           return 0.12f;
-        case STOCK_EXCHANGE: return 0.18f;
-        case TELECOM_HUB:    return 0.10f;
-        default:             return static_cast<float>(buildingDef(building).goldBonus) * GOLD_POINT_EFFICIENCY;
+    case MARKET:
+        return 0.08f;
+    case BANK:
+        return 0.12f;
+    case STOCK_EXCHANGE:
+        return 0.18f;
+    case TELECOM_HUB:
+        return 0.10f;
+    default:
+        return static_cast<float>(buildingDef(building).goldBonus) * GOLD_POINT_EFFICIENCY;
     }
 }
 
@@ -307,7 +313,8 @@ float collectionEfficiency(const aoc::game::Player& player, const aoc::map::HexG
     const float perRoute = static_cast<float>(civDef(player.civId()).modifiers.goldFromTradeRoute) +
                            gov.tradeRouteBonus;
     if (perRoute > 0.0f) {
-        efficiency += ROUTE_ABILITY_POINT * perRoute * static_cast<float>(player.activeTradeRouteCount());
+        efficiency +=
+            ROUTE_ABILITY_POINT * perRoute * static_cast<float>(player.activeTradeRouteCount());
     }
     efficiency *= gov.goldMultiplier * allianceGoldMult;
     return std::clamp(efficiency, 0.0f, 1.0f);
@@ -320,12 +327,14 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
     bd.incomeTradeRoutes = routeGoldEarned(player);
     if (const aoc::sim::MoneyLedger* ledger = player.moneyLedger(); ledger != nullptr) {
         const MoneyLedger::Civ& book = ledger->civs[static_cast<std::size_t>(player.id())];
-        bd.incomeSeigniorage         = book.seigniorage;
-        bd.incomeExternal            = book.externalIn;
+        // incomeSeigniorage: coin-minting seigniorage removed in Phase B;
+        // reserve-currency seigniorage flows through externalIn.
+        bd.incomeExternal = book.externalIn;
     }
     bd.incomeTariffs = player.tariffsLastTurn();
     if (moneyless(player)) {
-        bd.totalIncome = bd.incomeSeigniorage + bd.incomeTariffs + bd.incomeExternal + bd.incomeTradeRoutes;
+        bd.totalIncome =
+            bd.incomeSeigniorage + bd.incomeTariffs + bd.incomeExternal + bd.incomeTradeRoutes;
         bd.totalExpense = bd.expenseUnits + bd.expenseBuildings;
         bd.netFlow      = -bd.totalExpense;
         return bd;
@@ -335,11 +344,11 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
     // state reaches; the goldAllocation share is what the treasury keeps, the
     // rest it spends straight back on luxuries and learning.
     const MonetaryStateComponent& money = player.monetary();
-    bd.collectionEfficiency = collectionEfficiency(player, grid, allianceGoldMult);
+    bd.collectionEfficiency             = collectionEfficiency(player, grid, allianceGoldMult);
     const CurrencyAmount privateMoney =
         std::max<CurrencyAmount>(0, money.privateSpecie) +
         (notesInUse(money.system) ? std::max<CurrencyAmount>(0, money.privateNotes) : 0);
-    bd.taxBase = toGold(static_cast<float>(privateMoney) * money.taxableMoneyShare());
+    bd.taxBase      = toGold(static_cast<float>(privateMoney) * money.taxableMoneyShare());
     const float due = static_cast<float>(bd.taxBase) * money.taxRate * bd.collectionEfficiency;
     bd.incomeTax    = toGold(due * money.goldAllocation);
 
@@ -429,8 +438,9 @@ CurrencyAmount processUnitMaintenance(aoc::game::GameState& gameState,
         if (cost <= 0) {
             continue;
         }
-        const PlayerId province =
-            grid.isValid(unit->position()) ? grid.owner(grid.toIndex(unit->position())) : INVALID_PLAYER;
+        const PlayerId province = grid.isValid(unit->position())
+                                      ? grid.owner(grid.toIndex(unit->position()))
+                                      : INVALID_PLAYER;
         bills[province] += static_cast<CurrencyAmount>(cost);
         ++paidUnits;
     }
@@ -442,8 +452,9 @@ CurrencyAmount processUnitMaintenance(aoc::game::GameState& gameState,
     }
     if (total > 0) {
         LOG_INFO("Player %u unit maintenance: %d units, %lld of %lld gold paid (treasury: %lld)",
-                 static_cast<unsigned>(player.id()), paidUnits, static_cast<long long>(total - unpaid),
-                 static_cast<long long>(total), static_cast<long long>(player.treasury()));
+                 static_cast<unsigned>(player.id()), paidUnits,
+                 static_cast<long long>(total - unpaid), static_cast<long long>(total),
+                 static_cast<long long>(player.treasury()));
     }
 
     // Arrears: an unpaid bill is not borrowed money, it is soldiers unpaid.
@@ -535,7 +546,8 @@ CurrencyAmount processBuildingMaintenance(aoc::game::Player& player) {
     const CurrencyAmount paid = payFromTreasury(player, adjustedMaintenance);
     LOG_INFO("Player %u building/city maintenance: %lld of %lld gold paid (treasury: %lld)",
              static_cast<unsigned>(player.id()), static_cast<long long>(paid),
-             static_cast<long long>(adjustedMaintenance), static_cast<long long>(player.treasury()));
+             static_cast<long long>(adjustedMaintenance),
+             static_cast<long long>(player.treasury()));
     return adjustedMaintenance - paid;
 }
 

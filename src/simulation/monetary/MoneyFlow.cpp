@@ -27,32 +27,33 @@ void MoneyLedger::record(PlayerId who, MoneyFlow flow, CurrencyAmount delta) {
     }
     Civ& civ = this->civs[static_cast<std::size_t>(who)];
     switch (flow.kind) {
-        case MoneyFlowKind::Domestic:
-        case MoneyFlowKind::Transfer:
-            break; // moves inside the world
-        case MoneyFlowKind::External:
-            (delta > 0 ? civ.externalIn : civ.externalOut) += (delta > 0 ? delta : -delta);
-            break;
-        case MoneyFlowKind::Minted:
-            civ.minted += delta;
-            break;
-        case MoneyFlowKind::Printed:
-            civ.printed += delta;
-            break;
-        case MoneyFlowKind::Loss:
-            civ.lost += (delta > 0 ? delta : -delta);
-            break;
-        case MoneyFlowKind::Unbacked:
-            (delta > 0 ? civ.unbackedIn : civ.unbackedOut) += (delta > 0 ? delta : -delta);
-            break;
+    case MoneyFlowKind::Domestic:
+    case MoneyFlowKind::Transfer:
+        break; // moves inside the world
+    case MoneyFlowKind::External:
+        (delta > 0 ? civ.externalIn : civ.externalOut) += (delta > 0 ? delta : -delta);
+        break;
+    case MoneyFlowKind::Monetised:
+    case MoneyFlowKind::Demonetised:
+        // Phase B stub: no good is money yet; these flow kinds are reserved
+        // for Phase C adoption events. Book as external for ledger balance.
+        (delta > 0 ? civ.externalIn : civ.externalOut) += (delta > 0 ? delta : -delta);
+        break;
+    case MoneyFlowKind::Printed:
+        civ.printed += delta;
+        break;
+    case MoneyFlowKind::Loss:
+        civ.lost += (delta > 0 ? delta : -delta);
+        break;
+    case MoneyFlowKind::Unbacked:
+        (delta > 0 ? civ.unbackedIn : civ.unbackedOut) += (delta > 0 ? delta : -delta);
+        break;
     }
 }
 
 MoneyLedger::Civ MoneyLedger::total() const {
     Civ sum;
     for (const Civ& civ : this->civs) {
-        sum.minted += civ.minted;
-        sum.seigniorage += civ.seigniorage;
         sum.printed += civ.printed;
         sum.externalIn += civ.externalIn;
         sum.externalOut += civ.externalOut;
@@ -65,7 +66,7 @@ MoneyLedger::Civ MoneyLedger::total() const {
 
 int64_t MoneyLedger::expectedDelta() const {
     const Civ t = this->total();
-    return t.minted + t.printed + t.externalIn - t.externalOut - t.lost + t.unbackedIn - t.unbackedOut;
+    return t.printed + t.externalIn - t.externalOut - t.lost + t.unbackedIn - t.unbackedOut;
 }
 
 bool MoneyLedger::backed() const {
@@ -91,7 +92,7 @@ namespace {
 /// a fiat civ's notes stand while its coin went negative.
 void drawPrivate(aoc::game::Player& people, CurrencyAmount amount) {
     MonetaryStateComponent& m = people.monetary();
-    CurrencyAmount          left = amount;
+    CurrencyAmount left       = amount;
     if (notesInUse(m.system)) {
         const CurrencyAmount notes = std::min(left, std::max<CurrencyAmount>(0, m.privateNotes));
         m.privateNotes -= notes;
@@ -147,7 +148,8 @@ CurrencyAmount payFromTreasury(aoc::game::GameState& gameState, aoc::game::Playe
     if (outsideWorld(civ)) {
         const CurrencyAmount paid = std::min(amount, std::max<CurrencyAmount>(0, payer.treasury()));
         if (paid > 0) {
-            payer.addGold(-paid, MoneyFlow::external()); // a city-state's people are the external sector
+            payer.addGold(-paid,
+                          MoneyFlow::external()); // a city-state's people are the external sector
         }
         return paid;
     }
@@ -219,7 +221,8 @@ CurrencyAmount plunder(aoc::game::GameState& gameState, PlayerId victim, aoc::ga
 }
 
 CurrencyAmount payInSpecie(aoc::game::Player& buyer, CurrencyAmount price) {
-    const CurrencyAmount paid = std::min(price, std::max<CurrencyAmount>(0, buyer.monetary().privateSpecie));
+    const CurrencyAmount paid =
+        std::min(price, std::max<CurrencyAmount>(0, buyer.monetary().privateSpecie));
     if (paid > 0) {
         buyer.monetary().privateSpecie -= paid;
     }
@@ -227,7 +230,8 @@ CurrencyAmount payInSpecie(aoc::game::Player& buyer, CurrencyAmount price) {
 }
 
 CurrencyAmount payInNotes(aoc::game::Player& buyer, CurrencyAmount price) {
-    const CurrencyAmount paid = std::min(price, std::max<CurrencyAmount>(0, buyer.monetary().privateNotes));
+    const CurrencyAmount paid =
+        std::min(price, std::max<CurrencyAmount>(0, buyer.monetary().privateNotes));
     if (paid > 0) {
         buyer.monetary().privateNotes -= paid;
     }
@@ -255,7 +259,8 @@ CurrencyAmount receiveTradeCoin(aoc::game::Player& seller, CurrencyAmount amount
         seller.monetary().bullion += amount; // paper never reaches a Barter seller
         return 0;
     }
-    (notes ? seller.monetary().privateNotes : seller.monetary().privateSpecie) += amount; // the merchants' proceeds
+    (notes ? seller.monetary().privateNotes : seller.monetary().privateSpecie) +=
+        amount; // the merchants' proceeds
     const CurrencyAmount share =
         static_cast<CurrencyAmount>(static_cast<float>(amount) * seller.monetary().taxRate);
     return takeFromPrivate(seller, share); // and the customs on them

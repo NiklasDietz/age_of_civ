@@ -269,8 +269,7 @@ void aiChooseMonetaryRegime(aoc::game::GameState& gameState, PlayerId player) {
     switch (state.system) {
         case MonetarySystemType::Barter:
             if (coinageWithinReach(gameState, player)) {
-                (void)requestSetMonetaryRegime(gameState, player, MonetarySystemType::CommodityMoney,
-                                               preferredCoinTier(state));
+                (void)requestSetMonetaryRegime(gameState, player, MonetarySystemType::CommodityMoney);
             }
             break;
         case MonetarySystemType::CommodityMoney:

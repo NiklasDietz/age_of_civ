@@ -106,7 +106,8 @@ TEST_CASE("requestSpyMission: no spy on the tile is InvalidUnitAction") {
           aoc::ErrorCode::InvalidUnitAction);
 }
 
-TEST_CASE("requestSpyMission: an offensive mission with no rival city under the spy is InvalidState") {
+TEST_CASE(
+    "requestSpyMission: an offensive mission with no rival city under the spy is InvalidState") {
     SpyWorld w;
     CHECK(aoc::sim::requestSpyMission(w.gs, aoc::PlayerId{0}, {3, 3},
                                       aoc::sim::SpyMission::StealTechnology) ==
@@ -126,8 +127,7 @@ TEST_CASE("requestSpyMission: Counter-Intelligence is accepted anywhere") {
 TEST_CASE("requestSpyMission: a valid offensive mission binds the spy to its tile and busies it") {
     SpyWorld w;
     CHECK(aoc::sim::requestSpyMission(w.gs, aoc::PlayerId{0}, {12, 9},
-                                      aoc::sim::SpyMission::StealTechnology) ==
-          aoc::ErrorCode::Ok);
+                                      aoc::sim::SpyMission::StealTechnology) == aoc::ErrorCode::Ok);
     CHECK(w.spyInThebes->spy().currentMission == aoc::sim::SpyMission::StealTechnology);
     CHECK(w.spyInThebes->spy().turnsRemaining > 0);
     CHECK(w.spyInThebes->spy().location == aoc::hex::AxialCoord{12, 9});
@@ -166,14 +166,15 @@ TEST_CASE("processSpyMissions records one outcome per resolved mission, capped a
 // regimeCommandError (POST /game/monetary/regime)
 // ---------------------------------------------------------------------------
 
-TEST_CASE("regimeCommandError: coinage with a metal, and any later stage without one, pass") {
+// Phase B: tier field removed from MonetaryRegimeCommand; regimeCommandError
+// validates only player range and target stage. Updated from the old
+// BadTier/NoMint/NoBullion/coinage-metal tests.
+TEST_CASE("regimeCommandError: any valid stage target passes") {
     aoc::debug::MonetaryRegimeCommand cmd{};
     cmd.player = aoc::PlayerId{0};
     cmd.target = 1; // Commodity Money
-    cmd.tier   = 2; // Silver
     CHECK(aoc::debug::regimeCommandError(cmd).empty());
     cmd.target = 3; // Fiat
-    cmd.tier   = 0;
     CHECK(aoc::debug::regimeCommandError(cmd).empty());
 }
 
@@ -181,7 +182,6 @@ TEST_CASE("regimeCommandError: one refusal per parameter") {
     aoc::debug::MonetaryRegimeCommand cmd{};
     cmd.player = aoc::PlayerId{0};
     cmd.target = 1;
-    cmd.tier   = 1;
     cmd.player = aoc::MAX_PLAYERS;
     CHECK(aoc::debug::regimeCommandError(cmd) == "player out of range");
     cmd.player = aoc::PlayerId{0};
@@ -189,14 +189,6 @@ TEST_CASE("regimeCommandError: one refusal per parameter") {
     CHECK(aoc::debug::regimeCommandError(cmd) == "target must be a monetary system above Barter");
     cmd.target = 9;
     CHECK(aoc::debug::regimeCommandError(cmd) == "target must be a monetary system above Barter");
-    cmd.target = 1;
-    cmd.tier   = 7;
-    CHECK(aoc::debug::regimeCommandError(cmd) == "tier must be None, Copper, Silver or Gold");
-    cmd.tier = 0;
-    CHECK(aoc::debug::regimeCommandError(cmd) == "coinage needs a metal");
-    cmd.target = 2;
-    cmd.tier   = 1;
-    CHECK(aoc::debug::regimeCommandError(cmd) == "only coinage takes a metal");
 }
 
 // ---------------------------------------------------------------------------
@@ -267,7 +259,8 @@ TEST_CASE("dealCommandError: a shipment needs a positive amount") {
     CHECK(aoc::debug::dealCommandError(cmd).empty());
 }
 
-TEST_CASE("dealCommandError: a contract needs a positive rate, non-negative gold and a length within the cap") {
+TEST_CASE("dealCommandError: a contract needs a positive rate, non-negative gold and a length "
+          "within the cap") {
     aoc::debug::ProposeDealCommand cmd = soundDeal();
     cmd.contractPerTurn                = 0;
     CHECK(aoc::debug::dealCommandError(cmd) == "contractPerTurn must be positive");

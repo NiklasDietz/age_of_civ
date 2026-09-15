@@ -276,12 +276,10 @@ struct ProposeDealCommand {
     bool exclusiveSell      = true;
 };
 /// Adopt the next monetary regime (requestSetMonetaryRegime). `target` is a
-/// MonetarySystemType, `tier` a CoinTier (coinage only). Validated by
-/// regimeCommandError.
+/// MonetarySystemType. Validated by regimeCommandError.
 struct MonetaryRegimeCommand {
     aoc::PlayerId player;
     uint8_t target;
-    uint8_t tier;
 };
 
 /// Answer proposal `index` of the human's inbox.
@@ -339,26 +337,18 @@ struct CongressProposalCommand {
     aoc::PlayerId target;
 };
 
-using GameControlCommand = std::variant<MoveUnitCommand, AttackUnitCommand, FoundCityCommand,
-                                        SetProductionCommand, SetResearchCommand,
-                                        AssignSpyMissionCommand, ActivateGreatPersonCommand,
-                                        CongressVoteCommand, CongressProposalCommand,
-                                        MergeUnitsCommand, CityDispositionCommand,
-                                        RetireGreatPersonCommand, NuclearStrikeCommand,
-                                        MonetaryRegimeCommand,
-                                        AssignGovernorCommand,
-                                        PromoteGovernorCommand, SlotPolicyCommand,
-                                        ChangeGovernmentCommand, CityPurchaseCommand,
-                                        SetCityFocusCommand, ToggleTileLockCommand,
-                                        RemoveQueueItemCommand, QueueProjectCommand,
-                                        PlaceImprovementCommand, BuilderChopCommand,
-                                        BuilderHarvestCommand, PillageCommand, RepairCommand,
-                                        DeleteUnitCommand, SetAlertCommand, PromoteUnitCommand,
-                                        FoundPantheonCommand, FoundReligionCommand,
-                                        MoveGreatWorkCommand, SendEnvoyCommand, LevyCityStateCommand,
-                                        BullyCityStateCommand, DeclareWarCommand, MakePeaceCommand,
-                                        DenounceCommand, DeclareFriendshipCommand, SendDelegationCommand,
-                                        EstablishEmbassyCommand, OpenBordersCommand, ProposeDealCommand,
-                                        RespondProposalCommand, PlaceDistrictCommand, EndTurnCommand>;
+using GameControlCommand = std::variant<
+    MoveUnitCommand, AttackUnitCommand, FoundCityCommand, SetProductionCommand, SetResearchCommand,
+    AssignSpyMissionCommand, ActivateGreatPersonCommand, CongressVoteCommand,
+    CongressProposalCommand, MergeUnitsCommand, CityDispositionCommand, RetireGreatPersonCommand,
+    NuclearStrikeCommand, MonetaryRegimeCommand, AssignGovernorCommand, PromoteGovernorCommand,
+    SlotPolicyCommand, ChangeGovernmentCommand, CityPurchaseCommand, SetCityFocusCommand,
+    ToggleTileLockCommand, RemoveQueueItemCommand, QueueProjectCommand, PlaceImprovementCommand,
+    BuilderChopCommand, BuilderHarvestCommand, PillageCommand, RepairCommand, DeleteUnitCommand,
+    SetAlertCommand, PromoteUnitCommand, FoundPantheonCommand, FoundReligionCommand,
+    MoveGreatWorkCommand, SendEnvoyCommand, LevyCityStateCommand, BullyCityStateCommand,
+    DeclareWarCommand, MakePeaceCommand, DenounceCommand, DeclareFriendshipCommand,
+    SendDelegationCommand, EstablishEmbassyCommand, OpenBordersCommand, ProposeDealCommand,
+    RespondProposalCommand, PlaceDistrictCommand, EndTurnCommand>;
 
 } // namespace aoc::debug

@@ -949,10 +949,8 @@ void writeMonetarySection(WriteBuffer& out, const aoc::game::GameState& gameStat
         section.writeU8(static_cast<uint8_t>(m.system));
         section.writeI64(m.moneySupply);
         section.writeI64(m.treasury);
-        section.writeI32(m.copperCoinReserves);
-        section.writeI32(m.silverCoinReserves);
-        section.writeI32(m.goldBarReserves);
-        section.writeU8(static_cast<uint8_t>(m.effectiveCoinTier));
+        // coin reserves (copperCoinReserves/silverCoinReserves/goldBarReserves/effectiveCoinTier)
+        // removed in save v35 (Phase B Mengerian redesign)
         section.writeF32(m.goldBackingRatio);
         section.writeF32(m.inflationRate);
         section.writeF32(m.priceLevel);
@@ -1006,7 +1004,7 @@ void writeMonetarySection(WriteBuffer& out, const aoc::game::GameState& gameStat
         section.writeI64(m.privateSpecie);
         section.writeI64(m.privateNotes);
         section.writeI64(m.bullion);
-        section.writeU8(static_cast<uint8_t>(m.coinageStandard));
+        section.writeU8(m.moneyGood); // v35: was coinageStandard (CoinTier)
     }
 
     writeSection(out, SectionId::MonetaryState, section);
@@ -2956,10 +2954,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 m.system             = static_cast<aoc::sim::MonetarySystemType>(buf.readU8());
                 m.moneySupply        = buf.readI64();
                 TreasuryRestore::set(m, buf.readI64());
-                m.copperCoinReserves = buf.readI32();
-                m.silverCoinReserves = buf.readI32();
-                m.goldBarReserves    = buf.readI32();
-                m.effectiveCoinTier  = static_cast<aoc::sim::CoinTier>(buf.readU8());
+                // coin reserves removed in v35 (Phase B)
                 m.goldBackingRatio   = buf.readF32();
                 m.inflationRate      = buf.readF32();
                 m.priceLevel         = buf.readF32();
@@ -2986,13 +2981,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 m.privateSpecie = buf.readI64();                  // v34
                 m.privateNotes  = buf.readI64();
                 m.bullion       = buf.readI64();
-                const uint8_t standard = buf.readU8();
-                if (standard >= static_cast<uint8_t>(aoc::sim::CoinTier::Count)) {
-                    LOG_ERROR("Serializer: coinage standard %u out of range",
-                              static_cast<unsigned>(standard));
-                    return ErrorCode::SaveCorrupted;
-                }
-                m.coinageStandard = static_cast<aoc::sim::CoinTier>(standard);
+                m.moneyGood = buf.readU8(); // v35: was coinageStandard (CoinTier), 0xFF = none
                 if (player != nullptr) {
                     player->monetary() = std::move(m);
                     aoc::sim::CurrencyExchangeComponent& fx = player->currencyExchange();

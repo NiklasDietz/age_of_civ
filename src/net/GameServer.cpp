@@ -543,11 +543,7 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
                 const aoc::sim::MonetarySystemType target =
                     static_cast<aoc::sim::MonetarySystemType>(cmd.targetSystem);
                 aoc::game::Player* gsPlayer = this->m_gameState.player(cmd.player);
-                const aoc::sim::CoinTier tier =
-                    (gsPlayer != nullptr && target == aoc::sim::MonetarySystemType::CommodityMoney)
-                        ? aoc::sim::preferredCoinTier(gsPlayer->monetary())
-                        : aoc::sim::CoinTier::None;
-                (void)aoc::sim::requestSetMonetaryRegime(this->m_gameState, cmd.player, target, tier);
+                (void)aoc::sim::requestSetMonetaryRegime(this->m_gameState, cmd.player, target);
             }
         },
         command);
@@ -569,7 +565,7 @@ GameStateSnapshot GameServer::generateSnapshot(PlayerId player) const {
     snapshot.economy.gdp                       = ms.gdp;
     snapshot.economy.treasury                  = ms.treasury;
     snapshot.economy.monetarySystem            = static_cast<uint8_t>(ms.system);
-    snapshot.economy.coinTier                  = static_cast<uint8_t>(ms.effectiveCoinTier);
+    snapshot.economy.coinTier                  = ms.moneyGood;
     snapshot.economy.inflationRate             = ms.inflationRate;
 
     // Units: iterate all players (all units are visible in the snapshot for now)

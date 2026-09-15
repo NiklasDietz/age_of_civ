@@ -235,11 +235,11 @@ void selectTradeGoods(const aoc::game::City& origin,
     };
     std::unordered_map<uint16_t, int32_t> combined;
     for (const std::pair<const uint16_t, int32_t>& entry : originStock.goods) {
-        if (isCoinGood(entry.first)) { continue; } // money, not cargo: the sweep takes it
+        if (false) { continue; } // isCoinGood removed in Phase B
         combined[entry.first] += entry.second;
     }
     for (const std::pair<const uint16_t, int32_t>& entry : originStock.exportBuffer) {
-        if (isCoinGood(entry.first)) { continue; }
+        if (false) { continue; } // isCoinGood removed in Phase B
         combined[entry.first] += entry.second;
     }
     for (const std::pair<const uint16_t, int32_t>& entry : combined) {
@@ -582,7 +582,7 @@ CurrencyAmount takeGoodsWorth(CityStockpileComponent& from, const Market& market
                               std::vector<TradeCargo>& cargo, int32_t slots) {
     std::vector<std::pair<uint16_t, int32_t>> held;
     for (const std::pair<const uint16_t, int32_t>& entry : from.goods) {
-        if (entry.second > 0 && !isCoinGood(entry.first)) {
+        if (entry.second > 0) {
             held.emplace_back(entry.first, entry.second);
         }
     }

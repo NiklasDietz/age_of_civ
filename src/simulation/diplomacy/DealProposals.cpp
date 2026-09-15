@@ -574,7 +574,7 @@ std::vector<WorldMarketRow> worldMarketRows(const aoc::game::GameState& gameStat
                 continue;
             }
             for (const std::pair<const uint16_t, int32_t>& entry : city->stockpile().goods) {
-                if (entry.second > 0 && goodDef(entry.first).category != GoodCategory::Monetary) {
+                if (entry.second > 0) {
                     held[entry.first] += entry.second;
                 }
             }
@@ -585,7 +585,7 @@ std::vector<WorldMarketRow> worldMarketRows(const aoc::game::GameState& gameStat
             row.holders.emplace_back(id, entry.second);
         }
         for (const std::pair<const uint16_t, int32_t>& need : other->economy().totalNeeds) {
-            if (need.second > 0 && goodDef(need.first).category != GoodCategory::Monetary) {
+            if (need.second > 0) {
                 WorldMarketRow& row = rows[need.first];
                 row.goodId          = need.first;
                 row.seekers.push_back(id);
@@ -660,7 +660,7 @@ namespace {
             continue;
         }
         for (const std::pair<const uint16_t, int32_t>& entry : city->stockpile().goods) {
-            if (entry.second > 0 && goodDef(entry.first).category != GoodCategory::Monetary) {
+            if (entry.second > 0) {
                 stock[entry.first] += entry.second;
             }
         }

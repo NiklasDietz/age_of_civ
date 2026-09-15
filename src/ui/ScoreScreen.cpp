@@ -27,10 +27,8 @@ namespace aoc::ui {
 // ScoreScreen
 // ============================================================================
 
-void ScoreScreen::setContext(aoc::game::GameState* gameState,
-                             const aoc::map::HexGrid* grid,
-                             const aoc::sim::VictoryResult& result,
-                             uint8_t playerCount,
+void ScoreScreen::setContext(aoc::game::GameState* gameState, const aoc::map::HexGrid* grid,
+                             const aoc::sim::VictoryResult& result, uint8_t playerCount,
                              std::function<void()> onReturnToMenu) {
     this->m_gameState      = gameState;
     this->m_grid           = grid;
@@ -58,7 +56,7 @@ void ScoreScreen::computeScores() {
         // Military: sum of combat strength for each unit owned
         for (const std::unique_ptr<aoc::game::Unit>& unit : playerPtr->units()) {
             const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(unit->typeId());
-            int32_t strength = def.combatStrength;
+            int32_t strength                 = def.combatStrength;
             if (strength == 0) {
                 strength = def.rangedStrength;
             }
@@ -67,7 +65,7 @@ void ScoreScreen::computeScores() {
 
         // Science: count completed techs * 10
         {
-            int32_t completedCount = 0;
+            int32_t completedCount                    = 0;
             const aoc::sim::PlayerTechComponent& tech = playerPtr->tech();
             for (std::size_t i = 0; i < tech.completedTechs.size(); ++i) {
                 if (tech.completedTechs[i]) {
@@ -78,15 +76,15 @@ void ScoreScreen::computeScores() {
         }
 
         // Culture: from victory tracker
-        entry.culture = static_cast<int32_t>(
-            playerPtr->victoryTracker().totalCultureAccumulated);
+        entry.culture = static_cast<int32_t>(playerPtr->victoryTracker().totalCultureAccumulated);
 
         // Economy: treasury + monetary money supply
         {
             const aoc::sim::MonetaryStateComponent& ms = playerPtr->monetary();
-            entry.economy = static_cast<int32_t>(playerPtr->treasury())
-                          + static_cast<int32_t>(ms.moneySupply)
-                          + ms.totalCoinValue();
+            // Phase B: totalCoinValue() removed; privateSpecie is the metal backing pool.
+            entry.economy = static_cast<int32_t>(playerPtr->treasury()) +
+                            static_cast<int32_t>(ms.moneySupply) +
+                            static_cast<int32_t>(ms.privateSpecie);
         }
 
         // Cities: population * 5 + city count * 20
@@ -102,8 +100,8 @@ void ScoreScreen::computeScores() {
 
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState->players()) {
         const aoc::sim::PlayerFaithComponent& faith = playerPtr->faith();
-        if (faith.foundedReligion != aoc::sim::NO_RELIGION
-            && faith.foundedReligion < aoc::sim::MAX_RELIGIONS) {
+        if (faith.foundedReligion != aoc::sim::NO_RELIGION &&
+            faith.foundedReligion < aoc::sim::MAX_RELIGIONS) {
             religionFounder[faith.foundedReligion] = playerPtr->id();
         }
     }
@@ -133,15 +131,14 @@ void ScoreScreen::computeScores() {
 
     // Compute totals
     for (PlayerScoreEntry& entry : this->m_scores) {
-        entry.total = entry.military + entry.science + entry.culture
-                    + entry.economy + entry.cities + entry.religion + entry.wonders;
+        entry.total = entry.military + entry.science + entry.culture + entry.economy +
+                      entry.cities + entry.religion + entry.wonders;
     }
 
     // Sort descending by total score
-    std::sort(this->m_scores.begin(), this->m_scores.end(),
-              [](const PlayerScoreEntry& a, const PlayerScoreEntry& b) {
-                  return a.total > b.total;
-              });
+    std::sort(
+        this->m_scores.begin(), this->m_scores.end(),
+        [](const PlayerScoreEntry& a, const PlayerScoreEntry& b) { return a.total > b.total; });
 }
 
 void ScoreScreen::open(UIManager& ui) {
@@ -156,36 +153,37 @@ void ScoreScreen::open(UIManager& ui) {
 
     constexpr float SCREEN_W = 700.0f;
     constexpr float SCREEN_H = 520.0f;
-    WidgetId innerPanel = this->createScreenFrame(
-        ui, "Final Scores", SCREEN_W, SCREEN_H, this->m_screenW, this->m_screenH);
+    WidgetId innerPanel      = this->createScreenFrame(ui, "Final Scores", SCREEN_W, SCREEN_H,
+                                                       this->m_screenW, this->m_screenH);
 
     // Victory announcement
     {
         const char* victoryName =
-            this->m_victoryResult.type == aoc::sim::VictoryType::Science       ? "Science" :
-            this->m_victoryResult.type == aoc::sim::VictoryType::Domination    ? "Domination" :
-            this->m_victoryResult.type == aoc::sim::VictoryType::Culture       ? "Culture" :
-            this->m_victoryResult.type == aoc::sim::VictoryType::Score         ? "Score" :
-            this->m_victoryResult.type == aoc::sim::VictoryType::Religion      ? "Religion" : "Unknown";
+            this->m_victoryResult.type == aoc::sim::VictoryType::Science      ? "Science"
+            : this->m_victoryResult.type == aoc::sim::VictoryType::Domination ? "Domination"
+            : this->m_victoryResult.type == aoc::sim::VictoryType::Culture    ? "Culture"
+            : this->m_victoryResult.type == aoc::sim::VictoryType::Score      ? "Score"
+            : this->m_victoryResult.type == aoc::sim::VictoryType::Religion   ? "Religion"
+                                                                              : "Unknown";
 
-        std::string header =
-            "Player " + std::to_string(static_cast<unsigned>(this->m_victoryResult.winner))
-                      + " wins by " + victoryName + " Victory!";
+        std::string header = "Player " +
+                             std::to_string(static_cast<unsigned>(this->m_victoryResult.winner)) +
+                             " wins by " + victoryName + " Victory!";
         (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 660.0f, 24.0f},
-            LabelData{std::move(header), tokens::TEXT_HEADER, 18.0f});
+                             LabelData{std::move(header), tokens::TEXT_HEADER, 18.0f});
     }
 
     // Column header
     {
         std::string colHeader = "Player     Mil   Sci   Cul   Eco   City  Rel   Won   TOTAL";
         (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 660.0f, 16.0f},
-            LabelData{std::move(colHeader), tokens::TEXT_DISABLED, 12.0f});
+                             LabelData{std::move(colHeader), tokens::TEXT_DISABLED, 12.0f});
     }
 
     // Score rows. Winner highlighted with gilt; others in body ink.
     // (Confederation co-winners removed sweep 2026-04-27.)
     for (const PlayerScoreEntry& entry : this->m_scores) {
-        const bool isWinner = (entry.owner == this->m_victoryResult.winner);
+        const bool isWinner  = (entry.owner == this->m_victoryResult.winner);
         const Color rowColor = isWinner ? tokens::STATE_SUCCESS : tokens::TEXT_INK;
 
         // Resolve civ name from player's civId
@@ -214,18 +212,12 @@ void ScoreScreen::open(UIManager& ui) {
             return s;
         };
 
-        std::string row = civName
-                        + padNum(entry.military)
-                        + padNum(entry.science)
-                        + padNum(entry.culture)
-                        + padNum(entry.economy)
-                        + padNum(entry.cities)
-                        + padNum(entry.religion)
-                        + padNum(entry.wonders)
-                        + padNum(entry.total);
+        std::string row = civName + padNum(entry.military) + padNum(entry.science) +
+                          padNum(entry.culture) + padNum(entry.economy) + padNum(entry.cities) +
+                          padNum(entry.religion) + padNum(entry.wonders) + padNum(entry.total);
 
         (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 660.0f, 16.0f},
-            LabelData{std::move(row), rowColor, 12.0f});
+                             LabelData{std::move(row), rowColor, 12.0f});
     }
 
     // Return to Menu button
@@ -238,7 +230,7 @@ void ScoreScreen::open(UIManager& ui) {
         btn.pressedColor = {0.15f, 0.25f, 0.15f, 0.9f};
         btn.labelColor   = {1.0f, 1.0f, 1.0f, 1.0f};
         btn.cornerRadius = 4.0f;
-        btn.onClick = [this]() {
+        btn.onClick      = [this]() {
             if (this->m_onReturnToMenu) {
                 this->m_onReturnToMenu();
             }

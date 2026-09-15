@@ -106,12 +106,11 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     defs[goods::TELECOM_EQUIPMENT]    = {goods::TELECOM_EQUIPMENT,    "Telecom Equipment",    GoodCategory::Advanced, 140, true,  0.8f};
     defs[goods::ADV_CONSUMER_GOODS]   = {goods::ADV_CONSUMER_GOODS,   "Adv. Consumer Goods",  GoodCategory::Advanced, 90, false, 0.8f};
 
-    // Monetary goods (140+) -- low elasticity (stable value as currency)
-    // Priced at face value (COPPER_COIN_VALUE, SILVER_COIN_VALUE, GOLD_BAR_VALUE):
-    // the old 10/20/40 contradicted the 1/5/25 the treasury counted them at.
-    defs[goods::COPPER_COINS] = {goods::COPPER_COINS, "Copper Coins", GoodCategory::Monetary, 1, false, 0.2f};
-    defs[goods::SILVER_COINS] = {goods::SILVER_COINS, "Silver Coins", GoodCategory::Monetary, 5, false, 0.2f};
-    defs[goods::GOLD_BARS]   = {goods::GOLD_BARS,   "Gold Bars",   GoodCategory::Monetary, 25, false, 0.2f};
+    // Retired monetary goods (140-142) -- IDs kept for save compatibility; classified
+    // as Processed so existing stockpiles clear through normal fire-sale logic.
+    defs[goods::COPPER_COINS] = {goods::COPPER_COINS, "Copper Coins", GoodCategory::Processed, 1, false, 0.2f};
+    defs[goods::SILVER_COINS] = {goods::SILVER_COINS, "Silver Coins", GoodCategory::Processed, 5, false, 0.2f};
+    defs[goods::GOLD_BARS]    = {goods::GOLD_BARS,    "Gold Bars",    GoodCategory::Processed, 25, false, 0.2f};
 
     // Automation goods
     defs[goods::ROBOT_WORKERS] = {goods::ROBOT_WORKERS, "Robot Workers", GoodCategory::Advanced, 300, false, 0.8f};
@@ -157,48 +156,51 @@ std::vector<ProductionRecipe> buildRecipes() {
     // ================================================================
     // Tier 1: Raw -> Basic processed
     // ================================================================
-    recipes.push_back({0, "Smelt Iron",
-        {{goods::IRON_ORE, 2}},
-        goods::IRON_INGOTS, 1, BuildingId{0}, 1});
+    recipes.push_back(
+        {0, "Smelt Iron", {{goods::IRON_ORE, 2}}, goods::IRON_INGOTS, 1, BuildingId{0}, 1});
 
-    recipes.push_back({1, "Draw Copper Wire",
-        {{goods::COPPER_ORE, 2}},
-        goods::COPPER_WIRE, 1, BuildingId{0}, 1});
+    recipes.push_back(
+        {1, "Draw Copper Wire", {{goods::COPPER_ORE, 2}}, goods::COPPER_WIRE, 1, BuildingId{0}, 1});
 
-    recipes.push_back({2, "Mill Lumber",
-        {{goods::WOOD, 2}},
-        goods::LUMBER, 2, BuildingId{1}, 1});
+    recipes.push_back({2, "Mill Lumber", {{goods::WOOD, 2}}, goods::LUMBER, 2, BuildingId{1}, 1});
 
-    recipes.push_back({3, "Make Bricks",
-        {{goods::STONE, 2}},
-        goods::BRICKS, 2, BuildingId{1}, 1});
+    recipes.push_back({3, "Make Bricks", {{goods::STONE, 2}}, goods::BRICKS, 2, BuildingId{1}, 1});
 
     // Output amounts tuned up to raise market profitability so the ranked
     // recipe loop prioritises them once the Refinery is built.  Prior 1:1
     // ratios made these recipes a net wash against raw-oil sale price and
     // they sat at the bottom of the profitability ranking every turn.
-    recipes.push_back({4, "Refine Fuel",
-        {{goods::OIL, 2}},
-        goods::FUEL, 2, BuildingId{2}, 1});
+    recipes.push_back({4, "Refine Fuel", {{goods::OIL, 2}}, goods::FUEL, 2, BuildingId{2}, 1});
 
-    recipes.push_back({5, "Produce Plastics",
-        {{goods::OIL, 1}},
-        goods::PLASTICS, 2, BuildingId{2}, 1});
+    recipes.push_back(
+        {5, "Produce Plastics", {{goods::OIL, 1}}, goods::PLASTICS, 2, BuildingId{2}, 1});
 
     // ================================================================
     // Tier 2: Basic processed -> Tools / Steel / Construction
     // ================================================================
-    recipes.push_back({6, "Forge Tools",
-        {{goods::IRON_INGOTS, 1}, {goods::WOOD, 1}},
-        goods::TOOLS, 1, BuildingId{0}, 1});
+    recipes.push_back({6,
+                       "Forge Tools",
+                       {{goods::IRON_INGOTS, 1}, {goods::WOOD, 1}},
+                       goods::TOOLS,
+                       1,
+                       BuildingId{0},
+                       1});
 
-    recipes.push_back({7, "Produce Steel",
-        {{goods::IRON_ORE, 1}, {goods::COAL, 2}},
-        goods::STEEL, 1, BuildingId{3}, 1});
+    recipes.push_back({7,
+                       "Produce Steel",
+                       {{goods::IRON_ORE, 1}, {goods::COAL, 2}},
+                       goods::STEEL,
+                       1,
+                       BuildingId{3},
+                       1});
 
-    recipes.push_back({8, "Construction Materials",
-        {{goods::LUMBER, 1}, {goods::BRICKS, 1}},
-        goods::CONSTRUCTION_MAT, 1, BuildingId{1}, 1});
+    recipes.push_back({8,
+                       "Construction Materials",
+                       {{goods::LUMBER, 1}, {goods::BRICKS, 1}},
+                       goods::CONSTRUCTION_MAT,
+                       1,
+                       BuildingId{1},
+                       1});
 
     // ================================================================
     // Tier 3: Machinery / Electronics / Consumer Goods
@@ -206,17 +208,29 @@ std::vector<ProductionRecipe> buildRecipes() {
     // 2026-05-03: Machinery and Electronics outputs bumped so chain pull
     // continues all the way through to IR#5 (Microchip/Computer/Software
     // depend on these).
-    recipes.push_back({9, "Build Machinery",
-        {{goods::TOOLS, 1}, {goods::STEEL, 1}},
-        goods::MACHINERY, 2, BuildingId{3}, 2});
+    recipes.push_back({9,
+                       "Build Machinery",
+                       {{goods::TOOLS, 1}, {goods::STEEL, 1}},
+                       goods::MACHINERY,
+                       2,
+                       BuildingId{3},
+                       2});
 
-    recipes.push_back({10, "Produce Electronics",
-        {{goods::COPPER_WIRE, 2}, {goods::PLASTICS, 1}},
-        goods::ELECTRONICS, 3, BuildingId{4}, 2});
+    recipes.push_back({10,
+                       "Produce Electronics",
+                       {{goods::COPPER_WIRE, 2}, {goods::PLASTICS, 1}},
+                       goods::ELECTRONICS,
+                       3,
+                       BuildingId{4},
+                       2});
 
-    recipes.push_back({11, "Consumer Goods",
-        {{goods::PLASTICS, 1}, {goods::LUMBER, 1}},
-        goods::CONSUMER_GOODS, 3, BuildingId{1}, 1});
+    recipes.push_back({11,
+                       "Consumer Goods",
+                       {{goods::PLASTICS, 1}, {goods::LUMBER, 1}},
+                       goods::CONSUMER_GOODS,
+                       3,
+                       BuildingId{1},
+                       1});
 
     // ================================================================
     // Tier 4: Advanced goods (original)
@@ -224,38 +238,57 @@ std::vector<ProductionRecipe> buildRecipes() {
     // Raised outputs on these downstream chain recipes so the profitability
     // ranker prefers them; previously Adv Machinery's 1:1:1 ratio against
     // two scarce inputs made it consistently lose to simpler recipes.
-    recipes.push_back({12, "Advanced Machinery",
-        {{goods::MACHINERY, 1}, {goods::ELECTRONICS, 1}},
-        goods::ADVANCED_MACHINERY, 2, BuildingId{4}, 3});
+    recipes.push_back({12,
+                       "Advanced Machinery",
+                       {{goods::MACHINERY, 1}, {goods::ELECTRONICS, 1}},
+                       goods::ADVANCED_MACHINERY,
+                       2,
+                       BuildingId{4},
+                       3});
 
-    recipes.push_back({13, "Industrial Equipment",
-        {{goods::ADVANCED_MACHINERY, 1}, {goods::STEEL, 2}},
-        goods::INDUSTRIAL_EQUIP, 2, BuildingId{5}, 3});
+    recipes.push_back({13,
+                       "Industrial Equipment",
+                       {{goods::ADVANCED_MACHINERY, 1}, {goods::STEEL, 2}},
+                       goods::INDUSTRIAL_EQUIP,
+                       2,
+                       BuildingId{5},
+                       3});
 
     // ================================================================
     // NEW: Textiles & clothing chain (keeps Silk, Cotton, Dyes relevant)
     // ================================================================
-    recipes.push_back({14, "Weave Silk Textiles",
-        {{goods::SILK, 1}},
-        goods::TEXTILES, 1, BuildingId{8}, 1});
+    recipes.push_back(
+        {14, "Weave Silk Textiles", {{goods::SILK, 1}}, goods::TEXTILES, 1, BuildingId{8}, 1});
 
-    recipes.push_back({15, "Produce Clothing",
-        {{goods::TEXTILES, 2}, {goods::DYES, 1}},
-        goods::CLOTHING, 1, BuildingId{8}, 1});
+    recipes.push_back({15,
+                       "Produce Clothing",
+                       {{goods::TEXTILES, 2}, {goods::DYES, 1}},
+                       goods::CLOTHING,
+                       1,
+                       BuildingId{8},
+                       1});
 
     // ================================================================
     // NEW: Food processing (keeps Wheat, Cattle relevant in late game)
     // ================================================================
-    recipes.push_back({16, "Process Food",
-        {{goods::WHEAT, 2}, {goods::CATTLE, 1}},
-        goods::PROCESSED_FOOD, 2, BuildingId{9}, 1});
+    recipes.push_back({16,
+                       "Process Food",
+                       {{goods::WHEAT, 2}, {goods::CATTLE, 1}},
+                       goods::PROCESSED_FOOD,
+                       2,
+                       BuildingId{9},
+                       1});
 
     // ================================================================
     // NEW: Military supply chain (keeps Niter, Steel relevant)
     // ================================================================
-    recipes.push_back({17, "Manufacture Ammunition",
-        {{goods::STEEL, 1}, {goods::NITER, 1}},
-        goods::AMMUNITION, 2, BuildingId{3}, 1});
+    recipes.push_back({17,
+                       "Manufacture Ammunition",
+                       {{goods::STEEL, 1}, {goods::NITER, 1}},
+                       goods::AMMUNITION,
+                       2,
+                       BuildingId{3},
+                       1});
 
     // ================================================================
     // Precision manufacturing chain.  Surface Plate used to be its own
@@ -269,17 +302,30 @@ std::vector<ProductionRecipe> buildRecipes() {
     // bleed civs at every step. Audit showed 32 civs ran Precision but
     // only 5 ran Semiconductors next; doubling outputs lets one batch
     // feed the next two chain steps without re-fire bottleneck.
-    recipes.push_back({18, "Build Precision Instruments (Basic)",
-        {{goods::IRON_INGOTS, 2}, {goods::STONE, 1}},
-        goods::PRECISION_INSTRUMENTS, 2, BuildingId{10}, 2});
+    recipes.push_back({18,
+                       "Build Precision Instruments (Basic)",
+                       {{goods::IRON_INGOTS, 2}, {goods::STONE, 1}},
+                       goods::PRECISION_INSTRUMENTS,
+                       2,
+                       BuildingId{10},
+                       2});
 
-    recipes.push_back({19, "Build Precision Instruments",
-        {{goods::IRON_INGOTS, 1}, {goods::COPPER_WIRE, 1}, {goods::GLASS, 1}},
-        goods::PRECISION_INSTRUMENTS, 3, BuildingId{10}, 2});
+    recipes.push_back({19,
+                       "Build Precision Instruments",
+                       {{goods::IRON_INGOTS, 1}, {goods::COPPER_WIRE, 1}, {goods::GLASS, 1}},
+                       goods::PRECISION_INSTRUMENTS,
+                       3,
+                       BuildingId{10},
+                       2});
 
-    recipes.push_back({20, "Standardize Parts",
-        {{goods::PRECISION_INSTRUMENTS, 1}, {goods::STEEL, 1}, {goods::MACHINERY, 1}},
-        goods::INTERCHANGEABLE_PARTS, 3, BuildingId{10}, 2});
+    recipes.push_back(
+        {20,
+         "Standardize Parts",
+         {{goods::PRECISION_INSTRUMENTS, 1}, {goods::STEEL, 1}, {goods::MACHINERY, 1}},
+         goods::INTERCHANGEABLE_PARTS,
+         3,
+         BuildingId{10},
+         2});
 
     // ================================================================
     // Semiconductor -> Microchip -> Computer -> Software chain.
@@ -288,17 +334,29 @@ std::vector<ProductionRecipe> buildRecipes() {
     // only 5/432 civs ever produced Semiconductors despite 37 building
     // Semi Fab — recipes ranked below higher-output basic chains. Doubling
     // output flips the profitability comparison and lets IR #3 fire.
-    recipes.push_back({21, "Fabricate Semiconductors",
-        {{goods::PRECISION_INSTRUMENTS, 1}, {goods::COPPER_WIRE, 2}},
-        goods::SEMICONDUCTORS, 2, BuildingId{11}, 3});
+    recipes.push_back({21,
+                       "Fabricate Semiconductors",
+                       {{goods::PRECISION_INSTRUMENTS, 1}, {goods::COPPER_WIRE, 2}},
+                       goods::SEMICONDUCTORS,
+                       2,
+                       BuildingId{11},
+                       3});
 
-    recipes.push_back({22, "Produce Microchips",
-        {{goods::SEMICONDUCTORS, 2}, {goods::ELECTRONICS, 1}},
-        goods::MICROCHIPS, 2, BuildingId{11}, 3});
+    recipes.push_back({22,
+                       "Produce Microchips",
+                       {{goods::SEMICONDUCTORS, 2}, {goods::ELECTRONICS, 1}},
+                       goods::MICROCHIPS,
+                       2,
+                       BuildingId{11},
+                       3});
 
-    recipes.push_back({23, "Assemble Computers",
-        {{goods::MICROCHIPS, 1}, {goods::PLASTICS, 1}, {goods::ELECTRONICS, 1}},
-        goods::COMPUTERS_GOOD, 2, BuildingId{4}, 2});
+    recipes.push_back({23,
+                       "Assemble Computers",
+                       {{goods::MICROCHIPS, 1}, {goods::PLASTICS, 1}, {goods::ELECTRONICS, 1}},
+                       goods::COMPUTERS_GOOD,
+                       2,
+                       BuildingId{4},
+                       2});
 
     // Software: two paths, reflecting the knowledge-economy idea that a
     // resource-poor civ with strong research infrastructure can still
@@ -312,132 +370,169 @@ std::vector<ProductionRecipe> buildRecipes() {
     // 2026-05-03: Software outputs bumped. IR#5 needs Software good in
     // stockpile/totalSupply; doubling output ensures the chain produces
     // enough to satisfy demand reporting + IR check.
-    recipes.push_back({24, "Develop Software (Platform)",
-        {{goods::COMPUTERS_GOOD, 1, false}},
-        goods::SOFTWARE, 4, BuildingId{12}, 1});
+    recipes.push_back({24,
+                       "Develop Software (Platform)",
+                       {{goods::COMPUTERS_GOOD, 1, false}},
+                       goods::SOFTWARE,
+                       4,
+                       BuildingId{12},
+                       1});
 
-    recipes.push_back({60, "Develop Software (Bootstrap)",
-        {{goods::MICROCHIPS, 1}},
-        goods::SOFTWARE, 2, BuildingId{12}, 1});
+    recipes.push_back({60,
+                       "Develop Software (Bootstrap)",
+                       {{goods::MICROCHIPS, 1}},
+                       goods::SOFTWARE,
+                       2,
+                       BuildingId{12},
+                       1});
 
     // ================================================================
     // NEW: Aviation chain (keeps Aluminum relevant)
     // ================================================================
-    recipes.push_back({25, "Build Aircraft Components",
-        {{goods::ALUMINUM, 2}, {goods::ADVANCED_MACHINERY, 1}},
-        goods::AIRCRAFT_COMPONENTS, 1, BuildingId{5}, 3});
+    recipes.push_back({25,
+                       "Build Aircraft Components",
+                       {{goods::ALUMINUM, 2}, {goods::ADVANCED_MACHINERY, 1}},
+                       goods::AIRCRAFT_COMPONENTS,
+                       1,
+                       BuildingId{5},
+                       3});
 
-    recipes.push_back({26, "Assemble Aircraft",
-        {{goods::AIRCRAFT_COMPONENTS, 1}, {goods::ELECTRONICS, 1}, {goods::FUEL, 1}},
-        goods::AIRCRAFT, 1, BuildingId{5}, 4});
+    recipes.push_back({26,
+                       "Assemble Aircraft",
+                       {{goods::AIRCRAFT_COMPONENTS, 1}, {goods::ELECTRONICS, 1}, {goods::FUEL, 1}},
+                       goods::AIRCRAFT,
+                       1,
+                       BuildingId{5},
+                       4});
 
     // ================================================================
     // NEW: Armored vehicles (keeps Steel, Fuel, Machinery relevant)
     // ================================================================
-    recipes.push_back({27, "Build Armored Vehicles",
-        {{goods::STEEL, 2}, {goods::FUEL, 1}, {goods::MACHINERY, 1}},
-        goods::ARMORED_VEHICLES, 1, BuildingId{3}, 3});
+    recipes.push_back({27,
+                       "Build Armored Vehicles",
+                       {{goods::STEEL, 2}, {goods::FUEL, 1}, {goods::MACHINERY, 1}},
+                       goods::ARMORED_VEHICLES,
+                       1,
+                       BuildingId{3},
+                       3});
 
     // ================================================================
     // NEW: Telecommunications (keeps Copper Wire relevant in info age)
     // ================================================================
-    recipes.push_back({28, "Build Telecom Equipment",
-        {{goods::COPPER_WIRE, 2}, {goods::ELECTRONICS, 1}, {goods::PLASTICS, 1}},
-        goods::TELECOM_EQUIPMENT, 1, BuildingId{4}, 2});
+    recipes.push_back({28,
+                       "Build Telecom Equipment",
+                       {{goods::COPPER_WIRE, 2}, {goods::ELECTRONICS, 1}, {goods::PLASTICS, 1}},
+                       goods::TELECOM_EQUIPMENT,
+                       1,
+                       BuildingId{4},
+                       2});
 
     // ================================================================
     // NEW: Advanced consumer goods (keeps Clothing, Electronics relevant)
     // ================================================================
-    recipes.push_back({29, "Adv. Consumer Goods",
-        {{goods::CLOTHING, 1}, {goods::ELECTRONICS, 1}, {goods::PLASTICS, 1}},
-        goods::ADV_CONSUMER_GOODS, 1, BuildingId{3}, 1});
+    recipes.push_back({29,
+                       "Adv. Consumer Goods",
+                       {{goods::CLOTHING, 1}, {goods::ELECTRONICS, 1}, {goods::PLASTICS, 1}},
+                       goods::ADV_CONSUMER_GOODS,
+                       1,
+                       BuildingId{3},
+                       1});
 
     // ================================================================
     // NEW: Glass, Rubber, Bronze (foundation materials)
     // ================================================================
-    recipes.push_back({30, "Make Glass",
-        {{goods::STONE, 1}, {goods::COAL, 1}},
-        goods::GLASS, 2, BuildingId{0}, 1});
+    recipes.push_back({30,
+                       "Make Glass",
+                       {{goods::STONE, 1}, {goods::COAL, 1}},
+                       goods::GLASS,
+                       2,
+                       BuildingId{0},
+                       1});
 
-    recipes.push_back({31, "Process Rubber",
-        {{goods::RUBBER, 2}},
-        goods::RUBBER_GOODS, 1, BuildingId{2}, 1});
+    recipes.push_back(
+        {31, "Process Rubber", {{goods::RUBBER, 2}}, goods::RUBBER_GOODS, 1, BuildingId{2}, 1});
 
-    recipes.push_back({32, "Smelt Bronze",
-        {{goods::COPPER_ORE, 1}, {goods::TIN, 1}},
-        goods::BRONZE, 1, BuildingId{0}, 1});
+    recipes.push_back({32,
+                       "Smelt Bronze",
+                       {{goods::COPPER_ORE, 1}, {goods::TIN, 1}},
+                       goods::BRONZE,
+                       1,
+                       BuildingId{0},
+                       1});
 
-    recipes.push_back({33, "Weave Cotton Textiles",
-        {{goods::COTTON, 2}},
-        goods::TEXTILES, 2, BuildingId{8}, 1});
+    recipes.push_back(
+        {33, "Weave Cotton Textiles", {{goods::COTTON, 2}}, goods::TEXTILES, 2, BuildingId{8}, 1});
 
-    // ================================================================
-    // Minting: raw metal ore -> coins (requires Mint building)
-    // ================================================================
-    // Since the conserved ledger (plan Phase 2) the Mint is the only source
-    // of money, and a state's upkeep runs at gold per unit per turn against
-    // a tax of a few percent of the coin stock. At the old 3 coins per two
-    // ore a coinage civ never held more than tens of gold and sat in arrears
-    // for the whole game (measured 2026-09-12: 20-64 coins struck per
-    // 4-player run). A run now yields 30 face of copper, 100 of silver or
-    // 100 of gold, so a mine and a Mint carry a treasury.
-    recipes.push_back({34, "Mint Copper Coins",
-        {{goods::COPPER_ORE, 2}},
-        goods::COPPER_COINS, 30, BuildingId{24}, 1});
-
-    recipes.push_back({35, "Mint Silver Coins",
-        {{goods::SILVER_ORE, 2}},
-        goods::SILVER_COINS, 20, BuildingId{24}, 1,
-        1, TechId{5}});  // Requires Currency tech
-
-    recipes.push_back({36, "Smelt Gold Bars",
-        {{goods::GOLD_ORE, 2}},
-        goods::GOLD_BARS, 4, BuildingId{24}, 1,
-        1, TechId{8}});  // Requires Metallurgy tech
+    // Recipes 34/35/36 (Mint Copper/Silver/Gold) removed in Phase B
+    // of the Mengerian money redesign: good IDs 140/141/142 are retired.
 
     // ================================================================
     // Automation: Robot Workers (late-game)
     // ================================================================
-    recipes.push_back({37, "Build Robot Workers",
-        {{goods::MICROCHIPS, 1}, {goods::STEEL, 2}, {goods::ELECTRONICS, 1}},
-        goods::ROBOT_WORKERS, 1, BuildingId{5}, 4});
+    recipes.push_back({37,
+                       "Build Robot Workers",
+                       {{goods::MICROCHIPS, 1}, {goods::STEEL, 2}, {goods::ELECTRONICS, 1}},
+                       goods::ROBOT_WORKERS,
+                       1,
+                       BuildingId{5},
+                       4});
 
     // ================================================================
     // Charcoal: early coal substitute from wood (less efficient)
     // Historically: charcoal was the primary fuel before coal mining.
     // 3 Wood -> 1 Charcoal (vs coal which comes from mining 1:1)
     // ================================================================
-    recipes.push_back({38, "Burn Charcoal",
-        {{goods::WOOD, 3}},
-        goods::CHARCOAL, 1, BuildingId{0}, 1});  // Forge (kiln)
+    recipes.push_back(
+        {38, "Burn Charcoal", {{goods::WOOD, 3}}, goods::CHARCOAL, 1, BuildingId{0}, 1}); // Forge
+                                                                                          // (kiln)
 
     // Charcoal-based steel (less efficient than coal: needs 3 charcoal vs 2 coal)
-    recipes.push_back({39, "Produce Charcoal Steel",
-        {{goods::IRON_ORE, 1}, {goods::CHARCOAL, 3}},
-        goods::STEEL, 1, BuildingId{3}, 2});  // Factory, slower
+    recipes.push_back({39,
+                       "Produce Charcoal Steel",
+                       {{goods::IRON_ORE, 1}, {goods::CHARCOAL, 3}},
+                       goods::STEEL,
+                       1,
+                       BuildingId{3},
+                       2}); // Factory, slower
 
     // Charcoal-based glass (less efficient: 2 charcoal vs 1 coal)
-    recipes.push_back({40, "Make Glass (Charcoal)",
-        {{goods::STONE, 1}, {goods::CHARCOAL, 2}},
-        goods::GLASS, 1, BuildingId{0}, 1});  // Forge, less output than coal version
+    recipes.push_back({40,
+                       "Make Glass (Charcoal)",
+                       {{goods::STONE, 1}, {goods::CHARCOAL, 2}},
+                       goods::GLASS,
+                       1,
+                       BuildingId{0},
+                       1}); // Forge, less output than coal version
 
     // ================================================================
     // Salt-based food preservation (alternative Processed Food recipes)
     // ================================================================
-    recipes.push_back({41, "Preserve Fish",
-        {{goods::SALT, 1}, {goods::FISH, 2}},
-        goods::PROCESSED_FOOD, 3, BuildingId{9}, 1});  // Food Proc. Plant
+    recipes.push_back({41,
+                       "Preserve Fish",
+                       {{goods::SALT, 1}, {goods::FISH, 2}},
+                       goods::PROCESSED_FOOD,
+                       3,
+                       BuildingId{9},
+                       1}); // Food Proc. Plant
 
-    recipes.push_back({42, "Salt Cure Meat",
-        {{goods::SALT, 1}, {goods::CATTLE, 2}},
-        goods::PROCESSED_FOOD, 3, BuildingId{9}, 1});
+    recipes.push_back({42,
+                       "Salt Cure Meat",
+                       {{goods::SALT, 1}, {goods::CATTLE, 2}},
+                       goods::PROCESSED_FOOD,
+                       3,
+                       BuildingId{9},
+                       1});
 
     // ================================================================
     // Marble construction (high-quality alternative)
     // ================================================================
-    recipes.push_back({43, "Cut Marble Blocks",
-        {{goods::MARBLE, 2}, {goods::LUMBER, 1}},
-        goods::CONSTRUCTION_MAT, 2, BuildingId{1}, 1});  // Workshop, better ratio than brick+lumber
+    recipes.push_back({43,
+                       "Cut Marble Blocks",
+                       {{goods::MARBLE, 2}, {goods::LUMBER, 1}},
+                       goods::CONSTRUCTION_MAT,
+                       2,
+                       BuildingId{1},
+                       1}); // Workshop, better ratio than brick+lumber
 
     // ================================================================
     // Biofuel: renewable fossil fuel substitute from crops
@@ -445,13 +540,16 @@ std::vector<ProductionRecipe> buildRecipes() {
     // WP-D1: Wheat biofuel yields 2/run (was 1) to keep it competitive with
     // the Sugar recipe for wheat-heavy civs. Sugar still wins for sugar-heavy
     // civs on raw profit, but Wheat no longer starves.
-    recipes.push_back({44, "Distill Biofuel (Wheat)",
-        {{goods::WHEAT, 3}},
-        goods::BIOFUEL, 2, BuildingId{33}, 1});  // Biofuel Plant
+    recipes.push_back({44,
+                       "Distill Biofuel (Wheat)",
+                       {{goods::WHEAT, 3}},
+                       goods::BIOFUEL,
+                       2,
+                       BuildingId{33},
+                       1}); // Biofuel Plant
 
-    recipes.push_back({45, "Distill Biofuel (Sugar)",
-        {{goods::SUGAR, 3}},
-        goods::BIOFUEL, 1, BuildingId{33}, 1});
+    recipes.push_back(
+        {45, "Distill Biofuel (Sugar)", {{goods::SUGAR, 3}}, goods::BIOFUEL, 1, BuildingId{33}, 1});
 
     // ================================================================
     // Natural Gas processing — the map seeds NATURAL_GAS tiles but no
@@ -460,15 +558,25 @@ std::vector<ProductionRecipe> buildRecipes() {
     // 1 fuel + 1 plastics.  This gives civs an OIL-chain alternative when
     // their territory has gas but no oil.  Gated by the same Refining
     // tech so the processing chain stays era-consistent.
-    recipes.push_back({50, "Refine Natural Gas (Fuel)",
-        {{goods::NATURAL_GAS, 2}},
-        goods::FUEL, 2, BuildingId{2}, 1,
-        1, TechId{12}});  // Refining
+    recipes.push_back({50,
+                       "Refine Natural Gas (Fuel)",
+                       {{goods::NATURAL_GAS, 2}},
+                       goods::FUEL,
+                       2,
+                       BuildingId{2},
+                       1,
+                       1,
+                       TechId{12}}); // Refining
 
-    recipes.push_back({51, "Crack Natural Gas (Plastics)",
-        {{goods::NATURAL_GAS, 1}},
-        goods::PLASTICS, 1, BuildingId{2}, 1,
-        1, TechId{12}});  // Refining
+    recipes.push_back({51,
+                       "Crack Natural Gas (Plastics)",
+                       {{goods::NATURAL_GAS, 1}},
+                       goods::PLASTICS,
+                       1,
+                       BuildingId{2},
+                       1,
+                       1,
+                       TechId{12}}); // Refining
 
     // ================================================================
     // Biogas — renewable gas substitute from livestock/food waste.
@@ -479,9 +587,13 @@ std::vector<ProductionRecipe> buildRecipes() {
     // wheat/sugar biofuel in civs with surplus cattle + wood. Same building
     // (33) as biofuel recipes, so preference still matters — but now the
     // profit margin is competitive.
-    recipes.push_back({52, "Brew Biogas",
-        {{goods::CATTLE, 2}, {goods::WOOD, 1}},
-        goods::NATURAL_GAS, 2, BuildingId{33}, 1});
+    recipes.push_back({52,
+                       "Brew Biogas",
+                       {{goods::CATTLE, 2}, {goods::WOOD, 1}},
+                       goods::NATURAL_GAS,
+                       2,
+                       BuildingId{33},
+                       1});
 
     // ================================================================
     // Orphan-good activation: recipes that connect previously-idle raw
@@ -493,16 +605,14 @@ std::vector<ProductionRecipe> buildRecipes() {
     // Clay-fired bricks — alternative to Stone bricks, available from the
     // Workshop without needing a Quarry or Mountain Mine.  Keeps CLAY tiles
     // useful before Masonry unlocks.
-    recipes.push_back({53, "Fire Clay Bricks",
-        {{goods::CLAY, 2}},
-        goods::BRICKS, 2, BuildingId{1}, 1});
+    recipes.push_back(
+        {53, "Fire Clay Bricks", {{goods::CLAY, 2}}, goods::BRICKS, 2, BuildingId{1}, 1});
 
     // Rice → Processed Food: tropical/subtropical food chain entry.  Was
     // the only raw food (WHEAT, CATTLE, FISH covered) without a processing
     // recipe, so RICE tiles were pure market goods.
-    recipes.push_back({54, "Process Rice",
-        {{goods::RICE, 2}},
-        goods::PROCESSED_FOOD, 2, BuildingId{9}, 1});
+    recipes.push_back(
+        {54, "Process Rice", {{goods::RICE, 2}}, goods::PROCESSED_FOOD, 2, BuildingId{9}, 1});
 
     // (Aluminium already flows directly into Aircraft Components recipe 25
     //  — no separate smelting step.  Attempted a self-loop refining recipe
@@ -513,26 +623,38 @@ std::vector<ProductionRecipe> buildRecipes() {
     // input branch.  3 Bronze + 1 Wood → 2 Tools, alternative to the iron
     // path (recipe 6).  Lets early bronze age civs produce tools before
     // Iron Working.
-    recipes.push_back({56, "Forge Bronze Tools",
-        {{goods::BRONZE, 3}, {goods::WOOD, 1}},
-        goods::TOOLS, 2, BuildingId{0}, 1});
+    recipes.push_back({56,
+                       "Forge Bronze Tools",
+                       {{goods::BRONZE, 3}, {goods::WOOD, 1}},
+                       goods::TOOLS,
+                       2,
+                       BuildingId{0},
+                       1});
 
     // Rubber Goods consumer: turn the previously-dead RUBBER_GOODS output
     // into a Machinery input variant.  Rubber + Tools + Steel → Machinery
     // runs alongside the standard Tools+Steel recipe (9) but uses the
     // rubber branch so Rubber tiles have downstream value.
-    recipes.push_back({57, "Rubber-Sealed Machinery",
-        {{goods::RUBBER_GOODS, 1}, {goods::TOOLS, 1}, {goods::STEEL, 1}},
-        goods::MACHINERY, 2, BuildingId{3}, 2});
+    recipes.push_back({57,
+                       "Rubber-Sealed Machinery",
+                       {{goods::RUBBER_GOODS, 1}, {goods::TOOLS, 1}, {goods::STEEL, 1}},
+                       goods::MACHINERY,
+                       2,
+                       BuildingId{3},
+                       2});
 
     // Industrial Equipment → Armored Vehicles input.  Was a capstone dead
     // end (nothing consumed it).  Now acts as a "heavy machinery" input
     // that gives Armored Vehicles a 50% output bump when present.  Simpler
     // than restructuring the armored-vehicles recipe — this is an
     // independent premium variant.
-    recipes.push_back({58, "Heavy-Plated Armored Vehicles",
-        {{goods::INDUSTRIAL_EQUIP, 1}, {goods::STEEL, 2}, {goods::FUEL, 1}},
-        goods::ARMORED_VEHICLES, 2, BuildingId{3}, 3});
+    recipes.push_back({58,
+                       "Heavy-Plated Armored Vehicles",
+                       {{goods::INDUSTRIAL_EQUIP, 1}, {goods::STEEL, 2}, {goods::FUEL, 1}},
+                       goods::ARMORED_VEHICLES,
+                       2,
+                       BuildingId{3},
+                       3});
 
     // ================================================================
     // WP-C2 additive goods: producer recipes so the ranker wakes them up.
@@ -543,27 +665,42 @@ std::vector<ProductionRecipe> buildRecipes() {
     // Batteries: Lithium + Copper Ore → Batteries. Electronics Plant (4).
     // Gated by Electricity tech (14). Downstream consumer: future advanced
     // consumer goods + EV vehicles. Producer recipe seeds the chain.
-    recipes.push_back({61, "Assemble Batteries",
-        {{goods::LITHIUM, 1}, {goods::COPPER_ORE, 1}},
-        goods::BATTERIES, 1, BuildingId{4}, 2,
-        1, TechId{14}});
+    recipes.push_back({61,
+                       "Assemble Batteries",
+                       {{goods::LITHIUM, 1}, {goods::COPPER_ORE, 1}},
+                       goods::BATTERIES,
+                       1,
+                       BuildingId{4},
+                       2,
+                       1,
+                       TechId{14}});
 
     // Pharmaceuticals: Plastics + Glass → Pharmaceuticals. Industrial
     // Complex (5). Gated by Advanced Chemistry (24).
-    recipes.push_back({62, "Synthesize Pharmaceuticals",
-        {{goods::PLASTICS, 1}, {goods::GLASS, 1}},
-        goods::PHARMACEUTICALS, 1, BuildingId{5}, 2,
-        1, TechId{24}});
+    recipes.push_back({62,
+                       "Synthesize Pharmaceuticals",
+                       {{goods::PLASTICS, 1}, {goods::GLASS, 1}},
+                       goods::PHARMACEUTICALS,
+                       1,
+                       BuildingId{5},
+                       2,
+                       1,
+                       TechId{24}});
 
     // WP-B3: Rare-Earth Semiconductors — alternate input path for civs
     // that have a Rare Earth deposit (mountain tile) or Lunar Colony
     // byproduct. Higher output than the standard Precision+Wire recipe,
     // compensating for the scarce raw. Same Semiconductor Fab building
     // as recipe 21; ranker picks whichever is profitable given stock.
-    recipes.push_back({63, "Fabricate Rare-Earth Semiconductors",
-        {{goods::RARE_EARTH, 1}, {goods::COPPER_WIRE, 1}},
-        goods::SEMICONDUCTORS, 2, BuildingId{11}, 3,
-        2, TechId{23}});
+    recipes.push_back({63,
+                       "Fabricate Rare-Earth Semiconductors",
+                       {{goods::RARE_EARTH, 1}, {goods::COPPER_WIRE, 1}},
+                       goods::SEMICONDUCTORS,
+                       2,
+                       BuildingId{11},
+                       3,
+                       2,
+                       TechId{23}});
 
     // ================================================================
     // 2026-05-02: Geology-driven specialty resources (151-166) wired to
@@ -573,107 +710,149 @@ std::vector<ProductionRecipe> buildRecipes() {
     // ================================================================
 
     // NICKEL → premium Steel (with Iron + Coal). Higher output than recipe 7.
-    recipes.push_back({64, "Smelt Stainless Steel",
-        {{goods::NICKEL, 1}, {goods::IRON_ORE, 1}, {goods::COAL, 1}},
-        goods::STEEL, 3, BuildingId{3}, 1});
+    recipes.push_back({64,
+                       "Smelt Stainless Steel",
+                       {{goods::NICKEL, 1}, {goods::IRON_ORE, 1}, {goods::COAL, 1}},
+                       goods::STEEL,
+                       3,
+                       BuildingId{3},
+                       1});
 
     // COBALT → Batteries (alt to LITHIUM-only path, gives chemistry diversity).
-    recipes.push_back({65, "Cobalt Cell Batteries",
-        {{goods::COBALT, 1}, {goods::COPPER_ORE, 1}},
-        goods::BATTERIES, 2, BuildingId{4}, 2,
-        1, TechId{14}});
+    recipes.push_back({65,
+                       "Cobalt Cell Batteries",
+                       {{goods::COBALT, 1}, {goods::COPPER_ORE, 1}},
+                       goods::BATTERIES,
+                       2,
+                       BuildingId{4},
+                       2,
+                       1,
+                       TechId{14}});
 
     // HELIUM → Semiconductor cooling (3rd path to SEMICONDUCTORS).
-    recipes.push_back({66, "Helium-Cooled Semiconductors",
-        {{goods::HELIUM, 1}, {goods::RARE_EARTH, 1}, {goods::COPPER_WIRE, 1}},
-        goods::SEMICONDUCTORS, 3, BuildingId{11}, 3,
-        2, TechId{23}});
+    recipes.push_back({66,
+                       "Helium-Cooled Semiconductors",
+                       {{goods::HELIUM, 1}, {goods::RARE_EARTH, 1}, {goods::COPPER_WIRE, 1}},
+                       goods::SEMICONDUCTORS,
+                       3,
+                       BuildingId{11},
+                       3,
+                       2,
+                       TechId{23}});
 
     // PLATINUM → Jewelry-grade luxury via consumer-goods plant.
-    recipes.push_back({67, "Platinum Jewelry",
-        {{goods::PLATINUM, 1}, {goods::GOLD_ORE, 1}},
-        goods::CONSUMER_GOODS, 4, BuildingId{8}, 1});
+    recipes.push_back({67,
+                       "Platinum Jewelry",
+                       {{goods::PLATINUM, 1}, {goods::GOLD_ORE, 1}},
+                       goods::CONSUMER_GOODS,
+                       4,
+                       BuildingId{8},
+                       1});
 
     // SULFUR → Gunpowder, alt path to Ammunition (NITER + STEEL is recipe 17).
-    recipes.push_back({68, "Sulfur Gunpowder Ammunition",
-        {{goods::SULFUR, 1}, {goods::STEEL, 1}, {goods::COAL, 1}},
-        goods::AMMUNITION, 3, BuildingId{3}, 1});
+    recipes.push_back({68,
+                       "Sulfur Gunpowder Ammunition",
+                       {{goods::SULFUR, 1}, {goods::STEEL, 1}, {goods::COAL, 1}},
+                       goods::AMMUNITION,
+                       3,
+                       BuildingId{3},
+                       1});
 
     // GYPSUM → Bricks (drywall path, alt to STONE).
-    recipes.push_back({69, "Gypsum Plasterwork",
-        {{goods::GYPSUM, 1}, {goods::WOOD, 1}},
-        goods::BRICKS, 3, BuildingId{1}, 1});
+    recipes.push_back({69,
+                       "Gypsum Plasterwork",
+                       {{goods::GYPSUM, 1}, {goods::WOOD, 1}},
+                       goods::BRICKS,
+                       3,
+                       BuildingId{1},
+                       1});
 
     // FLUORITE → smelting flux, doubles iron output.
-    recipes.push_back({70, "Flux Smelting",
-        {{goods::FLUORITE, 1}, {goods::IRON_ORE, 1}},
-        goods::IRON_INGOTS, 2, BuildingId{0}, 1});
+    recipes.push_back({70,
+                       "Flux Smelting",
+                       {{goods::FLUORITE, 1}, {goods::IRON_ORE, 1}},
+                       goods::IRON_INGOTS,
+                       2,
+                       BuildingId{0},
+                       1});
 
     // DOLOMITE → Construction Materials.
-    recipes.push_back({71, "Dolomite Cement",
-        {{goods::DOLOMITE, 2}, {goods::STONE, 1}},
-        goods::CONSTRUCTION_MAT, 2, BuildingId{1}, 1});
+    recipes.push_back({71,
+                       "Dolomite Cement",
+                       {{goods::DOLOMITE, 2}, {goods::STONE, 1}},
+                       goods::CONSTRUCTION_MAT,
+                       2,
+                       BuildingId{1},
+                       1});
 
     // BARITE → drilling fluid, boosts oil refining.
-    recipes.push_back({72, "Drilling Mud Fuel",
-        {{goods::BARITE, 1}, {goods::OIL, 1}},
-        goods::FUEL, 3, BuildingId{2}, 1});
+    recipes.push_back({72,
+                       "Drilling Mud Fuel",
+                       {{goods::BARITE, 1}, {goods::OIL, 1}},
+                       goods::FUEL,
+                       3,
+                       BuildingId{2},
+                       1});
 
     // ALLUVIAL_GOLD → effectively GOLD_ORE without mountain mine.
-    recipes.push_back({73, "Pan Alluvial Gold",
-        {{goods::ALLUVIAL_GOLD, 2}},
-        goods::GOLD_ORE, 1, BuildingId{0}, 1});
+    recipes.push_back({73,
+                       "Pan Alluvial Gold",
+                       {{goods::ALLUVIAL_GOLD, 2}},
+                       goods::GOLD_ORE,
+                       1,
+                       BuildingId{0},
+                       1});
 
     // BEACH_PLACER → Rare Earth + Tin via heavy-mineral separation.
-    recipes.push_back({74, "Heavy Mineral Separation",
-        {{goods::BEACH_PLACER, 2}},
-        goods::RARE_EARTH, 1, BuildingId{0}, 2});
+    recipes.push_back({74,
+                       "Heavy Mineral Separation",
+                       {{goods::BEACH_PLACER, 2}},
+                       goods::RARE_EARTH,
+                       1,
+                       BuildingId{0},
+                       2});
 
     // PYRITE → Sulfur (intermediate good for ammunition chain).
-    recipes.push_back({75, "Roast Pyrite for Sulfur",
-        {{goods::PYRITE, 2}},
-        goods::SULFUR, 1, BuildingId{0}, 1});
+    recipes.push_back(
+        {75, "Roast Pyrite for Sulfur", {{goods::PYRITE, 2}}, goods::SULFUR, 1, BuildingId{0}, 1});
 
     // PHOSPHATE → Fertilizer-driven Processed Food.
-    recipes.push_back({76, "Phosphate Fertilizer",
-        {{goods::PHOSPHATE, 1}, {goods::WHEAT, 1}, {goods::CATTLE, 1}},
-        goods::PROCESSED_FOOD, 3, BuildingId{9}, 1});
+    recipes.push_back({76,
+                       "Phosphate Fertilizer",
+                       {{goods::PHOSPHATE, 1}, {goods::WHEAT, 1}, {goods::CATTLE, 1}},
+                       goods::PROCESSED_FOOD,
+                       3,
+                       BuildingId{9},
+                       1});
 
     // VMS_ORE → Copper Ore (volcanic massive sulfide is mostly Cu).
-    recipes.push_back({77, "Process VMS Ore",
-        {{goods::VMS_ORE, 1}},
-        goods::COPPER_ORE, 2, BuildingId{0}, 1});
+    recipes.push_back(
+        {77, "Process VMS Ore", {{goods::VMS_ORE, 1}}, goods::COPPER_ORE, 2, BuildingId{0}, 1});
 
     // SKARN_ORE → Iron Ingots + Tin co-product.
-    recipes.push_back({78, "Smelt Skarn Ore",
-        {{goods::SKARN_ORE, 1}, {goods::COAL, 1}},
-        goods::IRON_INGOTS, 2, BuildingId{0}, 1});
+    recipes.push_back({78,
+                       "Smelt Skarn Ore",
+                       {{goods::SKARN_ORE, 1}, {goods::COAL, 1}},
+                       goods::IRON_INGOTS,
+                       2,
+                       BuildingId{0},
+                       1});
 
     // MVT_ORE → Silver Ore (lead-zinc deposits often carry silver).
-    recipes.push_back({79, "Refine MVT Ore",
-        {{goods::MVT_ORE, 1}, {goods::COAL, 1}},
-        goods::SILVER_ORE, 1, BuildingId{0}, 1});
+    recipes.push_back({79,
+                       "Refine MVT Ore",
+                       {{goods::MVT_ORE, 1}, {goods::COAL, 1}},
+                       goods::SILVER_ORE,
+                       1,
+                       BuildingId{0},
+                       1});
 
     // (Uranium intentionally has no refining recipe in this game — Nuclear
     //  Plant consumes it raw.  A self-loop refiner would break the ranker
     //  the same way Aluminium did.)
 
-    // ================================================================
-    // Demonetization: melt old coins back into raw ore.
-    // Copper coins become copper ore (feeds electronics chain: ore -> wire -> electronics).
-    // Silver coins become silver ore (future silver processing chains).
-    // Available whenever a player has coins and a Forge -- the AI decides
-    // when to melt (only after the coin type is demonetized).
-    // ================================================================
-    recipes.push_back({46, "Melt Copper Coins",
-        {{goods::COPPER_COINS, 3}},
-        goods::COPPER_ORE, 2, BuildingId{0}, 1,
-        1, TechId{5}, true});  // Forge, Currency tech, recycling
-
-    recipes.push_back({47, "Melt Silver Coins",
-        {{goods::SILVER_COINS, 2}},
-        goods::SILVER_ORE, 1, BuildingId{0}, 1,
-        1, TechId{9}, true});  // Forge, Banking tech, recycling
+    // Recipes 46/47 (Melt Copper/Silver Coins) removed in Phase B
+    // of the Mengerian money redesign: good IDs 140/141 are retired.
 
     // ================================================================
     // Farmland chain (2026-09-08). The new food district's three buildings
@@ -683,25 +862,49 @@ std::vector<ProductionRecipe> buildRecipes() {
     // ================================================================
     // No FLOUR good exists, so grain goes straight to processed food rather
     // than inventing an intermediate the rest of the economy would not use.
-    recipes.push_back({80, "Mill Grain",
-        {{goods::WHEAT, 3}},
-        goods::PROCESSED_FOOD, 2, BuildingId{52}, 1,
-        1, TechId{}, false});  // Grain Silo
+    recipes.push_back({80,
+                       "Mill Grain",
+                       {{goods::WHEAT, 3}},
+                       goods::PROCESSED_FOOD,
+                       2,
+                       BuildingId{52},
+                       1,
+                       1,
+                       TechId{},
+                       false}); // Grain Silo
 
-    recipes.push_back({81, "Can Preserves",
-        {{goods::WHEAT, 2}, {goods::SALT, 1}},
-        goods::PROCESSED_FOOD, 3, BuildingId{53}, 2,
-        1, TechId{21}, false});  // Cannery, Food Preservation
+    recipes.push_back({81,
+                       "Can Preserves",
+                       {{goods::WHEAT, 2}, {goods::SALT, 1}},
+                       goods::PROCESSED_FOOD,
+                       3,
+                       BuildingId{53},
+                       2,
+                       1,
+                       TechId{21},
+                       false}); // Cannery, Food Preservation
 
-    recipes.push_back({82, "Bottle Wine",
-        {{goods::WINE, 2}, {goods::GLASS, 1}},
-        goods::ADV_CONSUMER_GOODS, 2, BuildingId{53}, 2,
-        1, TechId{21}, false});  // Cannery, Food Preservation
+    recipes.push_back({82,
+                       "Bottle Wine",
+                       {{goods::WINE, 2}, {goods::GLASS, 1}},
+                       goods::ADV_CONSUMER_GOODS,
+                       2,
+                       BuildingId{53},
+                       2,
+                       1,
+                       TechId{21},
+                       false}); // Cannery, Food Preservation
 
-    recipes.push_back({83, "Weave Textiles",
-        {{goods::COTTON, 3}},
-        goods::CLOTHING, 2, BuildingId{51}, 1,
-        1, TechId{20}, false});  // Irrigation Works, Textiles
+    recipes.push_back({83,
+                       "Weave Textiles",
+                       {{goods::COTTON, 3}},
+                       goods::CLOTHING,
+                       2,
+                       BuildingId{51},
+                       1,
+                       1,
+                       TechId{20},
+                       false}); // Irrigation Works, Textiles
 
     // ================================================================
     // WP-C2 cut: GOLD_CONTACTS chain deprecated. Recipes 48/49 removed —
@@ -729,31 +932,31 @@ std::vector<ProductionRecipe> buildRecipes() {
     // ================================================================
     for (ProductionRecipe& r : recipes) {
         switch (r.recipeId) {
-            // Tier 3: 2 worker slots
-            case 9:   // Machinery
-            case 10:  // Electronics
-            case 18:  // Surface Plate
-            case 19:  // Precision Instruments
-            case 20:  // Interchangeable Parts
-            case 23:  // Computers
-            case 28:  // Telecom Equipment
-            case 29:  // Advanced Consumer Goods
-                r.workerSlots = 2;
-                break;
-            // Tier 4: 3 worker slots
-            case 12:  // Advanced Machinery
-            case 13:  // Industrial Equipment
-            case 21:  // Semiconductors
-            case 22:  // Microchips
-            case 24:  // Software
-            case 25:  // Aircraft Components
-            case 26:  // Aircraft
-            case 27:  // Armored Vehicles
-            case 37:  // Robot Workers
-                r.workerSlots = 3;
-                break;
-            default:
-                break;  // Stays at 1
+        // Tier 3: 2 worker slots
+        case 9:  // Machinery
+        case 10: // Electronics
+        case 18: // Surface Plate
+        case 19: // Precision Instruments
+        case 20: // Interchangeable Parts
+        case 23: // Computers
+        case 28: // Telecom Equipment
+        case 29: // Advanced Consumer Goods
+            r.workerSlots = 2;
+            break;
+        // Tier 4: 3 worker slots
+        case 12: // Advanced Machinery
+        case 13: // Industrial Equipment
+        case 21: // Semiconductors
+        case 22: // Microchips
+        case 24: // Software
+        case 25: // Aircraft Components
+        case 26: // Aircraft
+        case 27: // Armored Vehicles
+        case 37: // Robot Workers
+            r.workerSlots = 3;
+            break;
+        default:
+            break; // Stays at 1
         }
     }
 
@@ -780,9 +983,7 @@ bool isLuxuryGood(uint16_t goodId) {
     return goodId < goods::GOOD_COUNT && goodDef(goodId).category == GoodCategory::RawLuxury;
 }
 
-bool isCoinGood(uint16_t goodId) {
-    return goodId < goods::GOOD_COUNT && goodDef(goodId).category == GoodCategory::Monetary;
-}
+// isCoinGood() removed in Phase B of the Mengerian money redesign.
 
 const std::vector<uint16_t>& luxuryGoodIds() {
     static const std::vector<uint16_t> ids = [] {

@@ -66,10 +66,16 @@ namespace {
                                         const aoc::map::HexGrid& grid) {
     int32_t miners = 0;
     for (const aoc::hex::AxialCoord& tileCoord : city.workedTiles()) {
-        if (tileCoord == city.location()) { continue; } // the centre is worked free
-        if (!grid.isValid(tileCoord)) { continue; }
+        if (tileCoord == city.location()) {
+            continue;
+        } // the centre is worked free
+        if (!grid.isValid(tileCoord)) {
+            continue;
+        }
         const ResourceId resId = grid.resource(grid.toIndex(tileCoord));
-        if (!resId.isValid() || resId.value >= goodCount()) { continue; }
+        if (!resId.isValid() || resId.value >= goodCount()) {
+            continue;
+        }
         const GoodCategory cat = goodDef(resId.value).category;
         if (cat == GoodCategory::RawStrategic || cat == GoodCategory::RawLuxury) {
             ++miners;
@@ -78,20 +84,9 @@ namespace {
     return miners;
 }
 
-/// The Mint's three recipes: Mint Copper (34), Mint Silver (35), Smelt Gold
-/// (36). Ore they consume is metal that left industry to become money.
-[[nodiscard]] constexpr bool isMintRecipe(uint16_t recipeId) {
-    return recipeId == 34 || recipeId == 35 || recipeId == 36;
-}
-
-/// The two money-metal mints, silver and gold. Recipe 34 mints copper, which
-/// the commodity money plan deliberately leaves outside the money fiction
-/// because copper already feeds four industrial recipes. Excluding it keeps
-/// this counter measuring the same metals as the CSV's MetalOreHeld column,
-/// so the two can be read against each other.
-[[nodiscard]] constexpr bool isMoneyMetalMintRecipe(uint16_t recipeId) {
-    return recipeId == 35 || recipeId == 36;
-}
+// isMintRecipe() and isMoneyMetalMintRecipe() removed in Phase B of the
+// Mengerian money redesign. Mint recipes 34/35/36 are gone; the functions
+// were only used to track m_mintOreConsumed.
 
 [[nodiscard]] bool playerCanProduceConsumerGoods(const aoc::game::Player& player) {
     constexpr BuildingId WORKSHOP{1};
@@ -107,14 +102,14 @@ namespace {
 
 EconomySimulation::EconomySimulation() = default;
 
-static inline uint64_t makePreferenceKey(PlayerId owner, uint32_t cityLocHash, uint16_t buildingId) {
-    return (static_cast<uint64_t>(owner) << 48)
-         | (static_cast<uint64_t>(cityLocHash) << 16)
-         | static_cast<uint64_t>(buildingId);
+static inline uint64_t makePreferenceKey(PlayerId owner, uint32_t cityLocHash,
+                                         uint16_t buildingId) {
+    return (static_cast<uint64_t>(owner) << 48) | (static_cast<uint64_t>(cityLocHash) << 16) |
+           static_cast<uint64_t>(buildingId);
 }
 
 void EconomySimulation::setRecipePreference(PlayerId owner, uint32_t cityLocHash,
-                                             uint16_t buildingId, uint16_t recipeId) {
+                                            uint16_t buildingId, uint16_t recipeId) {
     const uint64_t key = makePreferenceKey(owner, cityLocHash, buildingId);
     if (recipeId == 0xFFFFu) {
         this->m_recipePreference.erase(key);
@@ -124,7 +119,7 @@ void EconomySimulation::setRecipePreference(PlayerId owner, uint32_t cityLocHash
 }
 
 uint16_t EconomySimulation::recipePreference(PlayerId owner, uint32_t cityLocHash,
-                                              uint16_t buildingId) const {
+                                             uint16_t buildingId) const {
     const uint64_t key = makePreferenceKey(owner, cityLocHash, buildingId);
     const std::unordered_map<uint64_t, uint16_t>::const_iterator it =
         this->m_recipePreference.find(key);
@@ -136,8 +131,7 @@ void EconomySimulation::initialize() {
     this->m_market.initialize();
 
     LOG_INFO("Initialized: %zu recipes in production chain, %u goods on market",
-             this->m_productionChain.executionOrder().size(),
-             static_cast<unsigned>(goodCount()));
+             this->m_productionChain.executionOrder().size(), static_cast<unsigned>(goodCount()));
 }
 
 void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::HexGrid& grid) {
@@ -149,7 +143,9 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
     // its "stale by one tick" semantics are documented and read by the
     // Industrial Revolution thresholds and the AI trade controller.
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
         playerPtr->economy().lastTurnConsumption.clear();
         playerPtr->economy().lastTurnHarvest.clear();
     }
@@ -169,29 +165,35 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
     // to warehouse spoilage.
     {
         const aoc::balance::BalanceParams& bal = aoc::balance::params();
-        const int32_t cap = bal.stockpileSoftCap;
-        constexpr int32_t BUFFER_STALE_TURNS = 30;
+        const int32_t cap                      = bal.stockpileSoftCap;
+        constexpr int32_t BUFFER_STALE_TURNS   = 30;
         // Skip food + late-game strategics (preserve Mars chain).
         auto isExempt = [](uint16_t gid) {
-            return gid == goods::WHEAT || gid == goods::CATTLE
-                || gid == goods::FISH  || gid == goods::RICE
-                || gid == goods::PROCESSED_FOOD
-                || gid == goods::LITHIUM || gid == goods::RARE_EARTH
-                || gid == goods::TITANIUM || gid == goods::HELIUM_3;
+            return gid == goods::WHEAT || gid == goods::CATTLE || gid == goods::FISH ||
+                   gid == goods::RICE || gid == goods::PROCESSED_FOOD || gid == goods::LITHIUM ||
+                   gid == goods::RARE_EARTH || gid == goods::TITANIUM || gid == goods::HELIUM_3;
         };
         for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
-            if (p == nullptr) { continue; }
+            if (p == nullptr) {
+                continue;
+            }
             for (const std::unique_ptr<aoc::game::City>& c : p->cities()) {
-                if (c == nullptr) { continue; }
+                if (c == nullptr) {
+                    continue;
+                }
                 CityStockpileComponent& sp = c->stockpile();
                 // Commit surplus to export buffer.
                 for (std::pair<const uint16_t, int32_t>& kv : sp.goods) {
-                    if (kv.second <= cap) { continue; }
-                    if (isExempt(kv.first)) { continue; }
+                    if (kv.second <= cap) {
+                        continue;
+                    }
+                    if (isExempt(kv.first)) {
+                        continue;
+                    }
                     const int32_t excess = kv.second - cap;
                     sp.exportBuffer[kv.first] += excess;
                     sp.exportBufferIdleTurns[kv.first] = 0;
-                    kv.second = cap;
+                    kv.second                          = cap;
                 }
                 // Tick idle counter for buffer entries that didn't move.
                 // Stale entries: spill back to stockpile (capped); lose excess.
@@ -205,7 +207,7 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
                             sp.goods[kv.first] += back;
                         }
                         // Anything not returned is lost (spoilage).
-                        kv.second = 0;
+                        kv.second                          = 0;
                         sp.exportBufferIdleTurns[kv.first] = 0;
                         drained.push_back(kv.first);
                     }
@@ -221,7 +223,7 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
     this->reportToMarket(gameState);
     this->computePlayerNeeds(gameState);
     this->m_market.updatePrices();
-    this->sweepCoins(gameState);
+    this->monetiseGoods(gameState);
     this->tickMonetaryMechanics(gameState);
     this->processCrisisAndBonds(gameState);
     this->processEconomicZonesAndSpeculation(gameState, grid);
@@ -240,11 +242,13 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
     // nothing when unset.
     {
         static const bool dumpEconomy = std::getenv("AOC_DUMP_ECONOMY") != nullptr;
-        if (!dumpEconomy) { return; }
+        if (!dumpEconomy) {
+            return;
+        }
 
         {
-            static const char* const kSkipNames[] = {"strike",     "workerSlots", "tech",
-                                                     "building",   "preference",  "buildingBatches",
+            static const char* const kSkipNames[] = {"strike",   "workerSlots", "tech",
+                                                     "building", "preference",  "buildingBatches",
                                                      "inputs"};
             std::fprintf(stderr, "[econskip] t=%d cumulative:", gameState.currentTurn());
             for (std::size_t r = 0; r < static_cast<std::size_t>(SkipReason::Count); ++r) {
@@ -265,7 +269,9 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
         }
 
         for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-            if (playerPtr == nullptr) { continue; }
+            if (playerPtr == nullptr) {
+                continue;
+            }
             const PlayerEconomyComponent& econ = playerPtr->economy();
 
             // Union of every good the civ produced, consumed or wanted.
@@ -282,21 +288,28 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
             for (const std::pair<const uint16_t, int32_t>& e : econ.totalNeeds) {
                 ids.insert(e.first);
             }
-            if (ids.empty()) { continue; }
+            if (ids.empty()) {
+                continue;
+            }
 
             for (const uint16_t gid : ids) {
                 const auto prodIt = econ.lastTurnProduction.find(gid);
                 const auto harvIt = econ.lastTurnHarvest.find(gid);
                 const auto consIt = econ.lastTurnConsumption.find(gid);
                 const auto needIt = econ.totalNeeds.find(gid);
-                const int32_t produced = (prodIt != econ.lastTurnProduction.end()) ? prodIt->second : 0;
-                const int32_t consumed = (consIt != econ.lastTurnConsumption.end()) ? consIt->second : 0;
-                const int32_t unmet    = (needIt != econ.totalNeeds.end()) ? needIt->second : 0;
-                const int32_t harvested = (harvIt != econ.lastTurnHarvest.end()) ? harvIt->second : 0;
+                const int32_t produced =
+                    (prodIt != econ.lastTurnProduction.end()) ? prodIt->second : 0;
+                const int32_t consumed =
+                    (consIt != econ.lastTurnConsumption.end()) ? consIt->second : 0;
+                const int32_t unmet = (needIt != econ.totalNeeds.end()) ? needIt->second : 0;
+                const int32_t harvested =
+                    (harvIt != econ.lastTurnHarvest.end()) ? harvIt->second : 0;
 
                 int32_t stock = 0;
                 for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-                    if (cityPtr == nullptr || cityPtr->owner() != playerPtr->id()) { continue; }
+                    if (cityPtr == nullptr || cityPtr->owner() != playerPtr->id()) {
+                        continue;
+                    }
                     stock += cityPtr->stockpile().getAmount(gid);
                 }
 
@@ -304,9 +317,8 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
                              "[econ] t=%d p=%u good=%u %.*s made=%d harvested=%d consumed=%d "
                              "net=%d unmet=%d stock=%d\n",
                              gameState.currentTurn(), static_cast<unsigned>(playerPtr->id()),
-                             static_cast<unsigned>(gid),
-                             static_cast<int>(goodDef(gid).name.size()), goodDef(gid).name.data(),
-                             produced, harvested, consumed,
+                             static_cast<unsigned>(gid), static_cast<int>(goodDef(gid).name.size()),
+                             goodDef(gid).name.data(), produced, harvested, consumed,
                              produced + harvested - consumed, unmet, stock);
             }
         }
@@ -317,13 +329,16 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
 // Step 1: Harvest raw resources from worked tiles into city stockpiles
 // ============================================================================
 
-void EconomySimulation::harvestResources(aoc::game::GameState& gameState,
-                                          aoc::map::HexGrid& grid) {
+void EconomySimulation::harvestResources(aoc::game::GameState& gameState, aoc::map::HexGrid& grid) {
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
 
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-            if (cityPtr == nullptr) { continue; }
+            if (cityPtr == nullptr) {
+                continue;
+            }
 
             CityStockpileComponent& stockpile = cityPtr->stockpile();
 
@@ -334,15 +349,31 @@ void EconomySimulation::harvestResources(aoc::game::GameState& gameState,
                 int32_t tileIndex = grid.toIndex(tileCoord);
 
                 aoc::map::ImprovementType imp = grid.improvement(tileIndex);
-                uint16_t cultivatedGood = 0;
-                bool isCultivated = false;
+                uint16_t cultivatedGood       = 0;
+                bool isCultivated             = false;
                 switch (imp) {
-                    case aoc::map::ImprovementType::Vineyard:    cultivatedGood = goods::WINE;   isCultivated = true; break;
-                    case aoc::map::ImprovementType::SilkFarm:    cultivatedGood = goods::SILK;   isCultivated = true; break;
-                    case aoc::map::ImprovementType::SpiceFarm:   cultivatedGood = goods::SPICES; isCultivated = true; break;
-                    case aoc::map::ImprovementType::DyeWorks:    cultivatedGood = goods::DYES;   isCultivated = true; break;
-                    case aoc::map::ImprovementType::CottonField: cultivatedGood = goods::COTTON; isCultivated = true; break;
-                    default: break;
+                case aoc::map::ImprovementType::Vineyard:
+                    cultivatedGood = goods::WINE;
+                    isCultivated   = true;
+                    break;
+                case aoc::map::ImprovementType::SilkFarm:
+                    cultivatedGood = goods::SILK;
+                    isCultivated   = true;
+                    break;
+                case aoc::map::ImprovementType::SpiceFarm:
+                    cultivatedGood = goods::SPICES;
+                    isCultivated   = true;
+                    break;
+                case aoc::map::ImprovementType::DyeWorks:
+                    cultivatedGood = goods::DYES;
+                    isCultivated   = true;
+                    break;
+                case aoc::map::ImprovementType::CottonField:
+                    cultivatedGood = goods::COTTON;
+                    isCultivated   = true;
+                    break;
+                default:
+                    break;
                 }
                 if (isCultivated) {
                     stockpile.addGoods(cultivatedGood, 2);
@@ -359,9 +390,9 @@ void EconomySimulation::harvestResources(aoc::game::GameState& gameState,
                     const uint16_t planted = grid.greenhouseCrop(tileIndex);
                     if (planted != 0xFFFFu && planted < goodCount()) {
                         const uint32_t parity =
-                            static_cast<uint32_t>(gameState.currentTurn())
-                          ^ (static_cast<uint32_t>(cityPtr->location().q) * 73u)
-                          ^ (static_cast<uint32_t>(cityPtr->location().r) * 31u);
+                            static_cast<uint32_t>(gameState.currentTurn()) ^
+                            (static_cast<uint32_t>(cityPtr->location().q) * 73u) ^
+                            (static_cast<uint32_t>(cityPtr->location().r) * 31u);
                         if ((parity & 1u) == 0u) {
                             stockpile.addGoods(planted, 1);
                         }
@@ -386,12 +417,12 @@ void EconomySimulation::harvestResources(aoc::game::GameState& gameState,
                 }
 
                 int32_t yield = 1;
-                if (imp == aoc::map::ImprovementType::Mine
-                    || imp == aoc::map::ImprovementType::MountainMine) {
+                if (imp == aoc::map::ImprovementType::Mine ||
+                    imp == aoc::map::ImprovementType::MountainMine) {
                     yield = 2;
-                } else if (imp == aoc::map::ImprovementType::Plantation
-                           || imp == aoc::map::ImprovementType::Camp
-                           || imp == aoc::map::ImprovementType::Pasture) {
+                } else if (imp == aoc::map::ImprovementType::Plantation ||
+                           imp == aoc::map::ImprovementType::Camp ||
+                           imp == aoc::map::ImprovementType::Pasture) {
                     yield = 2;
                 }
 
@@ -401,18 +432,35 @@ void EconomySimulation::harvestResources(aoc::game::GameState& gameState,
                 // little because ore veins are thin.  Charcoal is not a tile
                 // resource — it's a processed good from recipe 38 — so its
                 // effective per-turn rate is already bounded by 3 Wood tiles.
-                if (imp == aoc::map::ImprovementType::Mine
-                    || imp == aoc::map::ImprovementType::MountainMine) {
+                if (imp == aoc::map::ImprovementType::Mine ||
+                    imp == aoc::map::ImprovementType::MountainMine) {
                     switch (goodId) {
-                        case goods::COAL:       yield = 3; break;  // thick seams
-                        case goods::IRON_ORE:   yield = 2; break;
-                        case goods::COPPER_ORE: yield = 2; break;
-                        case goods::STONE:      yield = 3; break;  // quarry
-                        case goods::GOLD_ORE:   yield = 1; break;  // veins thin
-                        case goods::SILVER_ORE: yield = 1; break;
-                        case goods::NITER:      yield = 1; break;
-                        case goods::URANIUM:    yield = 1; break;  // trace
-                        default: break;
+                    case goods::COAL:
+                        yield = 3;
+                        break; // thick seams
+                    case goods::IRON_ORE:
+                        yield = 2;
+                        break;
+                    case goods::COPPER_ORE:
+                        yield = 2;
+                        break;
+                    case goods::STONE:
+                        yield = 3;
+                        break; // quarry
+                    case goods::GOLD_ORE:
+                        yield = 1;
+                        break; // veins thin
+                    case goods::SILVER_ORE:
+                        yield = 1;
+                        break;
+                    case goods::NITER:
+                        yield = 1;
+                        break;
+                    case goods::URANIUM:
+                        yield = 1;
+                        break; // trace
+                    default:
+                        break;
                     }
                 }
 
@@ -422,14 +470,15 @@ void EconomySimulation::harvestResources(aoc::game::GameState& gameState,
                     if (actualYield <= 0) {
                         continue;
                     }
-                    grid.setReserves(tileIndex, static_cast<int16_t>(currentReserves - actualYield));
+                    grid.setReserves(tileIndex,
+                                     static_cast<int16_t>(currentReserves - actualYield));
                     if (grid.reserves(tileIndex) <= 0) {
                         grid.setResource(tileIndex, ResourceId{});
                         grid.setReserves(tileIndex, 0);
-                        LOG_INFO("Resource exhausted at tile (%d,%d): %.*s depleted after extraction",
-                                 tileCoord.q, tileCoord.r,
-                                 static_cast<int>(goodDef(goodId).name.size()),
-                                 goodDef(goodId).name.data());
+                        LOG_INFO(
+                            "Resource exhausted at tile (%d,%d): %.*s depleted after extraction",
+                            tileCoord.q, tileCoord.r, static_cast<int>(goodDef(goodId).name.size()),
+                            goodDef(goodId).name.data());
                     }
                     stockpile.addGoods(goodId, actualYield);
                     playerPtr->economy().lastTurnHarvest[goodId] += actualYield;
@@ -447,15 +496,19 @@ void EconomySimulation::harvestResources(aoc::game::GameState& gameState,
 // ============================================================================
 
 void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
-                                             const aoc::map::HexGrid& grid) {
+                                            const aoc::map::HexGrid& grid) {
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
 
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-            if (cityPtr == nullptr) { continue; }
+            if (cityPtr == nullptr) {
+                continue;
+            }
 
             const CityDistrictsComponent& districts = cityPtr->districts();
-            CityStockpileComponent&       stockpile  = cityPtr->stockpile();
+            CityStockpileComponent& stockpile       = cityPtr->stockpile();
 
             // WP-B2/B3 Lunar Colony mining stream — independent of Fusion
             // Reactor. Audit 2026-04 found the Ti/He3 delivery was gated on
@@ -522,7 +575,9 @@ static void consumeLuxuryUpkeep(aoc::game::Player& player, uint16_t luxId) {
     aoc::game::City* richest = nullptr;
     int32_t most             = 0;
     for (const std::unique_ptr<aoc::game::City>& cityPtr : player.cities()) {
-        if (cityPtr == nullptr) { continue; }
+        if (cityPtr == nullptr) {
+            continue;
+        }
         const int32_t have = cityPtr->stockpile().getAmount(luxId);
         if (have > most) {
             most    = have;
@@ -539,9 +594,13 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
     // good that does not exist and no Trader could ever fetch it.
     std::unordered_set<uint16_t> luxuriesHeldByAnyone;
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-            if (cityPtr == nullptr) { continue; }
+            if (cityPtr == nullptr) {
+                continue;
+            }
             for (const uint16_t luxId : luxuryGoodIds()) {
                 if (cityPtr->stockpile().getAmount(luxId) > 0) {
                     luxuriesHeldByAnyone.insert(luxId);
@@ -551,7 +610,9 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
     }
 
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
 
         PlayerEconomyComponent& econ = playerPtr->economy();
         econ.totalNeeds.clear();
@@ -559,7 +620,9 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
         // Aggregate stockpile across all cities
         std::unordered_map<uint16_t, int32_t> totalStock;
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-            if (cityPtr == nullptr) { continue; }
+            if (cityPtr == nullptr) {
+                continue;
+            }
             for (const std::pair<const uint16_t, int32_t>& entry : cityPtr->stockpile().goods) {
                 totalStock[entry.first] += entry.second;
             }
@@ -569,18 +632,24 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
         for (const ProductionRecipe& recipe : allRecipes()) {
             bool hasBuildingSomewhere = false;
             for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-                if (cityPtr == nullptr) { continue; }
+                if (cityPtr == nullptr) {
+                    continue;
+                }
                 if (cityPtr->districts().hasBuilding(recipe.requiredBuilding)) {
                     hasBuildingSomewhere = true;
                     break;
                 }
             }
-            if (!hasBuildingSomewhere) { continue; }
+            if (!hasBuildingSomewhere) {
+                continue;
+            }
 
             for (const RecipeInput& input : recipe.inputs) {
-                int32_t have = 0;
+                int32_t have                                       = 0;
                 std::unordered_map<uint16_t, int32_t>::iterator it = totalStock.find(input.goodId);
-                if (it != totalStock.end()) { have = it->second; }
+                if (it != totalStock.end()) {
+                    have = it->second;
+                }
                 int32_t deficit = input.amount - have;
                 if (deficit > 0) {
                     econ.totalNeeds[input.goodId] += deficit;
@@ -590,7 +659,9 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
 
         // Building fuel needs
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-            if (cityPtr == nullptr) { continue; }
+            if (cityPtr == nullptr) {
+                continue;
+            }
             for (const CityDistrictsComponent::PlacedDistrict& d : cityPtr->districts().districts) {
                 for (BuildingId bid : d.buildings) {
                     const BuildingDef& bdef = buildingDef(bid);
@@ -598,7 +669,9 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
                         int32_t have = 0;
                         std::unordered_map<uint16_t, int32_t>::iterator it =
                             totalStock.find(bdef.ongoingFuelGoodId);
-                        if (it != totalStock.end()) { have = it->second; }
+                        if (it != totalStock.end()) {
+                            have = it->second;
+                        }
                         if (have < bdef.ongoingFuelPerTurn) {
                             econ.totalNeeds[bdef.ongoingFuelGoodId] +=
                                 (bdef.ongoingFuelPerTurn - have);
@@ -615,11 +688,10 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
             // Real interest rate scales discretionary demand. Necessities
             // (wheat, clothing, processed food) stay inelastic; consumer
             // goods and advanced consumer goods respond to monetary policy.
-            const float luxuryMult = realRateConsumptionMultiplier(
-                realInterestRate(playerPtr->monetary()));
+            const float luxuryMult =
+                realRateConsumptionMultiplier(realInterestRate(playerPtr->monetary()));
             const auto scaleLuxury = [luxuryMult](int32_t n) {
-                return std::max(0, static_cast<int32_t>(
-                    static_cast<float>(n) * luxuryMult));
+                return std::max(0, static_cast<int32_t>(static_cast<float>(n) * luxuryMult));
             };
 
             // City by city, by the one rule local prices read too
@@ -628,11 +700,14 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
             int32_t consumerGoods = 0;
             int32_t advConsumer   = 0;
             for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-                if (cityPtr == nullptr || cityPtr->owner() != playerPtr->id()) { continue; }
+                if (cityPtr == nullptr || cityPtr->owner() != playerPtr->id()) {
+                    continue;
+                }
                 const int32_t pop = cityPtr->population();
                 econ.totalNeeds[goods::WHEAT] += cityConsumptionNeed(goods::WHEAT, pop);
                 econ.totalNeeds[goods::CLOTHING] += cityConsumptionNeed(goods::CLOTHING, pop);
-                econ.totalNeeds[goods::PROCESSED_FOOD] += cityConsumptionNeed(goods::PROCESSED_FOOD, pop);
+                econ.totalNeeds[goods::PROCESSED_FOOD] +=
+                    cityConsumptionNeed(goods::PROCESSED_FOOD, pop);
                 consumerGoods += cityConsumptionNeed(goods::CONSUMER_GOODS, pop);
                 advConsumer += cityConsumptionNeed(goods::ADV_CONSUMER_GOODS, pop);
             }
@@ -649,15 +724,19 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
             // partial-consume so unmet wheat demand maps to foodShortfallRatio
             // (consumed downstream by CityGrowth for starvation penalty).
             for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-                if (cityPtr == nullptr) { continue; }
+                if (cityPtr == nullptr) {
+                    continue;
+                }
                 CityStockpileComponent& stock = cityPtr->stockpile();
-                const int32_t cityPop = cityPtr->population();
+                const int32_t cityPop         = cityPtr->population();
 
                 auto partialConsume = [&stock](uint16_t gid, int32_t want) -> int32_t {
-                    if (want <= 0) { return 0; }
+                    if (want <= 0) {
+                        return 0;
+                    }
                     const int32_t have = stock.getAmount(gid);
                     const int32_t take = std::min(want, have);
-                    int32_t consumed = 0;
+                    int32_t consumed   = 0;
                     if (take > 0) {
                         if (stock.consumeGoods(gid, take)) {
                             consumed = take;
@@ -667,18 +746,18 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
                                      static_cast<unsigned>(gid));
                         }
                     }
-                    return want - consumed;  // shortfall
+                    return want - consumed; // shortfall
                 };
 
-                const int32_t wheatWant = cityPop / 3;
+                const int32_t wheatWant  = cityPop / 3;
                 const int32_t wheatShort = partialConsume(goods::WHEAT, wheatWant);
                 partialConsume(goods::CONSUMER_GOODS, (cityPop > 3) ? (cityPop - 3) / 4 : 0);
                 partialConsume(goods::PROCESSED_FOOD, (cityPop > 5) ? (cityPop - 5) / 5 : 0);
                 partialConsume(goods::CLOTHING, cityPop / 6);
 
-                const float ratio = (wheatWant > 0)
-                    ? static_cast<float>(wheatShort) / static_cast<float>(wheatWant)
-                    : 0.0f;
+                const float ratio =
+                    (wheatWant > 0) ? static_cast<float>(wheatShort) / static_cast<float>(wheatWant)
+                                    : 0.0f;
                 cityPtr->setFoodShortfallRatio(std::clamp(ratio, 0.0f, 1.0f));
             }
         }
@@ -714,7 +793,9 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
     // one-turn-stale rate signal). The cumulative-ever boolean gate
     // `everSupplied` is intentionally NOT cleared.
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
         playerPtr->economy().lastTurnProduction.clear();
     }
 
@@ -723,10 +804,14 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
     std::unordered_map<aoc::game::City*, float> cityPowerEfficiency;
 
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
 
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-            if (cityPtr == nullptr) { continue; }
+            if (cityPtr == nullptr) {
+                continue;
+            }
 
             CityPowerComponent power = computeCityPower(gameState, grid, *cityPtr);
             power.energyDemand += cityPtr->automation().robotEnergyDemand();
@@ -740,9 +825,9 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 // same-seed runs diverge. Location is immutable and unique
                 // per city, so this hash is reproducible.
                 const aoc::hex::AxialCoord meltLoc = cityPtr->location();
-                uint32_t turnHash = this->m_depletionTurnCounter * 7919u
-                    + static_cast<uint32_t>(meltLoc.q) * 73856093u
-                    + static_cast<uint32_t>(meltLoc.r) * 19349663u;
+                uint32_t turnHash                  = this->m_depletionTurnCounter * 7919u +
+                                                     static_cast<uint32_t>(meltLoc.q) * 73856093u +
+                                                     static_cast<uint32_t>(meltLoc.r) * 19349663u;
                 checkNuclearMeltdown(gameState, grid, *cityPtr, turnHash);
             }
 
@@ -778,16 +863,21 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
     };
     std::vector<RankedRecipe> rankedRecipes;
     {
-        const std::vector<const ProductionRecipe*>& order = this->m_productionChain.executionOrder();
+        const std::vector<const ProductionRecipe*>& order =
+            this->m_productionChain.executionOrder();
         rankedRecipes.reserve(order.size());
         for (std::size_t i = 0; i < order.size(); ++i) {
             const ProductionRecipe* r = order[i];
-            if (r == nullptr) { continue; }
+            if (r == nullptr) {
+                continue;
+            }
             const int32_t outPrice = this->m_market.price(r->outputGoodId);
             float revenue = static_cast<float>(outPrice) * static_cast<float>(r->outputAmount);
-            float cost = 0.0f;
+            float cost    = 0.0f;
             for (const RecipeInput& input : r->inputs) {
-                if (!input.consumed) { continue; }
+                if (!input.consumed) {
+                    continue;
+                }
                 const int32_t ip = this->m_market.price(input.goodId);
                 cost += static_cast<float>(ip) * static_cast<float>(input.amount);
             }
@@ -795,26 +885,30 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
             rankedRecipes.push_back({r, profit, static_cast<int32_t>(i)});
         }
         std::stable_sort(rankedRecipes.begin(), rankedRecipes.end(),
-            [](const RankedRecipe& a, const RankedRecipe& b) {
-                if (a.profitability != b.profitability) {
-                    return a.profitability > b.profitability;
-                }
-                if (a.recipe->workerSlots != b.recipe->workerSlots) {
-                    return a.recipe->workerSlots < b.recipe->workerSlots;
-                }
-                return a.topoIndex < b.topoIndex;
-            });
+                         [](const RankedRecipe& a, const RankedRecipe& b) {
+                             if (a.profitability != b.profitability) {
+                                 return a.profitability > b.profitability;
+                             }
+                             if (a.recipe->workerSlots != b.recipe->workerSlots) {
+                                 return a.recipe->workerSlots < b.recipe->workerSlots;
+                             }
+                             return a.topoIndex < b.topoIndex;
+                         });
     }
 
     for (const RankedRecipe& ranked : rankedRecipes) {
         const ProductionRecipe* recipe = ranked.recipe;
         for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-            if (playerPtr == nullptr) { continue; }
+            if (playerPtr == nullptr) {
+                continue;
+            }
 
             for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-                if (cityPtr == nullptr) { continue; }
+                if (cityPtr == nullptr) {
+                    continue;
+                }
 
-                aoc::game::City* city = cityPtr.get();
+                aoc::game::City* city      = cityPtr.get();
                 CityProductionState& state = cityState[city];
 
                 if (!state.countedCityTurn) {
@@ -840,9 +934,15 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                     // hasAutomation() is the header's own name for "reached the
                     // third revolution". Re-testing the enum inline here is what
                     // left that accessor looking dead to an audit.
-                    if (ind.hasAutomation())                  { robotSlots += 3; }
-                    if (rev >= IndustrialRevolutionId::Fourth) { robotSlots += 3; }
-                    if (rev >= IndustrialRevolutionId::Fifth)  { robotSlots += 4; }
+                    if (ind.hasAutomation()) {
+                        robotSlots += 3;
+                    }
+                    if (rev >= IndustrialRevolutionId::Fourth) {
+                        robotSlots += 3;
+                    }
+                    if (rev >= IndustrialRevolutionId::Fifth) {
+                        robotSlots += 4;
+                    }
                 }
                 // ONE labour pool. Citizens standing on mines and wells are not
                 // also available to staff factories.
@@ -881,8 +981,8 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 }
 
                 // Tech gate: skip recipe if the player hasn't researched the required tech
-                if (recipe->requiredTech.isValid()
-                    && !playerPtr->tech().hasResearched(recipe->requiredTech)) {
+                if (recipe->requiredTech.isValid() &&
+                    !playerPtr->tech().hasResearched(recipe->requiredTech)) {
                     ++this->m_recipeSkips[static_cast<std::size_t>(SkipReason::Tech)];
                     continue;
                 }
@@ -900,10 +1000,10 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 {
                     const aoc::hex::AxialCoord loc = city->location();
                     const uint32_t locHash =
-                        (static_cast<uint32_t>(static_cast<uint16_t>(loc.q)) << 16)
-                      | static_cast<uint32_t>(static_cast<uint16_t>(loc.r));
-                    const uint16_t pref = this->recipePreference(
-                        city->owner(), locHash, recipe->requiredBuilding.value);
+                        (static_cast<uint32_t>(static_cast<uint16_t>(loc.q)) << 16) |
+                        static_cast<uint32_t>(static_cast<uint16_t>(loc.r));
+                    const uint16_t pref = this->recipePreference(city->owner(), locHash,
+                                                                 recipe->requiredBuilding.value);
                     if (pref != 0xFFFFu && pref != recipe->recipeId) {
                         ++this->m_recipeSkips[static_cast<std::size_t>(SkipReason::Preference)];
                         continue;
@@ -933,8 +1033,8 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                     continue;
                 }
 
-                float inputQualitySum = 0.0f;
-                int32_t inputCount    = 0;
+                float inputQualitySum         = 0.0f;
+                int32_t inputCount            = 0;
                 CityQualityComponent& quality = city->quality();
 
                 for (const RecipeInput& input : recipe->inputs) {
@@ -942,41 +1042,46 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                         playerPtr->economy().lastTurnConsumption[input.goodId] += input.amount;
                         if (!stockpile.consumeGoods(input.goodId, input.amount)) {
                             LOG_WARN("%s: consumeGoods failed for good %u despite "
-                                     "prior availability check", city->name().c_str(),
-                                     static_cast<unsigned>(input.goodId));
+                                     "prior availability check",
+                                     city->name().c_str(), static_cast<unsigned>(input.goodId));
                             continue;
                         }
-                        if (isMoneyMetalMintRecipe(recipe->recipeId)) {
-                            this->m_mintOreConsumed[static_cast<std::size_t>(playerPtr->id())] +=
-                                input.amount;
-                        }
+                        // Phase B: isMoneyMetalMintRecipe() removed; mintOreConsumed stays
+                        // at zero (mint recipes 34/35/36 no longer exist).
                         float q = quality.consumeGoods(input.goodId, input.amount);
                         inputQualitySum += q;
                         ++inputCount;
                     }
                 }
 
-                float avgInputQuality = (inputCount > 0)
-                    ? inputQualitySum / static_cast<float>(inputCount)
-                    : 0.0f;
+                float avgInputQuality =
+                    (inputCount > 0) ? inputQualitySum / static_cast<float>(inputCount) : 0.0f;
 
                 // Compute infrastructure bonus inline (mirrors computeInfrastructureBonus).
                 constexpr float BONUS_PER_INFRA = 0.05f;
-                constexpr float MAX_INFRA_BONUS  = 1.5f;
-                float infraBonus = 1.0f;
+                constexpr float MAX_INFRA_BONUS = 1.5f;
+                float infraBonus                = 1.0f;
                 for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
                     if (grid.isValid(tile) && grid.hasRoad(grid.toIndex(tile))) {
                         infraBonus += BONUS_PER_INFRA;
                     }
                 }
-                if (districts.hasDistrict(DistrictType::Harbor))  { infraBonus += BONUS_PER_INFRA; }
-                if (districts.hasBuilding(BuildingId{23}))         { infraBonus += BONUS_PER_INFRA; }
-                if (districts.hasBuilding(BuildingId{6}))          { infraBonus += BONUS_PER_INFRA; }
-                if (districts.hasBuilding(BuildingId{20}))         { infraBonus += BONUS_PER_INFRA; }
+                if (districts.hasDistrict(DistrictType::Harbor)) {
+                    infraBonus += BONUS_PER_INFRA;
+                }
+                if (districts.hasBuilding(BuildingId{23})) {
+                    infraBonus += BONUS_PER_INFRA;
+                }
+                if (districts.hasBuilding(BuildingId{6})) {
+                    infraBonus += BONUS_PER_INFRA;
+                }
+                if (districts.hasBuilding(BuildingId{20})) {
+                    infraBonus += BONUS_PER_INFRA;
+                }
                 infraBonus = std::min(infraBonus, MAX_INFRA_BONUS);
 
-                const float envModifier = computeEnvironmentModifier(
-                    grid, city->location(), recipe->requiredBuilding);
+                const float envModifier =
+                    computeEnvironmentModifier(grid, city->location(), recipe->requiredBuilding);
 
                 float powerEff = 1.0f;
                 std::unordered_map<aoc::game::City*, float>::iterator powerIt =
@@ -989,7 +1094,8 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 float expMultiplier = experience.efficiencyMultiplier(recipe->recipeId);
                 experience.addExperience(recipe->recipeId);
 
-                const float revMultiplier = playerPtr->industrial().cumulativeProductionMultiplier();
+                const float revMultiplier =
+                    playerPtr->industrial().cumulativeProductionMultiplier();
 
                 // C37: supply-chain health throttles output. Critical goods
                 // cut off -> productionMultiplier drops from 1.0 toward 0.5.
@@ -1001,8 +1107,8 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 // This creates demand for the tools supply chain and makes the
                 // Forge→Tools production path economically important.
                 float toolEff = 1.0f;
-                if (recipe->requiredBuilding.value <= 14  // Industrial buildings (0-14)
-                    && recipe->requiredBuilding.value != 6  // Not Market
+                if (recipe->requiredBuilding.value <= 14      // Industrial buildings (0-14)
+                    && recipe->requiredBuilding.value != 6    // Not Market
                     && recipe->requiredBuilding.value != 7) { // Not Library
                     constexpr uint16_t TOOLS_GOOD_ID = 63;
                     if (stockpile.getAmount(TOOLS_GOOD_ID) > 0) {
@@ -1010,14 +1116,14 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                         if (state.totalRecipesExecuted % 3 == 0) {
                             playerPtr->economy().lastTurnConsumption[TOOLS_GOOD_ID] += 1;
                         }
-                        if (state.totalRecipesExecuted % 3 == 0
-                            && !stockpile.consumeGoods(TOOLS_GOOD_ID, 1)) {
+                        if (state.totalRecipesExecuted % 3 == 0 &&
+                            !stockpile.consumeGoods(TOOLS_GOOD_ID, 1)) {
                             LOG_WARN("%s: consumeGoods failed for good %u despite "
-                                     "prior availability check", city->name().c_str(),
-                                     static_cast<unsigned>(TOOLS_GOOD_ID));
+                                     "prior availability check",
+                                     city->name().c_str(), static_cast<unsigned>(TOOLS_GOOD_ID));
                         }
                     } else {
-                        toolEff = 0.60f;  // No tools = 60% efficiency
+                        toolEff = 0.60f; // No tools = 60% efficiency
                     }
                 }
 
@@ -1027,11 +1133,17 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 // narrow the economic value of the manufacturing tree.
                 float chainMult = 1.0f;
                 switch (recipe->recipeId) {
-                    case 4: case 5: case 10: case 11: case 12: case 13:
-                    case 29:
-                        chainMult = aoc::balance::params().chainOutputMult;
-                        break;
-                    default: break;
+                case 4:
+                case 5:
+                case 10:
+                case 11:
+                case 12:
+                case 13:
+                case 29:
+                    chainMult = aoc::balance::params().chainOutputMult;
+                    break;
+                default:
+                    break;
                 }
 
                 // DataCenter synergy: Software recipes (24 Platform, 60
@@ -1044,19 +1156,21 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 if (recipe->recipeId == 24 || recipe->recipeId == 60) {
                     int32_t dcCount = 0;
                     for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
-                        if (!grid.isValid(tile)) { continue; }
-                        if (grid.improvement(grid.toIndex(tile))
-                            == aoc::map::ImprovementType::DataCenter) {
+                        if (!grid.isValid(tile)) {
+                            continue;
+                        }
+                        if (grid.improvement(grid.toIndex(tile)) ==
+                            aoc::map::ImprovementType::DataCenter) {
                             ++dcCount;
                         }
                     }
                     datacenterMult = 1.0f + std::min(2.0f, 0.5f * static_cast<float>(dcCount));
                 }
-                const int32_t boostedOutput = std::max(1, static_cast<int32_t>(
-                    static_cast<float>(recipe->outputAmount)
-                    * infraBonus * envModifier * powerEff * expMultiplier
-                    * revMultiplier * toolEff * supplyMultiplier
-                    * chainMult * datacenterMult));
+                const int32_t boostedOutput = std::max(
+                    1,
+                    static_cast<int32_t>(static_cast<float>(recipe->outputAmount) * infraBonus *
+                                         envModifier * powerEff * expMultiplier * revMultiplier *
+                                         toolEff * supplyMultiplier * chainMult * datacenterMult));
                 stockpile.addGoods(recipe->outputGoodId, boostedOutput);
 
                 // Phase-2 fix (2026-05-03): record this turn's production on
@@ -1066,8 +1180,7 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 // any other phase. everSupplied is cumulative-ever so the
                 // Industrial Revolution Path B test still recognises goods
                 // produced and immediately consumed the same turn.
-                playerPtr->economy().lastTurnProduction[recipe->outputGoodId]
-                    += boostedOutput;
+                playerPtr->economy().lastTurnProduction[recipe->outputGoodId] += boostedOutput;
                 playerPtr->economy().everSupplied.insert(recipe->outputGoodId);
 
                 // Recipe-fire audit: per-game counter + milestone log
@@ -1092,37 +1205,30 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 // seed above): this hash fires for every recipe execution and
                 // was the dominant source of same-seed run divergence.
                 const aoc::hex::AxialCoord qLoc = city->location();
-                const uint32_t cityKey = static_cast<uint32_t>(qLoc.q) * 73856093u
-                    + static_cast<uint32_t>(qLoc.r) * 19349663u;
-                uint32_t qualityHash   = this->m_depletionTurnCounter * 2654435761u
-                    + cityKey * 2246822519u
-                    + recipe->recipeId * 104729u;
+                const uint32_t cityKey          = static_cast<uint32_t>(qLoc.q) * 73856093u +
+                                                  static_cast<uint32_t>(qLoc.r) * 19349663u;
+                uint32_t qualityHash      = this->m_depletionTurnCounter * 2654435761u +
+                                            cityKey * 2246822519u + recipe->recipeId * 104729u;
                 QualityTier outputQuality = determineOutputQuality(
-                    buildingLevel,
-                    experience.getExperience(recipe->recipeId),
-                    hasPrecisionInstr,
-                    avgInputQuality,
-                    qualityHash);
+                    buildingLevel, experience.getExperience(recipe->recipeId), hasPrecisionInstr,
+                    avgInputQuality, qualityHash);
                 quality.addGoods(recipe->outputGoodId, boostedOutput, outputQuality);
 
-                if (recipe->outputGoodId == goods::COPPER_COINS
-                    || recipe->outputGoodId == goods::SILVER_COINS
-                    || recipe->outputGoodId == goods::GOLD_BARS) {
+                if (recipe->outputGoodId == goods::COPPER_COINS ||
+                    recipe->outputGoodId == goods::SILVER_COINS ||
+                    recipe->outputGoodId == goods::GOLD_BARS) {
                     int32_t existing = stockpile.getAmount(recipe->outputGoodId);
                     if (existing <= boostedOutput) {
                         LOG_INFO("First coins minted: %d x good %u in '%s' (player %u)",
-                                 boostedOutput,
-                                 static_cast<unsigned>(recipe->outputGoodId),
-                                 city->name().c_str(),
-                                 static_cast<unsigned>(city->owner()));
+                                 boostedOutput, static_cast<unsigned>(recipe->outputGoodId),
+                                 city->name().c_str(), static_cast<unsigned>(city->owner()));
                     }
                 }
 
                 // Accumulate waste inline (mirrors accumulateWaste).
                 WasteOutput waste = buildingWasteOutput(recipe->requiredBuilding);
-                if (waste.amount > 0
-                    && waste.type != static_cast<WasteType>(
-                            static_cast<uint8_t>(WasteType::Count))) {
+                if (waste.amount > 0 &&
+                    waste.type != static_cast<WasteType>(static_cast<uint8_t>(WasteType::Count))) {
                     CityPollutionComponent& pollution = city->pollution();
                     pollution.wasteAccumulated += waste.amount;
                     if (waste.type == WasteType::Emissions) {
@@ -1138,14 +1244,22 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
 
     // --- Pass 3: waste treatment ---
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-            if (cityPtr == nullptr) { continue; }
+            if (cityPtr == nullptr) {
+                continue;
+            }
             CityPollutionComponent& pollution = cityPtr->pollution();
-            if (pollution.wasteAccumulated <= 0) { continue; }
-            if (!cityPtr->districts().hasBuilding(WASTE_TREATMENT_PLANT)) { continue; }
+            if (pollution.wasteAccumulated <= 0) {
+                continue;
+            }
+            if (!cityPtr->districts().hasBuilding(WASTE_TREATMENT_PLANT)) {
+                continue;
+            }
             constexpr int32_t TREATMENT_RATE = 5;
-            int32_t treated = std::min(pollution.wasteAccumulated, TREATMENT_RATE);
+            int32_t treated                  = std::min(pollution.wasteAccumulated, TREATMENT_RATE);
             pollution.wasteAccumulated -= treated;
             if (treated > 0) {
                 cityPtr->stockpile().addGoods(goods::CONSTRUCTION_MAT, treated / 2);
@@ -1161,8 +1275,12 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
 void EconomySimulation::processInternalTradeForAllPlayers(aoc::game::GameState& gameState,
                                                           const aoc::map::HexGrid& grid) {
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
-        if (playerPtr->cities().empty()) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
+        if (playerPtr->cities().empty()) {
+            continue;
+        }
         processInternalTrade(gameState, grid, playerPtr->id());
     }
 }
@@ -1172,7 +1290,7 @@ void EconomySimulation::processInternalTradeForAllPlayers(aoc::game::GameState& 
 // ============================================================================
 
 void EconomySimulation::applyResourceDepletion(aoc::game::GameState& /*gameState*/,
-                                                aoc::map::HexGrid& /*grid*/) {
+                                               aoc::map::HexGrid& /*grid*/) {
     ++this->m_depletionTurnCounter;
     // Depletion is handled via reserve consumption in harvestResources().
     // Future: add renewable regeneration for unworked tiles here.
@@ -1186,19 +1304,23 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
     // C34: stockpile cap + spoilage. Per-good cap scales with Granary building
     // (food preservation). Overflow is sold at 20% of base price (fire-sale)
     // so a glut actually reaches the market instead of sitting forever.
-    constexpr int32_t kBaseCap = 2000;
+    constexpr int32_t kBaseCap      = 2000;
     constexpr int32_t kGranaryBonus = 2000;
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-            if (cityPtr == nullptr) { continue; }
-            const int32_t cap = kBaseCap
-                + (cityPtr->hasBuilding(BuildingId{15}) ? kGranaryBonus : 0);
+            if (cityPtr == nullptr) {
+                continue;
+            }
+            const int32_t cap =
+                kBaseCap + (cityPtr->hasBuilding(BuildingId{15}) ? kGranaryBonus : 0);
             CityStockpileComponent& stock = cityPtr->stockpile();
             for (std::pair<const uint16_t, int32_t>& entry : stock.goods) {
-                if (entry.second > cap && !isCoinGood(entry.first)) { // coin is swept, not sold
-                    const int32_t excess = entry.second - cap;
-                    const GoodDef& def = goodDef(entry.first);
+                if (entry.second > cap) { // retired goods clear via fire-sale like any other
+                    const int32_t excess              = entry.second - cap;
+                    const GoodDef& def                = goodDef(entry.first);
                     const CurrencyAmount fireSaleGold = static_cast<CurrencyAmount>(
                         static_cast<float>(excess) * static_cast<float>(def.basePrice) * 0.2f);
                     if (fireSaleGold > 0) {
@@ -1212,10 +1334,14 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
     }
 
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
 
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-            if (cityPtr == nullptr) { continue; }
+            if (cityPtr == nullptr) {
+                continue;
+            }
 
             const CityStockpileComponent& stockpile = cityPtr->stockpile();
             for (const std::pair<const uint16_t, int32_t>& entry : stockpile.goods) {
@@ -1231,11 +1357,11 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
             this->m_market.reportDemand(goods::CONSUMER_GOODS, cityPtr->population() / 3 + 1);
             if (cityPtr->population() > 5) {
                 this->m_market.reportDemand(goods::PROCESSED_FOOD,
-                    (cityPtr->population() - 5) / 2 + 1);
+                                            (cityPtr->population() - 5) / 2 + 1);
             }
             if (cityPtr->population() > 10) {
                 this->m_market.reportDemand(goods::ADV_CONSUMER_GOODS,
-                    (cityPtr->population() - 10) / 3 + 1);
+                                            (cityPtr->population() - 10) / 3 + 1);
             }
 
             // 2026-05-03: industrial-good demand from active recipe inputs.
@@ -1256,17 +1382,20 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
             // recipe 38 profitable enough for the ranker to schedule it.
             const aoc::sim::CityDistrictsComponent& cdists = cityPtr->districts();
             for (const ProductionRecipe& rcp : allRecipes()) {
-                if (!cdists.hasBuilding(rcp.requiredBuilding)) { continue; }
-                if (rcp.requiredTech.isValid()
-                    && !playerPtr->tech().hasResearched(rcp.requiredTech)) {
+                if (!cdists.hasBuilding(rcp.requiredBuilding)) {
                     continue;
                 }
-                const int32_t outBase = goodDef(rcp.outputGoodId).basePrice;
+                if (rcp.requiredTech.isValid() &&
+                    !playerPtr->tech().hasResearched(rcp.requiredTech)) {
+                    continue;
+                }
+                const int32_t outBase           = goodDef(rcp.outputGoodId).basePrice;
                 const int32_t demandScaleRecipe = std::max(1, outBase / 5);
                 for (const RecipeInput& in : rcp.inputs) {
-                    if (!in.consumed) { continue; }
-                    this->m_market.reportDemand(
-                        in.goodId, in.amount * demandScaleRecipe);
+                    if (!in.consumed) {
+                        continue;
+                    }
+                    this->m_market.reportDemand(in.goodId, in.amount * demandScaleRecipe);
                 }
             }
 
@@ -1276,12 +1405,14 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
             // build those units pulls on the corresponding chain. Drives
             // Computers/Software demand into the market.
             for (const aoc::sim::UnitTypeDef& udef : aoc::sim::UNIT_TYPE_DEFS) {
-                if (udef.requiredTech.isValid()
-                    && !playerPtr->tech().hasResearched(udef.requiredTech)) {
+                if (udef.requiredTech.isValid() &&
+                    !playerPtr->tech().hasResearched(udef.requiredTech)) {
                     continue;
                 }
                 for (const aoc::sim::UnitResourceReq& req : udef.resourceReqs) {
-                    if (!req.isValid()) { continue; }
+                    if (!req.isValid()) {
+                        continue;
+                    }
                     this->m_market.reportDemand(req.goodId, req.amount);
                 }
             }
@@ -1293,11 +1424,11 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
             // no reason to fire.  Each citizen consumes a small fraction
             // per turn; missing goods just don't drain (no negative).
             CityStockpileComponent& stockpileMut = cityPtr->stockpile();
-            const int32_t pop = cityPtr->population();
-            const float demandScale = aoc::balance::params().consumerDemandScale;
-            const int32_t consumerDrain = static_cast<int32_t>(
-                static_cast<float>(pop / 3 + 1) * demandScale);
-            const int32_t avail = stockpileMut.getAmount(goods::CONSUMER_GOODS);
+            const int32_t pop                    = cityPtr->population();
+            const float demandScale              = aoc::balance::params().consumerDemandScale;
+            const int32_t consumerDrain =
+                static_cast<int32_t>(static_cast<float>(pop / 3 + 1) * demandScale);
+            const int32_t avail        = stockpileMut.getAmount(goods::CONSUMER_GOODS);
             const int32_t consumerTake = std::min(consumerDrain, avail);
             if (consumerTake > 0) {
                 // consumerTake is capped at `avail` above, so this cannot fail.
@@ -1321,18 +1452,18 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
             cityPtr->happiness().consumerSatisfaction =
                 (!canProduceConsumerGoods)
                     ? SATISFACTION_NEUTRAL
-                    : ((consumerDrain > 0)
-                           ? std::clamp(static_cast<float>(consumerTake) /
-                                            static_cast<float>(consumerDrain),
-                                        0.0f, 1.0f)
-                           : 1.0f);
+                    : ((consumerDrain > 0) ? std::clamp(static_cast<float>(consumerTake) /
+                                                            static_cast<float>(consumerDrain),
+                                                        0.0f, 1.0f)
+                                           : 1.0f);
             if (pop > 10) {
                 const int32_t advDrain = (pop - 10) / 3 + 1;
                 const int32_t advAvail = stockpileMut.getAmount(goods::ADV_CONSUMER_GOODS);
-                const int32_t advTake = std::min(advDrain, advAvail);
+                const int32_t advTake  = std::min(advDrain, advAvail);
                 if (advTake > 0) {
                     // Best-effort drain, same reasoning as CONSUMER_GOODS above.
-                    static_cast<void>(stockpileMut.consumeGoods(goods::ADV_CONSUMER_GOODS, advTake));
+                    static_cast<void>(
+                        stockpileMut.consumeGoods(goods::ADV_CONSUMER_GOODS, advTake));
                 }
             }
         }
@@ -1343,31 +1474,33 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
 // Step 4: Execute active trade routes
 // ============================================================================
 
-
 // ============================================================================
 // Step 5: Monetary policy
 // ============================================================================
 
 void EconomySimulation::executeMonetaryPolicy(aoc::game::GameState& gameState) {
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
 
         MonetaryStateComponent& state = playerPtr->monetary();
 
         CurrencyAmount currentGDP = 0;
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-            if (cityPtr == nullptr) { continue; }
+            if (cityPtr == nullptr) {
+                continue;
+            }
             for (const std::pair<const uint16_t, int32_t>& entry : cityPtr->stockpile().goods) {
                 if (entry.second > 0) {
-                    currentGDP += static_cast<CurrencyAmount>(entry.second)
-                                * static_cast<CurrencyAmount>(this->m_market.price(entry.first));
+                    currentGDP += static_cast<CurrencyAmount>(entry.second) *
+                                  static_cast<CurrencyAmount>(this->m_market.price(entry.first));
                 }
             }
         }
 
         float bankingMult = bankingGDPMultiplier(state);
-        currentGDP = static_cast<CurrencyAmount>(
-            static_cast<float>(currentGDP) * bankingMult);
+        currentGDP = static_cast<CurrencyAmount>(static_cast<float>(currentGDP) * bankingMult);
 
         CurrencyAmount prevGDP   = this->m_previousGDP[playerPtr->id()];
         CurrencyAmount prevMoney = this->m_previousMoneySupply[playerPtr->id()];
@@ -1394,17 +1527,25 @@ void EconomySimulation::executeMonetaryPolicy(aoc::game::GameState& gameState) {
     }
 
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
         const CurrencyTrustComponent& trust = playerPtr->currencyTrust();
-        if (!trust.isReserveCurrency) { continue; }
+        if (!trust.isReserveCurrency) {
+            continue;
+        }
 
         MonetaryStateComponent& reserveState = playerPtr->monetary();
-        CurrencyAmount foreignGDP   = totalGDP - reserveState.gdp;
-        CurrencyAmount seigniorage  = computeSeigniorage(reserveState, true, foreignGDP);
-        if (seigniorage <= 0 || foreignGDP <= 0) { continue; }
+        CurrencyAmount foreignGDP            = totalGDP - reserveState.gdp;
+        CurrencyAmount seigniorage           = computeSeigniorage(reserveState, true, foreignGDP);
+        if (seigniorage <= 0 || foreignGDP <= 0) {
+            continue;
+        }
         // Paid by the foreigners holding the currency, in proportion to their economies.
         for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
-            if (other == nullptr || other.get() == playerPtr.get() || other->monetary().gdp <= 0) { continue; }
+            if (other == nullptr || other.get() == playerPtr.get() || other->monetary().gdp <= 0) {
+                continue;
+            }
             const CurrencyAmount share = seigniorage * other->monetary().gdp / foreignGDP;
             takeFromPrivate(gameState, other->id(), *playerPtr, share);
         }
@@ -1414,7 +1555,6 @@ void EconomySimulation::executeMonetaryPolicy(aoc::game::GameState& gameState) {
 // ============================================================================
 // Step 4b: Settle trade route imbalances in coins
 // ============================================================================
-
 
 // ============================================================================
 // The coin sweep: minted coin goods become money
@@ -1433,68 +1573,15 @@ int32_t takeAll(CityStockpileComponent& stockpile, uint16_t goodId) {
 
 } // namespace
 
-void EconomySimulation::sweepCoins(aoc::game::GameState& gameState) {
+void EconomySimulation::monetiseGoods(aoc::game::GameState& gameState) {
+    // Phase B stub: no good has been designated as money yet (Phase C adds
+    // requestSetMoneyGood). For non-Barter civs, keep moneySupply consistent
+    // with their private pools so downstream inflation / trust reads are live.
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
-
+        if (playerPtr == nullptr) {
+            continue;
+        }
         MonetaryStateComponent& state = playerPtr->monetary();
-        int32_t copper = 0;
-        int32_t silver = 0;
-        int32_t gold   = 0;
-        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
-            if (cityPtr == nullptr || cityPtr->owner() != playerPtr->id()) { continue; }
-            copper += takeAll(cityPtr->stockpile(), goods::COPPER_COINS);
-            silver += takeAll(cityPtr->stockpile(), goods::SILVER_COINS);
-            gold   += takeAll(cityPtr->stockpile(), goods::GOLD_BARS);
-        }
-        // The counters now accumulate what was ever minted per metal; they
-        // used to be rebuilt from the stockpiles every turn, so coin sold as
-        // cargo or spent vanished from the record.
-        state.copperCoinReserves += copper;
-        state.silverCoinReserves += silver;
-        state.goldBarReserves   += gold;
-        const CurrencyAmount face = static_cast<CurrencyAmount>(copper) * COPPER_COIN_VALUE
-                                  + static_cast<CurrencyAmount>(silver) * SILVER_COIN_VALUE
-                                  + static_cast<CurrencyAmount>(gold) * GOLD_BAR_VALUE;
-        if (state.system == MonetarySystemType::Barter) {
-            // Metal held until coinage is adopted; money all the same.
-            state.bullion += face;
-            this->m_ledger.record(playerPtr->id(), MoneyFlow::minted(), face);
-        } else {
-            // Adoption (automatic until Phase 2.5) turns the bullion into coin in
-            // private hands; new coin pays the Mint its seigniorage.
-            state.privateSpecie += state.bullion;
-            state.bullion        = 0;
-            const CurrencyAmount seigniorage = face * SEIGNIORAGE_PCT / 100;
-            state.privateSpecie += face - seigniorage;
-            this->m_ledger.record(playerPtr->id(), MoneyFlow::minted(), face - seigniorage);
-            playerPtr->addGold(seigniorage, MoneyFlow::minted());
-            this->m_ledger.civs[static_cast<std::size_t>(playerPtr->id())].seigniorage += seigniorage;
-        }
-
-        CoinTier previousTier = state.effectiveCoinTier;
-        state.updateCoinTier();
-
-        if (state.system == MonetarySystemType::Barter
-            && previousTier == CoinTier::None
-            && state.effectiveCoinTier != CoinTier::None) {
-            LOG_INFO("Player %u reached coin tier %.*s: Cu=%d Ag=%d Au=%d",
-                     static_cast<unsigned>(playerPtr->id()),
-                     static_cast<int>(coinTierName(state.effectiveCoinTier).size()),
-                     coinTierName(state.effectiveCoinTier).data(),
-                     state.copperCoinReserves, state.silverCoinReserves, state.goldBarReserves);
-        }
-
-        if (state.effectiveCoinTier != previousTier) {
-            LOG_INFO("Player %u coin tier changed: %.*s -> %.*s",
-                     static_cast<unsigned>(playerPtr->id()),
-                     static_cast<int>(coinTierName(previousTier).size()), coinTierName(previousTier).data(),
-                     static_cast<int>(coinTierName(state.effectiveCoinTier).size()),
-                     coinTierName(state.effectiveCoinTier).data());
-        }
-
-        // The money supply is the money: treasury, the people's coin and their
-        // notes (plan 2.6). The Fisher path reads its growth.
         if (state.system != MonetarySystemType::Barter) {
             state.moneySupply = state.treasury + state.privateSpecie + state.privateNotes;
         }
@@ -1509,7 +1596,9 @@ void EconomySimulation::tickMonetaryMechanics(aoc::game::GameState& gameState) {
     int32_t playerCount = static_cast<int32_t>(gameState.players().size());
 
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
 
         MonetaryStateComponent& state = playerPtr->monetary();
         ++state.turnsInCurrentSystem;
@@ -1521,8 +1610,8 @@ void EconomySimulation::tickMonetaryMechanics(aoc::game::GameState& gameState) {
             }
         }
 
-        if (state.system == MonetarySystemType::FiatMoney
-            || state.system == MonetarySystemType::Digital) {
+        if (state.system == MonetarySystemType::FiatMoney ||
+            state.system == MonetarySystemType::Digital) {
             CurrencyTrustComponent& trust = playerPtr->currencyTrust();
             if (trust.trustScore == 0.0f) {
                 // First fiat/digital turn: initialise trust
@@ -1543,9 +1632,11 @@ void EconomySimulation::tickMonetaryMechanics(aoc::game::GameState& gameState) {
 
 void EconomySimulation::processCrisisAndBonds(aoc::game::GameState& gameState) {
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
 
-        MonetaryStateComponent& state = playerPtr->monetary();
+        MonetaryStateComponent& state   = playerPtr->monetary();
         CurrencyCrisisComponent& crisis = playerPtr->currencyCrisis();
         if (crisis.owner == INVALID_PLAYER) {
             crisis.owner = playerPtr->id();
@@ -1553,24 +1644,16 @@ void EconomySimulation::processCrisisAndBonds(aoc::game::GameState& gameState) {
         // Reserve-ratio stress must run BEFORE processCurrencyCrisis so the
         // forced GoldStandard -> Fiat suspension lands before hyperinflation
         // checks see the new fiat state.
-        CurrencyTrustComponent& trust = playerPtr->currencyTrust();
-        const int32_t goldBefore = state.goldBarReserves;
+        CurrencyTrustComponent& trust     = playerPtr->currencyTrust();
+        const CurrencyAmount specieBefore = state.privateSpecie;
         processReserveStress(state, trust);
         processCurrencyCrisis(gameState, state, crisis, trust);
-        // A bank or redemption run carries metal abroad; the reserve counters
-        // used to be rebuilt from the stockpiles next turn, so no drain ever
-        // lasted. Now the metal stays gone and the money it backed leaves the
-        // world with it, out of private hands first.
+        // A bank or redemption run drains the private specie pool; the money
+        // that leaves the pool also leaves the world.
         const CurrencyAmount drained =
-            static_cast<CurrencyAmount>(std::max(0, goldBefore - state.goldBarReserves)) * GOLD_BAR_VALUE;
+            std::max<CurrencyAmount>(0, specieBefore - state.privateSpecie);
         if (drained > 0) {
-            const CurrencyAmount fromPrivate = std::min(drained, std::max<CurrencyAmount>(0, state.privateSpecie));
-            state.privateSpecie -= fromPrivate;
-            this->m_ledger.record(playerPtr->id(), MoneyFlow::external(), -fromPrivate);
-            if (fromPrivate < drained) {
-                playerPtr->addGold(-std::min(drained - fromPrivate, std::max<CurrencyAmount>(0, playerPtr->treasury())),
-                                   MoneyFlow::external());
-            }
+            this->m_ledger.record(playerPtr->id(), MoneyFlow::external(), -drained);
         }
     }
 
@@ -1584,14 +1667,16 @@ void EconomySimulation::processCrisisAndBonds(aoc::game::GameState& gameState) {
 // ============================================================================
 
 void EconomySimulation::processEconomicZonesAndSpeculation(aoc::game::GameState& gameState,
-                                                            aoc::map::HexGrid& grid) {
+                                                           aoc::map::HexGrid& grid) {
     processEconomicZones(gameState, grid, this->m_market, this->m_economicZones);
     processSanctions(gameState, this->m_sanctions);
     processSpeculation(gameState, this->m_market);
 
     // Check industrial revolution progress for all players
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        if (playerPtr == nullptr) { continue; }
+        if (playerPtr == nullptr) {
+            continue;
+        }
         checkIndustrialRevolution(gameState, playerPtr->id(),
                                   static_cast<TurnNumber>(this->m_depletionTurnCounter));
     }

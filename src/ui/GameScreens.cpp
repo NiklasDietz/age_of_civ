@@ -2032,7 +2032,7 @@ void EconomyScreen::open(UIManager& ui) {
     std::string infoText = "No economic data";
     if (monetary != nullptr) {
         infoText = "System: " + std::string(aoc::sim::monetarySystemName(monetary->system)) +
-                   "  Coins: " + std::string(aoc::sim::coinTierName(monetary->effectiveCoinTier)) +
+                   "  MoneyGood: " + (monetary->moneyGood != aoc::sim::NO_MONEY_GOOD ? std::to_string(monetary->moneyGood) : std::string("none")) +
                    "  Treasury: " + std::to_string(monetary->treasury) +
                    "  Money: " + std::to_string(monetary->moneySupply) + "  Inflation: " +
                    std::to_string(static_cast<int>(monetary->inflationRate * 100.0f)) + "%";
@@ -2112,21 +2112,14 @@ void EconomyScreen::open(UIManager& ui) {
             if (nextOrd < static_cast<uint8_t>(aoc::sim::MonetarySystemType::Count)) {
                 const aoc::sim::MonetarySystemType next =
                     static_cast<aoc::sim::MonetarySystemType>(nextOrd);
-                const aoc::sim::CoinTier tier =
-                    next == aoc::sim::MonetarySystemType::CommodityMoney
-                        ? aoc::sim::preferredCoinTier(*monetary)
-                        : aoc::sim::CoinTier::None;
                 ButtonData regimeBtn;
-                regimeBtn.label = "Adopt " + std::string(aoc::sim::monetarySystemName(next)) +
-                                  (tier != aoc::sim::CoinTier::None
-                                       ? " (" + std::string(aoc::sim::coinTierName(tier)) + ")"
-                                       : std::string());
+                regimeBtn.label = "Adopt " + std::string(aoc::sim::monetarySystemName(next));
                 regimeBtn.fontSize     = 11.0f;
                 regimeBtn.normalColor  = tokens::BRONZE_BASE;
                 regimeBtn.cornerRadius = 3.0f;
-                regimeBtn.onClick      = [gsPtr, player, next, tier]() {
+                regimeBtn.onClick      = [gsPtr, player, next]() {
                     const aoc::ErrorCode rc =
-                        aoc::sim::requestSetMonetaryRegime(*gsPtr, player, next, tier);
+                        aoc::sim::requestSetMonetaryRegime(*gsPtr, player, next);
                     LOG_INFO("Adopt %.*s: %.*s", static_cast<int>(aoc::sim::monetarySystemName(next).size()),
                              aoc::sim::monetarySystemName(next).data(),
                              static_cast<int>(aoc::describeError(rc).size()), aoc::describeError(rc).data());
@@ -2411,15 +2404,7 @@ void EconomyScreen::refresh(UIManager& ui) {
     if (monetary != nullptr) {
         infoText = std::string(aoc::sim::monetarySystemName(monetary->system));
 
-        // Coin reserves detail
-        if (monetary->system == aoc::sim::MonetarySystemType::CommodityMoney ||
-            monetary->system == aoc::sim::MonetarySystemType::GoldStandard) {
-            infoText += "  Cu:" + std::to_string(monetary->copperCoinReserves) +
-                        " Ag:" + std::to_string(monetary->silverCoinReserves) +
-                        " Au:" + std::to_string(monetary->goldBarReserves);
-        }
-
-        infoText += "  Tier:" + std::string(aoc::sim::coinTierName(monetary->effectiveCoinTier)) +
+        infoText += "  Specie:" + std::to_string(monetary->privateSpecie) +
                     "  Treasury:" + std::to_string(monetary->treasury);
 
         if (monetary->system != aoc::sim::MonetarySystemType::Barter) {

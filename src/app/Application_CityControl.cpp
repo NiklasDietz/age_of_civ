@@ -492,8 +492,8 @@ void Application::executeGameControlCommand(const aoc::debug::QueueProjectComman
 }
 
 void Application::executeGameControlCommand(const aoc::debug::PlaceImprovementCommand& cmd) {
-    const ErrorCode rc       = aoc::sim::requestPlaceImprovement(this->m_gameState, this->m_hexGrid,
-                                                                 cmd.player, cmd.at, cmd.type);
+    const ErrorCode rc = aoc::sim::requestPlaceImprovement(this->m_gameState, this->m_hexGrid,
+                                                           cmd.player, cmd.at, cmd.type);
     if (rc != ErrorCode::Ok) {
         warnRejected("Improvement", cmd.player, cmd.at, rc);
         return;
@@ -948,25 +948,24 @@ void Application::registerDealRoutes() {
     using Query = std::unordered_map<std::string, std::string>;
 
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/monetary/regime", [this](const Query& q, const std::string&) -> std::string {
+        DSM::Post, "/game/monetary/regime",
+        [this](const Query& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
             int32_t player = 0;
             int32_t target = 0;
-            int32_t tier   = 0;
             std::string err;
-            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "target", target, err) ||
-                !readOptionalInt(q, "tier", 0, tier, err)) {
+            if (!readIntParam(q, "player", player, err) ||
+                !readIntParam(q, "target", target, err)) {
                 return err;
             }
-            if (player < 0 || player >= MAX_PLAYERS || target < 0 || target > 255 || tier < 0 || tier > 255) {
-                return std::string("{\"error\":\"player, target or tier out of range\"}");
+            if (player < 0 || player >= MAX_PLAYERS || target < 0 || target > 255) {
+                return std::string("{\"error\":\"player or target out of range\"}");
             }
             aoc::debug::MonetaryRegimeCommand cmd{};
-            cmd.player = static_cast<aoc::PlayerId>(player);
-            cmd.target = static_cast<uint8_t>(target);
-            cmd.tier   = static_cast<uint8_t>(tier);
+            cmd.player                 = static_cast<aoc::PlayerId>(player);
+            cmd.target                 = static_cast<uint8_t>(target);
             const std::string_view why = aoc::debug::regimeCommandError(cmd);
             if (!why.empty()) {
                 return "{\"error\":\"" + std::string(why) + "\"}";
@@ -1010,15 +1009,15 @@ void Application::registerDealRoutes() {
             if (player < 0 || target < 0 || player >= MAX_PLAYERS || target >= MAX_PLAYERS) {
                 return std::string("{\"error\":\"player or target out of range\"}");
             }
-            cmd.player        = static_cast<aoc::PlayerId>(player);
-            cmd.target        = static_cast<aoc::PlayerId>(target);
-            cmd.giveGold      = giveGold;
-            cmd.askGold       = askGold;
-            cmd.openBorders   = openBorders != 0;
-            cmd.nonAggression = nonAggression != 0;
-            cmd.goodSell      = goodSell != 0;
-            cmd.contractSell  = contractSell != 0;
-            cmd.exclusiveSell = exclusiveSell != 0;
+            cmd.player                 = static_cast<aoc::PlayerId>(player);
+            cmd.target                 = static_cast<aoc::PlayerId>(target);
+            cmd.giveGold               = giveGold;
+            cmd.askGold                = askGold;
+            cmd.openBorders            = openBorders != 0;
+            cmd.nonAggression          = nonAggression != 0;
+            cmd.goodSell               = goodSell != 0;
+            cmd.contractSell           = contractSell != 0;
+            cmd.exclusiveSell          = exclusiveSell != 0;
             const std::string_view why = aoc::debug::dealCommandError(cmd);
             if (!why.empty()) {
                 return "{\"error\":\"" + std::string(why) + "\"}";
@@ -1131,7 +1130,8 @@ void Application::registerDealRoutes() {
                 }
                 json += "],\"seekers\":[";
                 for (std::size_t s = 0; s < row.seekers.size(); ++s) {
-                    json += (s > 0 ? "," : "") + std::to_string(static_cast<unsigned>(row.seekers[s]));
+                    json +=
+                        (s > 0 ? "," : "") + std::to_string(static_cast<unsigned>(row.seekers[s]));
                 }
                 json += "]}";
             }
@@ -1141,12 +1141,10 @@ void Application::registerDealRoutes() {
 
 void Application::executeGameControlCommand(const aoc::debug::MonetaryRegimeCommand& cmd) {
     const aoc::ErrorCode rc = aoc::sim::requestSetMonetaryRegime(
-        this->m_gameState, cmd.player, static_cast<aoc::sim::MonetarySystemType>(cmd.target),
-        static_cast<aoc::sim::CoinTier>(cmd.tier));
-    LOG_INFO("Monetary regime request (player %u, target %u, tier %u): %.*s",
+        this->m_gameState, cmd.player, static_cast<aoc::sim::MonetarySystemType>(cmd.target));
+    LOG_INFO("Monetary regime request (player %u, target %u): %.*s",
              static_cast<unsigned>(cmd.player), static_cast<unsigned>(cmd.target),
-             static_cast<unsigned>(cmd.tier), static_cast<int>(aoc::describeError(rc).size()),
-             aoc::describeError(rc).data());
+             static_cast<int>(aoc::describeError(rc).size()), aoc::describeError(rc).data());
 }
 
 void Application::executeGameControlCommand(const aoc::debug::ProposeDealCommand& cmd) {
@@ -1217,15 +1215,16 @@ void Application::executeGameControlCommand(const aoc::debug::ProposeDealCommand
     }
     logDiplomacyResult("Deal proposal", cmd.player, cmd.target,
                        aoc::sim::requestProposeDeal(this->m_gameState, this->m_hexGrid,
-                                                    this->m_gameState.deals(), this->m_diplomacy, deal,
-                                                    this->m_gameState.currentTurn(),
+                                                    this->m_gameState.deals(), this->m_diplomacy,
+                                                    deal, this->m_gameState.currentTurn(),
                                                     &this->m_economy.market()));
 }
 
 void Application::executeGameControlCommand(const aoc::debug::RespondProposalCommand& cmd) {
     const ErrorCode rc = aoc::sim::requestRespondToProposal(
-        this->m_gameState, this->m_hexGrid, this->m_gameState.deals(), this->m_diplomacy, cmd.player,
-        static_cast<std::size_t>(cmd.index), cmd.accept, this->m_gameState.currentTurn());
+        this->m_gameState, this->m_hexGrid, this->m_gameState.deals(), this->m_diplomacy,
+        cmd.player, static_cast<std::size_t>(cmd.index), cmd.accept,
+        this->m_gameState.currentTurn());
     if (rc != ErrorCode::Ok) {
         LOG_WARN("Proposal answer by player %u rejected: %.*s", static_cast<unsigned>(cmd.player),
                  static_cast<int>(describeError(rc).size()), describeError(rc).data());

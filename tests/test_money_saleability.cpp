@@ -54,10 +54,8 @@ TEST_CASE("acceptance by trading partners raises saleability") {
 }
 
 TEST_CASE("acceptance can beat abundance, which is the whole point") {
-    // This is the case preferredCoinTier got wrong. It ranks on reserves alone,
-    // so the commonest ore always wins and every civ on every seed measured
-    // ended on copper. A good ten times scarcer, but which the civ's partners
-    // already take, has to win or money never converges on anything.
+    // Acceptance beats abundance. A good ten times scarcer, but which the civ's
+    // partners already take, has to win or money never converges on anything.
     SaleabilityInputs abundantAndIgnored = baseline();
     abundantAndIgnored.held              = 1000;
     abundantAndIgnored.acceptingWeight   = 0;

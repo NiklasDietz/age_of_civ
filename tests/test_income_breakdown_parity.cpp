@@ -93,9 +93,7 @@ struct Empire {
         return aoc::sim::collectionEfficiency(player, world.grid);
     }
 
-    CurrencyAmount collect() {
-        return aoc::sim::processGoldIncome(player, world.grid);
-    }
+    CurrencyAmount collect() { return aoc::sim::processGoldIncome(player, world.grid); }
 };
 
 [[nodiscard]] CurrencyAmount channelSum(const EconomicBreakdown& bd) {
@@ -104,7 +102,8 @@ struct Empire {
 
 } // namespace
 
-TEST_CASE("processGoldIncome draws the breakdown's tax out of private money and reports the total") {
+TEST_CASE(
+    "processGoldIncome draws the breakdown's tax out of private money and reports the total") {
     Empire e;
     const EconomicBreakdown bd = e.breakdown();
     CHECK(bd.taxBase > 0);
@@ -118,14 +117,16 @@ TEST_CASE("processGoldIncome draws the breakdown's tax out of private money and 
     const CurrencyAmount privateBefore  = e.player.monetary().privateSpecie;
     const CurrencyAmount reported       = e.collect();
     CHECK(e.player.treasury() - treasuryBefore == bd.incomeTax);
-    CHECK(privateBefore - e.player.monetary().privateSpecie == bd.incomeTax); // the money moved, nothing was made
+    CHECK(privateBefore - e.player.monetary().privateSpecie ==
+          bd.incomeTax); // the money moved, nothing was made
     CHECK(reported == bd.totalIncome);
     CHECK(e.player.incomePerTurn() == bd.totalIncome);
 }
 
-TEST_CASE("the tax is the taxable flow at the rate, as far as the state reaches, kept by the allocation") {
+TEST_CASE("the tax is the taxable flow at the rate, as far as the state reaches, kept by the "
+          "allocation") {
     Empire e;
-    const EconomicBreakdown bd = e.breakdown();
+    const EconomicBreakdown bd                = e.breakdown();
     const aoc::sim::MonetaryStateComponent& m = e.player.monetary();
     const CurrencyAmount base =
         static_cast<CurrencyAmount>(static_cast<float>(m.privateSpecie) * m.taxableMoneyShare());
@@ -149,7 +150,8 @@ TEST_CASE("no money, no tax: a rich commerce reaches nothing when the people hol
     const EconomicBreakdown bd        = e.breakdown();
     CHECK(bd.taxBase == 0);
     CHECK(bd.incomeTax == 0);
-    CHECK(bd.collectionEfficiency > aoc::sim::BASE_COLLECTION_EFFICIENCY); // the reach is there, the money is not
+    CHECK(bd.collectionEfficiency >
+          aoc::sim::BASE_COLLECTION_EFFICIENCY); // the reach is there, the money is not
     const CurrencyAmount before = e.player.treasury();
     CHECK(e.collect() == 0);
     CHECK(e.player.treasury() == before);
@@ -192,8 +194,9 @@ TEST_CASE("distance corruption discounts the colony's commerce, the capital's no
     Empire near{{5, 8}};
     Empire far{{30, 5}};
     for (Empire* e : {&near, &far}) {
-        e->player.government().government = GovernmentType::MerchantRepublic; // has distance corruption
-        e->capital->wonders().wonders.clear();                                // and stays under the cap
+        e->player.government().government =
+            GovernmentType::MerchantRepublic;  // has distance corruption
+        e->capital->wonders().wonders.clear(); // and stays under the cap
     }
     near.colony->districts().districts.push_back({DistrictType::Commercial, {6, 9}, {MARKET}});
     far.colony->districts().districts.push_back({DistrictType::Commercial, {31, 6}, {MARKET}});
@@ -225,7 +228,8 @@ TEST_CASE("the government and an economic alliance multiply the reach") {
     CHECK(aoc::sim::collectionEfficiency(e.player, e.world.grid, 100.0f) <= 1.0f); // capped
 }
 
-TEST_CASE("the customs on landed trade coin are counted in the income, moved by the Trader system") {
+TEST_CASE(
+    "the customs on landed trade coin are counted in the income, moved by the Trader system") {
     Empire e;
     const EconomicBreakdown quiet = e.breakdown();
     CHECK(quiet.incomeTradeRoutes == 0);
@@ -241,19 +245,21 @@ TEST_CASE("the customs on landed trade coin are counted in the income, moved by 
     CHECK(landed.effectiveIncome == quiet.effectiveIncome); // processGoldIncome moves only the tax
 }
 
-TEST_CASE("seigniorage and the external sector are reported from the turn's ledger") {
+// Phase B: seigniorage removed from MoneyLedger::Civ (coin-minting gone);
+// incomeSeigniorage in EconomicBreakdown is always 0 now. Reserve-currency
+// seigniorage flows through the externalIn path.
+TEST_CASE("the external sector and tariffs are reported from the turn's ledger") {
     Empire e;
     aoc::sim::MoneyLedger ledger;
     e.player.setMoneyLedger(&ledger);
     const EconomicBreakdown quiet = e.breakdown();
-    ledger.civs[0].seigniorage    = 5;
     ledger.civs[0].externalIn     = 7;
     e.player.setTariffsLastTurn(9); // customs the trade step took last turn
-    const EconomicBreakdown paid  = e.breakdown();
-    CHECK(paid.incomeSeigniorage == 5);
+    const EconomicBreakdown paid = e.breakdown();
+    CHECK(paid.incomeSeigniorage == 0); // always 0 post Phase B
     CHECK(paid.incomeExternal == 7);
     CHECK(paid.incomeTariffs == 9);
-    CHECK(paid.totalIncome == quiet.totalIncome + 21);
+    CHECK(paid.totalIncome == quiet.totalIncome + 16);
     CHECK(paid.effectiveIncome == quiet.effectiveIncome); // only the tax is moved here
 }
 
@@ -263,14 +269,17 @@ TEST_CASE("science funding and upkeep are nominal at the price level") {
     CHECK(science > 0.0f);
     e.player.monetary().priceLevel = 1.0f;
     const EconomicBreakdown par    = e.breakdown();
-    CHECK(par.expenseScience == static_cast<CurrencyAmount>(science * aoc::sim::SCIENCE_FUNDING_COST));
+    CHECK(par.expenseScience ==
+          static_cast<CurrencyAmount>(science * aoc::sim::SCIENCE_FUNDING_COST));
     for (const int32_t q : {10, 11, 12, 13}) {
-        aoc::test::addUnitAt(e.world, P0, WARRIOR, q, 6); // five warriors: a bill big enough to scale
+        aoc::test::addUnitAt(e.world, P0, WARRIOR, q,
+                             6); // five warriors: a bill big enough to scale
     }
     const EconomicBreakdown army   = e.breakdown();
     e.player.monetary().priceLevel = 4.0f;
     const EconomicBreakdown dear   = e.breakdown();
-    CHECK(dear.expenseScience == static_cast<CurrencyAmount>(science * aoc::sim::SCIENCE_FUNDING_COST * 4.0f));
+    CHECK(dear.expenseScience ==
+          static_cast<CurrencyAmount>(science * aoc::sim::SCIENCE_FUNDING_COST * 4.0f));
     CHECK(dear.expenseUnits > army.expenseUnits);
     CHECK(dear.expenseUnits > par.expenseUnits);
 }

@@ -23,7 +23,7 @@ ErrorCode hoardCommodity(aoc::game::GameState& gameState,
                          const Market& market,
                          PlayerId player,
                          uint16_t goodId, int32_t amount) {
-    if (amount <= 0 || goodId >= market.goodsCount() || aoc::sim::isCoinGood(goodId)) {
+    if (amount <= 0 || goodId >= market.goodsCount()) {
         return ErrorCode::InvalidArgument; // coin is money, not a commodity to corner
     }
 

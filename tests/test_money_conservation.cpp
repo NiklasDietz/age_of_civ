@@ -1,14 +1,14 @@
 /**
  * @file test_money_conservation.cpp
- * @brief The money seam of the conserved ledger (plan B1, Phase 2.1): coin
- *        goods swept into bullion or private money at face value and booked
- *        as minted, a domestic tax drawing private money with the shortfall
- *        booked as unbacked, transfers moving money without booking, the
- *        external sector and losses booked, and the one-turn invariant
- *        agreeing with the books. Spend-back (2.2): a purchase and upkeep
- *        pay the civ's own people, a garrison abroad pays the locals, an
- *        unpaid bill is arrears rather than a negative treasury, and
- *        plunder is a transfer out of the loser's pockets.
+ * @brief The money seam of the conserved ledger (plan B1, Phase 2.1): a
+ *        domestic tax drawing private money with the shortfall booked as
+ *        unbacked, transfers moving money without booking, the external
+ *        sector and losses booked, and the one-turn invariant agreeing with
+ *        the books. Spend-back (2.2): a purchase and upkeep pay the civ's
+ *        own people, a garrison abroad pays the locals, an unpaid bill is
+ *        arrears rather than a negative treasury, and plunder is a transfer
+ *        out of the loser's pockets. Phase B: coin-sweep tests removed
+ *        (sweepCoins -> monetiseGoods stub, no minting).
  */
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
@@ -24,85 +24,25 @@
 #include "aoc/simulation/monetary/MoneyFlow.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
-#include "aoc/simulation/resource/ResourceComponent.hpp"
-#include "aoc/simulation/resource/ResourceTypes.hpp"
 
 using aoc::PlayerId;
 using aoc::sim::MoneyFlow;
 using aoc::sim::MoneyLedger;
-using aoc::sim::goods::COPPER_COINS;
-using aoc::sim::goods::GOLD_BARS;
-using aoc::sim::goods::SILVER_COINS;
-
 namespace {
 
 constexpr PlayerId P0{0};
 constexpr PlayerId P1{1};
 constexpr aoc::UnitTypeId WARRIOR{0};
 
-/// Ten copper, two silver and one gold bar: face value 45.
-constexpr int64_t MINTED_FACE = 10 * aoc::sim::COPPER_COIN_VALUE + 2 * aoc::sim::SILVER_COIN_VALUE +
-                                1 * aoc::sim::GOLD_BAR_VALUE;
-
-void mint(aoc::game::City& city) {
-    city.stockpile().addGoods(COPPER_COINS, 10);
-    city.stockpile().addGoods(SILVER_COINS, 2);
-    city.stockpile().addGoods(GOLD_BARS, 1);
-}
-
 } // namespace
 
-TEST_CASE("under Barter the sweep turns minted coin into bullion and books it as minted") {
-    aoc::test::World w     = aoc::test::makeWorld(2);
-    aoc::game::City& alpha = aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
-    aoc::test::addCityAt(w, P1, 14, 8, "Beta");
-    mint(alpha);
-    aoc::game::Player& p = *w.gameState.player(P0);
-    REQUIRE(p.monetary().system == aoc::sim::MonetarySystemType::Barter);
-    const int64_t before = aoc::sim::worldMoney(w.gameState);
-
-    aoc::sim::EconomySimulation economy;
-    economy.executeTurn(w.gameState, w.grid);
-
-    CHECK(alpha.stockpile().getAmount(COPPER_COINS) == 0); // no coin good outlives the sweep
-    CHECK(alpha.stockpile().getAmount(SILVER_COINS) == 0);
-    CHECK(alpha.stockpile().getAmount(GOLD_BARS) == 0);
-    CHECK(p.monetary().bullion == MINTED_FACE);
-    CHECK(p.monetary().copperCoinReserves == 10);
-    CHECK(p.monetary().silverCoinReserves == 2);
-    CHECK(p.monetary().goldBarReserves == 1);
-    CHECK(economy.moneyLedger().civs[0].minted == MINTED_FACE);
-    CHECK(aoc::sim::worldMoney(w.gameState) == before + MINTED_FACE);
-}
-
-TEST_CASE("under coinage the sweep converts the bullion, pays the Mint its seigniorage, and keeps the metal count") {
-    aoc::test::World w     = aoc::test::makeWorld(1);
-    aoc::game::City& alpha = aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
-    aoc::game::Player& p   = *w.gameState.player(P0);
-    p.monetary().system    = aoc::sim::MonetarySystemType::CommodityMoney;
-    p.monetary().bullion   = 100;
-    p.monetary().copperCoinReserves = 7; // minted earlier: the counters accumulate
-    alpha.stockpile().addGoods(COPPER_COINS, 20); // face 20
-    const aoc::CurrencyAmount treasuryBefore = p.treasury();
-
-    aoc::sim::EconomySimulation economy;
-    p.setMoneyLedger(&economy.moneyLedger()); // processTurn binds it; here we do
-    economy.executeTurn(w.gameState, w.grid);
-
-    const int64_t seigniorage = 20 * aoc::sim::SEIGNIORAGE_PCT / 100;
-    CHECK(p.monetary().bullion == 0);
-    CHECK(p.monetary().privateSpecie == 100 + 20 - seigniorage);
-    CHECK(p.treasury() == treasuryBefore + seigniorage);
-    CHECK(p.monetary().copperCoinReserves == 27);
-    CHECK(economy.moneyLedger().civs[0].minted == 20);
-}
-
-TEST_CASE("a domestic tax draws private money and books what the people could not pay as unbacked") {
+TEST_CASE(
+    "a domestic tax draws private money and books what the people could not pay as unbacked") {
     aoc::test::World w   = aoc::test::makeWorld(1);
     aoc::game::Player& p = *w.gameState.player(P0);
     MoneyLedger ledger;
     p.setMoneyLedger(&ledger);
-    p.monetary().privateSpecie = 30;
+    p.monetary().privateSpecie               = 30;
     const aoc::CurrencyAmount treasuryBefore = p.treasury();
 
     p.addGold(50, MoneyFlow::domestic(P0));
@@ -117,7 +57,8 @@ TEST_CASE("a domestic tax draws private money and books what the people could no
     CHECK_FALSE(ledger.backed());
 }
 
-TEST_CASE("a transfer between treasuries books nothing; external, loss and unbacked flows are booked") {
+TEST_CASE(
+    "a transfer between treasuries books nothing; external, loss and unbacked flows are booked") {
     aoc::test::World w   = aoc::test::makeWorld(2);
     aoc::game::Player& a = *w.gameState.player(P0);
     aoc::game::Player& b = *w.gameState.player(P1);
@@ -149,10 +90,9 @@ TEST_CASE("a transfer between treasuries books nothing; external, loss and unbac
 }
 
 TEST_CASE("the one-turn invariant agrees with the books over an economy step") {
-    aoc::test::World w     = aoc::test::makeWorld(2);
-    aoc::game::City& alpha = aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
     aoc::test::addCityAt(w, P1, 14, 8, "Beta");
-    mint(alpha);
     aoc::sim::EconomySimulation economy;
     for (const std::unique_ptr<aoc::game::Player>& player : w.gameState.players()) {
         player->setMoneyLedger(&economy.moneyLedger());
@@ -165,7 +105,8 @@ TEST_CASE("the one-turn invariant agrees with the books over an economy step") {
 
     // One unbacked credit and the invariant no longer holds.
     w.gameState.player(P0)->addGold(5, MoneyFlow::unbacked());
-    CHECK_FALSE(aoc::sim::moneyConserved(before, aoc::sim::worldMoney(w.gameState), economy.moneyLedger()));
+    CHECK_FALSE(
+        aoc::sim::moneyConserved(before, aoc::sim::worldMoney(w.gameState), economy.moneyLedger()));
 }
 
 TEST_CASE("a purchase pays the city's own people: the money stays in the civ") {
@@ -243,7 +184,8 @@ TEST_CASE("an unpaid bill is arrears, never a negative treasury; five turns of i
     CHECK(a.monetary().consecutiveNegativeTurns == 0);
 }
 
-TEST_CASE("plunder comes out of the loser's pockets first, then its treasury; nobody's is external") {
+TEST_CASE(
+    "plunder comes out of the loser's pockets first, then its treasury; nobody's is external") {
     aoc::test::World w   = aoc::test::makeWorld(2);
     aoc::game::Player& a = *w.gameState.player(P0);
     aoc::game::Player& b = *w.gameState.player(P1);
@@ -252,7 +194,7 @@ TEST_CASE("plunder comes out of the loser's pockets first, then its treasury; no
     b.setMoneyLedger(&ledger);
     b.setTreasury(100, MoneyFlow::external());
     b.monetary().privateSpecie = 10;
-    const int64_t before = aoc::sim::worldMoney(w.gameState);
+    const int64_t before       = aoc::sim::worldMoney(w.gameState);
 
     CHECK(aoc::sim::plunder(w.gameState, P1, a, 30) == 30);
     CHECK(b.monetary().privateSpecie == 0);
@@ -263,7 +205,7 @@ TEST_CASE("plunder comes out of the loser's pockets first, then its treasury; no
     CHECK(b.treasury() == 0);
 
     CHECK(aoc::sim::plunder(w.gameState, aoc::BARBARIAN_PLAYER, a, 25) == 25);
-    CHECK(ledger.civs[0].externalIn == 25); // the camp's hoard
+    CHECK(ledger.civs[0].externalIn == 25);  // the camp's hoard
     CHECK(ledger.civs[1].externalIn == 100); // the endowment above
 }
 
@@ -294,9 +236,9 @@ TEST_CASE("printed notes and the Gold Standard's issue keep the invariant: booke
 }
 
 TEST_CASE("a levy on a paper civ takes its notes before its coin, and neither pool goes negative") {
-    aoc::test::World w   = aoc::test::makeWorld(2);
-    aoc::game::Player& a = *w.gameState.player(P0);
-    aoc::game::Player& b = *w.gameState.player(P1);
+    aoc::test::World w         = aoc::test::makeWorld(2);
+    aoc::game::Player& a       = *w.gameState.player(P0);
+    aoc::game::Player& b       = *w.gameState.player(P1);
     b.monetary().system        = aoc::sim::MonetarySystemType::FiatMoney;
     b.monetary().privateSpecie = 100;
     b.monetary().privateNotes  = 1000;
@@ -320,9 +262,9 @@ TEST_CASE("a levy on a paper civ takes its notes before its coin, and neither po
 }
 
 TEST_CASE("a tithe or a levy draws what the people hold and no more") {
-    aoc::test::World w   = aoc::test::makeWorld(2);
-    aoc::game::Player& a = *w.gameState.player(P0);
-    aoc::game::Player& b = *w.gameState.player(P1);
+    aoc::test::World w         = aoc::test::makeWorld(2);
+    aoc::game::Player& a       = *w.gameState.player(P0);
+    aoc::game::Player& b       = *w.gameState.player(P1);
     a.monetary().privateSpecie = 4;
     b.monetary().privateSpecie = 7;
     CHECK(aoc::sim::takeFromPrivate(a, 10) == 4);

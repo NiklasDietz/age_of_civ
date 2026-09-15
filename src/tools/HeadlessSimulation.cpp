@@ -9,7 +9,7 @@
  *        aoc_simulate [turns] [players] [output_file]
  *
  * Output CSV columns:
- *   Turn, Player, GDP, Treasury, CoinTier, MonetarySystem, Inflation,
+ *   Turn, Player, GDP, Treasury, MoneyGood, MonetarySystem, Inflation,
  *   Population, Cities, Military, TechsResearched, CultureTotal,
  *   TradePartners, TradeVolume, CompositeCSI, EraVP, Happiness,
  *   Corruption, CrisisType, IndustrialRevolution, GovernmentType
@@ -101,12 +101,16 @@ static void printProgressBar(int32_t current, int32_t total, int32_t barWidth = 
 
     std::fprintf(stderr, "\r  [");
     for (int32_t i = 0; i < barWidth; ++i) {
-        if (i < filled) { std::fputc('=', stderr); }
-        else if (i == filled) { std::fputc('>', stderr); }
-        else { std::fputc(' ', stderr); }
+        if (i < filled) {
+            std::fputc('=', stderr);
+        } else if (i == filled) {
+            std::fputc('>', stderr);
+        } else {
+            std::fputc(' ', stderr);
+        }
     }
-    std::fprintf(stderr, "] %3d%% (%d/%d turns)",
-                 static_cast<int>(progress * 100.0f), current, total);
+    std::fprintf(stderr, "] %3d%% (%d/%d turns)", static_cast<int>(progress * 100.0f), current,
+                 total);
     std::fflush(stderr);
 }
 
@@ -115,7 +119,7 @@ namespace {
 /// treasury, private specie, notes, bullion, and the purses of the civ's Traders.
 [[nodiscard]] std::array<int64_t, 5> moneyPools(const aoc::game::Player& player) {
     const aoc::sim::MonetaryStateComponent& m = player.monetary();
-    int64_t purses = 0;
+    int64_t purses                            = 0;
     for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
         if (unit->typeDef().unitClass == aoc::sim::UnitClass::Trader) {
             purses += unit->trader().carriedGold;
@@ -126,19 +130,19 @@ namespace {
 
 struct PlayerSnapshot {
     aoc::PlayerId player;
-    aoc::CurrencyAmount gdp = 0;
+    aoc::CurrencyAmount gdp      = 0;
     aoc::CurrencyAmount treasury = 0;
-    uint8_t coinTier = 0;
-    uint8_t monetarySystem = 0;
-    float inflationRate = 0.0f;
-    int32_t population = 0;
-    int32_t cities = 0;
-    int32_t militaryUnits = 0;
-    int32_t techsResearched = 0;
-    float cultureTotal = 0.0f;
-    int32_t tradePartners = 0;
-    float compositeCSI = 0.0f;
-    int32_t eraVP = 0;
+    uint8_t moneyGood            = 0xFF;
+    uint8_t monetarySystem       = 0;
+    float inflationRate          = 0.0f;
+    int32_t population           = 0;
+    int32_t cities               = 0;
+    int32_t militaryUnits        = 0;
+    int32_t techsResearched      = 0;
+    float cultureTotal           = 0.0f;
+    int32_t tradePartners        = 0;
+    float compositeCSI           = 0.0f;
+    int32_t eraVP                = 0;
     /// PlayerEraComponent::currentEra. Logged because it was stuck at 0 for
     /// every player in every game until 2026-09-03 and nothing surfaced it.
     int32_t era = 0;
@@ -147,27 +151,27 @@ struct PlayerSnapshot {
     /// Live barbarian units on the map (the same on every row of a turn). Logged
     /// because barbarians never spawned in any game until 2026-09-05 and the
     /// health gate (H10) needs the signal.
-    int32_t barbarianUnits = 0;
-    float avgHappiness = 0.0f;
-    float corruption = 0.0f;
-    uint8_t crisisType = 0;
-    uint8_t industrialRev = 0;
-    uint8_t governmentType = 0;
-    float foodPerTurn = 0.0f;      ///< Empire-wide food surplus this turn
-    int32_t famineCities = 0;      ///< Cities currently below break-even
-    float scienceDiffusion = 0.0f; ///< Cumulative science-spread bonus from our traders
-    float cultureDiffusion = 0.0f; ///< Cumulative culture-spread bonus from our traders
-    int32_t activeRoutes = 0;      ///< Traders with a route right now
-    int32_t dealsActive = 0;       ///< Accepted, unbroken deals this player is party to
-    int32_t luxuryTypesHeld = 0;   ///< Distinct raw luxury goods in any of its stockpiles
-    int64_t circulation = 0;       ///< treasury + private specie + private notes + bullion
-    int64_t arrears = 0;           ///< bills the treasury could not pay this turn
-    float priceLevel = 1.0f;
-    int64_t mintedTurn = 0;        ///< face value swept from the Mint this turn
-    int64_t unbackedTurn = 0;      ///< money the old model conjured minus destroyed this turn
-    int64_t coinLanded = 0;        ///< purses the civ's Traders brought home this turn (M3)
-    int64_t metalOreHeld = 0;      ///< silver + gold ore across this civ's stockpiles
-    int64_t mintOreConsumed = 0;   ///< ore the three Mint recipes ate this turn
+    int32_t barbarianUnits  = 0;
+    float avgHappiness      = 0.0f;
+    float corruption        = 0.0f;
+    uint8_t crisisType      = 0;
+    uint8_t industrialRev   = 0;
+    uint8_t governmentType  = 0;
+    float foodPerTurn       = 0.0f; ///< Empire-wide food surplus this turn
+    int32_t famineCities    = 0;    ///< Cities currently below break-even
+    float scienceDiffusion  = 0.0f; ///< Cumulative science-spread bonus from our traders
+    float cultureDiffusion  = 0.0f; ///< Cumulative culture-spread bonus from our traders
+    int32_t activeRoutes    = 0;    ///< Traders with a route right now
+    int32_t dealsActive     = 0;    ///< Accepted, unbroken deals this player is party to
+    int32_t luxuryTypesHeld = 0;    ///< Distinct raw luxury goods in any of its stockpiles
+    int64_t circulation     = 0;    ///< treasury + private specie + private notes + bullion
+    int64_t arrears         = 0;    ///< bills the treasury could not pay this turn
+    float priceLevel        = 1.0f;
+    int64_t mintedTurn      = 0; ///< face value swept from the Mint this turn
+    int64_t unbackedTurn    = 0; ///< money the old model conjured minus destroyed this turn
+    int64_t coinLanded      = 0; ///< purses the civ's Traders brought home this turn (M3)
+    int64_t metalOreHeld    = 0; ///< silver + gold ore across this civ's stockpiles
+    int64_t mintOreConsumed = 0; ///< ore the three Mint recipes ate this turn
 };
 
 /**
@@ -175,9 +179,8 @@ struct PlayerSnapshot {
  *
  * All data is read from Player/City/Unit objects rather than ECS component pools.
  */
-PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
-                               const aoc::map::HexGrid& grid,
-                               aoc::PlayerId playerId) {
+PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                              aoc::PlayerId playerId) {
     PlayerSnapshot snap{};
     snap.player = playerId;
 
@@ -188,8 +191,8 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
 
     // Monetary state
     const aoc::sim::MonetaryStateComponent& ms = player->monetary();
-    snap.gdp = ms.gdp;
-    snap.treasury = player->treasury();  // Use Player::m_treasury (actual spending account)
+    snap.gdp                                   = ms.gdp;
+    snap.treasury    = player->treasury(); // Use Player::m_treasury (actual spending account)
     snap.circulation = ms.treasury + ms.privateSpecie + ms.privateNotes + ms.bullion;
     snap.arrears     = player->unpaidLastTurn();
     for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
@@ -197,18 +200,18 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
             snap.coinLanded += unit->trader().coinLandedThisTurn;
         }
     }
-    snap.priceLevel  = ms.priceLevel;
-    snap.coinTier = static_cast<uint8_t>(ms.effectiveCoinTier);
+    snap.priceLevel     = ms.priceLevel;
+    snap.moneyGood      = ms.moneyGood;
     snap.monetarySystem = static_cast<uint8_t>(ms.system);
-    snap.inflationRate = ms.inflationRate;
+    snap.inflationRate  = ms.inflationRate;
 
     // Cities and population
-    snap.cities = player->ownedCityCount();
-    snap.population = player->totalPopulation();
+    snap.cities       = player->ownedCityCount();
+    snap.population   = player->totalPopulation();
     snap.activeRoutes = player->activeTradeRouteCount();
     for (const aoc::sim::DiplomaticDeal& deal : gameState.deals().activeDeals) {
-        if (deal.isAccepted && !deal.isBroken
-            && (deal.playerA == playerId || deal.playerB == playerId)) {
+        if (deal.isAccepted && !deal.isBroken &&
+            (deal.playerA == playerId || deal.playerB == playerId)) {
             ++snap.dealsActive;
         }
     }
@@ -216,9 +219,8 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
         std::unordered_set<uint16_t> luxuries;
         for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
             for (const std::pair<const uint16_t, int32_t>& entry : city->stockpile().goods) {
-                if (entry.second > 0
-                    && aoc::sim::goodDef(entry.first).category
-                           == aoc::sim::GoodCategory::RawLuxury) {
+                if (entry.second > 0 &&
+                    aoc::sim::goodDef(entry.first).category == aoc::sim::GoodCategory::RawLuxury) {
                     luxuries.insert(entry.first);
                 }
             }
@@ -234,15 +236,15 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
         // and exempts neither ore, so reading only the stockpile would report
         // nothing held for a civ whose metal is merely parked above the cap,
         // which is the false negative this column exists to avoid.
-        snap.metalOreHeld += stock.getAmount(aoc::sim::goods::SILVER_ORE)
-                           + stock.getAmount(aoc::sim::goods::GOLD_ORE)
-                           + stock.getBufferAmount(aoc::sim::goods::SILVER_ORE)
-                           + stock.getBufferAmount(aoc::sim::goods::GOLD_ORE);
+        snap.metalOreHeld += stock.getAmount(aoc::sim::goods::SILVER_ORE) +
+                             stock.getAmount(aoc::sim::goods::GOLD_ORE) +
+                             stock.getBufferAmount(aoc::sim::goods::SILVER_ORE) +
+                             stock.getBufferAmount(aoc::sim::goods::GOLD_ORE);
     }
 
     // Happiness: average across all cities with a happiness component
     {
-        float totalHappy = 0.0f;
+        float totalHappy    = 0.0f;
         int32_t happyCities = 0;
         for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
             totalHappy += city->happiness().amenities - city->happiness().demand;
@@ -260,17 +262,19 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
     {
         const aoc::sim::PlayerTechComponent& tech = player->tech();
         for (std::size_t b = 0; b < tech.completedTechs.size(); ++b) {
-            if (tech.completedTechs[b]) { ++snap.techsResearched; }
+            if (tech.completedTechs[b]) {
+                ++snap.techsResearched;
+            }
         }
     }
 
     // Victory tracker: CSI, era VP, culture
     {
         const aoc::sim::VictoryTrackerComponent& vt = player->victoryTracker();
-        snap.compositeCSI = vt.compositeCSI;
-        snap.eraVP = vt.eraVictoryPoints;
-        snap.eliminated = vt.isEliminated ? 1 : 0;
-        snap.cultureTotal = vt.totalCultureAccumulated;
+        snap.compositeCSI                           = vt.compositeCSI;
+        snap.eraVP                                  = vt.eraVictoryPoints;
+        snap.eliminated                             = vt.isEliminated ? 1 : 0;
+        snap.cultureTotal                           = vt.totalCultureAccumulated;
     }
     snap.era = static_cast<int32_t>(player->era().currentEra.value);
     if (const aoc::game::Player* barbarians = gameState.barbarianPlayer(); barbarians != nullptr) {
@@ -286,7 +290,7 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
     // Government and corruption
     {
         const aoc::sim::PlayerGovernmentComponent& gov = player->government();
-        snap.governmentType = static_cast<uint8_t>(gov.government);
+        snap.governmentType                            = static_cast<uint8_t>(gov.government);
         snap.corruption = aoc::sim::computeCorruption(gov.government, snap.cities, 0.0f);
     }
 
@@ -295,24 +299,31 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
     // in training data.
     {
         float totalSurplus = 0.0f;
-        int32_t famine = 0;
+        int32_t famine     = 0;
         for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
-            if (city->owner() != playerId) { continue; }
+            if (city->owner() != playerId) {
+                continue;
+            }
             float cityFood = 0.0f;
             for (const aoc::hex::AxialCoord& t : city->workedTiles()) {
-                if (!grid.isValid(t)) { continue; }
+                if (!grid.isValid(t)) {
+                    continue;
+                }
                 aoc::map::TileYield y = grid.tileYield(grid.toIndex(t));
-                float tf = static_cast<float>(y.food);
-                if (t == city->location() && tf < 2.0f) { tf = 2.0f; }
+                float tf              = static_cast<float>(y.food);
+                if (t == city->location() && tf < 2.0f) {
+                    tf = 2.0f;
+                }
                 cityFood += tf;
             }
-            const float surplus = cityFood
-                - static_cast<float>(city->population()) * 2.0f;
+            const float surplus = cityFood - static_cast<float>(city->population()) * 2.0f;
             totalSurplus += surplus;
-            if (surplus < 0.0f) { ++famine; }
+            if (surplus < 0.0f) {
+                ++famine;
+            }
         }
-        snap.foodPerTurn   = totalSurplus;
-        snap.famineCities  = famine;
+        snap.foodPerTurn  = totalSurplus;
+        snap.famineCities = famine;
     }
 
     // Trade partners: the destinations of this player's Traders, plus the
@@ -331,7 +342,7 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
         }
         snap.scienceDiffusion = sciSpread;
         snap.cultureDiffusion = culSpread;
-        snap.tradePartners = static_cast<int32_t>(partners.size());
+        snap.tradePartners    = static_cast<int32_t>(partners.size());
     }
 
     return snap;
@@ -345,52 +356,61 @@ namespace {
     // Continents with a warning so existing scripts (audit_matrix.sh,
     // ml/cpp/...) keep running without changes.
     std::string lower(s);
-    for (char& c : lower) { c = static_cast<char>(std::tolower(c)); }
-    if (lower == "continents") { return aoc::map::MapType::Continents; }
+    for (char& c : lower) {
+        c = static_cast<char>(std::tolower(c));
+    }
+    if (lower == "continents") {
+        return aoc::map::MapType::Continents;
+    }
     if (!lower.empty() && lower != "continents") {
         std::fprintf(stderr,
-            "warning: --map-type '%.*s' is no longer supported; "
-            "using 'continents'.\n",
-            static_cast<int>(s.size()), s.data());
+                     "warning: --map-type '%.*s' is no longer supported; "
+                     "using 'continents'.\n",
+                     static_cast<int>(s.size()), s.data());
     }
     return aoc::map::MapType::Continents;
 }
 [[nodiscard]] aoc::map::ResourcePlacementMode parsePlacementCli(std::string_view s) {
     std::string lower(s);
-    for (char& c : lower) { c = static_cast<char>(std::tolower(c)); }
-    if (lower == "fair")      { return aoc::map::ResourcePlacementMode::Fair; }
-    if (lower == "random")    { return aoc::map::ResourcePlacementMode::Random; }
+    for (char& c : lower) {
+        c = static_cast<char>(std::tolower(c));
+    }
+    if (lower == "fair") {
+        return aoc::map::ResourcePlacementMode::Fair;
+    }
+    if (lower == "random") {
+        return aoc::map::ResourcePlacementMode::Random;
+    }
     return aoc::map::ResourcePlacementMode::Realistic;
 }
 [[nodiscard]] const char* placementLabel(aoc::map::ResourcePlacementMode p) {
     switch (p) {
-        case aoc::map::ResourcePlacementMode::Realistic: return "Realistic";
-        case aoc::map::ResourcePlacementMode::Fair:      return "Fair";
-        case aoc::map::ResourcePlacementMode::Random:    return "Random";
+    case aoc::map::ResourcePlacementMode::Realistic:
+        return "Realistic";
+    case aoc::map::ResourcePlacementMode::Fair:
+        return "Fair";
+    case aoc::map::ResourcePlacementMode::Random:
+        return "Random";
     }
     return "?";
 }
 [[nodiscard]] const char* mapTypeLabel(aoc::map::MapType m) {
     switch (m) {
-        case aoc::map::MapType::Continents: return "Continents";
+    case aoc::map::MapType::Continents:
+        return "Continents";
     }
     return "?";
 }
 } // anonymous namespace
 
-int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
-                          const std::string& outputPath,
-                          uint32_t victoryMask,
-                          const std::string& tracePath,
-                          aoc::map::MapType mapType,
-                          aoc::map::ResourcePlacementMode placement
-                              = aoc::map::ResourcePlacementMode::Realistic,
-                          int32_t mapWidthOverride = 0,
-                          int32_t mapHeightOverride = 0,
-                          uint32_t seedOverride = 0,
-                          const std::string& mapCachePath = std::string{}) {
-    LOG_INFO("=== HEADLESS SIMULATION: %d turns, %d AI players, victoryMask=0x%x ===",
-             maxTurns, playerCount, victoryMask);
+int runHeadlessSimulation(
+    int32_t maxTurns, int32_t playerCount, const std::string& outputPath, uint32_t victoryMask,
+    const std::string& tracePath, aoc::map::MapType mapType,
+    aoc::map::ResourcePlacementMode placement = aoc::map::ResourcePlacementMode::Realistic,
+    int32_t mapWidthOverride = 0, int32_t mapHeightOverride = 0, uint32_t seedOverride = 0,
+    const std::string& mapCachePath = std::string{}) {
+    LOG_INFO("=== HEADLESS SIMULATION: %d turns, %d AI players, victoryMask=0x%x ===", maxTurns,
+             playerCount, victoryMask);
 
     // Open output CSV
     std::ofstream csv(outputPath);
@@ -403,7 +423,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     // IsLastPlayer: 1 if this player is the last to finish their turn (temporal
     // pressure signal — external state is frozen, must commit all actions now).
     csv << "Turn,Player,PlayerCount,MapWidth,MapHeight,CivId,MetPlayersMask,IsLastPlayer,"
-        << "GDP,Treasury,CoinTier,MonetarySystem,Inflation,"
+        << "GDP,Treasury,MoneyGood,MonetarySystem,Inflation,"
         << "Population,Cities,Military,TechsResearched,CultureTotal,"
         << "TradePartners,CompositeCSI,EraVP,Era,Eliminated,AvgHappiness,"
         << "Corruption,CrisisType,IndustrialRev,GovernmentType,"
@@ -424,17 +444,16 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     std::random_device rd;
     const uint32_t actualSeed = (seedOverride != 0) ? seedOverride : rd();
     aoc::Random rng(actualSeed);
-    LOG_INFO("Headless RNG seed: %u (%s)",
-             actualSeed,
+    LOG_INFO("Headless RNG seed: %u (%s)", actualSeed,
              (seedOverride != 0) ? "from --seed override" : "from random_device");
 
     // Generate map. New default 140x90 (was 80x52) — bigger maps per
     // user request. --map-size W x H overrides.
     aoc::map::MapGenerator::Config mapConfig{};
-    mapConfig.width  = (mapWidthOverride  > 0) ? mapWidthOverride  : 140;
-    mapConfig.height = (mapHeightOverride > 0) ? mapHeightOverride : 90;
-    mapConfig.seed = rng.next();
-    mapConfig.mapType = mapType;
+    mapConfig.width     = (mapWidthOverride > 0) ? mapWidthOverride : 140;
+    mapConfig.height    = (mapHeightOverride > 0) ? mapHeightOverride : 90;
+    mapConfig.seed      = rng.next();
+    mapConfig.mapType   = mapType;
     mapConfig.placement = placement;
     // --map-cache: reuse a previously generated world. Worldgen costs ~45 s
     // regardless of map size (A11), all of it in the tectonic simulation.
@@ -501,13 +520,17 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     {
         std::vector<int32_t> pool;
         pool.reserve(aoc::sim::CIV_COUNT);
-        for (int32_t i = 0; i < aoc::sim::CIV_COUNT; ++i) { pool.push_back(i); }
+        for (int32_t i = 0; i < aoc::sim::CIV_COUNT; ++i) {
+            pool.push_back(i);
+        }
         for (int32_t p = 0; p < playerCount; ++p) {
             const int32_t idx = rng.nextInt(0, static_cast<int32_t>(pool.size()) - 1);
             civAssignment[static_cast<std::size_t>(p)] = pool[static_cast<std::size_t>(idx)];
             pool.erase(pool.begin() + idx);
             if (pool.empty()) {
-                for (int32_t i = 0; i < aoc::sim::CIV_COUNT; ++i) { pool.push_back(i); }
+                for (int32_t i = 0; i < aoc::sim::CIV_COUNT; ++i) {
+                    pool.push_back(i);
+                }
             }
         }
     }
@@ -535,14 +558,15 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         // Found starting city (creates City in player's city list via GameState).
         // Use shuffled civ assignment so capital city name matches the civ
         // actually assigned to this slot.
-        std::string cityName = std::string(
-            aoc::sim::civDef(static_cast<aoc::sim::CivId>(
-                civAssignment[static_cast<std::size_t>(p)])).cityNames[0]);
+        std::string cityName =
+            std::string(aoc::sim::civDef(static_cast<aoc::sim::CivId>(
+                                             civAssignment[static_cast<std::size_t>(p)]))
+                            .cityNames[0]);
         aoc::sim::foundCity(gameState, grid, player, startPos, cityName, true, 1);
 
         // Guarantee minimum resources near starting position
         std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(startPos);
-        int32_t centerIdx = grid.toIndex(startPos);
+        int32_t centerIdx                        = grid.toIndex(startPos);
         if (!grid.resource(centerIdx).isValid()) {
             grid.setResource(centerIdx, aoc::ResourceId{aoc::sim::goods::WHEAT});
             grid.setReserves(centerIdx, aoc::sim::defaultReserves(aoc::sim::goods::WHEAT));
@@ -556,24 +580,26 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         // civ can mint. Fair and Random keep the full kit.
         const bool realistic = placement == aoc::map::ResourcePlacementMode::Realistic;
         const uint16_t STARTER_RESOURCES[] = {
-            aoc::sim::goods::COPPER_ORE, realistic ? aoc::sim::goods::WOOD : aoc::sim::goods::SILVER_ORE,
+            aoc::sim::goods::COPPER_ORE,
+            realistic ? aoc::sim::goods::WOOD : aoc::sim::goods::SILVER_ORE,
             realistic ? aoc::sim::goods::STONE : aoc::sim::goods::IRON_ORE,
             realistic ? aoc::sim::goods::CATTLE : aoc::sim::goods::WOOD,
-            aoc::sim::goods::STONE,      aoc::sim::goods::CATTLE
-        };
+            aoc::sim::goods::STONE,
+            aoc::sim::goods::CATTLE};
         const int32_t starterCount = realistic ? 4 : 6;
         const int32_t mintingOres  = realistic ? 1 : 2;
-        int32_t resourcesPlaced = 0;
+        int32_t resourcesPlaced    = 0;
         // Pass 1: ring-1 neighbors
         for (const aoc::hex::AxialCoord& nbr2 : nbrs) {
-            if (!grid.isValid(nbr2)) { continue; }
+            if (!grid.isValid(nbr2)) {
+                continue;
+            }
             int32_t nbrIdx = grid.toIndex(nbr2);
-            if (!grid.resource(nbrIdx).isValid()
-                && !aoc::map::isWater(grid.terrain(nbrIdx))
-                && !aoc::map::isImpassable(grid.terrain(nbrIdx))
-                && resourcesPlaced < starterCount) {
+            if (!grid.resource(nbrIdx).isValid() && !aoc::map::isWater(grid.terrain(nbrIdx)) &&
+                !aoc::map::isImpassable(grid.terrain(nbrIdx)) && resourcesPlaced < starterCount) {
                 grid.setResource(nbrIdx, aoc::ResourceId{STARTER_RESOURCES[resourcesPlaced]});
-                grid.setReserves(nbrIdx, aoc::sim::defaultReserves(STARTER_RESOURCES[resourcesPlaced]));
+                grid.setReserves(nbrIdx,
+                                 aoc::sim::defaultReserves(STARTER_RESOURCES[resourcesPlaced]));
                 ++resourcesPlaced;
             }
         }
@@ -584,14 +610,19 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             ring2.reserve(12);
             aoc::hex::ring(startPos, 2, std::back_inserter(ring2));
             for (const aoc::hex::AxialCoord& tile : ring2) {
-                if (resourcesPlaced >= mintingOres) { break; }
-                if (!grid.isValid(tile)) { continue; }
+                if (resourcesPlaced >= mintingOres) {
+                    break;
+                }
+                if (!grid.isValid(tile)) {
+                    continue;
+                }
                 int32_t tileIdx = grid.toIndex(tile);
-                if (!grid.resource(tileIdx).isValid()
-                    && !aoc::map::isWater(grid.terrain(tileIdx))
-                    && !aoc::map::isImpassable(grid.terrain(tileIdx))) {
+                if (!grid.resource(tileIdx).isValid() &&
+                    !aoc::map::isWater(grid.terrain(tileIdx)) &&
+                    !aoc::map::isImpassable(grid.terrain(tileIdx))) {
                     grid.setResource(tileIdx, aoc::ResourceId{STARTER_RESOURCES[resourcesPlaced]});
-                    grid.setReserves(tileIdx, aoc::sim::defaultReserves(STARTER_RESOURCES[resourcesPlaced]));
+                    grid.setReserves(tileIdx,
+                                     aoc::sim::defaultReserves(STARTER_RESOURCES[resourcesPlaced]));
                     ++resourcesPlaced;
                 }
             }
@@ -601,11 +632,10 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         // under Realistic placement, where the clusters decide who has what.
         if (!realistic) {
             constexpr uint16_t LUXURY_POOL[] = {
-                aoc::sim::goods::WINE, aoc::sim::goods::SPICES, aoc::sim::goods::SILK,
-                aoc::sim::goods::FURS, aoc::sim::goods::GEMS, aoc::sim::goods::DYES,
-                aoc::sim::goods::TEA, aoc::sim::goods::COFFEE, aoc::sim::goods::TOBACCO,
-                aoc::sim::goods::PEARLS, aoc::sim::goods::INCENSE, aoc::sim::goods::IVORY
-            };
+                aoc::sim::goods::WINE,   aoc::sim::goods::SPICES,  aoc::sim::goods::SILK,
+                aoc::sim::goods::FURS,   aoc::sim::goods::GEMS,    aoc::sim::goods::DYES,
+                aoc::sim::goods::TEA,    aoc::sim::goods::COFFEE,  aoc::sim::goods::TOBACCO,
+                aoc::sim::goods::PEARLS, aoc::sim::goods::INCENSE, aoc::sim::goods::IVORY};
             constexpr int32_t LUXURY_POOL_SIZE = 12;
 
             int32_t luxPlaced = 0;
@@ -614,12 +644,20 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             aoc::hex::ring(startPos, 2, std::back_inserter(ring2));
 
             for (const aoc::hex::AxialCoord& luxTile : ring2) {
-                if (luxPlaced >= 2) { break; }
-                if (!grid.isValid(luxTile)) { continue; }
+                if (luxPlaced >= 2) {
+                    break;
+                }
+                if (!grid.isValid(luxTile)) {
+                    continue;
+                }
                 int32_t luxIdx = grid.toIndex(luxTile);
-                if (grid.resource(luxIdx).isValid()) { continue; }
-                if (aoc::map::isWater(grid.terrain(luxIdx))
-                    || aoc::map::isImpassable(grid.terrain(luxIdx))) { continue; }
+                if (grid.resource(luxIdx).isValid()) {
+                    continue;
+                }
+                if (aoc::map::isWater(grid.terrain(luxIdx)) ||
+                    aoc::map::isImpassable(grid.terrain(luxIdx))) {
+                    continue;
+                }
 
                 uint16_t luxId = LUXURY_POOL[(p * 2 + luxPlaced) % LUXURY_POOL_SIZE];
                 grid.setResource(luxIdx, aoc::ResourceId{luxId});
@@ -631,13 +669,14 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         // Configure player state via the GameState Player object (no ECS entity creation)
         aoc::game::Player* gsPlayer = gameState.player(player);
         if (gsPlayer != nullptr) {
-            gsPlayer->setCivId(static_cast<aoc::sim::CivId>(
-                civAssignment[static_cast<std::size_t>(p)]));
+            gsPlayer->setCivId(
+                static_cast<aoc::sim::CivId>(civAssignment[static_cast<std::size_t>(p)]));
             gsPlayer->setHuman(false);
-            gsPlayer->setTreasury(0, aoc::sim::MoneyFlow::external());  // No money at start: barter economy
+            gsPlayer->setTreasury(
+                0, aoc::sim::MoneyFlow::external()); // No money at start: barter economy
 
             // Initialize monetary state
-            gsPlayer->monetary().owner = player;
+            gsPlayer->monetary().owner  = player;
             gsPlayer->monetary().system = aoc::sim::MonetarySystemType::Barter;
 
             // Initialize economy component
@@ -647,7 +686,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             gsPlayer->tech().owner = player;
             gsPlayer->tech().initialize();
             gsPlayer->tech().completedTechs[0] = true;
-            gsPlayer->tech().currentResearch = aoc::TechId{1};
+            gsPlayer->tech().currentResearch   = aoc::TechId{1};
 
             // Initialize civics
             gsPlayer->civics().owner = player;
@@ -675,12 +714,13 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         // Create AI controller
         aiControllers.emplace_back(player);
 
-        LOG_INFO("Player %d (%.*s) placed at (%d,%d)",
-                 p,
+        LOG_INFO("Player %d (%.*s) placed at (%d,%d)", p,
                  static_cast<int>(aoc::sim::civDef(static_cast<aoc::sim::CivId>(
-                     civAssignment[static_cast<std::size_t>(p)])).name.size()),
-                 aoc::sim::civDef(static_cast<aoc::sim::CivId>(
-                     civAssignment[static_cast<std::size_t>(p)])).name.data(),
+                                                       civAssignment[static_cast<std::size_t>(p)]))
+                                      .name.size()),
+                 aoc::sim::civDef(
+                     static_cast<aoc::sim::CivId>(civAssignment[static_cast<std::size_t>(p)]))
+                     .name.data(),
                  startPos.q, startPos.r);
     }
 
@@ -698,21 +738,21 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
     // Build TurnContext
     aoc::sim::TurnContext turnCtx{};
-    turnCtx.grid = &grid;
-    turnCtx.economy = &economy;
-    turnCtx.diplomacy = &diplomacy;
-    turnCtx.barbarians = &barbarians;
+    turnCtx.grid            = &grid;
+    turnCtx.economy         = &economy;
+    turnCtx.diplomacy       = &diplomacy;
+    turnCtx.barbarians      = &barbarians;
     turnCtx.allianceTracker = &allianceTracker;
     diplomacy.setAllianceTracker(&allianceTracker);
-    turnCtx.rng = &rng;
+    turnCtx.rng       = &rng;
     turnCtx.gameState = &gameState;
     for (aoc::sim::ai::AIController& ai : aiControllers) {
         turnCtx.aiControllers.push_back(&ai);
         turnCtx.allPlayers.push_back(ai.player());
     }
-    turnCtx.humanPlayer = aoc::INVALID_PLAYER;
-    turnCtx.currentTurn = 0;
-    turnCtx.maxTurns = static_cast<aoc::TurnNumber>(maxTurns);
+    turnCtx.humanPlayer     = aoc::INVALID_PLAYER;
+    turnCtx.currentTurn     = 0;
+    turnCtx.maxTurns        = static_cast<aoc::TurnNumber>(maxTurns);
     turnCtx.victoryTypeMask = victoryMask;
 
     // Mid-turn event log for ML training data
@@ -725,8 +765,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     if (!tracePath.empty()) {
         aoc::core::FileHeader hdr{};
         hdr.numPlayers = static_cast<uint8_t>(playerCount);
-        hdr.numTurns = static_cast<uint32_t>(maxTurns);
-        hdr.seed = rng.next();
+        hdr.numTurns   = static_cast<uint32_t>(maxTurns);
+        hdr.seed       = rng.next();
         if (!decisionLog.open(tracePath, hdr)) {
             LOG_ERROR("Failed to open trace file: %s", tracePath.c_str());
         } else {
@@ -771,24 +811,31 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             if (!aoc::sim::moneyConserved(moneyBefore, moneyAfter, economy.moneyLedger())) {
                 ++moneyViolations;
                 const aoc::sim::MoneyLedger::Civ t = economy.moneyLedger().total();
-                LOG_WARN("Money not conserved on turn %d: world %lld -> %lld (delta %lld, ledger %lld, "
-                         "unbacked +%lld -%lld)",
-                         turn, static_cast<long long>(moneyBefore), static_cast<long long>(moneyAfter),
-                         static_cast<long long>(moneyAfter - moneyBefore),
-                         static_cast<long long>(economy.moneyLedger().expectedDelta()),
-                         static_cast<long long>(t.unbackedIn), static_cast<long long>(t.unbackedOut));
+                LOG_WARN(
+                    "Money not conserved on turn %d: world %lld -> %lld (delta %lld, ledger %lld, "
+                    "unbacked +%lld -%lld)",
+                    turn, static_cast<long long>(moneyBefore), static_cast<long long>(moneyAfter),
+                    static_cast<long long>(moneyAfter - moneyBefore),
+                    static_cast<long long>(economy.moneyLedger().expectedDelta()),
+                    static_cast<long long>(t.unbackedIn), static_cast<long long>(t.unbackedOut));
                 // Which civ, which pool: the leak's address.
                 std::size_t i = 0;
                 for (const std::unique_ptr<aoc::game::Player>& pl : gameState.players()) {
-                    const std::array<int64_t, 5> now = moneyPools(*pl);
+                    const std::array<int64_t, 5> now  = moneyPools(*pl);
                     const std::array<int64_t, 5>& was = poolsBefore[i++];
-                    const aoc::sim::MoneyLedger::Civ& b = economy.moneyLedger().civs[static_cast<std::size_t>(pl->id())];
-                    LOG_WARN("  P%u treasury %+lld private %+lld notes %+lld bullion %+lld purse %+lld | "
-                             "ledger minted %lld ext +%lld -%lld lost %lld",
-                             static_cast<unsigned>(pl->id()), static_cast<long long>(now[0] - was[0]),
-                             static_cast<long long>(now[1] - was[1]), static_cast<long long>(now[2] - was[2]),
-                             static_cast<long long>(now[3] - was[3]), static_cast<long long>(now[4] - was[4]),
-                             static_cast<long long>(b.minted), static_cast<long long>(b.externalIn),
+                    const aoc::sim::MoneyLedger::Civ& b =
+                        economy.moneyLedger().civs[static_cast<std::size_t>(pl->id())];
+                    // Phase B: minted field removed from ledger (coin layer gone).
+                    LOG_WARN("  P%u treasury %+lld private %+lld notes %+lld bullion %+lld purse "
+                             "%+lld | "
+                             "ledger ext +%lld -%lld lost %lld",
+                             static_cast<unsigned>(pl->id()),
+                             static_cast<long long>(now[0] - was[0]),
+                             static_cast<long long>(now[1] - was[1]),
+                             static_cast<long long>(now[2] - was[2]),
+                             static_cast<long long>(now[3] - was[3]),
+                             static_cast<long long>(now[4] - was[4]),
+                             static_cast<long long>(b.externalIn),
                              static_cast<long long>(b.externalOut), static_cast<long long>(b.lost));
                 }
             }
@@ -800,7 +847,9 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         if (!goodyHuts.hutLocations.empty()) {
             for (int32_t p = 0; p < playerCount; ++p) {
                 aoc::game::Player* gsp = gameState.player(static_cast<aoc::PlayerId>(p));
-                if (gsp == nullptr) { continue; }
+                if (gsp == nullptr) {
+                    continue;
+                }
                 std::vector<aoc::hex::AxialCoord> positions;
                 positions.reserve(gsp->units().size());
                 for (const std::unique_ptr<aoc::game::Unit>& unitPtr : gsp->units()) {
@@ -812,9 +861,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                         goodyHuts, gameState, *gsp, pos, rng, grid, nullptr);
                     if (reward != aoc::sim::GoodyHutReward::Count) {
                         eventLog.record(aoc::sim::TurnEventType::CityFounded,
-                                        static_cast<aoc::PlayerId>(p),
-                                        aoc::INVALID_PLAYER, static_cast<int32_t>(reward), 0,
-                                        "Goody hut claimed");
+                                        static_cast<aoc::PlayerId>(p), aoc::INVALID_PLAYER,
+                                        static_cast<int32_t>(reward), 0, "Goody hut claimed");
                     }
                 }
             }
@@ -828,14 +876,10 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         }
         if (eventCsv.is_open()) {
             for (const aoc::sim::TurnEvent& evt : eventLog.events()) {
-                eventCsv << turn << ","
-                         << evt.subStep << ","
+                eventCsv << turn << "," << evt.subStep << ","
                          << aoc::sim::TurnEventLog::eventTypeName(evt.type) << ","
-                         << static_cast<int>(evt.player) << ","
-                         << static_cast<int>(evt.otherPlayer) << ","
-                         << evt.value1 << ","
-                         << evt.value2 << ","
-                         << evt.detail << "\n";
+                         << static_cast<int>(evt.player) << "," << static_cast<int>(evt.otherPlayer)
+                         << "," << evt.value1 << "," << evt.value2 << "," << evt.detail << "\n";
             }
         }
 
@@ -844,7 +888,9 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             LOG_INFO("=== TURN %d ECONOMY SUMMARY ===", turn);
             for (int32_t p = 0; p < playerCount; ++p) {
                 const aoc::game::Player* gsp = gameState.player(static_cast<aoc::PlayerId>(p));
-                if (gsp == nullptr) { continue; }
+                if (gsp == nullptr) {
+                    continue;
+                }
 
                 float science = aoc::sim::computePlayerScience(*gsp, grid);
                 float culture = aoc::sim::computePlayerCulture(*gsp, grid);
@@ -857,17 +903,21 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                     }
                 }
 
-                const char* techName = gsp->tech().currentResearch.isValid()
-                    ? aoc::sim::techDef(gsp->tech().currentResearch).name.data() : "none";
+                const char* techName =
+                    gsp->tech().currentResearch.isValid()
+                        ? aoc::sim::techDef(gsp->tech().currentResearch).name.data()
+                        : "none";
                 // Show the last completed civic (not current research, which resets
                 // between completions and appears as "none" at snapshot time).
                 const char* civicName = "none";
                 {
                     const aoc::sim::PlayerCivicComponent& civics = gsp->civics();
                     // Find the highest-index completed civic
-                    for (int32_t ci = static_cast<int32_t>(aoc::sim::civicCount()) - 1; ci >= 0; --ci) {
+                    for (int32_t ci = static_cast<int32_t>(aoc::sim::civicCount()) - 1; ci >= 0;
+                         --ci) {
                         if (civics.hasCompleted(aoc::CivicId{static_cast<uint16_t>(ci)})) {
-                            civicName = aoc::sim::civicDef(aoc::CivicId{static_cast<uint16_t>(ci)}).name.data();
+                            civicName = aoc::sim::civicDef(aoc::CivicId{static_cast<uint16_t>(ci)})
+                                            .name.data();
                             break;
                         }
                     }
@@ -876,9 +926,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 LOG_INFO("  P%d: Pop=%d Cities=%d Treasury=%lld Science=%.1f Culture=%.1f "
                          "Tech=%s Civic=%s TradeRoutes=%d MonSys=%d",
                          p, gsp->totalPopulation(), gsp->ownedCityCount(),
-                         static_cast<long long>(gsp->treasury()),
-                         static_cast<double>(science), static_cast<double>(culture),
-                         techName, civicName, activeRoutes,
+                         static_cast<long long>(gsp->treasury()), static_cast<double>(science),
+                         static_cast<double>(culture), techName, civicName, activeRoutes,
                          static_cast<int>(gsp->monetary().system));
 
                 // Resource stockpile summary: aggregate across all cities
@@ -887,43 +936,44 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 int32_t machinery = 0, electronics = 0, consGoods = 0;
                 for (const std::unique_ptr<aoc::game::City>& city : gsp->cities()) {
                     const aoc::sim::CityStockpileComponent& st = city->stockpile();
-                    ironOre    += st.getAmount(aoc::sim::goods::IRON_ORE);
-                    copperOre  += st.getAmount(aoc::sim::goods::COPPER_ORE);
-                    coal       += st.getAmount(aoc::sim::goods::COAL);
-                    wood       += st.getAmount(aoc::sim::goods::WOOD);
-                    stone      += st.getAmount(aoc::sim::goods::STONE);
+                    ironOre += st.getAmount(aoc::sim::goods::IRON_ORE);
+                    copperOre += st.getAmount(aoc::sim::goods::COPPER_ORE);
+                    coal += st.getAmount(aoc::sim::goods::COAL);
+                    wood += st.getAmount(aoc::sim::goods::WOOD);
+                    stone += st.getAmount(aoc::sim::goods::STONE);
                     ironIngots += st.getAmount(aoc::sim::goods::IRON_INGOTS);
-                    tools      += st.getAmount(aoc::sim::goods::TOOLS);
-                    steel      += st.getAmount(aoc::sim::goods::STEEL);
-                    lumber     += st.getAmount(aoc::sim::goods::LUMBER);
-                    machinery  += st.getAmount(aoc::sim::goods::MACHINERY);
+                    tools += st.getAmount(aoc::sim::goods::TOOLS);
+                    steel += st.getAmount(aoc::sim::goods::STEEL);
+                    lumber += st.getAmount(aoc::sim::goods::LUMBER);
+                    machinery += st.getAmount(aoc::sim::goods::MACHINERY);
                     electronics += st.getAmount(aoc::sim::goods::ELECTRONICS);
-                    consGoods  += st.getAmount(aoc::sim::goods::CONSUMER_GOODS);
+                    consGoods += st.getAmount(aoc::sim::goods::CONSUMER_GOODS);
                 }
                 LOG_INFO("    Resources: Iron=%d Cu=%d Coal=%d Wood=%d Stone=%d | "
                          "Ingots=%d Tools=%d Steel=%d Lumber=%d | "
                          "Machinery=%d Electronics=%d ConsGoods=%d",
-                         ironOre, copperOre, coal, wood, stone,
-                         ironIngots, tools, steel, lumber,
+                         ironOre, copperOre, coal, wood, stone, ironIngots, tools, steel, lumber,
                          machinery, electronics, consGoods);
 
                 // Trade cargo details for each active trader unit
                 for (const std::unique_ptr<aoc::game::Unit>& unit : gsp->units()) {
                     const aoc::sim::TraderComponent& trader = unit->trader();
-                    if (trader.destOwner == aoc::INVALID_PLAYER) { continue; }
+                    if (trader.destOwner == aoc::INVALID_PLAYER) {
+                        continue;
+                    }
                     std::string cargoStr;
                     for (const aoc::sim::TradeCargo& c : trader.cargo) {
-                        if (!cargoStr.empty()) { cargoStr += ", "; }
+                        if (!cargoStr.empty()) {
+                            cargoStr += ", ";
+                        }
                         cargoStr += "g" + std::to_string(c.goodId);
                         cargoStr += "x" + std::to_string(c.amount);
                     }
                     const char* routeTypeNames[] = {"Land", "Sea", "Air"};
                     LOG_INFO("    Trade[%s]: -> P%u trips=%d gold=%lld cargo=[%s]",
                              routeTypeNames[static_cast<int>(trader.routeType)],
-                             static_cast<unsigned>(trader.destOwner),
-                             trader.completedTrips,
-                             static_cast<long long>(trader.goldEarnedThisTurn),
-                             cargoStr.c_str());
+                             static_cast<unsigned>(trader.destOwner), trader.completedTrips,
+                             static_cast<long long>(trader.goldEarnedThisTurn), cargoStr.c_str());
                 }
             }
         }
@@ -933,10 +983,12 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             LOG_INFO("=== TURN %d DETAILED ECONOMY ===", turn);
             for (int32_t p = 0; p < playerCount; ++p) {
                 const aoc::game::Player* dp = gameState.player(static_cast<aoc::PlayerId>(p));
-                if (dp == nullptr) { continue; }
+                if (dp == nullptr) {
+                    continue;
+                }
 
                 // Happiness: average across all cities
-                float avgHappiness = 0.0f;
+                float avgHappiness  = 0.0f;
                 int32_t happyCities = 0;
                 for (const std::unique_ptr<aoc::game::City>& city : dp->cities()) {
                     avgHappiness += city->happiness().happiness;
@@ -948,23 +1000,31 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
                 // Needs summary from player economy component
                 int32_t needsCount = static_cast<int32_t>(dp->economy().totalNeeds.size());
-                int32_t uniqueLux = dp->economy().uniqueLuxuryCount;
+                int32_t uniqueLux  = dp->economy().uniqueLuxuryCount;
 
                 // Count trade routes by type from trader units
                 int32_t landRoutes = 0, seaRoutes = 0, airRoutes = 0;
                 for (const std::unique_ptr<aoc::game::Unit>& unit : dp->units()) {
                     const aoc::sim::TraderComponent& tr = unit->trader();
-                    if (tr.destOwner == aoc::INVALID_PLAYER) { continue; }
+                    if (tr.destOwner == aoc::INVALID_PLAYER) {
+                        continue;
+                    }
                     switch (tr.routeType) {
-                        case aoc::sim::TradeRouteType::Land: ++landRoutes; break;
-                        case aoc::sim::TradeRouteType::Sea:  ++seaRoutes; break;
-                        case aoc::sim::TradeRouteType::Air:  ++airRoutes; break;
+                    case aoc::sim::TradeRouteType::Land:
+                        ++landRoutes;
+                        break;
+                    case aoc::sim::TradeRouteType::Sea:
+                        ++seaRoutes;
+                        break;
+                    case aoc::sim::TradeRouteType::Air:
+                        ++airRoutes;
+                        break;
                     }
                 }
 
-                LOG_INFO("  P%d: Happiness=%.2f UniqueLux=%d Needs=%d Routes(L/S/A)=%d/%d/%d",
-                         p, static_cast<double>(avgHappiness), uniqueLux, needsCount,
-                         landRoutes, seaRoutes, airRoutes);
+                LOG_INFO("  P%d: Happiness=%.2f UniqueLux=%d Needs=%d Routes(L/S/A)=%d/%d/%d", p,
+                         static_cast<double>(avgHappiness), uniqueLux, needsCount, landRoutes,
+                         seaRoutes, airRoutes);
             }
         }
 
@@ -972,22 +1032,27 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         for (int32_t p = 0; p < playerCount; ++p) {
             PlayerSnapshot snap = snapshotPlayer(gameState, grid, static_cast<aoc::PlayerId>(p));
             {
-                const aoc::sim::MoneyLedger::Civ& book = economy.moneyLedger().civs[static_cast<std::size_t>(p)];
-                snap.mintedTurn   = book.minted;
+                const aoc::sim::MoneyLedger::Civ& book =
+                    economy.moneyLedger().civs[static_cast<std::size_t>(p)];
+                // Phase B: book.minted removed (coin-minting seigniorage gone).
+                snap.mintedTurn   = 0;
                 snap.unbackedTurn = book.unbackedIn - book.unbackedOut;
             }
             snap.mintOreConsumed = economy.mintOreConsumed()[static_cast<std::size_t>(p)];
             // Game-level context columns
             const aoc::game::Player* snapPlayer = gameState.player(static_cast<aoc::PlayerId>(p));
-            const uint8_t civId = (snapPlayer != nullptr)
-                ? static_cast<uint8_t>(snapPlayer->civId()) : 0u;
+            const uint8_t civId =
+                (snapPlayer != nullptr) ? static_cast<uint8_t>(snapPlayer->civId()) : 0u;
             // MetPlayersMask: bit i is set if player p has met player i.
             // The ML pipeline uses this to mask out unmet players' data.
             uint16_t metMask = 0;
             for (int32_t other = 0; other < playerCount; ++other) {
-                if (other == p) { metMask |= (1u << other); continue; }
+                if (other == p) {
+                    metMask |= (1u << other);
+                    continue;
+                }
                 if (diplomacy.haveMet(static_cast<aoc::PlayerId>(p),
-                                       static_cast<aoc::PlayerId>(other))) {
+                                      static_cast<aoc::PlayerId>(other))) {
                     metMask |= (1u << other);
                 }
             }
@@ -995,34 +1060,17 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             // player (highest index) is the "last player" each turn.
             const int32_t isLastPlayer = (p == playerCount - 1) ? 1 : 0;
 
-            csv << turn << ","
-                << static_cast<int>(snap.player) << ","
-                << playerCount << ","
-                << mapConfig.width << ","
-                << mapConfig.height << ","
-                << static_cast<int>(civId) << ","
-                << metMask << ","
-                << isLastPlayer << ","
-                << snap.gdp << ","
-                << snap.treasury << ","
-                << static_cast<int>(snap.coinTier) << ","
-                << static_cast<int>(snap.monetarySystem) << ","
-                << snap.inflationRate << ","
-                << snap.population << ","
-                << snap.cities << ","
-                << snap.militaryUnits << ","
-                << snap.techsResearched << ","
-                << snap.cultureTotal << ","
-                << snap.tradePartners << ","
-                << snap.compositeCSI << ","
-                << snap.eraVP << ","
-                << snap.era << ","
-                << snap.eliminated << ","
-                << snap.avgHappiness << ","
-                << snap.corruption << ","
-                << static_cast<int>(snap.crisisType) << ","
-                << static_cast<int>(snap.industrialRev) << ","
-                << static_cast<int>(snap.governmentType) << ",";
+            csv << turn << "," << static_cast<int>(snap.player) << "," << playerCount << ","
+                << mapConfig.width << "," << mapConfig.height << "," << static_cast<int>(civId)
+                << "," << metMask << "," << isLastPlayer << "," << snap.gdp << "," << snap.treasury
+                << "," << static_cast<int>(snap.moneyGood) << ","
+                << static_cast<int>(snap.monetarySystem) << "," << snap.inflationRate << ","
+                << snap.population << "," << snap.cities << "," << snap.militaryUnits << ","
+                << snap.techsResearched << "," << snap.cultureTotal << "," << snap.tradePartners
+                << "," << snap.compositeCSI << "," << snap.eraVP << "," << snap.era << ","
+                << snap.eliminated << "," << snap.avgHappiness << "," << snap.corruption << ","
+                << static_cast<int>(snap.crisisType) << "," << static_cast<int>(snap.industrialRev)
+                << "," << static_cast<int>(snap.governmentType) << ",";
             // Economic breakdown columns; an eliminated player reports zeros.
             aoc::sim::EconomicBreakdown bd{};
             if (snapPlayer != nullptr) {
@@ -1030,18 +1078,17 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             }
             csv << bd.incomeTax << "," << bd.incomeSeigniorage << "," << bd.incomeTariffs << ","
                 << bd.incomeExternal << "," << bd.totalIncome << "," << bd.effectiveIncome << ","
-                << bd.expenseUnits << "," << bd.expenseBuildings << ","
-                << bd.totalExpense << "," << bd.netFlow << ","
-                << bd.goodsStockpiled;
-            csv << "," << snap.foodPerTurn << "," << snap.famineCities
-                << "," << snap.scienceDiffusion << "," << snap.cultureDiffusion
-                << "," << snap.barbarianUnits;
+                << bd.expenseUnits << "," << bd.expenseBuildings << "," << bd.totalExpense << ","
+                << bd.netFlow << "," << bd.goodsStockpiled;
+            csv << "," << snap.foodPerTurn << "," << snap.famineCities << ","
+                << snap.scienceDiffusion << "," << snap.cultureDiffusion << ","
+                << snap.barbarianUnits;
             csv << "," << bd.incomeTradeRoutes << "," << bd.expenseScience;
             csv << "," << snap.activeRoutes << "," << snap.dealsActive << ","
                 << snap.luxuryTypesHeld;
             csv << "," << snap.circulation << "," << snap.arrears << "," << snap.priceLevel << ","
-                << snap.mintedTurn << "," << snap.unbackedTurn << "," << bd.collectionEfficiency << ","
-                << snap.coinLanded;
+                << snap.mintedTurn << "," << snap.unbackedTurn << "," << bd.collectionEfficiency
+                << "," << snap.coinLanded;
             csv << "," << snap.metalOreHeld << "," << snap.mintOreConsumed;
             csv << "\n";
         }
@@ -1051,9 +1098,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         const aoc::sim::VictoryResult& vr = turnCtx.lastVictoryResult;
         if (vr.type != aoc::sim::VictoryType::None) {
             printProgressBar(turn, maxTurns);
-            std::fprintf(stderr, "\n\n  GAME OVER on turn %d: Player %u wins (type %d)\n",
-                         turn, static_cast<unsigned>(vr.winner),
-                         static_cast<int>(vr.type));
+            std::fprintf(stderr, "\n\n  GAME OVER on turn %d: Player %u wins (type %d)\n", turn,
+                         static_cast<unsigned>(vr.winner), static_cast<int>(vr.type));
             break;
         }
 
@@ -1061,8 +1107,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
         if (turn % 25 == 0) {
             PlayerSnapshot s0 = snapshotPlayer(gameState, grid, 0);
-            std::fprintf(stderr, "\n  Turn %d: P0 pop=%d cities=%d techs=%d GDP=%lld\n",
-                         turn, s0.population, s0.cities, s0.techsResearched,
+            std::fprintf(stderr, "\n  Turn %d: P0 pop=%d cities=%d techs=%d GDP=%lld\n", turn,
+                         s0.population, s0.cities, s0.techsResearched,
                          static_cast<long long>(s0.gdp));
         }
 
@@ -1074,12 +1120,13 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     {
         std::string summary;
         for (const std::pair<const int32_t, int32_t>& entry : routeRejections) {
-            summary += "\n    " + std::to_string(entry.second) + " x "
-                     + std::string(aoc::describeError(static_cast<aoc::ErrorCode>(entry.first)));
+            summary += "\n    " + std::to_string(entry.second) + " x " +
+                       std::string(aoc::describeError(static_cast<aoc::ErrorCode>(entry.first)));
         }
         std::fprintf(stderr, "\n  Trade route rejections (idle AI Traders, whole run):%s\n",
                      summary.empty() ? " none" : summary.c_str());
-        std::fprintf(stderr, "  Money conservation: %d of %d turns violated\n", moneyViolations, maxTurns);
+        std::fprintf(stderr, "  Money conservation: %d of %d turns violated\n", moneyViolations,
+                     maxTurns);
     }
 
     // Which clause refused each monetary transition this run
@@ -1092,7 +1139,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     // the main CSV but with "_tiles" suffix.
     {
         std::string tilesPath = outputPath;
-        const auto dot = tilesPath.find_last_of('.');
+        const auto dot        = tilesPath.find_last_of('.');
         if (dot != std::string::npos) {
             tilesPath.insert(dot, "_tiles");
         } else {
@@ -1106,19 +1153,14 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             const int32_t tcount = grid.tileCount();
             for (int32_t i = 0; i < tcount; ++i) {
                 const aoc::hex::AxialCoord ax = grid.toAxial(i);
-                tcsv << i << ','
-                     << ax.q << ',' << ax.r << ','
-                     << static_cast<int>(grid.terrain(i)) << ','
-                     << static_cast<int>(grid.feature(i)) << ','
+                tcsv << i << ',' << ax.q << ',' << ax.r << ',' << static_cast<int>(grid.terrain(i))
+                     << ',' << static_cast<int>(grid.feature(i)) << ','
                      << static_cast<int>(grid.elevation(i)) << ','
                      << static_cast<int>(grid.owner(i)) << ','
                      << static_cast<int>(grid.improvement(i)) << ','
-                     << static_cast<int>(grid.resource(i).value) << ','
-                     << grid.reserves(i) << ','
-                     << (grid.hasRoad(i) ? 1 : 0) << ','
-                     << (grid.hasPowerPole(i) ? 1 : 0) << ','
-                     << (grid.hasPipeline(i) ? 1 : 0) << ','
-                     << grid.greenhouseCrop(i) << ','
+                     << static_cast<int>(grid.resource(i).value) << ',' << grid.reserves(i) << ','
+                     << (grid.hasRoad(i) ? 1 : 0) << ',' << (grid.hasPowerPole(i) ? 1 : 0) << ','
+                     << (grid.hasPipeline(i) ? 1 : 0) << ',' << grid.greenhouseCrop(i) << ','
                      << static_cast<int>(grid.naturalWonder(i)) << '\n';
             }
             tcsv.close();
@@ -1132,7 +1174,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         decisionLog.close();
         if (decisionLog.hasWriteError()) {
             LOG_ERROR("Decision trace '%s' had write failures; the file may be "
-                      "truncated or corrupt", tracePath.c_str());
+                      "truncated or corrupt",
+                      tracePath.c_str());
         }
     }
 
@@ -1152,9 +1195,8 @@ std::vector<aoc::sim::LeaderPersonalityDef> g_tunedDefs;
 
 void loadTunedOverrides(const std::string& dir) {
     static constexpr const char* NAMES[12] = {
-        "Trajan","Cleopatra","QinShiHuang","Frederick",
-        "Pericles","Victoria","Hojo","Cyrus",
-        "Montezuma","Gandhi","Peter","PedroII",
+        "Trajan", "Cleopatra", "QinShiHuang", "Frederick", "Pericles", "Victoria",
+        "Hojo",   "Cyrus",     "Montezuma",   "Gandhi",    "Peter",    "PedroII",
     };
     g_tunedDefs.clear();
     g_tunedDefs.reserve(12);
@@ -1174,18 +1216,19 @@ void loadTunedOverrides(const std::string& dir) {
     for (auto& def : g_tunedDefs) {
         aoc::sim::setLeaderPersonalityOverride(def.civId, &def);
     }
-    std::fprintf(stderr, "  [tuned-dir] installed %d tuned leader overrides from %s\n",
-                 loaded, dir.c_str());
+    std::fprintf(stderr, "  [tuned-dir] installed %d tuned leader overrides from %s\n", loaded,
+                 dir.c_str());
 }
 
 } // namespace
 
 int main(int argc, char* argv[]) {
-    int32_t turns = 200;
-    int32_t players = 4;
+    int32_t turns          = 200;
+    int32_t players        = 4;
     std::string outputPath = "simulation_log.csv";
     std::string tracePath;
-    aoc::map::MapType mapType = aoc::map::MapType::Continents;  // 2026-05-03: was LandWithSeas (removed).
+    aoc::map::MapType mapType =
+        aoc::map::MapType::Continents; // 2026-05-03: was LandWithSeas (removed).
     aoc::map::ResourcePlacementMode placement = aoc::map::ResourcePlacementMode::Realistic;
 
     // Simulations default to Prestige+Score+LastStanding so tests always
@@ -1199,12 +1242,12 @@ int main(int argc, char* argv[]) {
     // which masked early-victory mechanics.
     uint32_t victoryMask = aoc::sim::VICTORY_MASK_ALL;
 
-    uint32_t seedArg = 0;   // 0 = random_device (non-deterministic)
+    uint32_t seedArg  = 0; // 0 = random_device (non-deterministic)
     bool loadedConfig = false;
     if (argc >= 2) {
         std::string arg1(argv[1]);
-        if (arg1.size() > 4 && (arg1.substr(arg1.size() - 5) == ".yaml"
-                                 || arg1.substr(arg1.size() - 4) == ".yml")) {
+        if (arg1.size() > 4 &&
+            (arg1.substr(arg1.size() - 5) == ".yaml" || arg1.substr(arg1.size() - 4) == ".yml")) {
             aoc::SimpleYaml config;
             if (config.loadFromFile(arg1)) {
                 turns      = config.getInt("max_turns", 200);
@@ -1212,20 +1255,23 @@ int main(int argc, char* argv[]) {
                 outputPath = config.getString("output_file", "simulation_log.csv");
                 tracePath  = config.getString("trace_file", "");
                 const std::string mapTypeYaml = config.getString("map_type", "");
-                if (!mapTypeYaml.empty()) { mapType = parseMapTypeCli(mapTypeYaml); }
+                if (!mapTypeYaml.empty()) {
+                    mapType = parseMapTypeCli(mapTypeYaml);
+                }
                 const std::string placementYaml = config.getString("placement", "");
-                if (!placementYaml.empty()) { placement = parsePlacementCli(placementYaml); }
+                if (!placementYaml.empty()) {
+                    placement = parsePlacementCli(placementYaml);
+                }
 
                 std::string gameLengthStr = config.getString("game_length", "");
                 if (!gameLengthStr.empty()) {
-                    aoc::sim::GameLength gl = aoc::sim::parseGameLength(gameLengthStr);
+                    aoc::sim::GameLength gl              = aoc::sim::parseGameLength(gameLengthStr);
                     const aoc::sim::GameLengthDef& glDef = aoc::sim::gameLengthDef(gl);
-                    turns = glDef.maxTurns;
+                    turns                                = glDef.maxTurns;
                     aoc::sim::GamePace::instance().setFromLength(gl);
                 }
 
-                const std::string victoryTypesStr =
-                    config.getString("victory_types", "");
+                const std::string victoryTypesStr = config.getString("victory_types", "");
                 if (!victoryTypesStr.empty()) {
                     victoryMask = aoc::sim::parseVictoryTypeMask(victoryTypesStr);
                 }
@@ -1234,13 +1280,13 @@ int main(int argc, char* argv[]) {
 
                 std::fprintf(stderr, "\n  === Age of Civilization: Headless Simulation ===\n\n");
                 std::fprintf(stderr, "  Config:  %s\n", arg1.c_str());
-                std::fprintf(stderr, "  Length:  %s\n", gameLengthStr.empty() ? "Custom" : gameLengthStr.c_str());
+                std::fprintf(stderr, "  Length:  %s\n",
+                             gameLengthStr.empty() ? "Custom" : gameLengthStr.c_str());
                 std::fprintf(stderr, "  Turns:   %d\n", turns);
                 std::fprintf(stderr, "  Players: %d\n", players);
                 std::fprintf(stderr, "  Map:     %s (%dx%d)\n",
                              config.getString("map_type", "Continents").c_str(),
-                             config.getInt("map_width", 60),
-                             config.getInt("map_height", 40));
+                             config.getInt("map_width", 60), config.getInt("map_height", 40));
                 std::fprintf(stderr, "  Seed:    %d\n", config.getInt("seed", 42));
                 std::fprintf(stderr, "  Output:  %s\n\n", outputPath.c_str());
 
@@ -1254,7 +1300,7 @@ int main(int argc, char* argv[]) {
 
     std::string tunedDir;
     std::string mapCachePath;
-    int32_t mapWidth = 0;   // 0 = use runHeadlessSimulation default
+    int32_t mapWidth  = 0; // 0 = use runHeadlessSimulation default
     int32_t mapHeight = 0;
     if (!loadedConfig) {
         for (int i = 1; i < argc; ++i) {
@@ -1279,14 +1325,14 @@ int main(int argc, char* argv[]) {
                 std::string sizeStr(argv[++i]);
                 std::size_t xPos = sizeStr.find('x');
                 if (xPos != std::string::npos) {
-                    mapWidth = std::atoi(sizeStr.substr(0, xPos).c_str());
+                    mapWidth  = std::atoi(sizeStr.substr(0, xPos).c_str());
                     mapHeight = std::atoi(sizeStr.substr(xPos + 1).c_str());
                 }
             } else if (arg == "--map-cache" && i + 1 < argc) {
                 mapCachePath = argv[++i];
             } else if (arg == "--log-level" && i + 1 < argc) {
-                const char* level                = argv[++i];
-                aoc::log::Severity minSeverity   = aoc::log::Severity::Debug;
+                const char* level              = argv[++i];
+                aoc::log::Severity minSeverity = aoc::log::Severity::Debug;
                 if (aoc::log::parseSeverity(level, minSeverity)) {
                     aoc::log::setMinSeverity(minSeverity);
                 } else {
@@ -1299,8 +1345,11 @@ int main(int argc, char* argv[]) {
                 seedArg = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
             } else {
                 int val = std::atoi(arg.c_str());
-                if (val > 0 && turns == 200) { turns = val; }
-                else if (val > 0 && players == 4) { players = val; }
+                if (val > 0 && turns == 200) {
+                    turns = val;
+                } else if (val > 0 && players == 4) {
+                    players = val;
+                }
             }
         }
 
@@ -1310,24 +1359,29 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "  Output:  %s\n\n", outputPath.c_str());
     }
 
-    if (turns <= 0) { turns = 200; }
-    if (players < 2) { players = 2; }
-    if (players > 20) { players = 20; }
+    if (turns <= 0) {
+        turns = 200;
+    }
+    if (players < 2) {
+        players = 2;
+    }
+    if (players > 20) {
+        players = 20;
+    }
 
     // Auto-derive game pace from --turns. Reference is 1000t = 1.0x cost
     // (matches existing balance defaults); shorter games scale costs DOWN
     // so content fits, longer games scale UP so progression feels paced.
     // Movement does NOT scale — shorter games naturally favor Domination.
     {
-        const float ref = 1000.0f;
-        const float mult = static_cast<float>(turns) / ref;
-        aoc::sim::GamePace::instance().costMultiplier = mult;
+        const float ref                                 = 1000.0f;
+        const float mult                                = static_cast<float>(turns) / ref;
+        aoc::sim::GamePace::instance().costMultiplier   = mult;
         aoc::sim::GamePace::instance().growthMultiplier = mult;
         aoc::sim::GamePace::instance().eraInterval =
             std::max(10, static_cast<int32_t>(static_cast<float>(turns) / 16.0f));
         std::fprintf(stderr, "  Pace:    cost×%.2f growth×%.2f eraEvery=%d\n",
-                     static_cast<double>(mult),
-                     static_cast<double>(mult),
+                     static_cast<double>(mult), static_cast<double>(mult),
                      aoc::sim::GamePace::instance().eraInterval);
     }
 
@@ -1337,7 +1391,8 @@ int main(int argc, char* argv[]) {
 
     std::fprintf(stderr, "  Map:     %s\n", mapTypeLabel(mapType));
     std::fprintf(stderr, "  Placement: %s\n", placementLabel(placement));
-    int result = runHeadlessSimulation(turns, players, outputPath, victoryMask, tracePath, mapType, placement, mapWidth, mapHeight, seedArg, mapCachePath);
+    int result = runHeadlessSimulation(turns, players, outputPath, victoryMask, tracePath, mapType,
+                                       placement, mapWidth, mapHeight, seedArg, mapCachePath);
 
     std::fprintf(stderr, "\n\n");
     return result;

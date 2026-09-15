@@ -62,7 +62,8 @@ public:
 
 private:
     void harvestResources(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
-    void processInternalTradeForAllPlayers(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid);
+    void processInternalTradeForAllPlayers(aoc::game::GameState& gameState,
+                                           const aoc::map::HexGrid& grid);
     void consumeBuildingFuel(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid);
     void executeProduction(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
     void computePlayerNeeds(aoc::game::GameState& gameState);
@@ -72,15 +73,16 @@ private:
     /// bullion (Barter) or private money with a seigniorage share to the
     /// treasury (coinage), at face value, and is booked as minted. The reserve
     /// counters accumulate what was ever minted per metal.
-    void sweepCoins(aoc::game::GameState& gameState);
+    void monetiseGoods(aoc::game::GameState& gameState);
     void tickMonetaryMechanics(aoc::game::GameState& gameState);
     void executeMonetaryPolicy(aoc::game::GameState& gameState);
     void processCrisisAndBonds(aoc::game::GameState& gameState);
-    void processEconomicZonesAndSpeculation(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
+    void processEconomicZonesAndSpeculation(aoc::game::GameState& gameState,
+                                            aoc::map::HexGrid& grid);
 
     ProductionChain m_productionChain;
-    Market          m_market;
-    MoneyLedger     m_ledger; ///< transient, reset by the turn loop
+    Market m_market;
+    MoneyLedger m_ledger; ///< transient, reset by the turn loop
 
     /// Previous-turn GDP per player (for inflation delta calculation).
     std::unordered_map<PlayerId, CurrencyAmount> m_previousGDP;
@@ -90,9 +92,9 @@ private:
     uint32_t m_depletionTurnCounter = 0;
 
     /// Global state trackers for the new economic systems.
-    GlobalSanctionTracker       m_sanctions;
-    GlobalEconomicZoneTracker   m_economicZones;
-    GlobalCurrencyWarState      m_currencyWarState;
+    GlobalSanctionTracker m_sanctions;
+    GlobalEconomicZoneTracker m_economicZones;
+    GlobalCurrencyWarState m_currencyWarState;
 
     /// Per-(city,building) recipe preference.  Key = (cityOwner << 32) | (
     /// cityLocationHash << 8) | buildingId.  Value = recipe id that building
@@ -134,7 +136,7 @@ private:
     /// So those totals rank evaluations, not constraints. These two count one
     /// city-turn once, which is the honest denominator for "how often was
     /// labour the thing that stopped this city".
-    int64_t m_cityTurns        = 0;
+    int64_t m_cityTurns          = 0;
     int64_t m_cityTurnsSlotBound = 0;
 
     [[nodiscard]] const std::array<int64_t, static_cast<std::size_t>(SkipReason::Count)>&
@@ -142,7 +144,7 @@ private:
         return this->m_recipeSkips;
     }
 
-    static constexpr std::size_t MAX_RECIPES = 128;
+    static constexpr std::size_t MAX_RECIPES           = 128;
     std::array<int32_t, MAX_RECIPES> m_recipeFireCount = {};
 
     /// Ore units the three Mint recipes ate this turn, per civ. Transient like
@@ -166,13 +168,17 @@ public:
     [[nodiscard]] GlobalSanctionTracker& sanctions() { return this->m_sanctions; }
     [[nodiscard]] const GlobalSanctionTracker& sanctions() const { return this->m_sanctions; }
     [[nodiscard]] GlobalEconomicZoneTracker& economicZones() { return this->m_economicZones; }
-    [[nodiscard]] const GlobalEconomicZoneTracker& economicZones() const { return this->m_economicZones; }
+    [[nodiscard]] const GlobalEconomicZoneTracker& economicZones() const {
+        return this->m_economicZones;
+    }
     [[nodiscard]] GlobalCurrencyWarState& currencyWar() { return this->m_currencyWarState; }
-    [[nodiscard]] const GlobalCurrencyWarState& currencyWar() const { return this->m_currencyWarState; }
+    [[nodiscard]] const GlobalCurrencyWarState& currencyWar() const {
+        return this->m_currencyWarState;
+    }
 
     /// Record a per-city, per-building recipe preference.  0xFFFF clears.
-    void setRecipePreference(PlayerId owner, uint32_t cityLocHash,
-                             uint16_t buildingId, uint16_t recipeId);
+    void setRecipePreference(PlayerId owner, uint32_t cityLocHash, uint16_t buildingId,
+                             uint16_t recipeId);
 
     /// Look up the preferred recipe for (owner, cityLocHash, buildingId).
     /// Returns 0xFFFF when no preference is set.

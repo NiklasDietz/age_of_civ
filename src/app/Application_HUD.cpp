@@ -776,7 +776,7 @@ void Application::updateHUD() {
             const aoc::sim::MonetaryStateComponent& ms = econPlayer->monetary();
             econText = std::string(aoc::sim::monetarySystemName(ms.system));
             econText += "  T:" + std::to_string(ms.treasury);
-            econText += "  " + std::string(aoc::sim::coinTierName(ms.effectiveCoinTier));
+            if (ms.moneyGood != aoc::sim::NO_MONEY_GOOD) { econText += "  G:" + std::to_string(ms.moneyGood); }
             if (ms.system != aoc::sim::MonetarySystemType::Barter) {
                 econText += "  M:" + std::to_string(ms.moneySupply);
                 int inflPct = static_cast<int>(ms.inflationRate * 100.0f);

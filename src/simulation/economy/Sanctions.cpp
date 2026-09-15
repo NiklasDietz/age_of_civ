@@ -15,10 +15,8 @@
 
 namespace aoc::sim {
 
-ErrorCode imposeSanction(aoc::game::GameState& gameState,
-                         GlobalSanctionTracker& tracker,
-                         PlayerId sanctioner, PlayerId target,
-                         SanctionType type, bool secondary) {
+ErrorCode imposeSanction(aoc::game::GameState& gameState, GlobalSanctionTracker& tracker,
+                         PlayerId sanctioner, PlayerId target, SanctionType type, bool secondary) {
     if (tracker.hasSanction(sanctioner, target, type)) {
         return ErrorCode::InvalidArgument;
     }
@@ -39,95 +37,75 @@ ErrorCode imposeSanction(aoc::game::GameState& gameState,
         aoc::game::Player* targetPlayer = gameState.player(target);
         if (targetPlayer != nullptr) {
             CurrencyTrustComponent& trust = targetPlayer->currencyTrust();
-            trust.trustScore = std::max(0.0f, trust.trustScore - 0.10f);
+            trust.trustScore              = std::max(0.0f, trust.trustScore - 0.10f);
         }
     }
 
-    LOG_INFO("Player %u imposed %s on player %u%s",
-             static_cast<unsigned>(sanctioner),
-             type == SanctionType::TradeEmbargo      ? "trade embargo" :
-             type == SanctionType::FinancialSanction ? "financial sanctions" :
-             "asset freeze",
-             static_cast<unsigned>(target),
-             secondary ? " (with secondary sanctions)" : "");
+    LOG_INFO("Player %u imposed %s on player %u%s", static_cast<unsigned>(sanctioner),
+             type == SanctionType::TradeEmbargo        ? "trade embargo"
+             : type == SanctionType::FinancialSanction ? "financial sanctions"
+                                                       : "asset freeze",
+             static_cast<unsigned>(target), secondary ? " (with secondary sanctions)" : "");
 
     return ErrorCode::Ok;
 }
 
-void liftSanction(GlobalSanctionTracker& tracker,
-                  PlayerId sanctioner, PlayerId target,
+void liftSanction(GlobalSanctionTracker& tracker, PlayerId sanctioner, PlayerId target,
                   SanctionType type) {
     std::vector<SanctionEntry>::iterator it = tracker.activeSanctions.begin();
     while (it != tracker.activeSanctions.end()) {
         if (it->sanctioner == sanctioner && it->target == target && it->type == type) {
             it = tracker.activeSanctions.erase(it);
-            LOG_INFO("Player %u lifted sanction on player %u",
-                     static_cast<unsigned>(sanctioner), static_cast<unsigned>(target));
+            LOG_INFO("Player %u lifted sanction on player %u", static_cast<unsigned>(sanctioner),
+                     static_cast<unsigned>(target));
             return;
         }
         ++it;
     }
 }
 
-void executeAssetFreeze(aoc::game::GameState& gameState,
-                        PlayerId sanctioner, PlayerId target) {
-    aoc::game::Player* targetPlayer    = gameState.player(target);
+void executeAssetFreeze(aoc::game::GameState& gameState, PlayerId sanctioner, PlayerId target) {
+    aoc::game::Player* targetPlayer     = gameState.player(target);
     aoc::game::Player* sanctionerPlayer = gameState.player(sanctioner);
     if (targetPlayer == nullptr || sanctionerPlayer == nullptr) {
         return;
     }
 
-    MonetaryStateComponent& targetState    = targetPlayer->monetary();
+    MonetaryStateComponent& targetState     = targetPlayer->monetary();
     MonetaryStateComponent& sanctionerState = sanctionerPlayer->monetary();
 
     constexpr float SEIZURE_FRACTION = 0.25f;
 
-    int32_t copperSeized = static_cast<int32_t>(
-        static_cast<float>(targetState.copperCoinReserves) * SEIZURE_FRACTION);
-    int32_t silverSeized = static_cast<int32_t>(
-        static_cast<float>(targetState.silverCoinReserves) * SEIZURE_FRACTION);
-    int32_t goldSeized   = static_cast<int32_t>(
-        static_cast<float>(targetState.goldBarReserves) * SEIZURE_FRACTION);
+    // Seize 25% of the target's private specie (backing pool for commodity
+    // and gold-standard civs); coin layer removed in Phase B.
+    const CurrencyAmount specieSeized = static_cast<CurrencyAmount>(
+        static_cast<float>(std::max<CurrencyAmount>(0, targetState.privateSpecie)) *
+        SEIZURE_FRACTION);
+    if (specieSeized > 0) {
+        targetState.privateSpecie -= specieSeized;
+        sanctionerState.privateSpecie += specieSeized;
+    }
 
-    targetState.copperCoinReserves -= copperSeized;
-    targetState.silverCoinReserves -= silverSeized;
-    targetState.goldBarReserves   -= goldSeized;
-    targetState.updateCoinTier();
-
-    sanctionerState.copperCoinReserves += copperSeized;
-    sanctionerState.silverCoinReserves += silverSeized;
-    sanctionerState.goldBarReserves   += goldSeized;
-    sanctionerState.updateCoinTier();
-    // The money the seized metal made up moves with it, from the target's
-    // private hands to the sanctioner's: a transfer, nothing leaves the world.
-    const CurrencyAmount seizedValue = static_cast<CurrencyAmount>(copperSeized) * COPPER_COIN_VALUE +
-                                       static_cast<CurrencyAmount>(silverSeized) * SILVER_COIN_VALUE +
-                                       static_cast<CurrencyAmount>(goldSeized) * GOLD_BAR_VALUE;
-    const CurrencyAmount movedValue = std::min(seizedValue, std::max<CurrencyAmount>(0, targetState.privateSpecie));
-    targetState.privateSpecie -= movedValue;
-    sanctionerState.privateSpecie += movedValue;
-
-    // C28: fiat/digital civs hold wealth in treasury, not physical coin
-    // reserves, so coin-only seizure leaves them untouched. Seize the same
-    // fraction of treasury across all tiers so upgrading to Fiat doesn't
-    // grant sanctions immunity.
+    // Seize the same fraction of treasury across all tiers so upgrading to
+    // Fiat doesn't grant sanctions immunity.
     const CurrencyAmount treasurySeized = static_cast<CurrencyAmount>(
         static_cast<float>(targetPlayer->treasury()) * SEIZURE_FRACTION);
     if (treasurySeized > 0) {
-        targetPlayer->addGold(-treasurySeized, aoc::sim::MoneyFlow::transfer(sanctionerPlayer->id()));
-        sanctionerPlayer->addGold(treasurySeized, aoc::sim::MoneyFlow::transfer(targetPlayer->id()));
+        targetPlayer->addGold(-treasurySeized,
+                              aoc::sim::MoneyFlow::transfer(sanctionerPlayer->id()));
+        sanctionerPlayer->addGold(treasurySeized,
+                                  aoc::sim::MoneyFlow::transfer(targetPlayer->id()));
     }
 
     // Cancel bonds held by target that were issued by sanctioner
     PlayerBondComponent& bonds = targetPlayer->bonds();
     bonds.heldBonds.erase(
         std::remove_if(bonds.heldBonds.begin(), bonds.heldBonds.end(),
-            [sanctioner](const BondIssue& b) { return b.issuer == sanctioner; }),
+                       [sanctioner](const BondIssue& b) { return b.issuer == sanctioner; }),
         bonds.heldBonds.end());
 
-    LOG_INFO("Asset freeze: player %u seized Cu:%d Ag:%d Au:%d coins from player %u",
-             static_cast<unsigned>(sanctioner),
-             copperSeized, silverSeized, goldSeized,
+    LOG_INFO("Asset freeze: player %u seized %lld specie from player %u",
+             static_cast<unsigned>(sanctioner), static_cast<long long>(specieSeized),
              static_cast<unsigned>(target));
 }
 

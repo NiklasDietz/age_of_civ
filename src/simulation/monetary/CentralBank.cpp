@@ -22,7 +22,7 @@ void setReserveRequirement(MonetaryStateComponent& state, Percentage ratio) {
 
 float moneyMultiplier(const MonetaryStateComponent& state) {
     if (state.reserveRequirement <= 0.001f) {
-        return 100.0f;  // Cap at 100x to prevent infinity
+        return 100.0f; // Cap at 100x to prevent infinity
     }
     return 1.0f / state.reserveRequirement;
 }
@@ -37,47 +37,21 @@ ErrorCode debaseCurrency(MonetaryStateComponent& state, float ratio) {
 
     // Cannot debase beyond 50% total
     constexpr float MAX_DEBASEMENT = 0.50f;
-    float newRatio = state.debasement.debasementRatio + ratio;
+    float newRatio                 = state.debasement.debasementRatio + ratio;
     if (newRatio > MAX_DEBASEMENT) {
         return ErrorCode::InvalidArgument;
     }
 
     state.debasement.debasementRatio = newRatio;
-    state.debasement.turnsDebased = 0;  // Reset discovery timer
+    state.debasement.turnsDebased    = 0; // Reset discovery timer
 
-    // G7: debasement produces extra coins in the *active legal tender* tier,
-    // not whichever metal happens to be the highest-denomination reserve held.
-    // Per Gresham's law, the bad money circulates; a civ on Copper tier
-    // holding 3 gold bars shouldn't see its gold reserves grow from debasing
-    // its copper coinage. Route the bonus through effectiveCoinTier.
-    switch (state.effectiveCoinTier) {
-        case CoinTier::Gold:
-            if (state.goldBarReserves > 0) {
-                const int32_t bonus = std::max(1, static_cast<int32_t>(
-                    static_cast<float>(state.goldBarReserves) * ratio));
-                state.goldBarReserves += bonus;
-            }
-            break;
-        case CoinTier::Silver:
-            if (state.silverCoinReserves > 0) {
-                const int32_t bonus = std::max(1, static_cast<int32_t>(
-                    static_cast<float>(state.silverCoinReserves) * ratio));
-                state.silverCoinReserves += bonus;
-            }
-            break;
-        case CoinTier::Copper:
-            if (state.copperCoinReserves > 0) {
-                const int32_t bonus = std::max(1, static_cast<int32_t>(
-                    static_cast<float>(state.copperCoinReserves) * ratio));
-                state.copperCoinReserves += bonus;
-            }
-            break;
-        case CoinTier::None:
-        case CoinTier::Count:
-            break;
+    // Debasement dilutes the private specie pool: ratio of new base-metal
+    // coin is added to what people already hold.
+    if (state.privateSpecie > 0) {
+        const CurrencyAmount bonus = std::max<CurrencyAmount>(
+            1, static_cast<CurrencyAmount>(static_cast<float>(state.privateSpecie) * ratio));
+        state.privateSpecie += bonus;
     }
-
-    state.updateCoinTier();
 
     return ErrorCode::Ok;
 }
@@ -90,7 +64,7 @@ bool tickDebasementDiscovery(MonetaryStateComponent& state) {
         return false;
     }
     if (state.debasement.discoveredByPartners) {
-        return false;  // Already discovered
+        return false; // Already discovered
     }
 
     ++state.debasement.turnsDebased;
@@ -99,9 +73,9 @@ bool tickDebasementDiscovery(MonetaryStateComponent& state) {
     // Base: 10% per turn * debasementRatio * turnsSinceDebasement
     // At 20% debasement, ~40% chance per turn after 2 turns -> discovered by turn 3-5.
     // At 10% debasement, ~20% chance per turn -> discovered by turn 5-8.
-    float discoveryChance = 0.10f * state.debasement.debasementRatio
-                          * static_cast<float>(state.debasement.turnsDebased);
-    discoveryChance = std::clamp(discoveryChance, 0.0f, 0.95f);
+    float discoveryChance = 0.10f * state.debasement.debasementRatio *
+                            static_cast<float>(state.debasement.turnsDebased);
+    discoveryChance       = std::clamp(discoveryChance, 0.0f, 0.95f);
 
     // Deterministic check using a hash of turn count (no RNG dependency)
     // Simple: if turns * ratio exceeds threshold, it's discovered.
@@ -126,20 +100,18 @@ ErrorCode remintCurrency(aoc::game::Player& player) {
         return ErrorCode::InvalidArgument;
     }
 
-    const CurrencyAmount cost = state.treasury / 5;  // 20% of treasury
+    const CurrencyAmount cost = state.treasury / 5; // 20% of treasury
     if (cost <= 0 || state.treasury < cost) {
         return ErrorCode::InsufficientResources;
     }
 
     player.addGold(-cost, aoc::sim::MoneyFlow::loss()); // metal lost in the restrike
-    state.debasement.debasementRatio =
-        std::max(0.0f, state.debasement.debasementRatio - 0.10f);
+    state.debasement.debasementRatio = std::max(0.0f, state.debasement.debasementRatio - 0.10f);
     state.debasement.discoveredByPartners = false;
-    state.debasement.turnsDebased = 0;
+    state.debasement.turnsDebased         = 0;
 
     LOG_INFO("Player %u: reminted currency (-0.10 debasement, -%lld treasury)",
-             static_cast<unsigned>(state.owner),
-             static_cast<long long>(cost));
+             static_cast<unsigned>(state.owner), static_cast<long long>(cost));
     return ErrorCode::Ok;
 }
 

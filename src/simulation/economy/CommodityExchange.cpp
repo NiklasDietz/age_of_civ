@@ -68,7 +68,7 @@ ErrorCode executeCommodityTrade(aoc::game::GameState& gameState,
                                 uint16_t offerGood, int32_t offerAmount,
                                 uint16_t requestGood, int32_t requestAmount) {
     if (offerAmount <= 0 || requestAmount <= 0 || offerGood == requestGood ||
-        isCoinGood(offerGood) || isCoinGood(requestGood)) {
+        false) {
         return ErrorCode::InvalidArgument; // coin settles trades, it is not swapped as goods
     }
     aoc::game::Player* fromPtr = gameState.player(from);

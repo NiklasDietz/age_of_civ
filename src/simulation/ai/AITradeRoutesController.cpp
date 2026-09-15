@@ -95,7 +95,7 @@ void AIController::manageTradeRoutes(aoc::game::GameState& gameState, aoc::map::
     const auto legValue = [&](const aoc::game::City& from, const aoc::game::City& to, float saleMult) {
         float value = 0.0f;
         for (const std::pair<const uint16_t, int32_t>& entry : from.stockpile().goods) {
-            if (entry.second <= 1 || isCoinGood(entry.first)) { continue; }
+            if (entry.second <= 1) { continue; }
             const float sells = static_cast<float>(priceAt(to, entry.first)) * saleMult;
             const float spread = sells - static_cast<float>(priceAt(from, entry.first));
             if (spread > 0.0f) {

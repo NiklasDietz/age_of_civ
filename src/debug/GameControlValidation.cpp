@@ -2,11 +2,11 @@
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/city/DistrictAdjacency.hpp"
 
-#include "aoc/simulation/city/District.hpp"  // BUILDING_DEFS, DISTRICT_TYPE_COUNT
-#include "aoc/simulation/diplomacy/DealTerms.hpp" // SUPPLY_CONTRACT_MAX_TURNS
+#include "aoc/simulation/city/District.hpp"          // BUILDING_DEFS, DISTRICT_TYPE_COUNT
+#include "aoc/simulation/diplomacy/DealTerms.hpp"    // SUPPLY_CONTRACT_MAX_TURNS
 #include "aoc/simulation/resource/ResourceTypes.hpp" // GOOD_COUNT
-#include "aoc/simulation/unit/UnitTypes.hpp" // UNIT_TYPE_COUNT
-#include "aoc/simulation/wonder/Wonder.hpp"  // WONDER_COUNT
+#include "aoc/simulation/unit/UnitTypes.hpp"         // UNIT_TYPE_COUNT
+#include "aoc/simulation/wonder/Wonder.hpp"          // WONDER_COUNT
 
 namespace aoc::debug {
 
@@ -15,9 +15,9 @@ bool isProductionItemValid(aoc::sim::ProductionItemType type, int32_t itemId) {
     case aoc::sim::ProductionItemType::Unit:
         // Ids are sparse (0..102 with gaps); a row must exist. The old
         // `itemId < UNIT_TYPE_COUNT` accepted the phantom 13 and rejected the Spy.
-        return itemId >= 0 && itemId <= 255
-            && aoc::sim::unitTypeDef(aoc::UnitTypeId{static_cast<uint16_t>(itemId)}).id.value
-                   == static_cast<uint16_t>(itemId);
+        return itemId >= 0 && itemId <= 255 &&
+               aoc::sim::unitTypeDef(aoc::UnitTypeId{static_cast<uint16_t>(itemId)}).id.value ==
+                   static_cast<uint16_t>(itemId);
     case aoc::sim::ProductionItemType::Building:
         return itemId < static_cast<int32_t>(aoc::sim::BUILDING_DEFS.size());
     case aoc::sim::ProductionItemType::Wonder:
@@ -79,18 +79,9 @@ std::string_view regimeCommandError(const MonetaryRegimeCommand& cmd) {
     if (cmd.player >= MAX_PLAYERS) {
         return "player out of range";
     }
-    if (cmd.target == 0 || cmd.target >= static_cast<uint8_t>(aoc::sim::MonetarySystemType::Count)) {
+    if (cmd.target == 0 ||
+        cmd.target >= static_cast<uint8_t>(aoc::sim::MonetarySystemType::Count)) {
         return "target must be a monetary system above Barter";
-    }
-    if (cmd.tier > static_cast<uint8_t>(aoc::sim::CoinTier::Gold)) {
-        return "tier must be None, Copper, Silver or Gold";
-    }
-    const bool coinage = cmd.target == static_cast<uint8_t>(aoc::sim::MonetarySystemType::CommodityMoney);
-    if (coinage && cmd.tier == static_cast<uint8_t>(aoc::sim::CoinTier::None)) {
-        return "coinage needs a metal";
-    }
-    if (!coinage && cmd.tier != static_cast<uint8_t>(aoc::sim::CoinTier::None)) {
-        return "only coinage takes a metal";
     }
     return {};
 }

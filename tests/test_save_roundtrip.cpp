@@ -118,12 +118,12 @@ void buildWorld(World& w) {
     // is the field serialised here.
     p0.setTreasury(1234, aoc::sim::MoneyFlow::external());
     p1.setTreasury(87, aoc::sim::MoneyFlow::external());
-    // v34: private money pools and the chosen coinage metal, every value off
-    // its default so a skipped field cannot round-trip by accident.
+    // v34: private money pools; v35: moneyGood (was coinageStandard CoinTier),
+    // every value off its default so a skipped field cannot round-trip by accident.
     p0.monetary().privateSpecie   = 410;
     p0.monetary().privateNotes    = 25;
     p0.monetary().bullion         = 7;
-    p0.monetary().coinageStandard = aoc::sim::CoinTier::Silver;
+    p0.monetary().moneyGood         = 42; // arbitrary good id, non-default
     p1.monetary().bullion         = 3;
     // v33: the persistent half of the forex component. A reload used to reset
     // every currency to parity, which stopped being harmless once a cross-civ
@@ -429,9 +429,9 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(lp0.monetary().privateSpecie == 410);   // v34
     CHECK(lp0.monetary().privateNotes == 25);
     CHECK(lp0.monetary().bullion == 7);
-    CHECK(lp0.monetary().coinageStandard == aoc::sim::CoinTier::Silver);
+    CHECK(lp0.monetary().moneyGood == 42); // v35
     CHECK(lp1.monetary().bullion == 3);
-    CHECK(lp1.monetary().coinageStandard == aoc::sim::CoinTier::None);
+    CHECK(lp1.monetary().moneyGood == aoc::sim::NO_MONEY_GOOD); // v35 default
     // v33: forex survives the round trip.
     CHECK(lp0.currencyExchange().exchangeRate == doctest::Approx(1.37f));
     CHECK(lp0.currencyExchange().foreignReserves == 640);
