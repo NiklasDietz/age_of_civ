@@ -140,16 +140,23 @@ the turn it is mined, because `selectTradeGoods` scores anything above one unit
 as surplus and `commitPickupReservation` (`TradeRouteSystem.cpp:396`) moves it
 to the export buffer, while recipes read the stockpile alone
 (`EconomySimulation.cpp:926`). Copper is the control: it accumulates because it
-has consumers, gold never holds a single unit because it has none.
+has consumers.
 
-Under this design that bug is fatal rather than merely blocking, because the
-whole point is that metal with no industrial use is the good you monetise. If
-the trade system ships it first, nothing can ever be adopted.
+**Corrected the same day, see 5634217.** That commit's stronger claim, that gold
+ore never holds a single unit, came from a 40-turn window and does not hold: to
+200 turns gold ore reaches a stock of 20. No civ owns a Mint before roughly turn
+78, so the window contained no consuming building at all. The reservation
+mechanism is real; it is not on its own the reason the metal does not
+accumulate.
 
-**Fix first, as its own step:** `selectTradeGoods` subtracts what the origin
-city's own available recipes and its civ's monetisation demand would consume
-before scoring the remainder as surplus. This is the general rule the economy
-is missing, and it is a prerequisite for every phase below.
+Phase A below was built on the stronger reading, measured, and reverted. Under
+this design the reservation still matters, because metal with no industrial use
+is exactly what a civ is supposed to monetise and a trade system that ships it
+first would prevent adoption. But it is not the binding constraint and it is not
+a prerequisite: the constraint measured so far is that the consuming building
+arrives late and stays rare (`fac40b7`). Under a design where adoption needs no
+building at all, that constraint largely dissolves, which is a point in this
+design's favour and an argument for not fixing the reservation first.
 
 ---
 
