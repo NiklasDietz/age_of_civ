@@ -30,8 +30,8 @@ constexpr PlayerId P0{0};
 constexpr PlayerId P1{1};
 constexpr PlayerId P2{2};
 
-/// P0 has met P1 only. P1 and P2 each hold ten silk; P1 also holds coins and
-/// needs iron; P0 needs silk.
+/// P0 has met P1 only. P1 and P2 each hold ten silk; P1 also holds three
+/// copper coins (an ordinary good since Phase B) and needs iron; P0 needs silk.
 struct Fixture {
     aoc::test::World world = aoc::test::makeWorld(3);
     aoc::sim::DiplomacyManager d;
@@ -59,11 +59,16 @@ struct Fixture {
 
 } // namespace
 
-TEST_CASE("a viewer sees the holders and seekers among the civs it has met, coins left out") {
+// Phase B (Mengerian money): the coin goods are ordinary Processed goods now,
+// so the market no longer filters them out. A civ holding old copper coins
+// offers them like any other stock; whether anyone treats them as money is a
+// question of saleability, not of category.
+TEST_CASE("a viewer sees the holders and seekers among the civs it has met, coins included") {
     Fixture f;
     const std::vector<WorldMarketRow> rows = aoc::sim::worldMarketRows(f.world.gameState, &f.d, P0);
-    REQUIRE(rows.size() == 2);
+    REQUIRE(rows.size() == 3);
     CHECK(rows[0].goodId < rows[1].goodId);
+    CHECK(rows[1].goodId < rows[2].goodId);
 
     const WorldMarketRow* silk = f.row(rows, SILK);
     REQUIRE(silk != nullptr);
@@ -77,20 +82,27 @@ TEST_CASE("a viewer sees the holders and seekers among the civs it has met, coin
     CHECK(iron->holders.empty());
     CHECK(iron->seekers == std::vector<PlayerId>{P1});
 
-    CHECK(f.row(rows, COPPER_COINS) == nullptr);
+    const WorldMarketRow* coins = f.row(rows, COPPER_COINS);
+    REQUIRE(coins != nullptr);
+    REQUIRE(coins->holders.size() == 1);
+    CHECK(coins->holders[0].first == P1);
+    CHECK(coins->holders[0].second == 3);
+    CHECK(coins->seekers.empty());
 }
 
 TEST_CASE("a civ that has met nobody sees only itself; a null diplomacy sees everyone") {
     Fixture f;
-    const std::vector<WorldMarketRow> alone = aoc::sim::worldMarketRows(f.world.gameState, &f.d, P2);
+    const std::vector<WorldMarketRow> alone =
+        aoc::sim::worldMarketRows(f.world.gameState, &f.d, P2);
     REQUIRE(alone.size() == 1);
     CHECK(alone[0].goodId == SILK);
     REQUIRE(alone[0].holders.size() == 1);
     CHECK(alone[0].holders[0].first == P2);
     CHECK(alone[0].seekers.empty()); // P0's need is out of sight
 
-    const std::vector<WorldMarketRow> all = aoc::sim::worldMarketRows(f.world.gameState, nullptr, P0);
-    const WorldMarketRow* silk             = f.row(all, SILK);
+    const std::vector<WorldMarketRow> all =
+        aoc::sim::worldMarketRows(f.world.gameState, nullptr, P0);
+    const WorldMarketRow* silk = f.row(all, SILK);
     REQUIRE(silk != nullptr);
     REQUIRE(silk->holders.size() == 2);
     CHECK(silk->holders[0].first == P1); // ascending by player
@@ -120,7 +132,8 @@ TEST_CASE("deal terms name the good, not its id") {
     shipment.goodAmount = 5;
     CHECK(aoc::sim::describeDealTerm(f.world.gameState, shipment).find("5 Silk (") == 0);
     shipment.type = aoc::sim::DealTermType::ExclusiveAccess;
-    CHECK(aoc::sim::describeDealTerm(f.world.gameState, shipment).find("Exclusive access to Silk (") == 0);
+    CHECK(aoc::sim::describeDealTerm(f.world.gameState, shipment)
+              .find("Exclusive access to Silk (") == 0);
     shipment.type        = aoc::sim::DealTermType::SupplyContract;
     shipment.duration    = 30;
     shipment.goldPerTurn = 7;
