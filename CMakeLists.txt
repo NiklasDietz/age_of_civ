@@ -1050,6 +1050,7 @@ if(AOC_BUILD_TESTS)
         test_money_conservation
         test_price_anchor
         test_monetary_regime
+        test_money_saleability
         test_local_prices
         test_route_margin
         test_trade_policy_hooks

@@ -219,7 +219,27 @@ denial path leaves state untouched.
 
 ### Phase D: the saleability score
 The four-term score, the AI adopting through the Phase C request, and a
-"who uses what" readout for the human. **Gate, and this is the real one:** on
+"who uses what" readout for the human.
+
+**The score itself landed first, out of order, 2026-09-15.** `saleability` is a
+pure function taking explicit inputs, with a test file and no call sites, so it
+is behaviour-neutral and both shadow hashes are unchanged. It was pulled ahead
+of Phase B deliberately: it is the part of this design that does not exist in
+any form, it is the part most likely to need tuning, and it is far cheaper than
+the coin-layer deletion, so it is worth knowing whether the rule gives sensible
+answers before touching 84 references across 16 files.
+
+That ordering justified itself immediately. The stock term was first written as
+`min(100, held)`, a strong preference for abundance, which would have rebuilt
+the exact failure the score exists to remove: rank on holdings and the
+commonest ore always wins, which is why every civ lands on copper today. It is
+now `60 + min(40, held)`, a gate and then a mild preference, and the property
+has a test: a good ten times scarcer that partners already accept beats an
+abundant ignored one. Found in a unit test rather than halfway through a large
+deletion.
+
+What remains for this phase is the wiring: gathering the four inputs from the
+world, the AI adopting through the Phase C request, and the human readout. **Gate, and this is the real one:** on
 seeds 42 and 43, at least two civs adopt a money good without being told to,
 and at least two civs converge on the *same* good by turn 150. Convergence is
 the whole thesis; if it does not happen, the acceptance weight is wrong and the

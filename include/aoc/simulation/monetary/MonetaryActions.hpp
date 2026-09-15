@@ -121,4 +121,26 @@ float applyCentralBankPolicy(aoc::game::GameState& gameState, PlayerId player);
 [[nodiscard]] ErrorCode requestPrintMoney(aoc::game::GameState& gameState, PlayerId player,
                                           CurrencyAmount amount);
 
+/// The four terms of Menger's saleability, the property that decides which good
+/// a people ends up treating as money. Money is not the most valuable good, it
+/// is the one you can most reliably pass on, which is why acceptance by others
+/// is the term that matters most and the one `preferredCoinTier` never had.
+///
+/// The inputs are passed in rather than read out of the world, so the rule can
+/// be tested on its own and so it does not presume a money good already exists.
+struct SaleabilityInputs {
+    int32_t held            = 0; ///< units of the good across this civ's cities
+    int32_t acceptingWeight = 0; ///< trade weight of met civs already using it as money
+    int32_t totalWeight     = 0; ///< trade weight of every met civ; 0 means no contact
+    int32_t industrialDraw  = 0; ///< units per turn this civ's runnable recipes consume
+    int32_t priceSwing      = 0; ///< recent price high minus low
+    int32_t price           = 1; ///< current market price, floored at 1
+};
+
+/// Zero when the good cannot serve this civ as money, rising with saleability.
+/// Deterministic, no RNG, and monotone in each term, which is what the tests
+/// pin: acceptance up raises it, industrial draw up lowers it, swing up lowers
+/// it, and holding none of the good is a hard zero.
+[[nodiscard]] int32_t saleability(const SaleabilityInputs& inputs);
+
 } // namespace aoc::sim

@@ -336,4 +336,40 @@ float applyCentralBankPolicy(aoc::game::GameState& gameState, PlayerId player) {
     return state.interestRate;
 }
 
+
+int32_t saleability(const SaleabilityInputs& inputs) {
+    if (inputs.held <= 0) {
+        return 0; // a civ cannot monetise what it does not hold
+    }
+    // Holding the good is a gate first and only a mild preference after. A civ
+    // with forty units and one with a thousand can both price in it, so the term
+    // spans 61 to 100 rather than the full range. Letting abundance dominate is
+    // precisely preferredCoinTier's failing: it reads reserves alone, so every
+    // civ on every seed measured landed on copper, which is merely what gets
+    // mined most. Acceptance has to be able to beat abundance, or nothing ever
+    // converges on anything but the commonest ore.
+    const int32_t stock = 60 + std::min(40, inputs.held);
+
+    // The network term. A good is money because others take it, so acceptance
+    // compounds and civs converge. With no contact at all it is neutral rather
+    // than zero, or a civ that has met nobody could never adopt anything.
+    const int32_t acceptance =
+        inputs.totalWeight > 0
+            ? 100 + (150 * std::min(inputs.acceptingWeight, inputs.totalWeight)) / inputs.totalWeight
+            : 100;
+
+    // What industry eats, the people cannot hoard. Early this is near 100 for a
+    // metal nothing consumes; when industrial uses arrive it collapses, and that
+    // is what makes paper worth adopting rather than a scripted event.
+    const int32_t industrial =
+        std::max(0, 100 - (100 * std::max(0, inputs.industrialDraw)) / std::max(1, inputs.held));
+
+    // Stable value is the whole point of holding money rather than goods.
+    const int32_t stability =
+        std::max(20, 100 - (100 * std::max(0, inputs.priceSwing)) / std::max(1, inputs.price));
+
+    const int64_t score = static_cast<int64_t>(stock) * acceptance * industrial * stability;
+    return static_cast<int32_t>(score / (100 * 100 * 100));
+}
+
 } // namespace aoc::sim
