@@ -30,9 +30,31 @@ decision that only pays off if others make it too.
 
 The change is net negative in lines. That is the main argument for it.
 
+**Two corrections to this table and to 3.1, found on contact with the code
+2026-09-15. Neither needs a decision; both change how the work is done.**
+
+*The coin goods cannot be deleted, only retired in place.* They are ids 140,
+141 and 142, and twenty-four goods run from 143 to 166 behind them. Removing
+the ids renumbers all twenty-four, which breaks every save, every recipe that
+names one, and every golden CSV. So the ids and their table rows stay, and what
+goes is everything that brings them into existence or treats them as special:
+the mint recipes that make them, the melt recipes that consume them, the sweep
+that collects them, and `isCoinGood`. A good nothing produces and nothing reads
+is retired whether or not its id still exists. Renumbering the goods table is
+a separate and much larger job that this design does not need.
+
+*`CoinTier` is `uint8_t`, not the same width as a good id, but no save bump is
+needed anyway.* 3.1 claimed the swap was free because the widths matched; they
+do not, `coinageStandard` is written with `writeU8` at `Serializer.cpp:1009`.
+It is free for a different reason: `GOOD_COUNT` is 167, so every good id fits
+in a `uint8_t` with room to spare. `moneyGood` is therefore stored as a `uint8`
+in the slot `coinageStandard` already occupies, and no save version moves. This
+buys a constraint that has to be written down: **the goods table must stay
+under 256 entries, or `moneyGood` needs a real save bump.**
+
 | Deleted | Where | Why it goes |
 |---|---|---|
-| `GoodCategory::Monetary` and the three coin goods | `ResourceTypes.cpp:112-114` | no good is money by category |
+| `GoodCategory::Monetary` as a live classification, and `isCoinGood` | `ResourceTypes.cpp:112-114`, `:783` | no good is money by category; the three rows stay as retired ids |
 | `isCoinGood` and its ~12 call sites | `ResourceTypes.cpp:783`, `TradeRouteSystem.cpp:238,242,585`, `EconomySimulation.cpp:1199`, `AITradeRoutesController.cpp:98`, `CommodityExchange.cpp:71`, `Speculation.cpp:26`, `DealProposals.cpp:577,588,663` | nothing to exempt from cargo |
 | Mint recipes 34, 35, 36 and melt recipes 46, 47 | recipe table | no conversion step exists |
 | **The mint/melt duplication exploit** | ratio 8.0, `COMMODITY_MONEY_PLAN.md` 2.3 | no coins to melt |
@@ -55,8 +77,11 @@ uint16_t moneyGood = INVALID_GOOD;   // the good this civ treats as money
 ```
 
 `INVALID_GOOD` means barter (nothing is money) or fiat (notes carry it; which
-of the two is `system` as today). No new save version: this replaces
-`coinageStandard`, which is already persisted, and is the same width.
+of the two is `system` as today). Stored as a `uint8` in the slot
+`coinageStandard` already occupies, so no save version moves. See the
+correction above: the widths do NOT match as this section originally claimed,
+but every good id fits in a byte because `GOOD_COUNT` is 167. That is a
+standing constraint on the goods table, not a coincidence to rely on quietly.
 
 ### 3.2 Money stock stays a scalar; only its origin changes
 
