@@ -65,7 +65,11 @@ void grantResearchAllianceBoons(aoc::game::GameState& gameState, DiplomacyManage
                     for (bool b : ally->tech().completedTechs)     { theirs += b ? 1 : 0; }
                     if (theirs > mine) {
                         const TechId researching = gsPlayer->tech().currentResearch;
-                        if (researching.isValid()) {
+                        // A civ that holds no city has nowhere to finish a tech,
+                        // the same rule the turn loop applies to its own
+                        // research. The ally's eureka above still accrues as
+                        // progress; only the outright grant waits for a city.
+                        if (researching.isValid() && gsPlayer->ownedCityCount() > 0) {
                             a.lastTechGrantTurn = currentTurn;
                             gsPlayer->tech().completeResearch();
                             LOG_INFO("Research alliance: player %u was given a tech by its ally %u",

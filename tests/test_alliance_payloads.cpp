@@ -12,6 +12,7 @@
 
 #include "support/World.hpp"
 
+#include "aoc/game/Player.hpp"
 #include "aoc/simulation/diplomacy/AllianceTypes.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyExtensions.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
@@ -137,4 +138,37 @@ TEST_CASE("each alliance type pays its own yield, not the same bump moved around
     const float scienceEdge = research.scienceMult - 1.0f;
     const float goldEdge    = economic.goldMult - 1.0f;
     CHECK(scienceEdge != doctest::Approx(goldEdge));
+}
+
+TEST_CASE("a research alliance does not finish a tech for a civ that holds no city") {
+    aoc::test::World    w = aoc::test::makeWorld(2);
+    aoc::game::Player&  a = *w.gameState.player(PlayerId{0});
+    aoc::game::Player&  b = *w.gameState.player(PlayerId{1});
+
+    // The level 3 grant only fires when the ally is genuinely ahead.
+    b.tech().completedTechs[2] = true;
+    b.tech().completedTechs[3] = true;
+    a.tech().currentResearch   = aoc::TechId{4};
+
+    aoc::sim::DiplomacyManager dip;
+    dip.initialize(SEATS);
+    aoc::sim::PairwiseRelation& rel = dip.relation(PlayerId{0}, PlayerId{1});
+    aoc::sim::AllianceState&    slot =
+        rel.alliances[static_cast<std::size_t>(AllianceType::Research)];
+    slot.type        = AllianceType::Research;
+    slot.level       = AllianceLevel::Level3;
+    slot.turnsActive = 999;
+
+    // Wiped: the turn loop refuses to complete this civ's own research, and an
+    // ally handing it a finished tech was the one way round that rule.
+    const int32_t turn = aoc::sim::RESEARCH_TECH_INTERVAL + 1;
+    aoc::sim::grantResearchAllianceBoons(w.gameState, dip, PlayerId{0}, turn);
+    CHECK(a.tech().currentResearch == aoc::TechId{4});
+    CHECK_FALSE(a.tech().completedTechs[4]);
+
+    // Settled again, the same call pays out.
+    aoc::test::addCityAt(w, PlayerId{0}, 5, 5, "Alpha");
+    slot.lastTechGrantTurn = 0;
+    aoc::sim::grantResearchAllianceBoons(w.gameState, dip, PlayerId{0}, turn);
+    CHECK(a.tech().completedTechs[4]);
 }
