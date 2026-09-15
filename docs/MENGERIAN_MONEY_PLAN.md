@@ -204,6 +204,27 @@ it: the consuming building arrives late and rarely, which is the pacing finding
 in fac40b7, not the reservation.
 
 ### Phase B: delete the coin layer
+
+**Sequencing constraint, measured 2026-09-15: this phase cannot be split into
+behaviour-neutral pieces, so do it as one change.** The melt recipes 46 and 47
+were deleted first as the smallest safe-looking piece, on the reasoning that
+they are half the duplication exploit and have never once fired. The second half
+of that is true and was checked before touching anything: over 200 turns at six
+players on seed 42, coins were made 4957, 15 and 8 and consumed 0, 0 and 0,
+while ore made was 0.
+
+Deleting them moved both shadow hashes anyway, and shortened seed 43 from t200
+to t187. A recipe that never executes still changes the simulation, through the
+production execution order rather than through market demand, which was checked
+and is not the channel. The revert restores the baseline hash exactly, so the
+effect is real and attributable.
+
+The lesson is the sequencing one: there is no series of small neutral deletions
+that walks up to the Mengerian representation. Coin goods, the mint recipes,
+the melt recipes, `CoinTier` and the sweep have to move together in one
+commit, measured as a whole against H16 and the circulation-sign check rather
+than against unchanged hashes. Expect the goldens to move, and expect that to be
+the point rather than a warning sign.
 Remove the three coin goods, `isCoinGood`, the mint and melt recipes, and the
 seigniorage branch of the sweep. Replace the sweep with monetisation booked as
 `Monetised`. `CoinTier` becomes `moneyGood`. **This phase is money-neutral by
