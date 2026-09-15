@@ -85,6 +85,22 @@ namespace {
 /// City-state seats and the barbarian seat hold money the world does not
 /// count (worldMoney walks players() only): any flow across this line is
 /// external for the civ inside it.
+/// Draw money out of a civ's private pools the way a domestic tax does: notes
+/// first under a paper regime, then coin, and never past either pool. Callers
+/// cap `amount` at privateMoneyOf first; taking it all from specie instead let
+/// a fiat civ's notes stand while its coin went negative.
+void drawPrivate(aoc::game::Player& people, CurrencyAmount amount) {
+    MonetaryStateComponent& m = people.monetary();
+    CurrencyAmount          left = amount;
+    if (notesInUse(m.system)) {
+        const CurrencyAmount notes = std::min(left, std::max<CurrencyAmount>(0, m.privateNotes));
+        m.privateNotes -= notes;
+        left -= notes;
+    }
+    const CurrencyAmount coin = std::min(left, std::max<CurrencyAmount>(0, m.privateSpecie));
+    m.privateSpecie -= coin;
+}
+
 [[nodiscard]] bool outsideWorld(PlayerId id) {
     return id != INVALID_PLAYER && id >= CITY_STATE_PLAYER_BASE;
 }
@@ -169,7 +185,7 @@ CurrencyAmount takeFromPrivate(aoc::game::GameState& gameState, PlayerId civ,
     }
     const CurrencyAmount taken = std::min(amount, privateMoneyOf(*people));
     if (taken > 0) {
-        people->monetary().privateSpecie -= taken;
+        drawPrivate(*people, taken);
         if (outsideWorld(taker.id())) {
             bookExternal(*people, -taken); // a barbarian's or city-state's hoard: out of the world
         }

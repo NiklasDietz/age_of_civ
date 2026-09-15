@@ -293,6 +293,32 @@ TEST_CASE("printed notes and the Gold Standard's issue keep the invariant: booke
     CHECK(aoc::sim::moneyConserved(before, aoc::sim::worldMoney(w.gameState), ledger));
 }
 
+TEST_CASE("a levy on a paper civ takes its notes before its coin, and neither pool goes negative") {
+    aoc::test::World w   = aoc::test::makeWorld(2);
+    aoc::game::Player& a = *w.gameState.player(P0);
+    aoc::game::Player& b = *w.gameState.player(P1);
+    b.monetary().system        = aoc::sim::MonetarySystemType::FiatMoney;
+    b.monetary().privateSpecie = 100;
+    b.monetary().privateNotes  = 1000;
+
+    // A levy the note float covers never reaches the coin.
+    CHECK(aoc::sim::takeFromPrivate(w.gameState, P1, a, 600) == 600);
+    CHECK(b.monetary().privateNotes == 400);
+    CHECK(b.monetary().privateSpecie == 100);
+
+    // Capacity is notes plus coin, so the remaining 500 is takeable and empties
+    // both. Drawing the whole sum from specie alone was what drove a fiat civ's
+    // circulation below zero while its notes still stood.
+    CHECK(aoc::sim::takeFromPrivate(w.gameState, P1, a, 500) == 500);
+    CHECK(b.monetary().privateNotes == 0);
+    CHECK(b.monetary().privateSpecie == 0);
+    CHECK(a.treasury() == 1100);
+
+    // A further levy finds the pools empty rather than pushing coin negative.
+    CHECK(aoc::sim::takeFromPrivate(w.gameState, P1, a, 50) == 0);
+    CHECK(b.monetary().privateSpecie == 0);
+}
+
 TEST_CASE("a tithe or a levy draws what the people hold and no more") {
     aoc::test::World w   = aoc::test::makeWorld(2);
     aoc::game::Player& a = *w.gameState.player(P0);
