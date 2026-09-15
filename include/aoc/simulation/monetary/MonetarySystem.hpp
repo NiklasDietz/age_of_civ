@@ -133,6 +133,13 @@ inline constexpr float GOLD_STANDARD_NOTE_ISSUE = 1.0f;
 /// Good ID meaning "no good is money yet". Fits in uint8_t since GOOD_COUNT=167 < 256.
 inline constexpr uint8_t NO_MONEY_GOOD = 0xFF;
 
+/// Turns a civ must keep a money good before it may elect another. Money is
+/// the good everyone else expects to be paid in, so switching is costly and
+/// rare; without a dwell the AI could thrash between two near-equal goods
+/// every turn and no good would ever accumulate the acceptance that makes it
+/// money in the first place.
+inline constexpr int32_t MONEY_GOOD_DWELL_TURNS = 20;
+
 /// Regimes whose people hold paper: the state pays in notes and taxes them
 /// back, and a trusted pair settles trade in them (plan 2.6).
 [[nodiscard]] constexpr bool notesInUse(MonetarySystemType type) {
@@ -463,6 +470,12 @@ struct MonetaryStateComponent {
 
     // -- System duration tracking --
     int32_t turnsInCurrentSystem = 0;
+
+    /// Turns since this civ last changed its money good. A people does not
+    /// re-price everything it owns on a whim, so requestSetMoneyGood enforces
+    /// MONEY_GOOD_DWELL_TURNS between changes; the first adoption is free
+    /// because the counter starts above the dwell.
+    int32_t turnsWithCurrentMoneyGood = MONEY_GOOD_DWELL_TURNS;
 
     // -- Bankruptcy tracking --
     /// Consecutive turns with a bill the treasury could not pay (arrears);

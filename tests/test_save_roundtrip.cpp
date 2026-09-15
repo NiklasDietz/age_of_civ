@@ -124,6 +124,9 @@ void buildWorld(World& w) {
     p0.monetary().privateNotes    = 25;
     p0.monetary().bullion         = 7;
     p0.monetary().moneyGood         = 42; // arbitrary good id, non-default
+    // v36: the money-good dwell clock, off both its default and p1's so a
+    // dropped field cannot round-trip by accident.
+    p0.monetary().turnsWithCurrentMoneyGood = 13;
     p1.monetary().bullion         = 3;
     // v33: the persistent half of the forex component. A reload used to reset
     // every currency to parity, which stopped being harmless once a cross-civ
@@ -432,6 +435,8 @@ TEST_CASE("save -> load -> save reproduces identical bytes") {
     CHECK(lp0.monetary().moneyGood == 42); // v35
     CHECK(lp1.monetary().bullion == 3);
     CHECK(lp1.monetary().moneyGood == aoc::sim::NO_MONEY_GOOD); // v35 default
+    CHECK(lp0.monetary().turnsWithCurrentMoneyGood == 13);      // v36
+    CHECK(lp1.monetary().turnsWithCurrentMoneyGood == aoc::sim::MONEY_GOOD_DWELL_TURNS);
     // v33: forex survives the round trip.
     CHECK(lp0.currencyExchange().exchangeRate == doctest::Approx(1.37f));
     CHECK(lp0.currencyExchange().foreignReserves == 640);

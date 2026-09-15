@@ -282,6 +282,12 @@ struct MonetaryRegimeCommand {
     uint8_t target;
 };
 
+/// Elect the good a civ prices in, or NO_MONEY_GOOD (0xFF) to demonetise.
+struct MoneyGoodCommand {
+    aoc::PlayerId player;
+    uint8_t goodId;
+};
+
 /// Answer proposal `index` of the human's inbox.
 struct RespondProposalCommand {
     aoc::PlayerId player;
@@ -341,14 +347,14 @@ using GameControlCommand = std::variant<
     MoveUnitCommand, AttackUnitCommand, FoundCityCommand, SetProductionCommand, SetResearchCommand,
     AssignSpyMissionCommand, ActivateGreatPersonCommand, CongressVoteCommand,
     CongressProposalCommand, MergeUnitsCommand, CityDispositionCommand, RetireGreatPersonCommand,
-    NuclearStrikeCommand, MonetaryRegimeCommand, AssignGovernorCommand, PromoteGovernorCommand,
-    SlotPolicyCommand, ChangeGovernmentCommand, CityPurchaseCommand, SetCityFocusCommand,
-    ToggleTileLockCommand, RemoveQueueItemCommand, QueueProjectCommand, PlaceImprovementCommand,
-    BuilderChopCommand, BuilderHarvestCommand, PillageCommand, RepairCommand, DeleteUnitCommand,
-    SetAlertCommand, PromoteUnitCommand, FoundPantheonCommand, FoundReligionCommand,
-    MoveGreatWorkCommand, SendEnvoyCommand, LevyCityStateCommand, BullyCityStateCommand,
-    DeclareWarCommand, MakePeaceCommand, DenounceCommand, DeclareFriendshipCommand,
-    SendDelegationCommand, EstablishEmbassyCommand, OpenBordersCommand, ProposeDealCommand,
-    RespondProposalCommand, PlaceDistrictCommand, EndTurnCommand>;
+    NuclearStrikeCommand, MonetaryRegimeCommand, MoneyGoodCommand, AssignGovernorCommand,
+    PromoteGovernorCommand, SlotPolicyCommand, ChangeGovernmentCommand, CityPurchaseCommand,
+    SetCityFocusCommand, ToggleTileLockCommand, RemoveQueueItemCommand, QueueProjectCommand,
+    PlaceImprovementCommand, BuilderChopCommand, BuilderHarvestCommand, PillageCommand,
+    RepairCommand, DeleteUnitCommand, SetAlertCommand, PromoteUnitCommand, FoundPantheonCommand,
+    FoundReligionCommand, MoveGreatWorkCommand, SendEnvoyCommand, LevyCityStateCommand,
+    BullyCityStateCommand, DeclareWarCommand, MakePeaceCommand, DenounceCommand,
+    DeclareFriendshipCommand, SendDelegationCommand, EstablishEmbassyCommand, OpenBordersCommand,
+    ProposeDealCommand, RespondProposalCommand, PlaceDistrictCommand, EndTurnCommand>;
 
 } // namespace aoc::debug

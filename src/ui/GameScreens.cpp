@@ -2129,6 +2129,66 @@ void EconomyScreen::open(UIManager& ui) {
         }
     }
 
+    // The money-good row (Mengerian plan, Phase C): which good this people
+    // prices in, and the decision to change it. The candidates offered are the
+    // money metals the civ actually holds; ranking them is the saleability
+    // score's job in Phase D, so this row presumes no order, it shows what is
+    // possible and leaves the choice.
+    if (monetary != nullptr && owningPlayer != nullptr) {
+        aoc::game::GameState* moneyGs = this->m_gameState;
+        const PlayerId moneyPlayer    = this->m_player;
+        const std::string current = monetary->moneyGood == aoc::sim::NO_MONEY_GOOD
+                                        ? std::string("nothing (barter in kind)")
+                                        : std::string(aoc::sim::goodDef(monetary->moneyGood).name);
+        std::string moneyLine     = "Money: " + current;
+        if (monetary->turnsWithCurrentMoneyGood < aoc::sim::MONEY_GOOD_DWELL_TURNS) {
+            moneyLine += "  (locked " +
+                         std::to_string(aoc::sim::MONEY_GOOD_DWELL_TURNS -
+                                        monetary->turnsWithCurrentMoneyGood) +
+                         "t)";
+        }
+        static_cast<void>(
+            ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 16.0f},
+                           LabelData{std::move(moneyLine), tokens::TEXT_HEADER, 11.0f}));
+
+        for (const uint16_t candidate : {aoc::sim::goods::COPPER_ORE, aoc::sim::goods::SILVER_ORE,
+                                         aoc::sim::goods::GOLD_ORE, aoc::sim::goods::IRON_ORE}) {
+            const int32_t held = aoc::sim::civHeldUnits(*moneyGs, moneyPlayer, candidate);
+            if (held <= 0 || candidate == monetary->moneyGood) {
+                continue;
+            }
+            ButtonData pick;
+            pick.label       = "Price in " + std::string(aoc::sim::goodDef(candidate).name) + " (" +
+                               std::to_string(held) + ")";
+            pick.fontSize    = 11.0f;
+            pick.normalColor = tokens::BRONZE_BASE;
+            pick.cornerRadius = 3.0f;
+            pick.onClick      = [moneyGs, moneyPlayer, candidate]() {
+                const aoc::ErrorCode rc =
+                    aoc::sim::requestSetMoneyGood(*moneyGs, moneyPlayer, static_cast<uint8_t>(candidate));
+                LOG_INFO("Price in good %u: %.*s", static_cast<unsigned>(candidate),
+                         static_cast<int>(aoc::describeError(rc).size()),
+                         aoc::describeError(rc).data());
+            };
+            static_cast<void>(ui.createButton(innerPanel, {0.0f, 0.0f, 220.0f, 22.0f}, std::move(pick)));
+        }
+
+        if (monetary->moneyGood != aoc::sim::NO_MONEY_GOOD) {
+            ButtonData drop;
+            drop.label        = "Demonetise";
+            drop.fontSize     = 11.0f;
+            drop.normalColor  = tokens::BRONZE_BASE;
+            drop.cornerRadius = 3.0f;
+            drop.onClick      = [moneyGs, moneyPlayer]() {
+                const aoc::ErrorCode rc =
+                    aoc::sim::requestSetMoneyGood(*moneyGs, moneyPlayer, aoc::sim::NO_MONEY_GOOD);
+                LOG_INFO("Demonetise: %.*s", static_cast<int>(aoc::describeError(rc).size()),
+                         aoc::describeError(rc).data());
+            };
+            static_cast<void>(ui.createButton(innerPanel, {0.0f, 0.0f, 220.0f, 22.0f}, std::move(drop)));
+        }
+    }
+
     // "Create Trade Route" button
     {
         ButtonData tradeRouteBtn;

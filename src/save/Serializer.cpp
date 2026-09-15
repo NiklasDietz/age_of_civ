@@ -1005,6 +1005,7 @@ void writeMonetarySection(WriteBuffer& out, const aoc::game::GameState& gameStat
         section.writeI64(m.privateNotes);
         section.writeI64(m.bullion);
         section.writeU8(m.moneyGood); // v35: was coinageStandard (CoinTier)
+        section.writeI32(m.turnsWithCurrentMoneyGood); // v36
     }
 
     writeSection(out, SectionId::MonetaryState, section);
@@ -2982,6 +2983,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 m.privateNotes  = buf.readI64();
                 m.bullion       = buf.readI64();
                 m.moneyGood = buf.readU8(); // v35: was coinageStandard (CoinTier), 0xFF = none
+                m.turnsWithCurrentMoneyGood = buf.readI32(); // v36
                 if (player != nullptr) {
                     player->monetary() = std::move(m);
                     aoc::sim::CurrencyExchangeComponent& fx = player->currencyExchange();

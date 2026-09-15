@@ -18,6 +18,7 @@
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/MoneyFlow.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp" // GOOD_COUNT
 #include "aoc/simulation/unit/UnitTypes.hpp"
 
 #include "aoc/core/Log.hpp"
@@ -142,6 +143,65 @@ ErrorCode requestSetMonetaryRegime(aoc::game::GameState& gameState, PlayerId pla
     LOG_INFO("Player %u adopted %.*s", static_cast<unsigned>(player),
              static_cast<int>(monetarySystemName(target).size()),
              monetarySystemName(target).data());
+    return ErrorCode::Ok;
+}
+
+int32_t civHeldUnits(const aoc::game::GameState& gameState, PlayerId player, uint16_t goodId) {
+    const aoc::game::Player* p =
+        player < aoc::sim::CITY_STATE_PLAYER_BASE ? gameState.player(player) : nullptr;
+    if (p == nullptr) {
+        return 0;
+    }
+    int32_t held = 0;
+    for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
+        // A revolted city stays in the old holder's vector with its owner
+        // cleared, so its stock is no longer this civ's to price in.
+        if (city == nullptr || city->owner() != player) {
+            continue;
+        }
+        held += city->stockpile().getAmount(goodId);
+    }
+    return held;
+}
+
+ErrorCode requestSetMoneyGood(aoc::game::GameState& gameState, PlayerId player, uint8_t goodId) {
+    aoc::game::Player* p = actor(gameState, player);
+    if (p == nullptr) {
+        return ErrorCode::EntityNotFound;
+    }
+    MonetaryStateComponent& state = p->monetary();
+
+    // Every refusal below returns before touching `state`, which is the gate
+    // the plan names: a denied request must leave the civ exactly as it was.
+    if (state.turnsWithCurrentMoneyGood < MONEY_GOOD_DWELL_TURNS) {
+        return ErrorCode::InvalidMoneyGood; // too soon to re-price everything
+    }
+    if (goodId == state.moneyGood) {
+        return ErrorCode::InvalidMoneyGood; // already this civ's money
+    }
+    if (goodId != NO_MONEY_GOOD) {
+        if (goodId >= aoc::sim::goods::GOOD_COUNT) {
+            return ErrorCode::InvalidMoneyGood;
+        }
+        // Under paper the note IS the money, so a commodity cannot also be it.
+        // Demonetising (NO_MONEY_GOOD) stays open, which is why this sits
+        // inside the branch.
+        if (isFiatClass(state.system)) {
+            return ErrorCode::InvalidMoneyGood;
+        }
+        if (civHeldUnits(gameState, player, goodId) <= 0) {
+            return ErrorCode::InvalidMoneyGood; // cannot price in what you lack
+        }
+    }
+
+    state.moneyGood                 = goodId;
+    state.turnsWithCurrentMoneyGood = 0;
+    if (goodId == NO_MONEY_GOOD) {
+        LOG_INFO("Player %u demonetised its money good", static_cast<unsigned>(player));
+    } else {
+        LOG_INFO("Player %u now prices in good %u", static_cast<unsigned>(player),
+                 static_cast<unsigned>(goodId));
+    }
     return ErrorCode::Ok;
 }
 

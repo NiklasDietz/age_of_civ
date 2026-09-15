@@ -75,6 +75,19 @@ std::string_view dealCommandError(const ProposeDealCommand& cmd) {
     return {};
 }
 
+std::string_view moneyGoodCommandError(const MoneyGoodCommand& cmd) {
+    if (cmd.player >= MAX_PLAYERS) {
+        return "player out of range";
+    }
+    // 0xFF is the demonetise sentinel, not a good; everything else must name a
+    // row in the table. Whether the civ may actually elect it is
+    // requestSetMoneyGood's call, not this one's.
+    if (cmd.goodId != aoc::sim::NO_MONEY_GOOD && cmd.goodId >= aoc::sim::goods::GOOD_COUNT) {
+        return "good id out of range";
+    }
+    return {};
+}
+
 std::string_view regimeCommandError(const MonetaryRegimeCommand& cmd) {
     if (cmd.player >= MAX_PLAYERS) {
         return "player out of range";

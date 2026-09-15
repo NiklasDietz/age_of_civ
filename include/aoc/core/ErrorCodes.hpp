@@ -68,6 +68,7 @@ enum class ErrorCode : uint16_t {
     TechPrerequisiteNotMet     = 702,
     InvalidMonetaryTransition  = 703,
     AllianceExists             = 704,  ///< Pair already has an alliance, or is within the 20-turn post-formation cooldown
+    InvalidMoneyGood           = 705,  ///< The civ cannot make that good its money right now
 };
 
 /**
@@ -124,6 +125,7 @@ enum class ErrorCode : uint16_t {
         case ErrorCode::TechPrerequisiteNotMet:      return "Technology prerequisites not researched";
         case ErrorCode::InvalidMonetaryTransition:   return "Cannot transition to this monetary system";
         case ErrorCode::AllianceExists:              return "Alliance already active or within post-formation cooldown";
+        case ErrorCode::InvalidMoneyGood:            return "Cannot make that good this civ's money";
     }
     return "Unrecognized error code";
 }

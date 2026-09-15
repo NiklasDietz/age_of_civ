@@ -140,6 +140,6 @@ namespace aoc::save {
  *   loaded Trader keeps its route, cargo, carried coin and the goods reserved
  *   for it at the pickup city instead of coming back idle.
  * Every v33 save becomes unloadable. */
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 35;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 36;
 
 } // namespace aoc::save

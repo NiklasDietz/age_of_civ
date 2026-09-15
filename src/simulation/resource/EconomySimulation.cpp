@@ -1602,6 +1602,7 @@ void EconomySimulation::tickMonetaryMechanics(aoc::game::GameState& gameState) {
 
         MonetaryStateComponent& state = playerPtr->monetary();
         ++state.turnsInCurrentSystem;
+        ++state.turnsWithCurrentMoneyGood;
 
         if (state.system == MonetarySystemType::CommodityMoney) {
             if (tickDebasementDiscovery(state)) {

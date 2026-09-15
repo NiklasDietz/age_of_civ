@@ -114,6 +114,25 @@ float applyCentralBankPolicy(aoc::game::GameState& gameState, PlayerId player);
 [[nodiscard]] ErrorCode requestPrintMoney(aoc::game::GameState& gameState, PlayerId player,
                                           CurrencyAmount amount);
 
+/// Elect `goodId` as the good this civ prices and settles in, or NO_MONEY_GOOD
+/// to demonetise and return to barter in kind.
+///
+/// This is the mechanism only: it answers "may this civ do that", never "should
+/// it". Nothing here reads the saleability score, and the AI does not call it
+/// yet; both are Phase D. Refusals leave the state exactly as it was.
+///
+/// Refused when: the player is not a real civ; the good id is not a real good;
+/// the civ holds none of it (you cannot price in what you do not have); the
+/// civ is on a paper system, where the note is the money and a commodity
+/// cannot be; or the dwell since its last change has not elapsed.
+[[nodiscard]] ErrorCode requestSetMoneyGood(aoc::game::GameState& gameState, PlayerId player,
+                                            uint8_t goodId);
+
+/// Units of `goodId` this civ holds across all its cities. Exposed because the
+/// adoption gate, the UI row and the tests all need the same number.
+[[nodiscard]] int32_t civHeldUnits(const aoc::game::GameState& gameState, PlayerId player,
+                                   uint16_t goodId);
+
 /// The four terms of Menger's saleability, the property that decides which good
 /// a people ends up treating as money. Money is not the most valuable good, it
 /// is the one you can most reliably pass on, which is why acceptance by others

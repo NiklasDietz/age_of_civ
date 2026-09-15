@@ -657,15 +657,29 @@ def aoc_propose_deal(player: int, target: int, give_gold: int = 0, ask_gold: int
 
 
 @mcp.tool()
-def aoc_set_monetary_regime(player: int, target: int, tier: int = 0) -> dict:
+def aoc_set_monetary_regime(player: int, target: int) -> dict:
     """Adopt the next monetary regime for `player`. `target` is the stage after the current one:
-    1 Commodity Money (coinage; needs a Mint, bullion and a `tier` metal 1 Copper, 2 Silver, 3 Gold
-    that the Mint has struck), 2 Gold Standard (Banking), 3 Fiat (Banking plus Printing or
-    Economics, two live trade partners, inflation under 5%), 4 Digital (Computers). Adopting
-    coinage turns the civ's bullion into its people's coin. Refused gates change nothing; the
-    result is logged. Queues the request.
+    1 Commodity Money (needs bullion worth 100), 2 Gold Standard (Banking, two cities), 3 Fiat
+    (Banking plus Printing or Economics, two live trade partners, inflation under 5%), 4 Digital
+    (Computers). Adopting commodity money turns the civ's bullion into its people's specie.
+    Refused gates change nothing; the result is logged. Queues the request.
+
+    Which GOOD a civ prices in is a separate decision: see aoc_set_money_good.
     """
-    return _post("/game/monetary/regime", player=player, target=target, tier=tier)
+    return _post("/game/monetary/regime", player=player, target=target)
+
+
+@mcp.tool()
+def aoc_set_money_good(player: int, good: int) -> dict:
+    """Elect the good `player` prices and settles in, or 255 to demonetise and go back to barter
+    in kind. Money here is Mengerian: a good is money because people take it, not because a
+    regime declared it, so this is independent of the monetary stage above.
+
+    Refused when the civ holds none of the good, when it is already on a paper system (the note is
+    the money then), when the good is already its money, or when fewer than 20 turns have passed
+    since its last change. A refusal changes nothing. Queues the request.
+    """
+    return _post("/game/monetary/moneygood", player=player, good=good)
 
 
 @mcp.tool()

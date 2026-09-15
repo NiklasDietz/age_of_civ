@@ -3,7 +3,7 @@
 #include "aoc/simulation/city/ProductionQueue.hpp" // ProductionItemType
 #include "aoc/simulation/tech/TechTree.hpp"        // PlayerTechComponent, techCount()
 
-#include "aoc/debug/GameControlCommand.hpp"           // ProposeDealCommand
+#include "aoc/debug/GameControlCommand.hpp" // ProposeDealCommand
 
 #include <cstdint>
 #include <string_view>
@@ -31,5 +31,9 @@ namespace aoc::debug {
 /// Why a regime command cannot be queued: an unknown target, a tier that is
 /// not a metal, or a tier given for anything but coinage. Empty when sound.
 [[nodiscard]] std::string_view regimeCommandError(const MonetaryRegimeCommand& cmd);
+
+/// Shape check only: the player and good id must be in range. Whether this civ
+/// may elect that good now is requestSetMoneyGood's decision.
+[[nodiscard]] std::string_view moneyGoodCommandError(const MoneyGoodCommand& cmd);
 
 } // namespace aoc::debug

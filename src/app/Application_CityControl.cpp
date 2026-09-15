@@ -975,6 +975,32 @@ void Application::registerDealRoutes() {
             return std::string("{\"queued\":true}");
         });
     this->m_debugServer->routeJson(
+        DSM::Post, "/game/monetary/moneygood",
+        [this](const Query& q, const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t good   = 0;
+            std::string err;
+            if (!readIntParam(q, "player", player, err) || !readIntParam(q, "good", good, err)) {
+                return err;
+            }
+            if (player < 0 || player >= MAX_PLAYERS || good < 0 || good > 255) {
+                return std::string("{\"error\":\"player or good out of range\"}");
+            }
+            aoc::debug::MoneyGoodCommand cmd{};
+            cmd.player                 = static_cast<aoc::PlayerId>(player);
+            cmd.goodId                 = static_cast<uint8_t>(good);
+            const std::string_view why = aoc::debug::moneyGoodCommandError(cmd);
+            if (!why.empty()) {
+                return "{\"error\":\"" + std::string(why) + "\"}";
+            }
+            std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+            this->m_pendingCommands.push_back(cmd);
+            return std::string("{\"queued\":true}");
+        });
+    this->m_debugServer->routeJson(
         DSM::Post, "/game/deal/propose", [this](const Query& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
@@ -1145,6 +1171,14 @@ void Application::executeGameControlCommand(const aoc::debug::MonetaryRegimeComm
     LOG_INFO("Monetary regime request (player %u, target %u): %.*s",
              static_cast<unsigned>(cmd.player), static_cast<unsigned>(cmd.target),
              static_cast<int>(aoc::describeError(rc).size()), aoc::describeError(rc).data());
+}
+
+void Application::executeGameControlCommand(const aoc::debug::MoneyGoodCommand& cmd) {
+    const aoc::ErrorCode rc =
+        aoc::sim::requestSetMoneyGood(this->m_gameState, cmd.player, cmd.goodId);
+    LOG_INFO("Money good request (player %u, good %u): %.*s", static_cast<unsigned>(cmd.player),
+             static_cast<unsigned>(cmd.goodId), static_cast<int>(aoc::describeError(rc).size()),
+             aoc::describeError(rc).data());
 }
 
 void Application::executeGameControlCommand(const aoc::debug::ProposeDealCommand& cmd) {
