@@ -297,7 +297,6 @@ enum class GateRefusal : uint8_t {
     TurnsInCurrent,    ///< not long enough in the current system
     TradePartners,     ///< too few live trade partners
     Inflation,         ///< prices above the row's ceiling
-    GdpRank,           ///< Fiat/Digital only: outside the top half by GDP
     NoTableRow,        ///< no MONETARY_TRANSITIONS row for the target at all
     NoMint,            ///< pre-gate: the civ has no Mint
     NoBullion,         ///< pre-gate: nothing struck in the chosen metal
@@ -309,9 +308,8 @@ enum class GateRefusal : uint8_t {
 
 inline constexpr std::array<std::string_view, static_cast<std::size_t>(GateRefusal::Count)>
     GATE_REFUSAL_NAMES = {"notNextStage", "tech",      "strength",  "cities",
-                          "turnsIn",      "partners",  "inflation", "gdpRank",
-                          "noTableRow",   "noMint",    "noBullion", "badTier",
-                          "paperTech"};
+                          "turnsIn",      "partners",  "inflation", "noTableRow",
+                          "noMint",       "noBullion", "badTier",   "paperTech"};
 
 /// One run's gate outcomes, by target stage. Cumulative, never reset, and
 /// written only while the dump is enabled, so an unset environment costs one
@@ -687,8 +685,6 @@ struct MonetaryStateComponent {
      * @brief Check if the player can transition to a target monetary system.
      * @param cityCount  Number of cities the player owns.
      * @param tradePartnerCount  Number of active trade partners.
-     * @param gdpRank  Player's GDP rank (1 = highest). Used for fiat check.
-     * @param playerCount  Total active players. GDP rank must be top half for fiat.
      * @return Ok if transition is valid, InvalidMonetaryTransition if not.
      */
     /// `hasTech` answers whether the player has researched a given TechId. It
@@ -705,9 +701,7 @@ struct MonetaryStateComponent {
     [[nodiscard]] ErrorCode canTransition(MonetarySystemType target,
                                            int32_t cityCount,
                                            HasTechFn hasTech,
-                                           int32_t tradePartnerCount = 0,
-                                           int32_t gdpRank = 1,
-                                           int32_t playerCount = 1) const {
+                                           int32_t tradePartnerCount = 0) const {
         recordGateAsked(target);
 
         // Must be the next stage in sequence
@@ -751,15 +745,6 @@ struct MonetaryStateComponent {
                 if (this->inflationRate > req.maxInflation) {
                     recordGateRefusal(target, GateRefusal::Inflation);
                     return ErrorCode::InvalidMonetaryTransition;
-                }
-                // Fiat/Digital require GDP rank in top half of players.
-                if (target == MonetarySystemType::FiatMoney
-                    || target == MonetarySystemType::Digital) {
-                    int32_t topHalf = std::max(1, playerCount / 2);
-                    if (gdpRank > topHalf) {
-                        recordGateRefusal(target, GateRefusal::GdpRank);
-                        return ErrorCode::InvalidMonetaryTransition;
-                    }
                 }
                 recordGatePassed(target);
                 return ErrorCode::Ok;

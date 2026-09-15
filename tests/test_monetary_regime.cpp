@@ -206,7 +206,7 @@ TEST_CASE("with three civs, two live partners and Economics, Fiat is adopted, an
     p.monetary().moneySupply          = 400; // fiat is judged on its own measure, not on metal
     p.monetary().turnsInCurrentSystem = 5;
     p.monetary().inflationRate        = 0.01f;
-    p.monetary().gdp                  = 1000; // top half
+    p.monetary().gdp                  = 1000;
     p.tech().completedTechs[BANKING.value]   = true;
     p.tech().completedTechs[ECONOMICS.value] = true;
     for (const PlayerId other : {P1, PlayerId{2}}) {
@@ -219,6 +219,48 @@ TEST_CASE("with three civs, two live partners and Economics, Fiat is adopted, an
     CHECK(p.monetary().system == MonetarySystemType::FiatMoney);
     CHECK(aoc::sim::requestSetMonetaryRegime(w.gameState, P0, MonetarySystemType::Digital) ==
           ErrorCode::InvalidMonetaryTransition); // no Computers, no ten turns in
+}
+
+TEST_CASE("the poorest civ may still issue fiat; whether it is accepted is another matter") {
+    // Fiat used to require a GDP rank in the top half, which put the gate in
+    // direct contradiction with the AI's own trigger: its fiat branch fires
+    // under economic stress, so it asked when poor and the gate answered only
+    // when rich. Measured on seed 42 at six players, 33 of 34 asks were refused
+    // on that clause alone and no civ ever reached fiat through the gate.
+    //
+    // It is also backwards from the history this models. Britain suspended
+    // convertibility in 1797 under war finance, the Union issued greenbacks in
+    // 1862, the belligerents left gold in 1914 and Nixon closed the window in
+    // 1971: fiscal stress every time, never prosperity. A state can always
+    // issue; what decides whether the paper is money is whether anyone takes
+    // it, which currency trust and inflation already govern.
+    aoc::test::World w   = aoc::test::makeWorld(3);
+    aoc::game::Player& p = *w.gameState.player(P0);
+    aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
+    aoc::test::addCityAt(w, P0, 9, 5, "Gamma");
+    aoc::test::addCityAt(w, P1, 14, 8, "Beta");
+    aoc::test::addCityAt(w, PlayerId{2}, 18, 12, "Delta");
+    p.monetary().system               = MonetarySystemType::GoldStandard;
+    p.monetary().goldBarReserves      = 4;
+    p.monetary().moneySupply          = 400;
+    p.monetary().turnsInCurrentSystem = 5;
+    p.monetary().inflationRate        = 0.01f;
+    p.tech().completedTechs[BANKING.value]   = true;
+    p.tech().completedTechs[ECONOMICS.value] = true;
+    for (const PlayerId other : {P1, PlayerId{2}}) {
+        aoc::game::Unit& t = aoc::test::addUnitAt(w, P0, TRADER, 6 + other, 5);
+        t.trader().owner     = P0;
+        t.trader().destOwner = other;
+    }
+
+    // Dead last by GDP, by a wide margin, and every rival ahead of it.
+    p.monetary().gdp                                  = 1;
+    w.gameState.player(P1)->monetary().gdp            = 100000;
+    w.gameState.player(PlayerId{2})->monetary().gdp   = 100000;
+
+    CHECK(aoc::sim::requestSetMonetaryRegime(w.gameState, P0, MonetarySystemType::FiatMoney) ==
+          ErrorCode::Ok);
+    CHECK(p.monetary().system == MonetarySystemType::FiatMoney);
 }
 
 TEST_CASE("a transition is judged by the measure of the regime it moves to") {

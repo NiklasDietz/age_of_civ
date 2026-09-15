@@ -62,16 +62,6 @@ constexpr int32_t GOLD_BARS_FOR_A_GOLD_STANDARD = 3;
     }
 }
 
-[[nodiscard]] int32_t gdpRankOf(const aoc::game::GameState& gameState, const aoc::game::Player& player) {
-    int32_t rank = 1;
-    for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
-        if (other != nullptr && other->id() != player.id() && other->monetary().gdp > player.monetary().gdp) {
-            ++rank;
-        }
-    }
-    return rank;
-}
-
 } // namespace
 
 int32_t livePartnerCount(const aoc::game::GameState& gameState, PlayerId player) {
@@ -174,7 +164,7 @@ ErrorCode requestSetMonetaryRegime(aoc::game::GameState& gameState, PlayerId pla
     }
     const ErrorCode gate = state.canTransition(
         target, p->ownedCityCount(), [p](TechId t) { return p->hasResearched(t); },
-        livePartnerCount(gameState, player), gdpRankOf(gameState, *p), gameState.playerCount());
+        livePartnerCount(gameState, player));
     if (gate != ErrorCode::Ok) { return gate; }
 
     if (target == MonetarySystemType::CommodityMoney) {
