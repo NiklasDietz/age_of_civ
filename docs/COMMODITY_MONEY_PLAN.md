@@ -297,6 +297,50 @@ Corrected, metal is held on 166 of 744 rows on seed 42 and 216 of 744 on seed
 reaches a Mint, which is exactly the unclaimed resource an industrial use would
 take.
 
+### 5.1 Why the metal never reaches a Mint, measured 2026-09-15
+
+Phase 1 measured zero firings and blamed the export buffer without saying how
+the ore got there. It is the trade system's pickup reservation, and the reason
+it takes the ore is the design premise itself.
+
+`commitPickupReservation` (TradeRouteSystem.cpp:396) moves planned cargo out of
+`goods` and into `exportBuffer`. `selectTradeGoods` scores any good with more
+than one unit as exportable surplus; it has no notion of a good its own city's
+recipes need. Recipe inputs are checked against `stockpile.getAmount`
+(EconomySimulation.cpp:926), the stockpile ALONE. So an ore that nothing
+consumes locally is reserved for export the turn it is mined, and the Mint,
+reading the stockpile, never sees a single unit.
+
+It is a closed loop: the ore is exported because nothing consumes it, and
+nothing can consume it because it has been exported.
+
+Measured over 40 turns at six players on seed 42, with copper as the control:
+
+| Good | Harvested | Stock ever above zero? | Local consumers |
+|---|---|---|---|
+| Copper ore | 156 | yes, 1 to 48 | four, including mint recipe 34 |
+| Gold ore | 11 | NO, never once | effectively none before Metallurgy |
+| Silver ore | 0 | n/a, never mined in 40 turns | mint recipe 35 only |
+
+Copper is the control and it is decisive. The metal with domestic consumers
+accumulates normally; the metal without one never holds a single unit, though
+it is mined every turn and the `[econ]` line reads `harvested=1 consumed=0
+net=1 stock=0`, with `unmet=1` appearing once something does want it. The soft
+cap is not the cause: it is 80 and these stocks never exceed 20.
+
+Silver never being mined at all in the first 40 turns is a separate finding and
+is not explained here.
+
+**This is why the plan's premise cannot work as written.** The design wants
+metal to have no early industrial use so that it becomes money. Under the
+current trade rules "no use" is read as "pure surplus", and pure surplus is
+claimed for export before the Mint can strike it. Any fix has to give a city a
+way to hold back what its own buildings need. The codebase already has the
+shape of the exemption: `selectTradeGoods` skips `isCoinGood` entries with the
+comment "money, not cargo: the sweep takes it".
+
+---
+
 ### Phase 1: give the metals somewhere to go (data only)
 
 **BUILT, MEASURED AND REVERTED on 2026-09-13.** The two recipes below were
