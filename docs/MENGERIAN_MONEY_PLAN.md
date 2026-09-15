@@ -161,9 +161,40 @@ and are re-blessed only on explicit approval. New health checks land as targets
 first, never as hard checks, because they are false on the current build.
 
 ### Phase A: let a city keep what it needs (prerequisite)
-Reserve local recipe inputs before export scoring. **Gate:** gold ore stock
-rises above zero on a seed where it is mined; copper unchanged. This is
-measurable in one run with `AOC_DUMP_ECONOMY=1` and needs no new instrument.
+Reserve local recipe inputs before export scoring.
+
+**BUILT, MEASURED AND REVERTED 2026-09-15.** `selectTradeGoods` was changed to
+hold back one batch of every recipe the origin city can host, keyed on the
+required building being present, instead of the flat one unit it keeps today.
+It did not pass its gate and was not committed.
+
+The gate was written as "gold ore stock rises above zero", which turned out to
+be the wrong gate: gold ore already reaches a stock of 20 before the change
+once the window is long enough to contain a Mint. Controlled to the same turn
+window (1 to 153, six players, seed 42), the change gave:
+
+| | silver harvested | silver consumed | gold harvested | gold consumed |
+|---|---|---|---|---|
+| before | 11 | 2 | 113 | 8 |
+| after | 25 | 10 | 162 | **2** |
+
+Silver improved, gold got worse, and harvested volumes moved so much in both
+that the runs are not comparable in the first place: the change perturbs the
+whole trajectory, lengthening the run from t153 to t200 and raising copper
+harvested by 47%. That is trajectory divergence, not a targeted effect.
+
+The reason it does so little where it was aimed is that the reserve is keyed on
+the consuming building being present, and gold's only consumer is a Mint, which
+no civ owns before roughly turn 78 and which stays rare after. For most of the
+game there is no reserve on gold ore at all, so nothing changes for it.
+
+**What this means for the phase.** Letting a city keep its own inputs is still
+right, but it is not sufficient and cannot be gated on metal accumulation. If
+it returns it needs a gate about export composition, which is what it actually
+changes, and it should be judged as its own economy change rather than as a
+monetary prerequisite. The monetary chain's binding constraint is upstream of
+it: the consuming building arrives late and rarely, which is the pacing finding
+in fac40b7, not the reservation.
 
 ### Phase B: delete the coin layer
 Remove the three coin goods, `isCoinGood`, the mint and melt recipes, and the

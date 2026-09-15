@@ -331,6 +331,17 @@ cap is not the cause: it is 80 and these stocks never exceed 20.
 Silver never being mined at all in the first 40 turns is a separate finding and
 is not explained here.
 
+**CORRECTION 2026-09-15, same day.** The table above is a 40-turn window and
+"never once" does not generalise. Measured to 200 turns on the same seed and
+player count, gold ore reaches a stock of 20 and is consumed 8 times, and
+silver reaches 2. The 40-turn reading is an artifact of the window: no civ owns
+a Mint before roughly turn 78, so for the whole of that window gold ore has no
+consuming building in existence, not merely no consumer. The export
+reservation is real and the mechanism described above is real, but it is not
+the sole reason the metal does not accumulate, and the stronger claim was
+wrong. See the Phase A entry in MENGERIAN_MONEY_PLAN.md for what was built on
+this reading and why it was reverted.
+
 **This is why the plan's premise cannot work as written.** The design wants
 metal to have no early industrial use so that it becomes money. Under the
 current trade rules "no use" is read as "pure surplus", and pure surplus is
