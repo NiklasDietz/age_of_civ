@@ -24,12 +24,18 @@
 #include "aoc/core/Types.hpp"
 #include "aoc/simulation/monetary/CurrencyWar.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp" // goods::GOOD_COUNT
+
+#include <array>
 
 namespace aoc::game {
 class GameState;
 }
 
 namespace aoc::sim {
+
+class Market;
+class DiplomacyManager;
 
 /// Major civs `player` trades with right now: a live Trader route to one of
 /// their cities, or an active supply contract either way. The count a fiat
@@ -148,6 +154,39 @@ struct SaleabilityInputs {
     int32_t priceSwing      = 0; ///< recent price high minus low
     int32_t price           = 1; ///< current market price, floored at 1
 };
+
+/// One civ's view of the world, gathered once per turn so that scoring each
+/// candidate good is a table lookup instead of a fresh scan of every recipe and
+/// every rival. Phase D: this is what turns the pure `saleability` rule into a
+/// decision the world can actually drive.
+struct MoneyWorldView {
+    /// Units per turn this civ's runnable recipes would eat, per good.
+    std::array<int32_t, goods::GOOD_COUNT> industrialDraw{};
+    /// Trade weight of met civs already treating that good as their money.
+    std::array<int32_t, goods::GOOD_COUNT> acceptingWeight{};
+    /// Trade weight of every met civ. Zero means no contact at all.
+    int32_t totalWeight = 0;
+};
+
+/// Gather `player`'s view. A met civ's weight is 1 + the live trade routes
+/// between the two, so everyone this civ has met counts for something and the
+/// civs it actually trades with count for more: acceptance is about who you
+/// must settle with, not who exists.
+[[nodiscard]] MoneyWorldView moneyWorldView(const aoc::game::GameState& gameState,
+                                            const DiplomacyManager* diplomacy, PlayerId player);
+
+/// The four terms for one candidate good, read out of the world.
+[[nodiscard]] SaleabilityInputs saleabilityInputsFor(const aoc::game::GameState& gameState,
+                                                     const Market& market,
+                                                     const MoneyWorldView& view, PlayerId player,
+                                                     uint16_t goodId);
+
+/// The AI's money-good decision, taken through requestSetMoneyGood so there is
+/// exactly one path that can change a civ's money. Adopts the best-scoring good
+/// it holds, and only unseats an incumbent by a clear margin, because money
+/// whose identity flickers is not money.
+void aiChooseMoneyGood(aoc::game::GameState& gameState, const Market& market,
+                       const DiplomacyManager* diplomacy, PlayerId player);
 
 /// Zero when the good cannot serve this civ as money, rising with saleability.
 /// Deterministic, no RNG, and monotone in each term, which is what the tests

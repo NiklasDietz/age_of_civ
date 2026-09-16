@@ -258,10 +258,12 @@ void aiPrepareIndustrialRevolution(aoc::game::GameState& /*gameState*/,
 // Master economic strategy
 // ============================================================================
 
-/// The regime decision (plan 2.5), through the one request. Coinage as soon
-/// as it is within reach, in the metal the Mint has favoured; notes once the
-/// people hold twenty coin and a partner trades with us; fiat when the gates
-/// pass and inflation is under five percent; digital when it can.
+/// The regime decision (plan 2.5), through the one request. Coinage as soon as
+/// it is within reach; notes once the people hold twenty coin and a partner
+/// trades with us; fiat when the gates pass and inflation is under five
+/// percent; digital when it can. WHICH GOOD the civ prices in is a separate
+/// decision taken by aiChooseMoneyGood: the stage says what KIND of money this
+/// is, the money good says what the money IS.
 void aiChooseMonetaryRegime(aoc::game::GameState& gameState, PlayerId player) {
     const aoc::game::Player* p = gameState.player(player);
     if (p == nullptr) { return; }
@@ -305,6 +307,7 @@ void aiEconomicStrategy(aoc::game::GameState& gameState,
     aiCrisisResponse(gameState, player);
     aiPrepareIndustrialRevolution(gameState, market, player);
     aiChooseMonetaryRegime(gameState, player);
+    aiChooseMoneyGood(gameState, market, &diplomacy, player);
 }
 
 } // namespace aoc::sim

@@ -12,12 +12,14 @@
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/ai/AIConstants.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/economy/SpeculationBubble.hpp"
 #include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/simulation/monetary/CentralBank.hpp"
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/MoneyFlow.hpp"
+#include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp" // GOOD_COUNT
 #include "aoc/simulation/unit/UnitTypes.hpp"
 
@@ -33,6 +35,14 @@ namespace {
 
 /// Every action here needs the same thing: a real player with monetary state.
 [[nodiscard]] aoc::game::Player* actor(aoc::game::GameState& gameState, PlayerId player) {
+    if (player >= aoc::sim::CITY_STATE_PLAYER_BASE) {
+        return nullptr;
+    }
+    return gameState.player(player);
+}
+
+[[nodiscard]] const aoc::game::Player* actorConst(const aoc::game::GameState& gameState,
+                                                  PlayerId player) {
     if (player >= aoc::sim::CITY_STATE_PLAYER_BASE) {
         return nullptr;
     }
@@ -205,6 +215,66 @@ ErrorCode requestSetMoneyGood(aoc::game::GameState& gameState, PlayerId player, 
     return ErrorCode::Ok;
 }
 
+/// How far ahead a challenger must score before it unseats the incumbent
+/// money, as a percentage of the incumbent's score. Money is a convention: if
+/// a civ re-elected on every marginal tick, nothing would ever stay money long
+/// enough for anyone else to start accepting it, and the acceptance term could
+/// never compound. The dwell in requestSetMoneyGood bounds how OFTEN a switch
+/// can happen; this bounds how SMALL a reason is enough.
+constexpr int32_t MONEY_CHALLENGER_MARGIN_PCT = 25;
+
+/// Below this a good is not worth pricing in at all, so a civ with nothing
+/// suitable stays on barter rather than electing the least bad thing it owns.
+constexpr int32_t MONEY_MINIMUM_SALEABILITY = 40;
+
+void aiChooseMoneyGood(aoc::game::GameState& gameState, const Market& market,
+                       const DiplomacyManager* diplomacy, PlayerId player) {
+    const aoc::game::Player* me = actorConst(gameState, player);
+    if (me == nullptr) {
+        return;
+    }
+    const MonetaryStateComponent& state = me->monetary();
+    // Under paper the note is the money; there is nothing to elect.
+    if (isFiatClass(state.system)) {
+        return;
+    }
+    if (state.turnsWithCurrentMoneyGood < MONEY_GOOD_DWELL_TURNS) {
+        return; // still locked in; do not even score
+    }
+
+    const MoneyWorldView view = moneyWorldView(gameState, diplomacy, player);
+
+    int32_t bestScore      = 0;
+    uint16_t bestGood      = NO_MONEY_GOOD;
+    int32_t incumbentScore = 0;
+    for (uint16_t goodId = 0; goodId < goods::GOOD_COUNT; ++goodId) {
+        const int32_t score =
+            saleability(saleabilityInputsFor(gameState, market, view, player, goodId));
+        if (goodId == state.moneyGood) {
+            incumbentScore = score;
+        }
+        if (score > bestScore) {
+            bestScore = score;
+            bestGood  = goodId;
+        }
+    }
+
+    if (bestGood == NO_MONEY_GOOD || bestScore < MONEY_MINIMUM_SALEABILITY) {
+        return;
+    }
+    if (state.moneyGood != NO_MONEY_GOOD) {
+        if (bestGood == state.moneyGood) {
+            return;
+        }
+        const int32_t needed =
+            incumbentScore + (incumbentScore * MONEY_CHALLENGER_MARGIN_PCT) / 100;
+        if (bestScore <= needed) {
+            return; // not clearly better; the convention holds
+        }
+    }
+    static_cast<void>(requestSetMoneyGood(gameState, player, static_cast<uint8_t>(bestGood)));
+}
+
 /// Systems with a central bank able to set a policy rate. Commodity coinage
 /// has no such institution, and Barter has no money to price.
 [[nodiscard]] bool hasCentralBank(MonetarySystemType s) {
@@ -360,6 +430,102 @@ float applyCentralBankPolicy(aoc::game::GameState& gameState, PlayerId player) {
     const float newRate = state.interestRate + step;
     setInterestRate(state, newRate);
     return state.interestRate;
+}
+
+MoneyWorldView moneyWorldView(const aoc::game::GameState& gameState,
+                              const DiplomacyManager* diplomacy, PlayerId player) {
+    MoneyWorldView view;
+    const aoc::game::Player* me =
+        player < aoc::sim::CITY_STATE_PLAYER_BASE ? gameState.player(player) : nullptr;
+    if (me == nullptr) {
+        return view;
+    }
+
+    // What this civ's industry would eat. A recipe counts only if the civ can
+    // actually run it: the tech is in and some city has the building. That is
+    // the whole exit-to-paper mechanism in miniature -- a metal nothing can
+    // consume scores high, and researching the recipe that consumes it is what
+    // later makes it a poor money.
+    for (const ProductionRecipe& recipe : allRecipes()) {
+        if (recipe.isRecycling) {
+            continue; // melting money back is not an industrial use of it
+        }
+        if (recipe.requiredTech.isValid() && !me->hasResearched(recipe.requiredTech)) {
+            continue;
+        }
+        bool canBuild = false;
+        for (const std::unique_ptr<aoc::game::City>& city : me->cities()) {
+            if (city != nullptr && city->owner() == player &&
+                city->hasBuilding(recipe.requiredBuilding)) {
+                canBuild = true;
+                break;
+            }
+        }
+        if (!canBuild) {
+            continue;
+        }
+        for (const RecipeInput& input : recipe.inputs) {
+            if (input.consumed && input.goodId < goods::GOOD_COUNT) {
+                view.industrialDraw[input.goodId] += std::max(0, input.amount);
+            }
+        }
+    }
+
+    // Who takes what. Weight 1 per met civ plus its live routes with us, so
+    // contact counts and settlement counts for more.
+    for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+        if (other == nullptr || other->id() == player ||
+            other->id() >= aoc::sim::CITY_STATE_PLAYER_BASE) {
+            continue;
+        }
+        if (diplomacy != nullptr && !diplomacy->relation(player, other->id()).hasMet) {
+            continue;
+        }
+        const int32_t weight = 1 + routesBetween(gameState, player, other->id());
+        view.totalWeight += weight;
+        const uint8_t theirs = other->monetary().moneyGood;
+        if (theirs != NO_MONEY_GOOD && theirs < goods::GOOD_COUNT) {
+            view.acceptingWeight[theirs] += weight;
+        }
+    }
+    return view;
+}
+
+SaleabilityInputs saleabilityInputsFor(const aoc::game::GameState& gameState, const Market& market,
+                                       const MoneyWorldView& view, PlayerId player,
+                                       uint16_t goodId) {
+    SaleabilityInputs in;
+    if (goodId >= goods::GOOD_COUNT) {
+        return in;
+    }
+    in.held            = civHeldUnits(gameState, player, goodId);
+    in.acceptingWeight = view.acceptingWeight[goodId];
+    in.totalWeight     = view.totalWeight;
+    in.industrialDraw  = view.industrialDraw[goodId];
+    in.price           = std::max(1, market.price(goodId));
+
+    // Swing over the rolling window. Untouched history slots sit at zero, and
+    // counting those would read as a collapse from the base price rather than
+    // the calm of a good nobody has traded yet.
+    const Market::GoodMarketData& data = market.marketData(goodId);
+    int32_t lo                         = 0;
+    int32_t hi                         = 0;
+    bool seen                          = false;
+    for (const int32_t p : data.priceHistory) {
+        if (p <= 0) {
+            continue;
+        }
+        if (!seen) {
+            lo   = p;
+            hi   = p;
+            seen = true;
+        } else {
+            lo = std::min(lo, p);
+            hi = std::max(hi, p);
+        }
+    }
+    in.priceSwing = seen ? hi - lo : 0;
+    return in;
 }
 
 int32_t saleability(const SaleabilityInputs& inputs) {

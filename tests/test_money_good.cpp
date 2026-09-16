@@ -5,10 +5,10 @@
  *        exactly as it was, and a civ can be driven barter -> silver -> fiat
  *        by request alone.
  *
- *        This phase is the MECHANISM only. Nothing here consults the
- *        saleability score and the AI does not call the request yet; that is
- *        Phase D. What is pinned here is who may change the money good, when,
- *        and that a denial costs nothing.
+ *        Phase C is the MECHANISM: who may change the money good, when, and
+ *        that a denial costs nothing. Phase D adds the WIRING below -- the four
+ *        saleability terms read out of the world, and the AI deciding through
+ *        the same request rather than a second path of its own.
  */
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
@@ -21,6 +21,8 @@
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/monetary/MonetaryActions.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 
 using aoc::ErrorCode;
@@ -205,4 +207,87 @@ TEST_CASE("the plan's gate: barter to silver to fiat by request alone") {
     CHECK(aoc::sim::requestSetMoneyGood(w.gameState, P0, static_cast<uint8_t>(SILK)) ==
           ErrorCode::InvalidMoneyGood);
     CHECK(p.monetary().moneyGood == SILVER_ORE);
+}
+
+// ---------------------------------------------------------------------------
+// Phase D: the score read out of the world, and the AI deciding through the
+// same request. What is pinned here is the WIRING -- that each term is drawn
+// from the right place -- not the score's arithmetic, which test_money_-
+// saleability already covers on explicit inputs.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("the world view counts acceptance by trade weight among met civs") {
+    aoc::test::World w = aoc::test::makeWorld(3);
+    aoc::sim::DiplomacyManager d;
+    d.initialize(3);
+    d.meetPlayers(P0, PlayerId{1}, 1);
+    aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
+    aoc::test::addCityAt(w, PlayerId{1}, 14, 8, "Beta");
+    aoc::test::addCityAt(w, PlayerId{2}, 20, 12, "Gamma");
+
+    // P1 (met) prices in silver; P2 (unmet) also does, and must not count.
+    w.gameState.player(PlayerId{1})->monetary().moneyGood = static_cast<uint8_t>(SILVER_ORE);
+    w.gameState.player(PlayerId{2})->monetary().moneyGood = static_cast<uint8_t>(SILVER_ORE);
+
+    const aoc::sim::MoneyWorldView view = aoc::sim::moneyWorldView(w.gameState, &d, P0);
+    CHECK(view.totalWeight == 1);                          // one met civ, no routes
+    CHECK(view.acceptingWeight[SILVER_ORE] == 1);          // and it takes silver
+    CHECK(view.acceptingWeight[SILK] == 0);
+
+    // With no diplomacy at all every civ is visible, which is what the null
+    // overload means elsewhere in this codebase.
+    const aoc::sim::MoneyWorldView all = aoc::sim::moneyWorldView(w.gameState, nullptr, P0);
+    CHECK(all.totalWeight == 2);
+    CHECK(all.acceptingWeight[SILVER_ORE] == 2);
+}
+
+TEST_CASE("industrial draw counts only recipes the civ can actually run") {
+    aoc::test::World w = aoc::test::makeWorld(2);
+    aoc::game::City& a = aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
+    static_cast<void>(a);
+    // A fresh civ has no production buildings, so nothing it owns is consumed
+    // by anything it can run: every draw is zero. That is exactly why an inert
+    // good scores well early, and why Phase E's industrial recipes are what
+    // later push a civ off a metal.
+    const aoc::sim::MoneyWorldView view = aoc::sim::moneyWorldView(w.gameState, nullptr, P0);
+    int32_t total = 0;
+    for (const int32_t d : view.industrialDraw) {
+        total += d;
+    }
+    CHECK(total == 0);
+}
+
+TEST_CASE("the AI adopts through the request, and holds its money once elected") {
+    aoc::test::World w   = aoc::test::makeWorld(2);
+    aoc::game::Player& p = *w.gameState.player(P0);
+    aoc::game::City& a   = aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
+    a.stockpile().addGoods(SILVER_ORE, 60);
+    aoc::sim::Market market;
+    market.initialize();
+    p.monetary().turnsWithCurrentMoneyGood = MONEY_GOOD_DWELL_TURNS;
+
+    REQUIRE(p.monetary().moneyGood == NO_MONEY_GOOD);
+    aoc::sim::aiChooseMoneyGood(w.gameState, market, nullptr, P0);
+    CHECK(p.monetary().moneyGood != NO_MONEY_GOOD); // something was elected
+
+    // Locked in straight after: the dwell is what stops the money's identity
+    // flickering, and the AI must respect it rather than route around it.
+    const uint8_t elected = p.monetary().moneyGood;
+    a.stockpile().addGoods(SILK, 500);
+    aoc::sim::aiChooseMoneyGood(w.gameState, market, nullptr, P0);
+    CHECK(p.monetary().moneyGood == elected);
+}
+
+TEST_CASE("a civ on paper elects nothing: the note is already the money") {
+    aoc::test::World w   = aoc::test::makeWorld(2);
+    aoc::game::Player& p = *w.gameState.player(P0);
+    aoc::game::City& a   = aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
+    a.stockpile().addGoods(SILVER_ORE, 60);
+    aoc::sim::Market market;
+    market.initialize();
+    p.monetary().system                    = MonetarySystemType::FiatMoney;
+    p.monetary().turnsWithCurrentMoneyGood = MONEY_GOOD_DWELL_TURNS;
+
+    aoc::sim::aiChooseMoneyGood(w.gameState, market, nullptr, P0);
+    CHECK(p.monetary().moneyGood == NO_MONEY_GOOD);
 }

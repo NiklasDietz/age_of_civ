@@ -5,6 +5,7 @@
 
 #include "aoc/simulation/city/CityScience.hpp"
 #include "aoc/ui/GameScreens.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/monetary/MonetaryActions.hpp"
 #include "aoc/ui/StyleTokens.hpp"
 #include "aoc/ui/Theme.hpp"
@@ -2186,6 +2187,33 @@ void EconomyScreen::open(UIManager& ui) {
                          aoc::describeError(rc).data());
             };
             static_cast<void>(ui.createButton(innerPanel, {0.0f, 0.0f, 220.0f, 22.0f}, std::move(drop)));
+        }
+    }
+
+    // Who uses what (Mengerian plan, Phase D). Money is a network: what the
+    // civs you must settle with already accept is the single biggest term in
+    // the saleability score, so the human needs to see it to reason about the
+    // choice above at all.
+    if (this->m_gameState != nullptr) {
+        std::string who;
+        for (const std::unique_ptr<aoc::game::Player>& other : this->m_gameState->players()) {
+            if (other == nullptr || other->id() >= aoc::sim::CITY_STATE_PLAYER_BASE) {
+                continue;
+            }
+            if (other->id() != this->m_player && this->m_diplomacy != nullptr &&
+                !this->m_diplomacy->relation(this->m_player, other->id()).hasMet) {
+                continue; // a civ you have not met tells you nothing
+            }
+            const uint8_t g = other->monetary().moneyGood;
+            who += (who.empty() ? "" : "   ");
+            who += "P" + std::to_string(static_cast<unsigned>(other->id())) + ":" +
+                   (g == aoc::sim::NO_MONEY_GOOD ? std::string("barter")
+                                                 : std::string(aoc::sim::goodDef(g).name));
+        }
+        if (!who.empty()) {
+            static_cast<void>(ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 16.0f},
+                                             LabelData{"Money in use  " + who,
+                                                       tokens::TEXT_HEADER, 11.0f}));
         }
     }
 
