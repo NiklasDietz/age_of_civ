@@ -29,6 +29,7 @@
 #include <array>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 namespace aoc::game {
 class GameState;
@@ -248,6 +249,27 @@ struct MoneyWorldView {
                                                      const Market& market,
                                                      const MoneyWorldView& view, PlayerId player,
                                                      uint16_t goodId);
+
+/// One candidate money good and its saleability for a civ.
+struct MoneyCandidate {
+    uint16_t goodId;
+    int32_t score;
+};
+
+/// Every good this civ could price in, best first: score descending, then
+/// good id ascending, so the order is total and two callers agree. Goods
+/// scoring zero are left out. The AI takes the head; the screen shows the
+/// top few with names, so the human sees the same table the AI decides on.
+[[nodiscard]] std::vector<MoneyCandidate> rankMoneyCandidates(const aoc::game::GameState& gameState,
+                                                              const Market& market,
+                                                              const MoneyWorldView& view,
+                                                              PlayerId player);
+
+/// The same, gathering the view itself: the shape a screen wants.
+[[nodiscard]] std::vector<MoneyCandidate> rankMoneyCandidates(const aoc::game::GameState& gameState,
+                                                              const Market& market,
+                                                              const DiplomacyManager* diplomacy,
+                                                              PlayerId player);
 
 /// The AI's money-good decision, taken through requestSetMoneyGood so there is
 /// exactly one path that can change a civ's money. Adopts the best-scoring good

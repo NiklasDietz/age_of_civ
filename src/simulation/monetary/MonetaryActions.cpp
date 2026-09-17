@@ -245,13 +245,38 @@ void aiChooseMoneyGood(aoc::game::GameState& gameState, const Market& market,
         return;
     }
 
+    const std::vector<MoneyCandidate> ranking = rankMoneyCandidates(gameState, market, view, player);
+    if (ranking.empty() || ranking.front().score < MONEY_MINIMUM_SALEABILITY) {
+        return;
+    }
+    const MoneyCandidate& best = ranking.front();
+    if (state.moneyGood != NO_MONEY_GOOD) {
+        if (best.goodId == state.moneyGood) {
+            return;
+        }
+        int32_t incumbentScore = 0;
+        for (const MoneyCandidate& c : ranking) {
+            if (c.goodId == state.moneyGood) {
+                incumbentScore = c.score;
+            }
+        }
+        const int32_t needed =
+            incumbentScore + (incumbentScore * MONEY_CHALLENGER_MARGIN_PCT) / 100;
+        if (best.score <= needed) {
+            return; // not clearly better; the convention holds
+        }
+    }
+    static_cast<void>(requestSetMoneyGood(gameState, player, static_cast<uint8_t>(best.goodId)));
+}
+
+std::vector<MoneyCandidate> rankMoneyCandidates(const aoc::game::GameState& gameState,
+                                                const Market& market, const MoneyWorldView& view,
+                                                PlayerId player) {
     // AOC_DUMP_MONEY_SCORE: every held good's terms on each scoring turn, so a
     // surprising election can be read off its inputs instead of argued about.
     static const bool dumpScore = std::getenv("AOC_DUMP_MONEY_SCORE") != nullptr;
 
-    int32_t bestScore      = 0;
-    uint16_t bestGood      = NO_MONEY_GOOD;
-    int32_t incumbentScore = 0;
+    std::vector<MoneyCandidate> ranking;
     for (uint16_t goodId = 0; goodId < goods::GOOD_COUNT; ++goodId) {
         const SaleabilityInputs in = saleabilityInputsFor(gameState, market, view, player, goodId);
         const int32_t score        = saleability(in);
@@ -264,29 +289,23 @@ void aiChooseMoneyGood(aoc::game::GameState& gameState, const Market& market,
                          in.totalWeight, in.industrialDraw, in.priceSwing, in.price,
                          in.durability, in.basePrice, in.isIncumbent ? " incumbent" : "");
         }
-        if (goodId == state.moneyGood) {
-            incumbentScore = score;
-        }
-        if (score > bestScore) {
-            bestScore = score;
-            bestGood  = goodId;
+        if (score > 0) {
+            ranking.push_back({goodId, score});
         }
     }
+    std::stable_sort(ranking.begin(), ranking.end(),
+                     [](const MoneyCandidate& a, const MoneyCandidate& b) {
+                         return a.score != b.score ? a.score > b.score : a.goodId < b.goodId;
+                     });
+    return ranking;
+}
 
-    if (bestGood == NO_MONEY_GOOD || bestScore < MONEY_MINIMUM_SALEABILITY) {
-        return;
-    }
-    if (state.moneyGood != NO_MONEY_GOOD) {
-        if (bestGood == state.moneyGood) {
-            return;
-        }
-        const int32_t needed =
-            incumbentScore + (incumbentScore * MONEY_CHALLENGER_MARGIN_PCT) / 100;
-        if (bestScore <= needed) {
-            return; // not clearly better; the convention holds
-        }
-    }
-    static_cast<void>(requestSetMoneyGood(gameState, player, static_cast<uint8_t>(bestGood)));
+std::vector<MoneyCandidate> rankMoneyCandidates(const aoc::game::GameState& gameState,
+                                                const Market& market,
+                                                const DiplomacyManager* diplomacy,
+                                                PlayerId player) {
+    return rankMoneyCandidates(gameState, market, moneyWorldView(gameState, diplomacy, player),
+                               player);
 }
 
 void tickTradeShortfall(aoc::game::Player& player) {

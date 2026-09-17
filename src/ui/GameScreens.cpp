@@ -2033,7 +2033,8 @@ void EconomyScreen::open(UIManager& ui) {
     std::string infoText = "No economic data";
     if (monetary != nullptr) {
         infoText = "System: " + std::string(aoc::sim::monetarySystemName(monetary->system)) +
-                   "  MoneyGood: " + (monetary->moneyGood != aoc::sim::NO_MONEY_GOOD ? std::to_string(monetary->moneyGood) : std::string("none")) +
+                   "  Money: " + (monetary->moneyGood != aoc::sim::NO_MONEY_GOOD ? std::string(aoc::sim::goodDef(monetary->moneyGood).name)
+                                                                              : std::string(aoc::sim::notesInUse(monetary->system) ? "notes" : "none")) +
                    "  Treasury: " + std::to_string(monetary->treasury) +
                    "  Money: " + std::to_string(monetary->moneySupply) + "  Inflation: " +
                    std::to_string(static_cast<int>(monetary->inflationRate * 100.0f)) + "%";
@@ -2171,15 +2172,24 @@ void EconomyScreen::open(UIManager& ui) {
             ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 16.0f},
                            LabelData{std::move(moneyLine), tokens::TEXT_HEADER, 11.0f}));
 
-        for (const uint16_t candidate : {aoc::sim::goods::COPPER_ORE, aoc::sim::goods::SILVER_ORE,
-                                         aoc::sim::goods::GOLD_ORE, aoc::sim::goods::IRON_ORE}) {
-            const int32_t held = aoc::sim::civHeldUnits(*moneyGs, moneyPlayer, candidate);
-            if (held <= 0 || candidate == monetary->moneyGood) {
+        // The same table the AI decides on, best first, five deep, built once
+        // when the screen opens (refresh() never rescans the goods).
+        std::vector<aoc::sim::MoneyCandidate> ranked;
+        if (this->m_market != nullptr) {
+            ranked = aoc::sim::rankMoneyCandidates(*moneyGs, *this->m_market, this->m_diplomacy,
+                                                   moneyPlayer);
+        }
+        int32_t shown = 0;
+        for (const aoc::sim::MoneyCandidate& c : ranked) {
+            const uint16_t candidate = c.goodId;
+            const int32_t held       = aoc::sim::civHeldUnits(*moneyGs, moneyPlayer, candidate);
+            if (held <= 0 || candidate == monetary->moneyGood || shown >= 5) {
                 continue;
             }
+            ++shown;
             ButtonData pick;
-            pick.label       = "Price in " + std::string(aoc::sim::goodDef(candidate).name) + " (" +
-                               std::to_string(held) + ")";
+            pick.label       = "Price in " + std::string(aoc::sim::goodDef(candidate).name) + "  " +
+                               std::to_string(c.score) + "  (held " + std::to_string(held) + ")";
             pick.fontSize    = 11.0f;
             pick.normalColor = tokens::BRONZE_BASE;
             pick.cornerRadius = 3.0f;

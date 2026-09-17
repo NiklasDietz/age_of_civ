@@ -351,3 +351,34 @@ TEST_CASE("late industry wants the money metals: the Phase E recipes exist and a
     // Ivory has no late route, so the same civ draws none of it.
     CHECK(aoc::sim::industrialDrawFor(w.gameState, P0, aoc::sim::goods::IVORY) == 0);
 }
+
+TEST_CASE("the ranking is a total order and the AI's choice is its head") {
+    aoc::test::World w   = aoc::test::makeWorld(2);
+    aoc::game::Player& p = *w.gameState.player(P0);
+    aoc::game::City& a   = aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
+    a.stockpile().addGoods(SILVER_ORE, 10);
+    a.stockpile().addGoods(aoc::sim::goods::GOLD_ORE, 10);
+    a.stockpile().addGoods(SILK, 10);
+    aoc::sim::Market market;
+    market.initialize();
+    const aoc::sim::MoneyWorldView view = aoc::sim::moneyWorldView(w.gameState, nullptr, P0);
+    const std::vector<aoc::sim::MoneyCandidate> ranking =
+        aoc::sim::rankMoneyCandidates(w.gameState, market, view, P0);
+    REQUIRE(ranking.size() >= 3);
+    for (std::size_t i = 1; i < ranking.size(); ++i) {
+        const bool ordered = ranking[i - 1].score > ranking[i].score ||
+                             (ranking[i - 1].score == ranking[i].score &&
+                              ranking[i - 1].goodId < ranking[i].goodId);
+        CHECK(ordered);
+    }
+    CHECK(ranking.front().goodId == aoc::sim::goods::GOLD_ORE); // the table's order, at equal held
+    // Ties break on the lower id: two goods forced to the same score rank by id.
+    const std::vector<aoc::sim::MoneyCandidate> facade =
+        aoc::sim::rankMoneyCandidates(w.gameState, market, nullptr, P0);
+    CHECK(facade.size() == ranking.size());
+    CHECK(facade.front().goodId == ranking.front().goodId);
+
+    p.monetary().turnsWithCurrentMoneyGood = MONEY_GOOD_DWELL_TURNS;
+    aoc::sim::aiChooseMoneyGood(w.gameState, market, nullptr, P0);
+    CHECK(p.monetary().moneyGood == ranking.front().goodId);
+}
