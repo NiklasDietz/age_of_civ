@@ -284,6 +284,31 @@ CurrencyAmount coinToPay(aoc::game::Player& buyer, aoc::game::City& at, Currency
     return value;
 }
 
+int32_t reclaimMoneyMetal(aoc::game::Player& civ, aoc::game::City& at, uint16_t goodId,
+                          int32_t units) {
+    if (units <= 0 || outsideWorld(civ.id()) || at.owner() != civ.id()) {
+        return 0;
+    }
+    MonetaryStateComponent& m = civ.monetary();
+    if (isFiatClass(m.system) || goodId != m.moneyGood || goodId >= goods::GOOD_COUNT) {
+        return 0;
+    }
+    const int64_t par  = std::max<int64_t>(1, goodDef(goodId).basePrice);
+    const int64_t cost = static_cast<int64_t>(units) * par;
+    if (std::max<CurrencyAmount>(0, m.privateSpecie) < cost) {
+        return 0;
+    }
+    m.privateSpecie -= cost;
+    at.stockpile().addGoods(goodId, units);
+    if (civ.moneyLedger() != nullptr) {
+        civ.moneyLedger()->record(civ.id(), MoneyFlow::demonetised(), -cost);
+    }
+    LOG_INFO("Player %u reclaimed %d %.*s from coin for %s", static_cast<unsigned>(civ.id()),
+             units, static_cast<int>(goodDef(goodId).name.size()), goodDef(goodId).name.data(),
+             at.name().c_str());
+    return units;
+}
+
 CurrencyAmount payInSpecie(aoc::game::Player& buyer, CurrencyAmount price) {
     const CurrencyAmount paid =
         std::min(price, std::max<CurrencyAmount>(0, buyer.monetary().privateSpecie));

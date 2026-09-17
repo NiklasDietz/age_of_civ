@@ -137,6 +137,17 @@ CurrencyAmount plunder(aoc::game::GameState& gameState, PlayerId victim, aoc::ga
 CurrencyAmount coinToPay(aoc::game::Player& buyer, aoc::game::City& at, CurrencyAmount need,
                          int32_t industrialDraw);
 
+/// Industry outbids the mint: when a recipe in `at` is short `units` of the
+/// civ's money good, that many units come back out of the people's coin at
+/// the same par, into the stockpile, booked Demonetised. All or nothing, so a
+/// batch either runs or does not. Nothing happens for a paper civ, a good that
+/// is not this civ's money, or coin that does not cover the whole shortfall.
+/// Returns the units returned. This is the exit-to-paper arc as a flow: when
+/// the money metal gains consumers, coin drains back into metal turn by turn,
+/// the incumbent's score falls, and a note starts to look like better money.
+int32_t reclaimMoneyMetal(aoc::game::Player& civ, aoc::game::City& at, uint16_t goodId,
+                          int32_t units);
+
 /// The buyer's people pay up to `price` in specie into a purse the caller
 /// holds (a Trader's carried coin). Returns what they could pay.
 CurrencyAmount payInSpecie(aoc::game::Player& buyer, CurrencyAmount price);

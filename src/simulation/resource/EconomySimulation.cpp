@@ -1024,7 +1024,15 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
 
                 bool hasAllInputs = true;
                 for (const RecipeInput& input : recipe->inputs) {
-                    if (stockpile.getAmount(input.goodId) < input.amount) {
+                    const int32_t have = stockpile.getAmount(input.goodId);
+                    if (have >= input.amount) {
+                        continue;
+                    }
+                    // Industry outbids the mint: a shortfall of the civ's own
+                    // money good comes back out of the people's coin, here,
+                    // where the batch would otherwise stall.
+                    if (reclaimMoneyMetal(*playerPtr, *city, input.goodId, input.amount - have) <
+                        input.amount - have) {
                         hasAllInputs = false;
                         break;
                     }

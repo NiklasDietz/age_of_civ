@@ -19,6 +19,9 @@
 #include "aoc/game/City.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
+#include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/monetary/MonetaryActions.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/city/ProductionSystem.hpp"
 #include "aoc/simulation/economy/Maintenance.hpp"
 #include "aoc/simulation/monetary/MoneyFlow.hpp"
@@ -277,4 +280,69 @@ TEST_CASE("a tithe or a levy draws what the people hold and no more") {
     CHECK(aoc::sim::payFromTreasury(a, 100) == 9); // and the state cannot overdraw either
     CHECK(a.treasury() == 0);
     CHECK(a.monetary().privateSpecie == 9);
+}
+
+TEST_CASE("industry reclaims the money metal from coin at par, all or nothing, and the books balance") {
+    aoc::test::World w     = aoc::test::makeWorld(2);
+    aoc::game::Player& p   = *w.gameState.player(P1); // player 0 is the human seat
+    aoc::game::City& mill  = aoc::test::addCityAt(w, P1, 14, 8, "Beta");
+    aoc::game::City& other = aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
+    p.monetary().system    = aoc::sim::MonetarySystemType::CommodityMoney;
+    p.monetary().moneyGood = static_cast<uint8_t>(aoc::sim::goods::COPPER_ORE);
+    MoneyLedger ledger;
+    p.setMoneyLedger(&ledger);
+    const int64_t par = aoc::sim::goodDef(aoc::sim::goods::COPPER_ORE).basePrice;
+
+    SUBCASE("coin becomes metal in the city that is short") {
+        p.monetary().privateSpecie = 500;
+        const int64_t before       = aoc::sim::worldMoney(w.gameState);
+        CHECK(aoc::sim::reclaimMoneyMetal(p, mill, aoc::sim::goods::COPPER_ORE, 3) == 3);
+        CHECK(mill.stockpile().getAmount(aoc::sim::goods::COPPER_ORE) == 3);
+        CHECK(p.monetary().privateSpecie == 500 - 3 * par);
+        CHECK(ledger.civs[1].monetised == -3 * par);
+        CHECK(aoc::sim::moneyConserved(before, aoc::sim::worldMoney(w.gameState), ledger));
+    }
+    SUBCASE("coin below the cost of the shortfall buys nothing, and no pool goes negative") {
+        p.monetary().privateSpecie = 2 * par;
+        CHECK(aoc::sim::reclaimMoneyMetal(p, mill, aoc::sim::goods::COPPER_ORE, 3) == 0);
+        CHECK(mill.stockpile().getAmount(aoc::sim::goods::COPPER_ORE) == 0);
+        CHECK(p.monetary().privateSpecie == 2 * par);
+        CHECK(ledger.civs[1].monetised == 0);
+    }
+    SUBCASE("a good that is not this civ's money, another civ's city, or a paper civ: nothing") {
+        p.monetary().privateSpecie = 500;
+        CHECK(aoc::sim::reclaimMoneyMetal(p, mill, aoc::sim::goods::IRON_ORE, 3) == 0);
+        CHECK(aoc::sim::reclaimMoneyMetal(p, other, aoc::sim::goods::COPPER_ORE, 3) == 0);
+        p.monetary().system = aoc::sim::MonetarySystemType::FiatMoney;
+        CHECK(aoc::sim::reclaimMoneyMetal(p, mill, aoc::sim::goods::COPPER_ORE, 3) == 0);
+        CHECK(p.monetary().privateSpecie == 500);
+    }
+}
+
+TEST_CASE("a Forge short of copper draws it back out of the people's coin during the economy step") {
+    aoc::test::World w    = aoc::test::makeWorld(2);
+    aoc::game::Player& p  = *w.gameState.player(P1);
+    aoc::game::City& mill = aoc::test::addCityAt(w, P1, 14, 8, "Beta");
+    // Building 0 is the Forge; recipe 1 draws copper wire from 2 copper ore.
+    mill.districts().districts.push_back(
+        {aoc::sim::DistrictType::Industrial, mill.location(), {aoc::BuildingId{0}}});
+    mill.setPopulation(10); // recipe slots are half the population
+    REQUIRE(aoc::sim::industrialDrawFor(w.gameState, P1, aoc::sim::goods::COPPER_ORE) > 0);
+    p.monetary().system        = aoc::sim::MonetarySystemType::CommodityMoney;
+    p.monetary().moneyGood     = static_cast<uint8_t>(aoc::sim::goods::COPPER_ORE);
+    p.monetary().privateSpecie = 1000;
+    mill.stockpile().addGoods(aoc::sim::goods::COPPER_ORE, 1); // one short of a batch
+
+    aoc::sim::EconomySimulation economy;
+    economy.initialize(); // builds the recipe order; without it no recipe runs
+    for (const std::unique_ptr<aoc::game::Player>& player : w.gameState.players()) {
+        player->setMoneyLedger(&economy.moneyLedger());
+    }
+    const int64_t before = aoc::sim::worldMoney(w.gameState);
+    economy.executeTurn(w.gameState, w.grid);
+    const MoneyLedger::Civ& book = economy.moneyLedger().civs[1];
+    REQUIRE(book.monetised < 0); // something was reclaimed, so the case is not vacuous
+    CHECK(p.monetary().privateSpecie < 1000);
+    CHECK(aoc::sim::moneyConserved(before, aoc::sim::worldMoney(w.gameState),
+                                   economy.moneyLedger()));
 }
