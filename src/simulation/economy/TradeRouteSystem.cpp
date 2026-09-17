@@ -89,6 +89,10 @@ float destinationSaleMultiplier(const aoc::game::City& city, TradeRouteType rout
     return std::min(mult, DESTINATION_SALE_CAP);
 }
 
+/// What a money-changer keeps when two coining civs settle in different
+/// goods: the exporter's cost of trading outside its own money.
+constexpr float MONEY_CONVERSION_SPREAD = 0.10f;
+
 float routeYieldMultiplier(const aoc::game::GameState& gameState, const DiplomacyManager* diplomacy,
                            PlayerId seller, PlayerId buyer, int32_t distance) {
     // Distance: long routes lose more cargo in transit. Floor 0.50x at 30+
@@ -123,6 +127,20 @@ float routeYieldMultiplier(const aoc::game::GameState& gameState, const Diplomac
     // The quality of the money the sale settles in: a civ whose currency
     // nobody trusts gets worse terms on the same cargo.
     yield *= bilateralTradeEfficiency(gameState, seller, buyer);
+    // And WHICH money: two coining civs that price in different goods pay a
+    // money-changer between them. The spread is the exporter's cost (the
+    // seller's people receive less; the buyer pays the lower price), and the
+    // exporter is who chooses routes, so same-money partners are preferred,
+    // routes between them multiply, and the acceptance term compounds. Ten
+    // percent sits under the Unfriendly tier so diplomacy still dominates.
+    const aoc::game::Player* a = gameState.player(seller);
+    const aoc::game::Player* b = gameState.player(buyer);
+    if (a != nullptr && b != nullptr && !isFiatClass(a->monetary().system) &&
+        !isFiatClass(b->monetary().system) && a->monetary().moneyGood != NO_MONEY_GOOD &&
+        b->monetary().moneyGood != NO_MONEY_GOOD &&
+        a->monetary().moneyGood != b->monetary().moneyGood) {
+        yield *= 1.0f - MONEY_CONVERSION_SPREAD;
+    }
     return yield;
 }
 

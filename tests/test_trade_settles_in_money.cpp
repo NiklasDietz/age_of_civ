@@ -265,6 +265,58 @@ TEST_CASE("coinToPay keeps industry's turn, honours the par, and refuses what it
     }
 }
 
+TEST_CASE("two coining civs on different monies pay a spread; on the same money, or with paper "
+          "or barter on one side, they trade at par") {
+    aoc::test::World w   = aoc::test::makeWorld(2);
+    aoc::game::Player& a = *w.gameState.player(SELLER);
+    aoc::game::Player& b = *w.gameState.player(BUYER);
+    a.monetary().system  = aoc::sim::MonetarySystemType::CommodityMoney;
+    b.monetary().system  = aoc::sim::MonetarySystemType::CommodityMoney;
+    a.monetary().moneyGood = static_cast<uint8_t>(aoc::sim::goods::SILVER_ORE);
+    b.monetary().moneyGood = static_cast<uint8_t>(aoc::sim::goods::SILVER_ORE);
+    const float par = aoc::sim::routeYieldMultiplier(w.gameState, nullptr, SELLER, BUYER, 0);
+    REQUIRE(par > 0.0f);
+
+    b.monetary().moneyGood = static_cast<uint8_t>(aoc::sim::goods::COPPER_ORE);
+    CHECK(aoc::sim::routeYieldMultiplier(w.gameState, nullptr, SELLER, BUYER, 0) ==
+          doctest::Approx(par * 0.90f));
+
+    // Barter on one side: no money to convert, the barter floor already applies.
+    b.monetary().moneyGood = aoc::sim::NO_MONEY_GOOD;
+    b.monetary().system    = aoc::sim::MonetarySystemType::Barter;
+    const float barterSide = aoc::sim::routeYieldMultiplier(w.gameState, nullptr, SELLER, BUYER, 0);
+    b.monetary().moneyGood = static_cast<uint8_t>(aoc::sim::goods::SILVER_ORE);
+    CHECK(aoc::sim::routeYieldMultiplier(w.gameState, nullptr, SELLER, BUYER, 0) ==
+          doctest::Approx(barterSide)); // the good on a barter civ changes nothing
+
+    // Paper on one side: trust prices that, and paper has no good to mismatch.
+    b.monetary().system    = aoc::sim::MonetarySystemType::FiatMoney;
+    b.monetary().moneyGood = aoc::sim::NO_MONEY_GOOD;
+    const float paperSide  = aoc::sim::routeYieldMultiplier(w.gameState, nullptr, SELLER, BUYER, 0);
+    a.monetary().moneyGood = static_cast<uint8_t>(aoc::sim::goods::COPPER_ORE);
+    CHECK(aoc::sim::routeYieldMultiplier(w.gameState, nullptr, SELLER, BUYER, 0) ==
+          doctest::Approx(paperSide));
+}
+
+TEST_CASE("a delivery to a civ on another money earns the exporter about a tenth less") {
+    Route same;
+    same.seller().monetary().moneyGood = static_cast<uint8_t>(aoc::sim::goods::SILVER_ORE);
+    same.buyer().monetary().moneyGood  = static_cast<uint8_t>(aoc::sim::goods::SILVER_ORE);
+    same.buyer().monetary().privateSpecie = 1000;
+    same.turn();
+    const aoc::CurrencyAmount atPar = same.unit->trader().carriedGold;
+    REQUIRE(atPar > 0);
+
+    Route other;
+    other.seller().monetary().moneyGood = static_cast<uint8_t>(aoc::sim::goods::SILVER_ORE);
+    other.buyer().monetary().moneyGood  = static_cast<uint8_t>(aoc::sim::goods::COPPER_ORE);
+    other.buyer().monetary().privateSpecie = 1000;
+    other.turn();
+    const aoc::CurrencyAmount spread = other.unit->trader().carriedGold;
+    CHECK(spread < atPar);
+    CHECK(static_cast<double>(spread) == doctest::Approx(static_cast<double>(atPar) * 0.90).epsilon(0.03));
+}
+
 TEST_CASE("a trusted paper pair settles in notes, at the capped exchange rate") {
     Route r;
     r.seller().monetary().system        = aoc::sim::MonetarySystemType::GoldStandard;
