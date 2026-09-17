@@ -7,8 +7,9 @@
  *        the books. Spend-back (2.2): a purchase and upkeep pay the civ's
  *        own people, a garrison abroad pays the locals, an unpaid bill is
  *        arrears rather than a negative treasury, and plunder is a transfer
- *        out of the loser's pockets. Phase B: coin-sweep tests removed
- *        (sweepCoins -> monetiseGoods stub, no minting).
+ *        out of the loser's pockets. Coin is struck at the point of payment
+ *        (coinToPay) and reclaimed where industry stalls (reclaimMoneyMetal);
+ *        the old coin-sweep tests went with the sweep.
  */
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN

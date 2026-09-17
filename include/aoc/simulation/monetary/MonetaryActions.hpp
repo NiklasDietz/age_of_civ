@@ -175,8 +175,8 @@ struct MonetaryAdvice {
 /// to demonetise and return to barter in kind.
 ///
 /// This is the mechanism only: it answers "may this civ do that", never "should
-/// it". Nothing here reads the saleability score, and the AI does not call it
-/// yet; both are Phase D. Refusals leave the state exactly as it was.
+/// it"; the saleability score and aiChooseMoneyGood answer the latter and come
+/// through here. Refusals leave the state exactly as it was.
 ///
 /// Refused when: the player is not a real civ; the good id is not a real good;
 /// the civ holds none of it (you cannot price in what you do not have); the

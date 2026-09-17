@@ -1,6 +1,8 @@
 # Mengerian Money: money as an adopted good
 
-**Status:** proposed 2026-09-15, not approved.
+**Status:** approved 2026-09-15; Phases B, C, D shipped 2026-09-15/16; the
+follow-on programme of 2026-09-17 (below, section 9) made the money good
+economically real and paced the regime ladder.
 **Supersedes:** the monetary half of `COMMODITY_MONEY_PLAN.md`. That document's
 findings stay valid and are cited here; its Phase 1 and Phase 2 are withdrawn.
 
@@ -256,14 +258,14 @@ seigniorage branch of the sweep. Replace the sweep with monetisation booked as
 construction and H16 must stay green every turn;** that is its gate. Expect the
 largest diff of the programme and expect it to be mostly deletions.
 
-### Phase C: adoption as a decision
+### Phase C: adoption as a decision (SHIPPED 7cd2c48)
 `requestSetMoneyGood(player, goodId)` alongside the existing
 `requestSetMonetaryRegime`. Validation: the civ holds the good, is not on fiat,
 and a dwell time since its last change. Human UI row, REST, MCP. **Gate:** a
 civ can be driven through barter to silver to fiat by request alone, and each
 denial path leaves state untouched.
 
-### Phase D: the saleability score
+### Phase D: the saleability score (SHIPPED c11f074; terms revised 2026-09-17)
 The four-term score, the AI adopting through the Phase C request, and a
 "who uses what" readout for the human.
 
@@ -291,12 +293,23 @@ and at least two civs converge on the *same* good by turn 150. Convergence is
 the whole thesis; if it does not happen, the acceptance weight is wrong and the
 score gets tuned before anything else proceeds.
 
-### Phase E: the exit to fiat
+### Phase E: the exit to fiat (recipes SHIPPED 2026-09-17, gate open)
 Industrial recipes that consume gold and silver, so the `industrial` term
 falls. **Gate:** at least one civ demonetises a metal and moves to fiat for
 measured opportunity-cost reasons, with the metal then appearing in industrial
 recipes. Withheld until D's gate passes: an exit is meaningless until the
 entrance works.
+
+Two Modern-era recipes landed (Gold-Contact Electronics at the Electronics
+Plant behind Electricity; Photographic Film at the Factory behind Chemistry),
+and the reclaim flow (`reclaimMoneyMetal`) returns coin to metal where a
+batch stalls. The gate is not yet passed and the reason is measured: in
+200-turn four-player games no civ reaches either tech with the right plant,
+and more fundamentally the recipe economy barely runs at all (96% of
+city-turns labour-bound on seed 43; copper ore consumed by nobody at turn
+140). Until production consumes inputs, the industrial term enters the score
+through the potential draw alone. This is a production-economy finding, not a
+monetary one.
 
 ---
 
@@ -333,3 +346,56 @@ entrance works.
 4. **Is copper in scope?** The old plan excluded it deliberately. Under this
    design there is no reason to special-case it, and excluding it would be
    exactly the kind of forced stamp this change is meant to remove.
+
+**Answers, 2026-09-17.**
+1. The Mint survives as an ordinary building. The AI's Barter-era rush for
+   it (a 1.4 Commercial override and a 4.0 force-queue in the capital) is
+   gone: coinage needs no building, and coin is struck in trade.
+2. Two civs may use different money goods. Settlement between them is at
+   the two market prices with a friction: `routeYieldMultiplier` takes ten
+   percent off a delivery between two coining civs on different goods. It is
+   the exporter's cost, and the exporter chooses routes, so it is convergence
+   pressure. Coin itself is abstract once struck: pools do not remember their
+   metal, and demonetising returns nothing to the stockpile.
+3. The human sees the reason the AI acts on: the Economy screen's regime row
+   shows `monetaryAdvice`'s motive ("coin cannot carry our trade") beside the
+   Adopt button, and the money-good row shows the ranked candidates with
+   scores. The one-shot "coinage within reach" notification stays.
+4. Copper is in scope, and it is what both measured seeds elect first: the
+   starter kit and the early mines are copper, and the convention holds until
+   something drains it.
+
+---
+
+## 9. What made the money good real (2026-09-17)
+
+Plan file `~/.claude/plans/i-would-like-you-immutable-bird.md`, refined by an
+eight-lens adversarial pass. User decisions: durability and value density in
+the score (no metal whitelist); reason-driven ladder pacing with tech gates as
+floors; mismatched monies convert at market prices with a friction.
+
+- **Score.** `moneyDurability(good)` (category defaults, physical-class
+  overrides) and a value-density term capped at gold's; the stock term spans
+  80..100; stability reads the swing against base price and floors at 60; the
+  incumbent is exempt from the held gate; the AI elects only after first
+  contact. A property test on the real table pins that nothing outscores gold
+  ore at equal holdings and that no food or luxury is eligible.
+- **Coin at the point of payment** (`coinToPay`), at the fixed mint par
+  `basePrice`, booked Monetised; the sweep design was rejected for its
+  stock-price feedback. **Reclaim where a batch stalls** (`reclaimMoneyMetal`),
+  same par, booked Demonetised. Entering paper clears the money good.
+- **Central bank in the economy step** (`fiatIssueTarget`): a paper civ prints
+  against deflation up to half the anchor's money demand and covers unpaid
+  bills; the AI's dead print branch is gone.
+- **Ladder** (`monetaryAdvice`): coin once a people prices in a good; notes
+  when coin cannot carry trade (a measured shortfall streak at the till) or
+  industry competes for the metal; paper on a specie drain, industrial
+  demand, or notes falling short; digital with Computers. Floors: coinage 60,
+  Gold Standard 150 plus a 30-turn dwell, Fiat a 30-turn dwell.
+- **Measured** (200 turns, 4 players): fiat civs no longer deflate to the
+  floor; elections land only on metals; seed 42 spends 209 civ-turns on
+  commodity money (was 21) and 117 on the gold standard, with each move
+  logged with its reason; seed 43's four civs coin copper and stay, the Gold
+  Standard refused for want of Banking or a 150 reserve. Gold and silver are
+  not yet elected on these maps: the first metals a civ holds are copper and
+  iron, and nothing drains them while industry does not run.

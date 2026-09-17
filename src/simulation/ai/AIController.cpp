@@ -1448,16 +1448,12 @@ void AIController::executeCityActions(aoc::game::GameState& gameState, aoc::map:
                 float utilityScore;
             };
 
-            // In barter mode, the Commercial district unlocks the Mint which is the
-            // ONLY path out of barter. Override economic score with a high fixed bonus.
-            // Otherwise give Commercial non-capital cities 1.15 * econFocus so it can
-            // beat Harbor (1.1) / match Industrial; prior 0.45 left most non-capitals
-            // without Market/Bank buildings across 600-turn games.
-            const float commercialScore =
-                (gsPlayer->monetary().system == MonetarySystemType::Barter &&
-                 city.isOriginalCapital() && !districts.hasDistrict(DistrictType::Commercial))
-                    ? 1.4f // High — need Commercial before Mint
-                    : 1.15f * personality.behavior.economicFocus;
+            // Commercial at 1.15 * econFocus so it can beat Harbor (1.1) and
+            // match Industrial; 0.45 left most non-capitals without Market or
+            // Bank across 600-turn games. The old Barter override that rushed
+            // it for a Mint is gone: since the coin layer went, coinage needs
+            // no building, and money is struck in trade (coinToPay).
+            const float commercialScore = 1.15f * personality.behavior.economicFocus;
 
             // Base scores bumped (0.5 -> 1.4 etc.) so districts actually win
             // over settlers (~2.14) and military (~1-2) once a city has room.
@@ -1563,24 +1559,6 @@ void AIController::executeCityActions(aoc::game::GameState& gameState, aoc::map:
                     opt.utilityScore / (1.0f + DISTRICT_SATURATION * static_cast<float>(owned));
                 candidates.push_back(std::move(candidate));
             }
-        }
-
-        // --- Mint priority ---
-        // Capital must build a Mint before anything else when in Barter.
-        // Settlers score ~2.14 in expansion phase, so Mint needs to score higher.
-        // Score 4.0 ensures Mint is always first production in the capital.
-        // BuildingId 24 = Mint. Only CityCenter district required (always present).
-        if (city.isOriginalCapital() && !city.hasBuilding(BUILDING_MINT) &&
-            canBuildBuilding(gameState, this->m_player, city, BUILDING_MINT) &&
-            gsPlayer->monetary().system == MonetarySystemType::Barter) {
-            ProductionCandidate candidate{};
-            candidate.item.type      = ProductionItemType::Building;
-            candidate.item.itemId    = 24u;
-            candidate.nameView       = "Mint";
-            candidate.item.totalCost = 70.0f;
-            candidate.item.progress  = 0.0f;
-            candidate.score          = 4.0f; // Must beat settlers (~2.14) and military
-            candidates.push_back(std::move(candidate));
         }
 
         // --- Chain-enabler priority (Refinery, Electronics Plant, Food

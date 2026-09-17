@@ -4,19 +4,22 @@
  * @file MonetarySystem.hpp
  * @brief Per-player monetary system state machine and ECS component.
  *
- * The monetary system evolves through four stages, each unlocked by
- * technology, economic prerequisites, and a deliberate player decision:
+ * The monetary system climbs five stages, each behind technology, economic
+ * floors (MONETARY_TRANSITIONS) and a deliberate decision, the AI's for a
+ * measured reason (monetaryAdvice) and the human's from the Economy screen:
  *
- *   Barter -> CommodityMoney -> GoldStandard -> FiatMoney
+ *   Barter -> CommodityMoney -> GoldStandard -> FiatMoney -> Digital
  *
- * In the CommodityMoney stage, the people hold private specie (coin).
- * Currency strength and trade efficiency are based on the pool of
- * private specie the civ holds. Gold Standard issues paper notes backed
- * by specie reserves. Fiat Money removes the gold backing but requires
- * trust from trade partners to be accepted (see CurrencyTrust.hpp).
+ * In the CommodityMoney stage the people hold private specie (coin), struck
+ * from the good the civ prices in at the point of payment (coinToPay).
+ * Currency strength and trade efficiency follow that pool. Gold Standard
+ * issues paper notes backed by specie reserves. Fiat Money removes the
+ * backing and needs trust from trade partners to be accepted (see
+ * CurrencyTrust.hpp); entering it clears the money good, since the note is
+ * then the money.
  *
- * Which good serves as money is tracked by `moneyGood` (a good ID), set
- * by requestSetMoneyGood in Phase C. In Phase B, moneyGood = NO_MONEY_GOOD.
+ * Which good serves as money is `moneyGood` (a good id), elected through
+ * requestSetMoneyGood; NO_MONEY_GOOD means none (barter in kind, or paper).
  *
  * Transitions are one-way (no going back to barter from fiat).
  */
@@ -110,8 +113,6 @@ inline constexpr float GOLD_STANDARD_NOTE_ISSUE = 1.0f;
         return 0;
     }
 }
-
-/// Whether gold physically rides with traders (vulnerable to pillage) on this tier.
 
 [[nodiscard]] constexpr std::string_view monetarySystemName(MonetarySystemType type) {
     switch (type) {
@@ -229,22 +230,9 @@ inline constexpr std::array<MonetaryTransitionReq, 4> MONETARY_TRANSITIONS = {{
     // demonstrate monetary discipline first, over thirty turns of notes.
     // requestSetMonetaryRegime adds Printing or Economics on top of Banking.
     {MonetarySystemType::FiatMoney, TechId{9}, 75, 2, 30, 2, 0.05f},
-    // Fiat -> Digital: late-game electronic settlement. Needs sustained
-    // stability. "Computers" (TechId{16}) gates access; low inflation and a
-    // mature economy are required.
-    //
-    // This comment used to promise "an additional powered-grid check enforced
-    // externally by playerMeetsDigitalPowerRequirement()". No such function
-    // exists anywhere in the tree, so there is no power requirement: the row
-    // below is the whole gate. PlayerEnergyComponent (EnergyDependency.hpp)
-    // holds the renewableCapacity and oil-shock state such a check would read,
-    // if one is ever wanted.
-    //
-    // Adding it would change nothing measurable today. Digital is reached in
-    // ZERO player-turns of either blessed seed over 500 turns -- seed 42 splits
-    // 1060 Barter / 67 Commodity / 33 Gold / 240 Fiat, and seed 43 splits
-    // 512 / 128 / 104 / 1256 -- so the row above is already the binding
-    // constraint and a power gate would sit behind an unreachable one.
+    // Fiat -> Digital: late-game electronic settlement behind Computers
+    // (TechId{16}), calm prices and a mature economy. This row is the whole
+    // gate; there is no power requirement, whatever older comments promised.
     {MonetarySystemType::Digital, TechId{16}, 200, 3, 10, 4, 0.10f},
 }};
 
