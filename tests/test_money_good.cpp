@@ -201,12 +201,13 @@ TEST_CASE("the plan's gate: barter to silver to fiat by request alone") {
             ErrorCode::Ok);
     CHECK(p.monetary().system == MonetarySystemType::FiatMoney);
 
-    // On paper the commodity may no longer be elected, but what was already
-    // money stays recorded until the civ drops it.
+    // On paper the note is the money: the commodity is cleared on entry and
+    // may not be elected again while the civ stays on paper.
+    CHECK(p.monetary().moneyGood == NO_MONEY_GOOD);
     p.monetary().turnsWithCurrentMoneyGood = MONEY_GOOD_DWELL_TURNS;
     CHECK(aoc::sim::requestSetMoneyGood(w.gameState, P0, static_cast<uint8_t>(SILK)) ==
           ErrorCode::InvalidMoneyGood);
-    CHECK(p.monetary().moneyGood == SILVER_ORE);
+    CHECK(p.monetary().moneyGood == NO_MONEY_GOOD);
 }
 
 // ---------------------------------------------------------------------------

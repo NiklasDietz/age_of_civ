@@ -12,6 +12,7 @@
 #include <cstdint>
 
 namespace aoc::game {
+class City;
 class GameState;
 class Player;
 } // namespace aoc::game
@@ -73,6 +74,10 @@ struct MoneyLedger {
         int64_t lost        = 0;
         int64_t unbackedIn  = 0; ///< conjured by the old model
         int64_t unbackedOut = 0; ///< destroyed by the old model
+        /// Value of the money good coined at payment this turn, minus what
+        /// industry reclaimed. Also inside externalIn/Out, so the expected
+        /// delta needs no separate term; this is the readable figure.
+        int64_t monetised = 0;
     };
     std::array<Civ, MAX_PLAYERS> civs{};
 
@@ -116,6 +121,21 @@ CurrencyAmount takeFromPrivate(aoc::game::GameState& gameState, PlayerId civ,
 /// the whole amount external. Returns what was taken.
 CurrencyAmount plunder(aoc::game::GameState& gameState, PlayerId victim, aoc::game::Player& captor,
                        CurrencyAmount amount);
+
+/// Coin at the point of payment: when the buyer's people are short of `need`
+/// in specie and the civ prices in a good, units of that good leave the
+/// stockpile of `at` (then the civ's other owned cities) and become specie at
+/// the mint par, goodDef(good).basePrice, booked Monetised. `industrialDraw`
+/// units stay behind for one turn of the civ's own industry. Nothing happens
+/// for a paper civ, a city-state, a civ with no money good, or one that can
+/// already pay. Returns the value coined.
+///
+/// The par is fixed and the ore price floats, as in every historical mint:
+/// coining at the stock-derived market price would raise the price of the
+/// next unit coined by emptying the stock, and a coin-high melt-low pair
+/// would leave money behind that conservation cannot see.
+CurrencyAmount coinToPay(aoc::game::Player& buyer, aoc::game::City& at, CurrencyAmount need,
+                         int32_t industrialDraw);
 
 /// The buyer's people pay up to `price` in specie into a purse the caller
 /// holds (a Trader's carried coin). Returns what they could pay.

@@ -2983,6 +2983,10 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 m.privateNotes  = buf.readI64();
                 m.bullion       = buf.readI64();
                 m.moneyGood = buf.readU8(); // v35: was coinageStandard (CoinTier), 0xFF = none
+                if (m.moneyGood != aoc::sim::NO_MONEY_GOOD &&
+                    m.moneyGood >= aoc::sim::goods::GOOD_COUNT) {
+                    m.moneyGood = aoc::sim::NO_MONEY_GOOD; // a hostile id would index past the table
+                }
                 m.turnsWithCurrentMoneyGood = buf.readI32(); // v36
                 if (player != nullptr) {
                     player->monetary() = std::move(m);

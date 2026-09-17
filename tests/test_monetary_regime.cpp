@@ -239,6 +239,25 @@ TEST_CASE("a transition is judged by the measure of the regime it moves to") {
     CHECK(m.currencyStrength() == 30);
 }
 
+TEST_CASE("entering paper clears the money good, by request or by suspension alike") {
+    // Both paths go through transitionTo, so pinning it there covers the
+    // crisis suspension in CurrencyCrisis.cpp as well as the request.
+    aoc::sim::MonetaryStateComponent m;
+    m.system                    = MonetarySystemType::GoldStandard;
+    m.moneyGood                 = 11; // silver ore
+    m.turnsWithCurrentMoneyGood = 7;
+    m.transitionTo(MonetarySystemType::FiatMoney);
+    CHECK(m.moneyGood == aoc::sim::NO_MONEY_GOOD);
+    CHECK(m.turnsWithCurrentMoneyGood == 0);
+
+    // A commodity regime keeps it: coinage and the gold standard price in a good.
+    aoc::sim::MonetaryStateComponent keep;
+    keep.system    = MonetarySystemType::CommodityMoney;
+    keep.moneyGood = 11;
+    keep.transitionTo(MonetarySystemType::GoldStandard);
+    CHECK(keep.moneyGood == 11);
+}
+
 TEST_CASE("nothing but the request and the crisis suspension changes the regime") {
     const std::filesystem::path root(AOC_SOURCE_DIR);
     if (!std::filesystem::exists(root / "src")) {

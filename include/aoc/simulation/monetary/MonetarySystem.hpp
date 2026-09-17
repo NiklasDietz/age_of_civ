@@ -147,6 +147,11 @@ inline constexpr int32_t MONEY_GOOD_DWELL_TURNS = 20;
            type == MonetarySystemType::Digital;
 }
 
+/// Regimes whose money is the state's note alone, with no commodity behind it.
+[[nodiscard]] constexpr bool isFiatClass(MonetarySystemType type) {
+    return type == MonetarySystemType::FiatMoney || type == MonetarySystemType::Digital;
+}
+
 /// Currency strength thresholds for trade efficiency tiers.
 /// A civ with 100 units of private specie trades as well as one with 4x the reserves.
 inline constexpr int32_t STRENGTH_LOCAL_TRADE    = 3;   ///< Minimal coinage
@@ -687,8 +692,12 @@ struct MonetaryStateComponent {
 
         case MonetarySystemType::FiatMoney:
         case MonetarySystemType::Digital:
-            // Money is no longer backed by gold.
-            this->goldBackingRatio = 0.0f;
+            // Money is no longer backed by gold, and the note is the money:
+            // the commodity this civ priced in is no longer anyone's money.
+            // Both the request and the crisis suspension come through here.
+            this->goldBackingRatio          = 0.0f;
+            this->moneyGood                 = NO_MONEY_GOOD;
+            this->turnsWithCurrentMoneyGood = 0;
             break;
 
         default:

@@ -12,6 +12,8 @@
 #include "aoc/core/ErrorCodes.hpp"
 #include "aoc/core/Random.hpp"
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/map/FogOfWar.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
@@ -169,6 +171,28 @@ void test_hugeRecordCount(const std::filesystem::path& dir,
     check(loadBytes(dir / "huge_count.sav", hugeCount) != aoc::ErrorCode::Ok, what);
 }
 
+/// A money-good id past the goods table (167..254) would index straight past
+/// the per-good arrays the money code keeps; the loader clamps it to none.
+void test_hostileMoneyGood(const std::filesystem::path& dir) {
+    const std::filesystem::path path = dir / "money_good.sav";
+    {
+        World w;
+        initWorld(w);
+        w.gameState.player(aoc::PlayerId{0})->monetary().moneyGood = 200;
+        check(aoc::save::saveGame(path.string(), w.gameState, w.grid, w.turnManager, w.economy,
+                                  w.diplomacy, w.fogOfWar, w.rng) == aoc::ErrorCode::Ok,
+              "save with an out-of-table money good is written");
+    }
+    World w;
+    initWorld(w);
+    check(aoc::save::loadGame(path.string(), w.gameState, w.grid, w.turnManager, w.economy,
+                              w.diplomacy, w.fogOfWar, w.rng) == aoc::ErrorCode::Ok,
+          "a save with money good 200 still loads");
+    check(w.gameState.player(aoc::PlayerId{0})->monetary().moneyGood == aoc::sim::NO_MONEY_GOOD,
+          "money good 200 is clamped to none on load");
+    w.economy.executeTurn(w.gameState, w.grid); // and one turn runs on it
+}
+
 } // namespace
 
 int main() {
@@ -190,6 +214,7 @@ int main() {
                              "hoard count 0xFFFFFFFF fails to load");
         test_hugeRecordCount(dir, valid, aoc::save::SectionId::CityStates,
                              "city-state count 0xFFFFFFFF fails to load");   // v17
+        test_hostileMoneyGood(dir);
     }
 
     std::error_code ec;

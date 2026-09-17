@@ -69,11 +69,9 @@ private:
     void computePlayerNeeds(aoc::game::GameState& gameState);
     void applyResourceDepletion(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
     void reportToMarket(aoc::game::GameState& gameState);
-    /// End of the economy step: every coin good in every stockpile becomes
-    /// bullion (Barter) or private money with a seigniorage share to the
-    /// treasury (coinage), at face value, and is booked as minted. The reserve
-    /// counters accumulate what was ever minted per metal.
-    void monetiseGoods(aoc::game::GameState& gameState);
+    /// Derive every coinage civ's money supply from its pools. Money is made
+    /// where it is spent (coinToPay, at a trade delivery), not swept here.
+    void refreshMoneySupply(aoc::game::GameState& gameState);
     void tickMonetaryMechanics(aoc::game::GameState& gameState);
     void executeMonetaryPolicy(aoc::game::GameState& gameState);
     void processCrisisAndBonds(aoc::game::GameState& gameState);

@@ -224,7 +224,7 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
     this->reportToMarket(gameState);
     this->computePlayerNeeds(gameState);
     this->m_market.updatePrices();
-    this->monetiseGoods(gameState);
+    this->refreshMoneySupply(gameState);
     this->tickMonetaryMechanics(gameState);
     this->processCrisisAndBonds(gameState);
     this->processEconomicZonesAndSpeculation(gameState, grid);
@@ -1570,27 +1570,7 @@ void EconomySimulation::executeMonetaryPolicy(aoc::game::GameState& gameState) {
 // Step 4b: Settle trade route imbalances in coins
 // ============================================================================
 
-// ============================================================================
-// The coin sweep: minted coin goods become money
-// ============================================================================
-
-namespace {
-
-/// Every unit of `goodId` in the stockpile, removed.
-int32_t takeAll(CityStockpileComponent& stockpile, uint16_t goodId) {
-    const int32_t held = stockpile.getAmount(goodId);
-    if (held > 0) {
-        stockpile.consumeGoods(goodId, held);
-    }
-    return held;
-}
-
-} // namespace
-
-void EconomySimulation::monetiseGoods(aoc::game::GameState& gameState) {
-    // Phase B stub: no good has been designated as money yet (Phase C adds
-    // requestSetMoneyGood). For non-Barter civs, keep moneySupply consistent
-    // with their private pools so downstream inflation / trust reads are live.
+void EconomySimulation::refreshMoneySupply(aoc::game::GameState& gameState) {
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         if (playerPtr == nullptr) {
             continue;

@@ -51,10 +51,6 @@ namespace {
     return gameState.player(player);
 }
 
-[[nodiscard]] bool isFiatClass(MonetarySystemType s) {
-    return s == MonetarySystemType::FiatMoney || s == MonetarySystemType::Digital;
-}
-
 constexpr TechId TECH_PRINTING{55};
 constexpr TechId TECH_ECONOMICS{13};
 
@@ -450,44 +446,70 @@ float applyCentralBankPolicy(aoc::game::GameState& gameState, PlayerId player) {
     return state.interestRate;
 }
 
-MoneyWorldView moneyWorldView(const aoc::game::GameState& gameState,
-                              const DiplomacyManager* diplomacy, PlayerId player) {
-    MoneyWorldView view;
-    const aoc::game::Player* me =
-        player < aoc::sim::CITY_STATE_PLAYER_BASE ? gameState.player(player) : nullptr;
-    if (me == nullptr) {
-        return view;
-    }
+namespace {
 
-    // What this civ's industry would eat. A recipe counts only if the civ can
-    // actually run it: the tech is in and some city has the building. That is
-    // the whole exit-to-paper mechanism in miniature -- a metal nothing can
-    // consume scores high, and researching the recipe that consumes it is what
-    // later makes it a poor money.
+/// Calls `fn(recipe, sites)` for every recipe this civ can run, where `sites`
+/// is the number of its owned cities holding the building: one batch a turn
+/// per site is what industry would eat. A recipe counts only if the tech is
+/// in and some city has the building. That is the whole exit-to-paper
+/// mechanism in miniature -- a metal nothing can consume scores high, and
+/// building the works that consume it is what later makes it a poor money.
+template <typename Fn>
+void forEachRunnableRecipe(const aoc::game::Player& me, Fn&& fn) {
     for (const ProductionRecipe& recipe : allRecipes()) {
         if (recipe.isRecycling) {
             continue; // melting money back is not an industrial use of it
         }
-        if (recipe.requiredTech.isValid() && !me->hasResearched(recipe.requiredTech)) {
+        if (recipe.requiredTech.isValid() && !me.hasResearched(recipe.requiredTech)) {
             continue;
         }
-        bool canBuild = false;
-        for (const std::unique_ptr<aoc::game::City>& city : me->cities()) {
-            if (city != nullptr && city->owner() == player &&
+        int32_t sites = 0;
+        for (const std::unique_ptr<aoc::game::City>& city : me.cities()) {
+            if (city != nullptr && city->owner() == me.id() &&
                 city->hasBuilding(recipe.requiredBuilding)) {
-                canBuild = true;
-                break;
+                ++sites;
             }
         }
-        if (!canBuild) {
-            continue;
-        }
-        for (const RecipeInput& input : recipe.inputs) {
-            if (input.consumed && input.goodId < goods::GOOD_COUNT) {
-                view.industrialDraw[input.goodId] += std::max(0, input.amount);
-            }
+        if (sites > 0) {
+            fn(recipe, sites);
         }
     }
+}
+
+} // namespace
+
+int32_t industrialDrawFor(const aoc::game::GameState& gameState, PlayerId player,
+                          uint16_t goodId) {
+    const aoc::game::Player* me = actorConst(gameState, player);
+    if (me == nullptr || goodId >= goods::GOOD_COUNT) {
+        return 0;
+    }
+    int32_t draw = 0;
+    forEachRunnableRecipe(*me, [&](const ProductionRecipe& recipe, int32_t sites) {
+        for (const RecipeInput& input : recipe.inputs) {
+            if (input.consumed && input.goodId == goodId) {
+                draw += std::max(0, input.amount) * sites;
+            }
+        }
+    });
+    return draw;
+}
+
+MoneyWorldView moneyWorldView(const aoc::game::GameState& gameState,
+                              const DiplomacyManager* diplomacy, PlayerId player) {
+    MoneyWorldView view;
+    const aoc::game::Player* me = actorConst(gameState, player);
+    if (me == nullptr) {
+        return view;
+    }
+
+    forEachRunnableRecipe(*me, [&](const ProductionRecipe& recipe, int32_t sites) {
+        for (const RecipeInput& input : recipe.inputs) {
+            if (input.consumed && input.goodId < goods::GOOD_COUNT) {
+                view.industrialDraw[input.goodId] += std::max(0, input.amount) * sites;
+            }
+        }
+    });
 
     // Who takes what. Weight 1 per met civ plus its live routes with us, so
     // contact counts and settlement counts for more.

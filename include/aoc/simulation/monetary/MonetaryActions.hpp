@@ -184,6 +184,13 @@ struct MoneyWorldView {
     int32_t totalWeight = 0;
 };
 
+/// Units per turn of `goodId` that `player`'s runnable industry would eat: one
+/// batch per owned city holding the recipe's building, for every recipe whose
+/// tech is in. The one-good form of the view's industrialDraw, for the callers
+/// that need a single cell and should not pay for the rival scan.
+[[nodiscard]] int32_t industrialDrawFor(const aoc::game::GameState& gameState, PlayerId player,
+                                        uint16_t goodId);
+
 /// Gather `player`'s view. A met civ's weight is 1 + the live trade routes
 /// between the two, so everyone this civ has met counts for something and the
 /// civs it actually trades with count for more: acceptance is about who you

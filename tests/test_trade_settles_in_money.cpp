@@ -171,6 +171,100 @@ TEST_CASE("a Barter seller's coin comes home as bullion, the metal it will adopt
     CHECK(r.seller().monetary().privateSpecie == 0);
 }
 
+TEST_CASE("short of specie, the buyer's people coin their money good at par to pay") {
+    Route r;
+    aoc::sim::MoneyLedger ledger;
+    r.buyer().setMoneyLedger(&ledger);
+    r.seller().setMoneyLedger(&ledger);
+    r.buyer().monetary().privateSpecie = 0;
+    r.buyer().monetary().moneyGood     = static_cast<uint8_t>(aoc::sim::goods::SILVER_ORE);
+    r.abroad->stockpile().addGoods(aoc::sim::goods::SILVER_ORE, 40);
+    const int64_t par         = aoc::sim::goodDef(aoc::sim::goods::SILVER_ORE).basePrice;
+    const int64_t worldBefore = aoc::sim::worldMoney(r.w.gameState);
+
+    r.turn(); // arrives abroad and sells
+    const aoc::CurrencyAmount purse = r.unit->trader().carriedGold;
+    REQUIRE(purse > 0);
+    REQUIRE(ledger.civs[BUYER].monetised > 0);
+    // Whole units at par, no more than the price needed, the change kept.
+    const int64_t units = (purse + par - 1) / par;
+    CHECK(ledger.civs[BUYER].monetised == units * par);
+    CHECK(r.abroad->stockpile().getAmount(aoc::sim::goods::SILVER_ORE) == 40 - units);
+    CHECK(r.buyer().monetary().privateSpecie == units * par - purse);
+    // The metal that became money is the only money that entered the world.
+    CHECK(aoc::sim::worldMoney(r.w.gameState) - worldBefore == ledger.expectedDelta());
+    CHECK(aoc::sim::moneyConserved(worldBefore, aoc::sim::worldMoney(r.w.gameState), ledger));
+}
+
+TEST_CASE("a buyer that can pay coins nothing") {
+    Route r;
+    aoc::sim::MoneyLedger ledger;
+    r.buyer().setMoneyLedger(&ledger);
+    r.buyer().monetary().privateSpecie = 1000;
+    r.buyer().monetary().moneyGood     = static_cast<uint8_t>(aoc::sim::goods::SILVER_ORE);
+    r.abroad->stockpile().addGoods(aoc::sim::goods::SILVER_ORE, 40);
+    r.turn();
+    CHECK(r.unit->trader().carriedGold > 0);
+    CHECK(r.abroad->stockpile().getAmount(aoc::sim::goods::SILVER_ORE) == 40);
+    CHECK(ledger.civs[BUYER].monetised == 0);
+}
+
+TEST_CASE("a Barter buyer pays in coined metal, and a Barter seller banks it as bullion") {
+    Route r;
+    r.seller().monetary().system       = aoc::sim::MonetarySystemType::Barter;
+    r.buyer().monetary().system        = aoc::sim::MonetarySystemType::Barter;
+    r.buyer().monetary().privateSpecie = 0;
+    r.buyer().monetary().moneyGood     = static_cast<uint8_t>(aoc::sim::goods::SILVER_ORE);
+    r.abroad->stockpile().addGoods(aoc::sim::goods::SILVER_ORE, 40);
+    r.turn();
+    const aoc::CurrencyAmount purse = r.unit->trader().carriedGold;
+    REQUIRE(purse > 0);
+    CHECK(r.abroad->stockpile().getAmount(aoc::sim::goods::SILVER_ORE) < 40);
+    REQUIRE(r.comeHome());
+    CHECK(r.seller().monetary().bullion == purse); // weighed metal, before anyone strikes coin
+    CHECK(r.seller().treasury() == 0);
+}
+
+TEST_CASE("coinToPay keeps industry's turn, honours the par, and refuses what it must") {
+    aoc::test::World w      = aoc::test::makeWorld(2);
+    aoc::game::Player& civ  = *w.gameState.player(BUYER);
+    aoc::game::City& city   = aoc::test::addCityAt(w, BUYER, 9, 5, "Beta");
+    aoc::game::City& theirs = aoc::test::addCityAt(w, SELLER, 5, 5, "Alpha");
+    civ.monetary().system   = aoc::sim::MonetarySystemType::CommodityMoney;
+    civ.monetary().moneyGood = static_cast<uint8_t>(aoc::sim::goods::SILVER_ORE);
+    const int64_t par        = aoc::sim::goodDef(aoc::sim::goods::SILVER_ORE).basePrice;
+
+    SUBCASE("one turn of the civ's own industry stays in the stockpile") {
+        city.stockpile().addGoods(aoc::sim::goods::SILVER_ORE, 10);
+        CHECK(aoc::sim::coinToPay(civ, city, 100 * par, 3) == 7 * par);
+        CHECK(city.stockpile().getAmount(aoc::sim::goods::SILVER_ORE) == 3);
+        CHECK(civ.monetary().privateSpecie == 7 * par);
+    }
+    SUBCASE("a good priced at one coins unit for unit") {
+        civ.monetary().moneyGood = static_cast<uint8_t>(aoc::sim::goods::COPPER_COINS);
+        REQUIRE(aoc::sim::goodDef(aoc::sim::goods::COPPER_COINS).basePrice == 1);
+        city.stockpile().addGoods(aoc::sim::goods::COPPER_COINS, 100);
+        CHECK(aoc::sim::coinToPay(civ, city, 50, 0) == 50);
+        CHECK(city.stockpile().getAmount(aoc::sim::goods::COPPER_COINS) == 50);
+    }
+    SUBCASE("only the buyer's own cities are coined from") {
+        theirs.stockpile().addGoods(aoc::sim::goods::SILVER_ORE, 40);
+        CHECK(aoc::sim::coinToPay(civ, theirs, 100, 0) == 0);
+        CHECK(theirs.stockpile().getAmount(aoc::sim::goods::SILVER_ORE) == 40);
+    }
+    SUBCASE("a paper civ has nothing to coin") {
+        city.stockpile().addGoods(aoc::sim::goods::SILVER_ORE, 40);
+        civ.monetary().system = aoc::sim::MonetarySystemType::FiatMoney;
+        CHECK(aoc::sim::coinToPay(civ, city, 100, 0) == 0);
+        CHECK(city.stockpile().getAmount(aoc::sim::goods::SILVER_ORE) == 40);
+    }
+    SUBCASE("a civ with no money good pays in what it has") {
+        city.stockpile().addGoods(aoc::sim::goods::SILVER_ORE, 40);
+        civ.monetary().moneyGood = aoc::sim::NO_MONEY_GOOD;
+        CHECK(aoc::sim::coinToPay(civ, city, 100, 0) == 0);
+    }
+}
+
 TEST_CASE("a trusted paper pair settles in notes, at the capped exchange rate") {
     Route r;
     r.seller().monetary().system        = aoc::sim::MonetarySystemType::GoldStandard;

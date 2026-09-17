@@ -36,6 +36,7 @@
 #include "aoc/core/Log.hpp"
 
 #include "aoc/simulation/monetary/MoneyFlow.hpp"
+#include "aoc/simulation/monetary/MonetaryActions.hpp"
 #include "aoc/simulation/city/CitySiege.hpp"
 
 #include <algorithm>
@@ -1558,6 +1559,13 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                                                        settlementRate(*sellerPlayer, *buyerPlayer));
                         trader.carriedMedium = 1;
                     } else {
+                        // Coin at the point of payment: short of specie, the
+                        // buyer's people strike their money good at par first.
+                        // A civ with no partners still coins this way through
+                        // its own routes, which is how money starts at all.
+                        coinToPay(*buyerPlayer, *targetCity, goldEarned,
+                                  industrialDrawFor(gameState, cityOwner,
+                                                    buyerPlayer->monetary().moneyGood));
                         paid                 = payInSpecie(*buyerPlayer, goldEarned);
                         owedInGoods          = goldEarned - paid;
                         trader.carriedMedium = 0;

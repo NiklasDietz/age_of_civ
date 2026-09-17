@@ -5,6 +5,8 @@
 
 #include "aoc/simulation/monetary/MoneyFlow.hpp"
 
+#include "aoc/core/Log.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
@@ -35,9 +37,10 @@ void MoneyLedger::record(PlayerId who, MoneyFlow flow, CurrencyAmount delta) {
         break;
     case MoneyFlowKind::Monetised:
     case MoneyFlowKind::Demonetised:
-        // Phase B stub: no good is money yet; these flow kinds are reserved
-        // for Phase C adoption events. Book as external for ledger balance.
+        // Money made from a good, or a good made from money: it enters or
+        // leaves the world like an external flow, and is also kept readable.
         (delta > 0 ? civ.externalIn : civ.externalOut) += (delta > 0 ? delta : -delta);
+        civ.monetised += delta;
         break;
     case MoneyFlowKind::Printed:
         civ.printed += delta;
@@ -60,6 +63,7 @@ MoneyLedger::Civ MoneyLedger::total() const {
         sum.lost += civ.lost;
         sum.unbackedIn += civ.unbackedIn;
         sum.unbackedOut += civ.unbackedOut;
+        sum.monetised += civ.monetised;
     }
     return sum;
 }
@@ -218,6 +222,66 @@ CurrencyAmount plunder(aoc::game::GameState& gameState, PlayerId victim, aoc::ga
         taken += fromTreasury;
     }
     return taken;
+}
+
+namespace {
+
+/// Up to `units` of `goodId` out of `city`, returning what came out.
+int64_t takeUpTo(aoc::game::City& city, uint16_t goodId, int64_t units) {
+    const int64_t have  = std::max<int64_t>(0, city.stockpile().getAmount(goodId));
+    const int64_t taken = std::min(units, have);
+    if (taken > 0) {
+        city.stockpile().consumeGoods(goodId, static_cast<int32_t>(taken));
+    }
+    return taken;
+}
+
+} // namespace
+
+CurrencyAmount coinToPay(aoc::game::Player& buyer, aoc::game::City& at, CurrencyAmount need,
+                         int32_t industrialDraw) {
+    if (outsideWorld(buyer.id())) {
+        return 0;
+    }
+    MonetaryStateComponent& m = buyer.monetary();
+    if (isFiatClass(m.system) || m.moneyGood >= goods::GOOD_COUNT) {
+        return 0;
+    }
+    const int64_t specie = std::max<CurrencyAmount>(0, m.privateSpecie);
+    if (need <= specie) {
+        return 0;
+    }
+    const uint16_t good = m.moneyGood;
+    const int64_t par   = std::max<int64_t>(1, goodDef(good).basePrice);
+    int64_t stock       = 0;
+    for (const std::unique_ptr<aoc::game::City>& city : buyer.cities()) {
+        if (city != nullptr && city->owner() == buyer.id()) {
+            stock += std::max<int64_t>(0, city->stockpile().getAmount(good));
+        }
+    }
+    const int64_t wanted = (need - specie + par - 1) / par;
+    int64_t units        = std::min(wanted, stock - std::max<int64_t>(0, industrialDraw));
+    if (units <= 0) {
+        return 0;
+    }
+    int64_t taken = at.owner() == buyer.id() ? takeUpTo(at, good, units) : 0;
+    for (const std::unique_ptr<aoc::game::City>& city : buyer.cities()) {
+        if (taken >= units) {
+            break;
+        }
+        if (city != nullptr && city.get() != &at && city->owner() == buyer.id()) {
+            taken += takeUpTo(*city, good, units - taken);
+        }
+    }
+    const CurrencyAmount value = static_cast<CurrencyAmount>(taken * par);
+    m.privateSpecie += value;
+    if (buyer.moneyLedger() != nullptr) {
+        buyer.moneyLedger()->record(buyer.id(), MoneyFlow::monetised(), value);
+    }
+    LOG_INFO("Player %u coined %lld %.*s at par %lld to pay", static_cast<unsigned>(buyer.id()),
+             static_cast<long long>(taken), static_cast<int>(goodDef(good).name.size()),
+             goodDef(good).name.data(), static_cast<long long>(par));
+    return value;
 }
 
 CurrencyAmount payInSpecie(aoc::game::Player& buyer, CurrencyAmount price) {

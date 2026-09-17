@@ -167,7 +167,7 @@ struct PlayerSnapshot {
     int64_t circulation     = 0;    ///< treasury + private specie + private notes + bullion
     int64_t arrears         = 0;    ///< bills the treasury could not pay this turn
     float priceLevel        = 1.0f;
-    int64_t mintedTurn      = 0; ///< face value swept from the Mint this turn
+    int64_t mintedTurn      = 0; ///< money good coined at payment this turn, minus reclaimed
     int64_t unbackedTurn    = 0; ///< money the old model conjured minus destroyed this turn
     int64_t coinLanded      = 0; ///< purses the civ's Traders brought home this turn (M3)
     int64_t metalOreHeld    = 0; ///< silver + gold ore across this civ's stockpiles
@@ -1034,8 +1034,7 @@ int runHeadlessSimulation(
             {
                 const aoc::sim::MoneyLedger::Civ& book =
                     economy.moneyLedger().civs[static_cast<std::size_t>(p)];
-                // Phase B: book.minted removed (coin-minting seigniorage gone).
-                snap.mintedTurn   = 0;
+                snap.mintedTurn   = book.monetised;
                 snap.unbackedTurn = book.unbackedIn - book.unbackedOut;
             }
             snap.mintOreConsumed = economy.mintOreConsumed()[static_cast<std::size_t>(p)];
