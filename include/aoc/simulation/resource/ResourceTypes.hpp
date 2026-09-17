@@ -398,6 +398,15 @@ inline constexpr uint16_t GOOD_COUNT = 167;
 /// Whether the goods table files this good under RawLuxury.
 [[nodiscard]] bool isLuxuryGood(uint16_t goodId);
 
+/// How well a unit of this good keeps and divides when passed hand to hand,
+/// 0..100: Menger's durability and divisibility in one physical number. By
+/// category (a metal keeps, food does not) with overrides for the physical
+/// classes a category gets wrong: liquids and gases, radioactive or reactive
+/// metals, crude mixed ores, living or organic strategics, and the noble metals
+/// the table files as luxuries. A property of the good, not a monetary policy:
+/// what it means for money is decided in saleability().
+[[nodiscard]] int32_t moneyDurability(uint16_t goodId);
+
 /// Every RawLuxury good id, ascending: the one list the amenity model, the
 /// needs model and the resource-geography metric share. Two hand-kept copies
 /// used to disagree with the table (both listed SUGAR, neither SALT or MARBLE).

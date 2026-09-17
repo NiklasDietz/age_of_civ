@@ -983,6 +983,61 @@ bool isLuxuryGood(uint16_t goodId) {
     return goodId < goods::GOOD_COUNT && goodDef(goodId).category == GoodCategory::RawLuxury;
 }
 
+int32_t moneyDurability(uint16_t goodId) {
+    if (goodId >= goods::GOOD_COUNT) {
+        return 0;
+    }
+    switch (goodId) {
+    case goods::GOLD_ORE:
+    case goods::ALLUVIAL_GOLD:
+    case goods::PLATINUM:
+        return 100; // noble metals filed under luxury
+    case goods::HORSES:
+        return 20; // livestock
+    case goods::COTTON:
+    case goods::RUBBER:
+        return 50; // organic
+    case goods::OIL:
+    case goods::NATURAL_GAS:
+    case goods::HELIUM:
+    case goods::FUEL:
+    case goods::BIOFUEL:
+    case goods::DEUTERIUM:
+        return 10; // liquid or gas: nothing to hand over
+    case goods::ELECTRICITY:
+        return 0; // cannot be kept at all
+    case goods::PROCESSED_FOOD:
+        return 20; // still food
+    case goods::URANIUM:
+    case goods::LITHIUM:
+        return 30; // radioactive or reactive
+    case goods::VMS_ORE:
+    case goods::SKARN_ORE:
+    case goods::MVT_ORE:
+    case goods::BEACH_PLACER:
+    case goods::PHOSPHATE:
+    case goods::FLUORITE:
+    case goods::BARITE:
+    case goods::RARE_EARTH:
+        return 30; // crude mixed ore or concentrate, no two lumps alike
+    default:
+        break;
+    }
+    switch (goodDef(goodId).category) {
+    case GoodCategory::RawStrategic:
+        return 100;
+    case GoodCategory::Processed:
+    case GoodCategory::Advanced:
+        return 60;
+    case GoodCategory::RawLuxury:
+        return 30; // organic (silk, spices) or indivisible (a pearl, a gem)
+    case GoodCategory::RawBonus:
+        return 20;
+    default:
+        return 0;
+    }
+}
+
 // isCoinGood() removed in Phase B of the Mengerian money redesign.
 
 const std::vector<uint16_t>& luxuryGoodIds() {

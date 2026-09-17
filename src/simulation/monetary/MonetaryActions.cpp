@@ -26,6 +26,8 @@
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <array>
 #include <string>
 
@@ -223,10 +225,6 @@ ErrorCode requestSetMoneyGood(aoc::game::GameState& gameState, PlayerId player, 
 /// can happen; this bounds how SMALL a reason is enough.
 constexpr int32_t MONEY_CHALLENGER_MARGIN_PCT = 25;
 
-/// Below this a good is not worth pricing in at all, so a civ with nothing
-/// suitable stays on barter rather than electing the least bad thing it owns.
-constexpr int32_t MONEY_MINIMUM_SALEABILITY = 40;
-
 void aiChooseMoneyGood(aoc::game::GameState& gameState, const Market& market,
                        const DiplomacyManager* diplomacy, PlayerId player) {
     const aoc::game::Player* me = actorConst(gameState, player);
@@ -243,13 +241,33 @@ void aiChooseMoneyGood(aoc::game::GameState& gameState, const Market& market,
     }
 
     const MoneyWorldView view = moneyWorldView(gameState, diplomacy, player);
+    // Money is for paying others. Before first contact the acceptance term is a
+    // fiction and the only stock is the starter kit, so every civ measured
+    // elected copper on turn 2 and acceptance then made copper immovable for
+    // the whole game. The human may still elect anything through the request.
+    if (view.totalWeight == 0) {
+        return;
+    }
+
+    // AOC_DUMP_MONEY_SCORE: every held good's terms on each scoring turn, so a
+    // surprising election can be read off its inputs instead of argued about.
+    static const bool dumpScore = std::getenv("AOC_DUMP_MONEY_SCORE") != nullptr;
 
     int32_t bestScore      = 0;
     uint16_t bestGood      = NO_MONEY_GOOD;
     int32_t incumbentScore = 0;
     for (uint16_t goodId = 0; goodId < goods::GOOD_COUNT; ++goodId) {
-        const int32_t score =
-            saleability(saleabilityInputsFor(gameState, market, view, player, goodId));
+        const SaleabilityInputs in = saleabilityInputsFor(gameState, market, view, player, goodId);
+        const int32_t score        = saleability(in);
+        if (dumpScore && (in.held > 0 || in.isIncumbent)) {
+            std::fprintf(stderr,
+                         "[moneyscore] t=%d P%u good=%u score=%d held=%d acc=%d/%d draw=%d "
+                         "swing=%d price=%d dur=%d base=%d%s\n",
+                         gameState.currentTurn(), static_cast<unsigned>(player),
+                         static_cast<unsigned>(goodId), score, in.held, in.acceptingWeight,
+                         in.totalWeight, in.industrialDraw, in.priceSwing, in.price,
+                         in.durability, in.basePrice, in.isIncumbent ? " incumbent" : "");
+        }
         if (goodId == state.moneyGood) {
             incumbentScore = score;
         }
@@ -503,6 +521,10 @@ SaleabilityInputs saleabilityInputsFor(const aoc::game::GameState& gameState, co
     in.totalWeight     = view.totalWeight;
     in.industrialDraw  = view.industrialDraw[goodId];
     in.price           = std::max(1, market.price(goodId));
+    in.durability      = moneyDurability(goodId);
+    in.basePrice       = goodDef(goodId).basePrice;
+    const aoc::game::Player* me = actorConst(gameState, player);
+    in.isIncumbent              = me != nullptr && me->monetary().moneyGood == goodId;
 
     // Swing over the rolling window. Untouched history slots sit at zero, and
     // counting those would read as a collapse from the base price rather than
@@ -528,18 +550,31 @@ SaleabilityInputs saleabilityInputsFor(const aoc::game::GameState& gameState, co
     return in;
 }
 
+/// Value density saturates at gold's: 40 + 3 x 25. The goods table prices
+/// late-era metals (titanium 350, rare earth 420) for the economy they enter,
+/// not for how much value a unit carries in the hand, and no natural good is
+/// more portable as money than gold. Above the cap a good can tie gold on this
+/// term, never beat it; the older convention then wins the tie on id order.
+constexpr int32_t MONEY_DENSITY_CAP = 115;
+
 int32_t saleability(const SaleabilityInputs& inputs) {
-    if (inputs.held <= 0) {
+    // Holding the good is a gate for a candidate, not for the incumbent: a
+    // money whose stock has all been coined is still this civ's money, and
+    // making it score zero would hand the title to the first challenger above
+    // the minimum the moment the dwell ran out.
+    if (inputs.held <= 0 && !inputs.isIncumbent) {
         return 0; // a civ cannot monetise what it does not hold
     }
-    // Holding the good is a gate first and only a mild preference after. A civ
-    // with forty units and one with a thousand can both price in it, so the term
-    // spans 61 to 100 rather than the full range. Letting abundance dominate is
-    // precisely preferredCoinTier's failing: it reads reserves alone, so every
-    // civ on every seed measured landed on copper, which is merely what gets
-    // mined most. Acceptance has to be able to beat abundance, or nothing ever
-    // converges on anything but the commonest ore.
-    const int32_t stock = 60 + std::min(40, inputs.held);
+    // Holding the good is a gate first and only a nudge after: a civ with
+    // twenty units and one with a thousand price in it alike, so the term spans
+    // 80 to 100. Letting abundance dominate is precisely preferredCoinTier's
+    // failing: it reads reserves alone, so every civ on every seed measured
+    // landed on copper, which is merely what gets mined most. A 40-point spread
+    // was still enough for iron ore, mined two a turn from the first mine, to
+    // beat gold ore held five at a time on both seeds; at 20 gold's density
+    // carries it once a civ holds a handful. Acceptance has to be able to beat
+    // abundance, or nothing ever converges on anything but the commonest ore.
+    const int32_t stock = 80 + std::clamp(inputs.held, 0, 20);
 
     // The network term. A good is money because others take it, so acceptance
     // compounds and civs converge. With no contact at all it is neutral rather
@@ -556,12 +591,26 @@ int32_t saleability(const SaleabilityInputs& inputs) {
     const int32_t industrial =
         std::max(0, 100 - (100 * std::max(0, inputs.industrialDraw)) / std::max(1, inputs.held));
 
-    // Stable value is the whole point of holding money rather than goods.
+    // Stable value is the whole point of holding money rather than goods. The
+    // swing is read against the good's base price, not its current one, and
+    // floored high: a metal a people hoards has a thin market, a thin market's
+    // price sits at the floor and jumps on every sale, and measured against
+    // that price silver ore held ten deep scored 19 while a single pearl scored
+    // 27. Only a swing past half the good's own value counts as instability,
+    // and instability alone never disqualifies.
     const int32_t stability =
-        std::max(20, 100 - (100 * std::max(0, inputs.priceSwing)) / std::max(1, inputs.price));
+        std::clamp(100 - (100 * std::max(0, inputs.priceSwing)) / (2 * std::max(1, inputs.basePrice)),
+                   60, 100);
 
-    const int64_t score = static_cast<int64_t>(stock) * acceptance * industrial * stability;
-    return static_cast<int32_t>(score / (100 * 100 * 100));
+    // The physical half of the rule. Before these two terms the score ranked
+    // wheat, stone, coffee and barite as money on both measured seeds and never
+    // once a metal: nothing told it that grain rots and stone is heavy.
+    const int32_t durability = std::clamp(inputs.durability, 0, 100);
+    const int32_t density    = std::min(MONEY_DENSITY_CAP, 40 + 3 * std::max(0, inputs.basePrice));
+
+    const int64_t score = static_cast<int64_t>(stock) * acceptance * industrial * stability *
+                          durability * density;
+    return static_cast<int32_t>(score / (100LL * 100 * 100 * 100 * 100));
 }
 
 } // namespace aoc::sim

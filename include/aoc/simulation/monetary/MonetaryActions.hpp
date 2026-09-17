@@ -144,21 +144,32 @@ float applyCentralBankPolicy(aoc::game::GameState& gameState, PlayerId player);
 [[nodiscard]] int32_t civHeldUnits(const aoc::game::GameState& gameState, PlayerId player,
                                    uint16_t goodId);
 
-/// The four terms of Menger's saleability, the property that decides which good
-/// a people ends up treating as money. Money is not the most valuable good, it
+/// The terms of Menger's saleability, the property that decides which good a
+/// people ends up treating as money. Money is not the most valuable good, it
 /// is the one you can most reliably pass on, which is why acceptance by others
 /// is the term that matters most and the one `preferredCoinTier` never had.
+/// Durability and value density are the physical half of the same rule: what
+/// spoils or is bulky per unit of value does not travel from hand to hand.
 ///
 /// The inputs are passed in rather than read out of the world, so the rule can
 /// be tested on its own and so it does not presume a money good already exists.
+/// The defaults are neutral (a durable good priced at 20), so a caller that sets
+/// only the four world terms gets the score those terms alone imply.
 struct SaleabilityInputs {
-    int32_t held            = 0; ///< units of the good across this civ's cities
-    int32_t acceptingWeight = 0; ///< trade weight of met civs already using it as money
-    int32_t totalWeight     = 0; ///< trade weight of every met civ; 0 means no contact
-    int32_t industrialDraw  = 0; ///< units per turn this civ's runnable recipes consume
-    int32_t priceSwing      = 0; ///< recent price high minus low
-    int32_t price           = 1; ///< current market price, floored at 1
+    int32_t held            = 0;   ///< units of the good across this civ's cities
+    int32_t acceptingWeight = 0;   ///< trade weight of met civs already using it as money
+    int32_t totalWeight     = 0;   ///< trade weight of every met civ; 0 means no contact
+    int32_t industrialDraw  = 0;   ///< units per turn this civ's runnable recipes consume
+    int32_t priceSwing      = 0;   ///< recent price high minus low
+    int32_t price           = 1;   ///< current market price, floored at 1
+    int32_t durability      = 100; ///< moneyDurability(good), 0..100
+    int32_t basePrice       = 20;  ///< goodDef(good).basePrice, the value a unit carries
+    bool isIncumbent        = false; ///< already this civ's money: exempt from the held gate
 };
+
+/// Below this a good is not worth pricing in at all, so a civ with nothing
+/// suitable stays on barter rather than electing the least bad thing it owns.
+inline constexpr int32_t MONEY_MINIMUM_SALEABILITY = 40;
 
 /// One civ's view of the world, gathered once per turn so that scoring each
 /// candidate good is a table lookup instead of a fresh scan of every recipe and

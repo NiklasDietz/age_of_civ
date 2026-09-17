@@ -241,6 +241,28 @@ TEST_CASE("the world view counts acceptance by trade weight among met civs") {
     CHECK(all.acceptingWeight[SILVER_ORE] == 2);
 }
 
+TEST_CASE("the world inputs carry the table's durability, price and the incumbent flag") {
+    aoc::test::World w   = aoc::test::makeWorld(2);
+    aoc::game::Player& p = *w.gameState.player(P0);
+    aoc::game::City& a   = aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
+    a.stockpile().addGoods(SILVER_ORE, 7);
+    aoc::sim::Market market;
+    market.initialize();
+    const aoc::sim::MoneyWorldView view = aoc::sim::moneyWorldView(w.gameState, nullptr, P0);
+
+    aoc::sim::SaleabilityInputs silver =
+        aoc::sim::saleabilityInputsFor(w.gameState, market, view, P0, SILVER_ORE);
+    CHECK(silver.held == 7);
+    CHECK(silver.durability == aoc::sim::moneyDurability(SILVER_ORE));
+    CHECK(silver.basePrice == aoc::sim::goodDef(SILVER_ORE).basePrice);
+    CHECK_FALSE(silver.isIncumbent);
+
+    p.monetary().moneyGood = static_cast<uint8_t>(SILVER_ORE);
+    silver = aoc::sim::saleabilityInputsFor(w.gameState, market, view, P0, SILVER_ORE);
+    CHECK(silver.isIncumbent);
+    CHECK_FALSE(aoc::sim::saleabilityInputsFor(w.gameState, market, view, P0, SILK).isIncumbent);
+}
+
 TEST_CASE("industrial draw counts only recipes the civ can actually run") {
     aoc::test::World w = aoc::test::makeWorld(2);
     aoc::game::City& a = aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
