@@ -382,6 +382,22 @@ def evaluate(rows: list[dict[str, str]], events: list[dict[str, str]] | None = N
         f"{median_level:.2f} over {len(levels)} coinage player-turns",
     )
 
+    # T11 A paper civ never runs dry: no fiat player-turn sits at the 0.1
+    #     price floor with nothing in circulation. Before the central bank rule
+    #     (fiatIssueTarget, 2026-09-17) two of four fiat civs on seeds 42/43
+    #     deflated ten percent a turn to exactly that state.
+    dead = [
+        (int(r["Turn"]), int(r["Player"]))
+        for r, s in zip(rows, systems)
+        if s >= 3 and float(r.get("Circulation", "0") or 0) <= 0
+        and float(r.get("PriceLevel", "1") or 1) <= 0.1
+    ]
+    target(
+        "T11 no fiat player-turn at the price floor with no money",
+        not dead,
+        f"{len(dead)} dead fiat rows" + (f", first at turn {dead[0][0]} player {dead[0][1]}" if dead else ""),
+    )
+
     # T9 (M7) Trade settles across civs early: some Trader brings foreign
     #     coin home by turn 100.
     landed = [int(r["Turn"]) for r in rows if float(r.get("TradeCoinLanded", "0") or 0) > 0]
@@ -638,6 +654,15 @@ def selftest() -> int:
         if int(r["Turn"]) <= 100:
             r["TradeCoinLanded"] = "0"
     add("T9 late first landing", rows, "MISSED: T9")
+
+    # T11: a paper civ at the price floor with nothing in circulation.
+    rows = _healthy()
+    for r in rows:
+        if int(r["Turn"]) > 150:
+            r["MonetarySystem"] = "3"
+            r["Circulation"]    = "0"
+            r["PriceLevel"]     = "0.1"
+    add("T11 dead fiat civ", rows, "MISSED: T11")
 
     ok = True
     baseline = evaluate(_healthy(), _healthy_events(), WAR_BASELINE, quiet=True)
