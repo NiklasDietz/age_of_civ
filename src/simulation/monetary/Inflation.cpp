@@ -122,8 +122,10 @@ void computeInflation(MonetaryStateComponent& state,
         // rather than masking everything else under a permanent +50%.
         printingInflation = std::min(printingInflation, 0.30f);
         state.inflationRate += printingInflation * capacityPressure;
-        state.printAmountThisTurn = 0;  // Reset for next turn
     }
+    // Reset every turn, GDP or not, or a civ with no GDP would carry one
+    // turn's issue forever and printMoney's per-turn cap would refuse it for good.
+    state.printAmountThisTurn = 0;
 
     // Treasury hoarding: sign depends on monetary regime.
     //   GoldStandard/Commodity: hoarded coin is out of circulation. Effective

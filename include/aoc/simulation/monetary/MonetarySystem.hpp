@@ -563,26 +563,25 @@ struct MonetaryStateComponent {
      * The temptation: print money to fund wars, buildings, research.
      * The risk: hyperinflation destroys the economy.
      *
-     * @param amount  How much to print. Capped at 10% of GDP per turn.
+     * @param amount  How much to print. The turn's issues together are capped
+     *                at 10% of GDP, so a second call in the same turn gets only
+     *                what the first left.
      * @return Actual amount printed (may be capped). The caller credits the
-     *         treasury with it as MoneyFlow::printed(); this only issues.
+     *         treasury with it as MoneyFlow::printed(); this only issues. The
+     *         inflation it causes is read from printAmountThisTurn by
+     *         computeInflation, the one writer of inflationRate.
      */
     CurrencyAmount printMoney(CurrencyAmount amount) {
         if (this->system != MonetarySystemType::FiatMoney &&
             this->system != MonetarySystemType::Digital) {
             return 0; // Only fiat-class systems can issue money
         }
-        // Cap at 10% of GDP per turn to prevent instant hyperinflation
         const CurrencyAmount maxPrint =
             std::max(static_cast<CurrencyAmount>(1), static_cast<CurrencyAmount>(this->gdp / 10));
-        const CurrencyAmount actualPrint = std::min(amount, maxPrint);
+        const CurrencyAmount room = std::max<CurrencyAmount>(0, maxPrint - this->printAmountThisTurn);
+        const CurrencyAmount actualPrint = std::clamp<CurrencyAmount>(amount, 0, room);
 
-        this->printAmountThisTurn = actualPrint; // the supply follows the pools
-
-        // Direct inflation impact: printed money / GDP
-        if (this->gdp > 0) {
-            this->inflationRate += static_cast<float>(actualPrint) / static_cast<float>(this->gdp);
-        }
+        this->printAmountThisTurn += actualPrint; // the supply follows the pools
         return actualPrint;
     }
 

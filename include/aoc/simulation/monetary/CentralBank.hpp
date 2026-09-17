@@ -28,6 +28,31 @@ namespace aoc::sim {
 /// Set the central bank interest rate. Clamped to [0.0, 0.25].
 void setInterestRate(MonetaryStateComponent& state, Percentage rate);
 
+/// Below this measured inflation a fiat bank issues against the money stock.
+/// -0.02 sits inside the 3% band that costs no happiness (Inflation.cpp), so
+/// the bank leans against a real slide, not noise.
+inline constexpr float FIAT_DEFLATION_TRIGGER = -0.02f;
+
+/**
+ * @brief How much a fiat-class bank should issue this turn, before the cap.
+ *
+ * Two terms. Under deflation (inflationRate < FIAT_DEFLATION_TRIGGER) it
+ * refills the money stock (treasury + specie + notes) up to half the money
+ * demand the price anchor already assumes, priceAnchorK x population / 2;
+ * below that stock a specie civ's prices would sit at the anchor floor, so it
+ * is the least a paper civ needs to stop deflating. The bill term covers what
+ * went unpaid last turn in full: arrears disband a unit after five turns, and
+ * the old "half the shortfall" rule was austerity against a treasury that can
+ * no longer go negative. Neither term is gated on an inflation ceiling: the
+ * deflation term cannot fire above zero by construction, and refusing to cover
+ * a bill in an inflation is how a state marches its army into desertion.
+ * printMoney's share-of-GDP cap still bounds the total.
+ *
+ * Returns 0 for any regime without a printing press.
+ */
+[[nodiscard]] CurrencyAmount fiatIssueTarget(const MonetaryStateComponent& state,
+                                             CurrencyAmount unpaidLastTurn, int32_t population);
+
 /// Set the reserve requirement ratio. Clamped to [0.01, 0.50].
 void setReserveRequirement(MonetaryStateComponent& state, Percentage ratio);
 

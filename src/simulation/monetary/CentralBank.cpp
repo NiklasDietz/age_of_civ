@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/monetary/CentralBank.hpp"
+#include "aoc/balance/BalanceParams.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/monetary/MoneyFlow.hpp"
 #include "aoc/core/Log.hpp"
@@ -11,6 +12,24 @@
 #include <algorithm>
 
 namespace aoc::sim {
+
+CurrencyAmount fiatIssueTarget(const MonetaryStateComponent& state, CurrencyAmount unpaidLastTurn,
+                               int32_t population) {
+    if (state.system != MonetarySystemType::FiatMoney &&
+        state.system != MonetarySystemType::Digital) {
+        return 0;
+    }
+    CurrencyAmount issue = std::max<CurrencyAmount>(0, unpaidLastTurn);
+    if (state.inflationRate < FIAT_DEFLATION_TRIGGER && population > 0) {
+        const CurrencyAmount money = std::max<CurrencyAmount>(0, state.treasury) +
+                                     std::max<CurrencyAmount>(0, state.privateSpecie) +
+                                     std::max<CurrencyAmount>(0, state.privateNotes);
+        const CurrencyAmount floor = static_cast<CurrencyAmount>(
+            aoc::balance::params().priceAnchorK * static_cast<float>(population) / 2.0f);
+        issue += std::max<CurrencyAmount>(0, floor - money);
+    }
+    return issue;
+}
 
 void setInterestRate(MonetaryStateComponent& state, Percentage rate) {
     state.interestRate = std::clamp(rate, 0.0f, 0.25f);

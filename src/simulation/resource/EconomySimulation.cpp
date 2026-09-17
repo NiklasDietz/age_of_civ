@@ -23,6 +23,7 @@
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/economy/AdvancedEconomics.hpp"
 #include "aoc/simulation/monetary/CentralBank.hpp"
+#include "aoc/simulation/monetary/MonetaryActions.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
 #include "aoc/simulation/monetary/CurrencyWar.hpp"
@@ -1509,6 +1510,19 @@ void EconomySimulation::executeMonetaryPolicy(aoc::game::GameState& gameState) {
         computeInflation(state, prevGDP, currentGDP, prevMoney);
         anchorPriceLevel(state, playerPtr->totalPopulation());
         applyInflationEffects(state);
+
+        // The central bank is part of the economy, not of the AI, so the
+        // human's paper civ gets the same money-supply rule as the AI's.
+        const CurrencyAmount issue = fiatIssueTarget(state, playerPtr->unpaidLastTurn(),
+                                                     playerPtr->totalPopulation());
+        if (issue > 0 &&
+            requestPrintMoney(gameState, playerPtr->id(), issue) == ErrorCode::Ok) {
+            LOG_INFO("Player %u printed %lld (inflation %.1f%%, unpaid %lld)",
+                     static_cast<unsigned>(playerPtr->id()),
+                     static_cast<long long>(state.printAmountThisTurn),
+                     static_cast<double>(state.inflationRate) * 100.0,
+                     static_cast<long long>(playerPtr->unpaidLastTurn()));
+        }
 
         // The regime is a decision now (requestSetMonetaryRegime, plan 2.5);
         // the automatic ladder that ran here is gone. The crisis suspension

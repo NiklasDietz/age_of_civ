@@ -1997,24 +1997,8 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState, aoc::ma
         myState.luxuryAllocation = std::max(myState.luxuryAllocation, 0.10f);
     }
 
-    // Fiat money printing: if on fiat and in deficit, print money to cover
-    // shortfall. But only if inflation is below 10% — don't hyperinflate.
-    // This represents governments deficit-spending by printing money, which is
-    // the key behavior of fiat economies (for better or worse).
-    if ((myState.system == MonetarySystemType::FiatMoney ||
-         myState.system == MonetarySystemType::Digital) &&
-        gsPlayer->treasury() < 0 && myState.inflationRate < 0.10f) {
-        const CurrencyAmount shortfall = -gsPlayer->treasury();
-        // Print up to half the shortfall — don't cover everything, force some austerity
-        const CurrencyAmount toPrint = std::max(static_cast<CurrencyAmount>(1), shortfall / 2);
-        const CurrencyAmount printed = myState.printMoney(toPrint);
-        if (printed > 0) {
-            gsPlayer->addGold(printed, aoc::sim::MoneyFlow::printed());
-            LOG_INFO("AI %u printed %lld fiat money (inflation now %.2f%%)",
-                     static_cast<unsigned>(this->m_player), static_cast<long long>(printed),
-                     static_cast<double>(myState.inflationRate * 100.0f));
-        }
-    }
+    // Money printing is the central bank's per-turn rule (fiatIssueTarget,
+    // run by the economy step for every paper civ), not an AI decision.
 
     // Debasement: the coinage-era answer to a shortfall, and the counterpart to
     // printing. It was fully implemented with zero callers, so nothing could

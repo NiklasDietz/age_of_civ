@@ -113,6 +113,11 @@ class DiplomacyManager;
 /// seed 43 runs hotter than the target, so its banks tighten, tightening slows
 /// velocity, a slower velocity narrows the tax base (taxableMoneyShare), and
 /// the lost revenue shows up as unrest.
+///
+/// The QUANTITY lever is a different matter and is live: fiatIssueTarget
+/// (CentralBank.hpp) runs in the economy step for every paper civ and prints
+/// against deflation and unpaid bills. Price and quantity are separate levers;
+/// enabling this one should be measured on its own.
 float applyCentralBankPolicy(aoc::game::GameState& gameState, PlayerId player);
 
 /// Issue new fiat money. Refused outside fiat-class systems; the amount is
