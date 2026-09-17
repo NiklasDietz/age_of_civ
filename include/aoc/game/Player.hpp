@@ -145,6 +145,27 @@ public:
     /// so reading it within the same turn would always read zero. Not saved.
     [[nodiscard]] CurrencyAmount tariffsLastTurn() const { return this->m_tariffsLastTurn; }
     void setTariffsLastTurn(CurrencyAmount tariffs) { this->m_tariffsLastTurn = tariffs; }
+    /// What this civ's people bought last turn, in price units: paid in money,
+    /// and fallen back to goods. The trade step folds them into shortfallTurns
+    /// and clears them (tickTradeShortfall). Not saved, like tariffsLastTurn.
+    [[nodiscard]] CurrencyAmount tradeSettledLastTurn() const { return this->m_tradeSettledLastTurn; }
+    [[nodiscard]] CurrencyAmount tradeUnsettledLastTurn() const {
+        return this->m_tradeUnsettledLastTurn;
+    }
+    void addTradeSettlement(CurrencyAmount inMoney, CurrencyAmount inGoods) {
+        this->m_tradeSettledLastTurn += inMoney;
+        this->m_tradeUnsettledLastTurn += inGoods;
+    }
+    void clearTradeSettlement() {
+        this->m_tradeSettledLastTurn   = 0;
+        this->m_tradeUnsettledLastTurn = 0;
+    }
+    /// Consecutive trading turns in which a quarter or more of what the
+    /// people bought could not be paid in money: the measured sign that the
+    /// money they use cannot carry their trade. A loaded game starts it at
+    /// zero and holds its stage for a few turns; not saved.
+    [[nodiscard]] int32_t shortfallTurns() const { return this->m_shortfallTurns; }
+    void setShortfallTurns(int32_t turns) { this->m_shortfallTurns = turns; }
 
     [[nodiscard]] CurrencyAmount incomePerTurn() const { return this->m_incomePerTurn; }
     void setIncomePerTurn(CurrencyAmount income) { this->m_incomePerTurn = income; }
@@ -562,6 +583,9 @@ private:
     CurrencyAmount m_netGoldLastTurn = 0; ///< Not saved; processTurn recomputes it
     CurrencyAmount m_unpaidLastTurn  = 0; ///< Not saved; maintenance recomputes it
     CurrencyAmount m_tariffsLastTurn = 0; ///< Not saved; the trade step resets it
+    CurrencyAmount m_tradeSettledLastTurn   = 0; ///< Not saved; the trade step resets it
+    CurrencyAmount m_tradeUnsettledLastTurn = 0; ///< Not saved; the trade step resets it
+    int32_t m_shortfallTurns                = 0; ///< Not saved; the trade step ticks it
     aoc::sim::MoneyLedger* m_ledger = nullptr; ///< Not saved; set for the turn, may be null in tests
     aoc::sim::MonetaryStateComponent m_monetary;
 

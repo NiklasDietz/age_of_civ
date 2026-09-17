@@ -27,6 +27,8 @@
 #include "aoc/simulation/resource/ResourceTypes.hpp" // goods::GOOD_COUNT
 
 #include <array>
+#include <optional>
+#include <string_view>
 
 namespace aoc::game {
 class GameState;
@@ -44,8 +46,8 @@ class DiplomacyManager;
 [[nodiscard]] int32_t livePartnerCount(const aoc::game::GameState& gameState, PlayerId player);
 
 /// True when a Barter civ could adopt coinage now: the money stock the
-/// transition table asks for (Phase B: privateSpecie >= 100). What the
-/// notification, the screen and the AI read.
+/// transition table asks for (bullion plus specie at the CommodityMoney row's
+/// floor). What the notification, the screen and the AI read.
 [[nodiscard]] bool coinageWithinReach(const aoc::game::GameState& gameState, PlayerId player);
 
 /// The one way a civ changes its monetary regime (plan 2.5). `target` must
@@ -124,6 +126,49 @@ float applyCentralBankPolicy(aoc::game::GameState& gameState, PlayerId player);
 /// capped inside printMoney at a share of GDP.
 [[nodiscard]] ErrorCode requestPrintMoney(aoc::game::GameState& gameState, PlayerId player,
                                           CurrencyAmount amount);
+
+/// Share of a turn's purchases that fell back to goods for the turn to count
+/// as a shortfall turn: a quarter, so a single stuck delivery does not.
+inline constexpr int32_t SHORTFALL_RATIO_PCT = 25;
+/// Shortfall turns before coin (or notes) are judged unable to carry trade.
+inline constexpr int32_t NOTES_MOTIVE_TURNS = 10;
+/// Turns of reserve stress (backing under 0.40) before a gold-standard civ
+/// leaves on its own terms; the forced suspension comes at 10 with a trust
+/// penalty, so three is early enough to keep the civ's credit.
+inline constexpr int32_t FIAT_MOTIVE_STRESS_TURNS = 3;
+/// Turns on fiat before digital settlement is even worth asking for.
+inline constexpr int32_t DIGITAL_MOTIVE_TURNS = 10;
+
+/// Fold last turn's trade settlement into the civ's shortfall streak, then
+/// clear the counters. A trading turn short by SHORTFALL_RATIO_PCT or more
+/// extends the streak, a trading turn that settled breaks it, and a turn with
+/// no purchases leaves it be: deliveries are lumpy, and silence is not
+/// evidence either way. The trade step calls this once per civ per turn.
+void tickTradeShortfall(aoc::game::Player& player);
+
+/// What the world says about a civ's money, gathered for the regime rule.
+struct MotiveInputs {
+    int32_t shortfallTurns            = 0;     ///< Player::shortfallTurns()
+    int32_t industrialDrawOfMoneyGood = 0;     ///< industrialDrawFor(moneyGood), 0 without one
+    bool hasComputers                 = false; ///< the Digital row's tech
+};
+
+/// The next rung and the reason it pays to climb it.
+struct MonetaryAdvice {
+    MonetarySystemType target;
+    std::string_view reason;
+};
+
+/// Why a civ would move one rung up the ladder, or nothing. Barter to
+/// coinage once a people has a money good at all; coin to notes when coin
+/// cannot carry their trade or industry competes for the metal; notes to
+/// paper on a specie drain, when industry wants the metal, or when notes too
+/// fall short; paper to digital once Computers are in and the paper has aged.
+/// The tech, strength, partner and inflation floors stay in the transition
+/// table and the request: this rule says only WHY the civ asks, never
+/// whether it may. The AI takes it as a decision; the human sees it as a hint.
+[[nodiscard]] std::optional<MonetaryAdvice> monetaryAdvice(const MonetaryStateComponent& state,
+                                                           const MotiveInputs& in);
 
 /// Elect `goodId` as the good this civ prices and settles in, or NO_MONEY_GOOD
 /// to demonetise and return to barter in kind.

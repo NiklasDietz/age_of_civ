@@ -258,37 +258,32 @@ void aiPrepareIndustrialRevolution(aoc::game::GameState& /*gameState*/,
 // Master economic strategy
 // ============================================================================
 
-/// The regime decision (plan 2.5), through the one request. Coinage as soon as
-/// it is within reach; notes once the people hold twenty coin and a partner
-/// trades with us; fiat when the gates pass and inflation is under five
-/// percent; digital when it can. WHICH GOOD the civ prices in is a separate
-/// decision taken by aiChooseMoneyGood: the stage says what KIND of money this
-/// is, the money good says what the money IS.
+/// The regime decision, through the one request, and only for a reason:
+/// monetaryAdvice says which rung pays and why, the transition table and the
+/// request say whether the civ may. Before this the AI asked the turn it was
+/// allowed, so commodity money lasted one or two turns on both measured
+/// seeds. WHICH GOOD the civ prices in is aiChooseMoneyGood's decision, taken
+/// first: the stage says what KIND of money this is, the money good says what
+/// the money IS.
 void aiChooseMonetaryRegime(aoc::game::GameState& gameState, PlayerId player) {
     const aoc::game::Player* p = gameState.player(player);
     if (p == nullptr) { return; }
     const MonetaryStateComponent& state = p->monetary();
-    switch (state.system) {
-        case MonetarySystemType::Barter:
-            if (coinageWithinReach(gameState, player)) {
-                (void)requestSetMonetaryRegime(gameState, player, MonetarySystemType::CommodityMoney);
-            }
-            break;
-        case MonetarySystemType::CommodityMoney:
-            if (state.privateSpecie >= 20 && livePartnerCount(gameState, player) >= 1) {
-                (void)requestSetMonetaryRegime(gameState, player, MonetarySystemType::GoldStandard);
-            }
-            break;
-        case MonetarySystemType::GoldStandard:
-            if (state.inflationRate < 0.05f) {
-                (void)requestSetMonetaryRegime(gameState, player, MonetarySystemType::FiatMoney);
-            }
-            break;
-        case MonetarySystemType::FiatMoney:
-            (void)requestSetMonetaryRegime(gameState, player, MonetarySystemType::Digital);
-            break;
-        default:
-            break;
+    MotiveInputs in;
+    in.shortfallTurns = p->shortfallTurns();
+    in.hasComputers   = p->hasResearched(TechId{16});
+    if (state.moneyGood != NO_MONEY_GOOD) {
+        in.industrialDrawOfMoneyGood = industrialDrawFor(gameState, player, state.moneyGood);
+    }
+    const std::optional<MonetaryAdvice> advice = monetaryAdvice(state, in);
+    if (!advice.has_value()) {
+        return;
+    }
+    if (requestSetMonetaryRegime(gameState, player, advice->target) == ErrorCode::Ok) {
+        LOG_INFO("Player %u adopted %.*s because %.*s", static_cast<unsigned>(player),
+                 static_cast<int>(monetarySystemName(advice->target).size()),
+                 monetarySystemName(advice->target).data(),
+                 static_cast<int>(advice->reason.size()), advice->reason.data());
     }
 }
 
@@ -306,8 +301,8 @@ void aiEconomicStrategy(aoc::game::GameState& gameState,
     aiManageInfrastructure(gameState, grid, player);
     aiCrisisResponse(gameState, player);
     aiPrepareIndustrialRevolution(gameState, market, player);
-    aiChooseMonetaryRegime(gameState, player);
     aiChooseMoneyGood(gameState, market, &diplomacy, player);
+    aiChooseMonetaryRegime(gameState, player); // after the good, so the elect turn can adopt
 }
 
 } // namespace aoc::sim

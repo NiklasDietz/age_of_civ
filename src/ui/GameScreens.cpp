@@ -2109,6 +2109,25 @@ void EconomyScreen::open(UIManager& ui) {
                                 std::to_string(static_cast<int>(monetary->goldBackingRatio * 100.0f)) + "%";
             (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 16.0f},
                                  LabelData{std::move(pools), tokens::TEXT_HEADER, 11.0f});
+            // The same reason the AI acts on, as a hint: why the next rung
+            // would pay, if it would. Whether it MAY is the button's answer.
+            {
+                aoc::sim::MotiveInputs in;
+                in.shortfallTurns = owningPlayer->shortfallTurns();
+                in.hasComputers   = owningPlayer->hasResearched(aoc::TechId{16});
+                if (monetary->moneyGood != aoc::sim::NO_MONEY_GOOD) {
+                    in.industrialDrawOfMoneyGood =
+                        aoc::sim::industrialDrawFor(*gsPtr, player, monetary->moneyGood);
+                }
+                const std::optional<aoc::sim::MonetaryAdvice> advice =
+                    aoc::sim::monetaryAdvice(*monetary, in);
+                std::string hint = advice.has_value()
+                                       ? "Why move: " + std::string(advice->reason)
+                                       : "Why move: no reason yet (shortfall streak " +
+                                             std::to_string(owningPlayer->shortfallTurns()) + ")";
+                (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 16.0f},
+                                     LabelData{std::move(hint), tokens::TEXT_HEADER, 11.0f});
+            }
             const uint8_t nextOrd = static_cast<uint8_t>(monetary->system) + 1u;
             if (nextOrd < static_cast<uint8_t>(aoc::sim::MonetarySystemType::Count)) {
                 const aoc::sim::MonetarySystemType next =

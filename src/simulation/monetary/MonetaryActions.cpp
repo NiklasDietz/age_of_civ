@@ -289,6 +289,55 @@ void aiChooseMoneyGood(aoc::game::GameState& gameState, const Market& market,
     static_cast<void>(requestSetMoneyGood(gameState, player, static_cast<uint8_t>(bestGood)));
 }
 
+void tickTradeShortfall(aoc::game::Player& player) {
+    const CurrencyAmount settled   = std::max<CurrencyAmount>(0, player.tradeSettledLastTurn());
+    const CurrencyAmount unsettled = std::max<CurrencyAmount>(0, player.tradeUnsettledLastTurn());
+    const CurrencyAmount total     = settled + unsettled;
+    if (total > 0) {
+        const bool shortfall = unsettled * 100 >= total * SHORTFALL_RATIO_PCT;
+        player.setShortfallTurns(shortfall ? player.shortfallTurns() + 1 : 0);
+    }
+    player.clearTradeSettlement();
+}
+
+std::optional<MonetaryAdvice> monetaryAdvice(const MonetaryStateComponent& state,
+                                             const MotiveInputs& in) {
+    using T = MonetarySystemType;
+    switch (state.system) {
+    case T::Barter:
+        if (state.moneyGood != NO_MONEY_GOOD) {
+            return MonetaryAdvice{T::CommodityMoney, "the people already price in a good"};
+        }
+        return std::nullopt;
+    case T::CommodityMoney:
+        if (in.shortfallTurns >= NOTES_MOTIVE_TURNS) {
+            return MonetaryAdvice{T::GoldStandard, "coin cannot carry our trade"};
+        }
+        if (in.industrialDrawOfMoneyGood > 0) {
+            return MonetaryAdvice{T::GoldStandard, "industry competes for the metal"};
+        }
+        return std::nullopt;
+    case T::GoldStandard:
+        if (state.reserveStressTurns >= FIAT_MOTIVE_STRESS_TURNS) {
+            return MonetaryAdvice{T::FiatMoney, "the specie drain"};
+        }
+        if (in.industrialDrawOfMoneyGood > 0) {
+            return MonetaryAdvice{T::FiatMoney, "industry wants the metal"};
+        }
+        if (in.shortfallTurns >= NOTES_MOTIVE_TURNS) {
+            return MonetaryAdvice{T::FiatMoney, "notes cannot carry our trade"};
+        }
+        return std::nullopt;
+    case T::FiatMoney:
+        if (in.hasComputers && state.turnsInCurrentSystem >= DIGITAL_MOTIVE_TURNS) {
+            return MonetaryAdvice{T::Digital, "settlement can be electronic"};
+        }
+        return std::nullopt;
+    default:
+        return std::nullopt;
+    }
+}
+
 /// Systems with a central bank able to set a policy rate. Commodity coinage
 /// has no such institution, and Barter has no money to price.
 [[nodiscard]] bool hasCentralBank(MonetarySystemType s) {

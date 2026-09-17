@@ -1153,6 +1153,7 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
         if (p != nullptr) {
             p->setTariffsLastTurn(0);
+            tickTradeShortfall(*p); // last turn's settlement into the streak, then cleared
         }
     }
 
@@ -1570,6 +1571,9 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                         owedInGoods          = goldEarned - paid;
                         trader.carriedMedium = 0;
                     }
+                    // What the buyer's money could and could not carry, for
+                    // the regime rule's shortfall streak.
+                    buyerPlayer->addTradeSettlement(goldEarned - owedInGoods, owedInGoods);
                     if (trader.owner >= aoc::sim::CITY_STATE_PLAYER_BASE) {
                         bookExternal(*buyerPlayer, -paid); // a city-state's trader carries it out of the world
                     }

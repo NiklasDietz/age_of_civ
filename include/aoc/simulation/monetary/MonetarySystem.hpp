@@ -207,24 +207,28 @@ struct MonetaryTransitionReq {
 ///   Path B (early/Song): Printing tech + 3 trade partners + low inflation
 /// Both require 5+ turns in Gold Standard for stability track record.
 inline constexpr std::array<MonetaryTransitionReq, 4> MONETARY_TRANSITIONS = {{
-    // Barter -> Commodity Money: need any coins worth >= 3 currency units
-    // A state that adopts coinage starts paying its upkeep in coin, so it
-    // needs a stock that can carry it: three coppers (the old gate) left a
-    // civ in arrears for the whole game once money was conserved. 100 face
-    // is a few turns of a fed Mint.
-    {MonetarySystemType::CommodityMoney, TechId{}, 100, 1, 0, 0, 1.0f},
-    // Commodity -> Gold Standard: need banking tech, moderate reserves, 2 cities.
-    // 20 copper coins (strength 20) or 4 silver coins is achievable before
-    // copper ore depletes (~80 turns of mining at 1 ore/turn).
-    {MonetarySystemType::GoldStandard, TechId{9}, 20, 2, 0, 0, 1.0f},
+    // Barter -> Commodity Money. A state that adopts coinage starts paying
+    // its upkeep in coin, so it needs a stock that can carry the first bills:
+    // three coppers (the oldest gate) left a civ in arrears for the whole game
+    // once money was conserved. 100 was set when specie arrived only from
+    // outside; now coin is struck in trade (coinToPay) the floor only has to
+    // bridge to the first sales. Revert to 100 if a civ's first twenty
+    // commodity turns show five consecutive turns of arrears.
+    {MonetarySystemType::CommodityMoney, TechId{}, 60, 1, 0, 0, 1.0f},
+    // Commodity -> Gold Standard: Banking, a reserve worth backing notes with,
+    // two cities, and a coin era to economise on. The row used to ask for 20
+    // against coinage's 100, so the ladder was inverted and every measured civ
+    // passed through commodity money in one or two turns. Thirty turns is the
+    // dwell; the reason to move at all is monetaryAdvice's.
+    {MonetarySystemType::GoldStandard, TechId{9}, 150, 2, 30, 0, 1.0f},
     // Gold Standard -> Fiat: Banking (TechId{9}). Printing is TechId{55} and
     // Economics TechId{13}; neither is checked by this row.
-    // Lowered currency strength requirement. Needs 2 live trade partners (the
-    // trade volume that makes metal coins impractical, like Song Dynasty
-    // Sichuan; the threshold was 3, which seed-42 maps fence most land off
-    // from). Inflation under 5%: must demonstrate monetary discipline first.
+    // Needs 2 live trade partners (the trade volume that makes metal coins
+    // impractical, like Song Dynasty Sichuan; the threshold was 3, which
+    // seed-42 maps fence most land off from). Inflation under 5%: must
+    // demonstrate monetary discipline first, over thirty turns of notes.
     // requestSetMonetaryRegime adds Printing or Economics on top of Banking.
-    {MonetarySystemType::FiatMoney, TechId{9}, 75, 2, 5, 2, 0.05f},
+    {MonetarySystemType::FiatMoney, TechId{9}, 75, 2, 30, 2, 0.05f},
     // Fiat -> Digital: late-game electronic settlement. Needs sustained
     // stability. "Computers" (TechId{16}) gates access; low inflation and a
     // mature economy are required.

@@ -40,15 +40,16 @@ constexpr aoc::TechId BANKING{9};
 constexpr aoc::TechId ECONOMICS{13};
 constexpr aoc::TechId PRINTING{55};
 
-/// A Barter civ ready for coinage: 120 bullion in hand (meets the strength
-/// threshold) and the canTransition table satisfied.
+/// A Barter civ ready for coinage: 200 bullion in hand (meets the coinage
+/// floor of 60 and, once coin, the Gold Standard's 150) and the
+/// canTransition table satisfied.
 struct Ready {
     aoc::test::World w   = aoc::test::makeWorld(2);
     aoc::game::Player& p = *w.gameState.player(P0);
     Ready() {
         aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
         aoc::test::addCityAt(w, P1, 14, 8, "Beta");
-        p.monetary().bullion = 120;
+        p.monetary().bullion = 200;
     }
     [[nodiscard]] ErrorCode adopt(MonetarySystemType target) {
         return aoc::sim::requestSetMonetaryRegime(w.gameState, P0, target);
@@ -71,7 +72,7 @@ TEST_CASE("adopting coinage turns the bullion into the people's coin") {
     REQUIRE(r.adopt(MonetarySystemType::CommodityMoney) == ErrorCode::Ok);
     CHECK(r.p.monetary().system == MonetarySystemType::CommodityMoney);
     CHECK(r.p.monetary().bullion == 0);
-    CHECK(r.p.monetary().privateSpecie == 120);
+    CHECK(r.p.monetary().privateSpecie == 200);
     CHECK(r.p.monetary().turnsInCurrentSystem == 0);
     CHECK_FALSE(aoc::sim::coinageWithinReach(r.w.gameState, P0)); // done
 }
@@ -106,24 +107,29 @@ TEST_CASE("the Gold Standard needs Banking; Fiat needs a press or the theory, pa
     Ready r;
     REQUIRE(r.adopt(MonetarySystemType::CommodityMoney) == ErrorCode::Ok);
     aoc::test::addCityAt(r.w, P0, 9, 5, "Gamma"); // the table wants two cities
+    r.p.monetary().turnsInCurrentSystem = 30;     // and a coin era behind it
     CHECK(r.adopt(MonetarySystemType::GoldStandard) ==
           ErrorCode::InvalidMonetaryTransition); // no Banking
     r.p.tech().completedTechs[BANKING.value] = true;
+    r.p.monetary().turnsInCurrentSystem      = 29;
+    CHECK(r.adopt(MonetarySystemType::GoldStandard) ==
+          ErrorCode::InvalidMonetaryTransition); // one turn short of the dwell
+    r.p.monetary().turnsInCurrentSystem = 30;
     aoc::sim::MoneyLedger ledger;
     r.p.setMoneyLedger(&ledger);
     const int64_t worldBefore = aoc::sim::worldMoney(r.w.gameState);
     REQUIRE(r.adopt(MonetarySystemType::GoldStandard) == ErrorCode::Ok);
     CHECK(r.p.monetary().system == MonetarySystemType::GoldStandard);
     // Notes issued one for one against the people's coin, booked as printed.
-    CHECK(r.p.monetary().privateNotes == 120);
-    CHECK(r.p.monetary().privateSpecie == 120);
-    CHECK(ledger.civs[0].printed == 120);
+    CHECK(r.p.monetary().privateNotes == 200);
+    CHECK(r.p.monetary().privateSpecie == 200);
+    CHECK(ledger.civs[0].printed == 200);
     CHECK(r.p.monetary().goldBackingRatio == doctest::Approx(1.0f));
-    CHECK(r.p.monetary().moneySupply == 240);
+    CHECK(r.p.monetary().moneySupply == 400);
     CHECK(aoc::sim::moneyConserved(worldBefore, aoc::sim::worldMoney(r.w.gameState), ledger));
 
-    // Fiat: the row wants 75 face, 5 turns in, 2 partners, inflation under 5%.
-    r.p.monetary().turnsInCurrentSystem = 5;
+    // Fiat: the row wants 75 face, 30 turns in, 2 partners, inflation under 5%.
+    r.p.monetary().turnsInCurrentSystem = 30;
     r.p.monetary().inflationRate        = 0.0f;
     const aoc::sim::MonetaryStateComponent before = r.snapshot();
     CHECK(r.adopt(MonetarySystemType::FiatMoney) ==
@@ -174,7 +180,7 @@ TEST_CASE("with three civs, two live partners and Economics, Fiat is adopted, an
     p.monetary().system               = MonetarySystemType::GoldStandard;
     p.monetary().privateSpecie        = 4;
     p.monetary().moneySupply          = 400;
-    p.monetary().turnsInCurrentSystem = 5;
+    p.monetary().turnsInCurrentSystem = 30;
     p.monetary().inflationRate        = 0.01f;
     p.monetary().gdp                  = 1000;
     p.tech().completedTechs[BANKING.value]   = true;
@@ -202,7 +208,7 @@ TEST_CASE("the poorest civ may still issue fiat; whether it is accepted is anoth
     p.monetary().system               = MonetarySystemType::GoldStandard;
     p.monetary().privateSpecie        = 4;
     p.monetary().moneySupply          = 400;
-    p.monetary().turnsInCurrentSystem = 5;
+    p.monetary().turnsInCurrentSystem = 30;
     p.monetary().inflationRate        = 0.01f;
     p.tech().completedTechs[BANKING.value]   = true;
     p.tech().completedTechs[ECONOMICS.value] = true;
@@ -293,4 +299,87 @@ TEST_CASE("nothing but the request and the crisis suspension changes the regime"
         }
     }
     CHECK(writers == 2);
+}
+
+TEST_CASE("the regime rule says why a civ would climb, one disjunct at a time, at its boundary") {
+    using aoc::sim::MotiveInputs;
+    aoc::sim::MonetaryStateComponent m;
+    MotiveInputs in;
+
+    SUBCASE("barter: a money good is the whole reason") {
+        m.system = MonetarySystemType::Barter;
+        CHECK_FALSE(aoc::sim::monetaryAdvice(m, in).has_value());
+        m.moneyGood = 11;
+        const auto advice = aoc::sim::monetaryAdvice(m, in);
+        REQUIRE(advice.has_value());
+        CHECK(advice->target == MonetarySystemType::CommodityMoney);
+    }
+    SUBCASE("coin: the shortfall streak or industry") {
+        m.system          = MonetarySystemType::CommodityMoney;
+        in.shortfallTurns = aoc::sim::NOTES_MOTIVE_TURNS - 1;
+        CHECK_FALSE(aoc::sim::monetaryAdvice(m, in).has_value());
+        in.shortfallTurns = aoc::sim::NOTES_MOTIVE_TURNS;
+        auto advice       = aoc::sim::monetaryAdvice(m, in);
+        REQUIRE(advice.has_value());
+        CHECK(advice->target == MonetarySystemType::GoldStandard);
+        CHECK(advice->reason == "coin cannot carry our trade");
+        in.shortfallTurns            = 0;
+        in.industrialDrawOfMoneyGood = 1;
+        advice                       = aoc::sim::monetaryAdvice(m, in);
+        REQUIRE(advice.has_value());
+        CHECK(advice->reason == "industry competes for the metal");
+    }
+    SUBCASE("notes: the drain, industry, or the streak, in that order") {
+        m.system             = MonetarySystemType::GoldStandard;
+        m.reserveStressTurns = aoc::sim::FIAT_MOTIVE_STRESS_TURNS - 1;
+        CHECK_FALSE(aoc::sim::monetaryAdvice(m, in).has_value());
+        m.reserveStressTurns = aoc::sim::FIAT_MOTIVE_STRESS_TURNS;
+        auto advice          = aoc::sim::monetaryAdvice(m, in);
+        REQUIRE(advice.has_value());
+        CHECK(advice->target == MonetarySystemType::FiatMoney);
+        CHECK(advice->reason == "the specie drain");
+        m.reserveStressTurns         = 0;
+        in.industrialDrawOfMoneyGood = 1;
+        REQUIRE(aoc::sim::monetaryAdvice(m, in).has_value());
+        CHECK(aoc::sim::monetaryAdvice(m, in)->reason == "industry wants the metal");
+        in.industrialDrawOfMoneyGood = 0;
+        in.shortfallTurns            = aoc::sim::NOTES_MOTIVE_TURNS;
+        REQUIRE(aoc::sim::monetaryAdvice(m, in).has_value());
+        CHECK(aoc::sim::monetaryAdvice(m, in)->reason == "notes cannot carry our trade");
+    }
+    SUBCASE("paper: computers and an aged note") {
+        m.system               = MonetarySystemType::FiatMoney;
+        m.turnsInCurrentSystem = aoc::sim::DIGITAL_MOTIVE_TURNS;
+        CHECK_FALSE(aoc::sim::monetaryAdvice(m, in).has_value()); // no Computers
+        in.hasComputers        = true;
+        m.turnsInCurrentSystem = aoc::sim::DIGITAL_MOTIVE_TURNS - 1;
+        CHECK_FALSE(aoc::sim::monetaryAdvice(m, in).has_value());
+        m.turnsInCurrentSystem = aoc::sim::DIGITAL_MOTIVE_TURNS;
+        REQUIRE(aoc::sim::monetaryAdvice(m, in).has_value());
+        CHECK(aoc::sim::monetaryAdvice(m, in)->target == MonetarySystemType::Digital);
+        m.system = MonetarySystemType::Digital;
+        CHECK_FALSE(aoc::sim::monetaryAdvice(m, in).has_value());
+    }
+}
+
+TEST_CASE("the shortfall streak counts trading turns short by a quarter, and quiet turns leave it be") {
+    aoc::test::World w   = aoc::test::makeWorld(1);
+    aoc::game::Player& p = *w.gameState.player(P0);
+    // 25 of 100 fell to goods: exactly the ratio, so it counts.
+    p.addTradeSettlement(75, 25);
+    aoc::sim::tickTradeShortfall(p);
+    CHECK(p.shortfallTurns() == 1);
+    CHECK(p.tradeSettledLastTurn() == 0); // cleared for the next turn
+    // 24 of 100: settled well enough, the streak breaks.
+    p.addTradeSettlement(76, 24);
+    aoc::sim::tickTradeShortfall(p);
+    CHECK(p.shortfallTurns() == 0);
+    // Two short turns, then a turn with no purchases at all: held, not broken.
+    p.addTradeSettlement(0, 50);
+    aoc::sim::tickTradeShortfall(p);
+    p.addTradeSettlement(10, 90);
+    aoc::sim::tickTradeShortfall(p);
+    CHECK(p.shortfallTurns() == 2);
+    aoc::sim::tickTradeShortfall(p);
+    CHECK(p.shortfallTurns() == 2);
 }
