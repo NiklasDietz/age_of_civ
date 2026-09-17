@@ -21,6 +21,7 @@
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/monetary/MonetaryActions.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
@@ -313,4 +314,40 @@ TEST_CASE("a civ on paper elects nothing: the note is already the money") {
 
     aoc::sim::aiChooseMoneyGood(w.gameState, market, nullptr, P0);
     CHECK(p.monetary().moneyGood == NO_MONEY_GOOD);
+}
+
+TEST_CASE("late industry wants the money metals: the Phase E recipes exist and are tech-gated") {
+    using aoc::sim::goods::GOLD_ORE;
+    constexpr aoc::TechId ELECTRICITY{14};
+    constexpr aoc::TechId CHEMISTRY{65};
+    bool goldRoute = false;
+    bool silverRoute = false;
+    for (const aoc::sim::ProductionRecipe& r : aoc::sim::allRecipes()) {
+        for (const aoc::sim::RecipeInput& in : r.inputs) {
+            if (in.goodId == GOLD_ORE && in.consumed && r.requiredTech == ELECTRICITY &&
+                r.requiredBuilding == aoc::BuildingId{4}) {
+                goldRoute = true;
+            }
+            if (in.goodId == SILVER_ORE && in.consumed && r.requiredTech == CHEMISTRY &&
+                r.requiredBuilding == aoc::BuildingId{3}) {
+                silverRoute = true;
+            }
+        }
+    }
+    CHECK(goldRoute);
+    CHECK(silverRoute);
+
+    // A civ with Electricity and an Electronics Plant now has a draw on gold;
+    // without the tech, or without the plant, it has none.
+    aoc::test::World w   = aoc::test::makeWorld(2);
+    aoc::game::Player& p = *w.gameState.player(P0);
+    aoc::game::City& a   = aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
+    CHECK(aoc::sim::industrialDrawFor(w.gameState, P0, GOLD_ORE) == 0);
+    a.districts().districts.push_back(
+        {aoc::sim::DistrictType::Industrial, a.location(), {aoc::BuildingId{4}}});
+    CHECK(aoc::sim::industrialDrawFor(w.gameState, P0, GOLD_ORE) == 0); // no Electricity
+    p.tech().completedTechs[ELECTRICITY.value] = true;
+    CHECK(aoc::sim::industrialDrawFor(w.gameState, P0, GOLD_ORE) == 1);
+    // Ivory has no late route, so the same civ draws none of it.
+    CHECK(aoc::sim::industrialDrawFor(w.gameState, P0, aoc::sim::goods::IVORY) == 0);
 }

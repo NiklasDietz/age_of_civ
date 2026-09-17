@@ -907,11 +907,35 @@ std::vector<ProductionRecipe> buildRecipes() {
                        false}); // Irrigation Works, Textiles
 
     // ================================================================
-    // WP-C2 cut: GOLD_CONTACTS chain deprecated. Recipes 48/49 removed —
-    // Gold ore no longer bottlenecks electronics. Premium microchip tier
-    // can be reintroduced later keyed off an active good (e.g. LITHIUM or
-    // PHARMACEUTICALS) rather than a dead-end intermediate.
+    // Late industry wants the money metals (Mengerian plan, Phase E). Gold
+    // ore's only consumer was a jewellery recipe and silver ore had none, so
+    // a people that priced in either could hold it for ever at no cost. These
+    // two give the metals a Modern-era use: a second, richer electronics
+    // route and photographic film. Neither is a bottleneck, since the plain
+    // electronics recipe and the other consumer-goods routes still run; what
+    // they add is a reason for a coining civ to want its metal back, which is
+    // what pushes it toward paper. The WP-C2 GOLD_CONTACTS chain (recipes
+    // 48/49) stays gone: its output good is remapped on load.
     // ================================================================
+    recipes.push_back({84,
+                       "Gold-Contact Electronics",
+                       {{goods::COPPER_WIRE, 2}, {goods::GOLD_ORE, 1}},
+                       goods::ELECTRONICS,
+                       2,
+                       BuildingId{4},
+                       1,
+                       2,
+                       TechId{14}}); // Electronics Plant, Electricity
+
+    recipes.push_back({85,
+                       "Photographic Film",
+                       {{goods::SILVER_ORE, 1}, {goods::PLASTICS, 1}},
+                       goods::CONSUMER_GOODS,
+                       3,
+                       BuildingId{3},
+                       1,
+                       1,
+                       TechId{65}}); // Factory, Chemistry
 
     // ================================================================
     // Worker slots: advanced recipes need more educated workers per batch.
