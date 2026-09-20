@@ -2,16 +2,11 @@
 
 /**
  * @file AudioBackend.hpp
- * @brief Audio playback backend using miniaudio.
+ * @brief Audio playback interface; no backend is wired up.
  *
- * Integration point for the miniaudio single-header library.
- * To enable audio:
- *   1. Download miniaudio.h from https://github.com/mackron/miniaudio
- *   2. Place it in third_party/miniaudio.h
- *   3. Define AOC_AUDIO_ENABLED in CMakeLists.txt
- *
- * When AOC_AUDIO_ENABLED is not defined, all functions are no-ops
- * (the game runs silently, same as current behavior).
+ * Every function is a silent no-op and initialize() returns false: no backend
+ * is integrated. Wiring one up means vendoring miniaudio, writing the bodies in
+ * AudioBackend.cpp, and defining AOC_AUDIO_ENABLED; the macro alone does nothing.
  *
  * Audio assets should be placed in assets/audio/:
  *   assets/audio/music/     -- Background music tracks (WAV/MP3/OGG)
