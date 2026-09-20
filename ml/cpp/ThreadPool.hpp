@@ -17,6 +17,7 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <queue>
 #include <thread>
 #include <type_traits>
@@ -68,7 +69,9 @@ public:
         {
             std::lock_guard<std::mutex> lock(this->mu_);
             if (this->stopping_) {
-                throw std::runtime_error("ThreadPool: submit on stopping pool");
+                throw std::runtime_error("ThreadPool: submit on stopping pool [" +
+                                         std::string(__FILE__) + ":" +
+                                         std::to_string(__LINE__) + "]");
             }
             this->tasks_.emplace([taskPtr] { (*taskPtr)(); });
         }
