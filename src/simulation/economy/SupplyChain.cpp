@@ -14,16 +14,16 @@
 
 namespace aoc::sim {
 
-void updateSupplyChainHealth(aoc::game::GameState& gameState, PlayerId player) {
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+void updateSupplyChainHealth(aoc::game::GameState& gameState, PlayerId playerId) {
+    aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return;
     }
 
-    PlayerSupplyChainComponent& chain = playerObj->supplyChain();
+    PlayerSupplyChainComponent& chain = player->supplyChain();
 
     std::array<int32_t, CRITICAL_GOOD_COUNT> totalStockpile = {};
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
         if (cityPtr == nullptr) { continue; }
         const CityStockpileComponent& stockpile = cityPtr->stockpile();
         for (int32_t g = 0; g < CRITICAL_GOOD_COUNT; ++g) {

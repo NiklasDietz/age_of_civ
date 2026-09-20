@@ -27,17 +27,17 @@
 
 namespace aoc::map::gen {
 
-void runPostSimPasses(MapGenContext& ctx) {
-    HexGrid& grid                        = *ctx.grid;
-    const int32_t width                  = ctx.width;
-    const int32_t height                 = ctx.height;
-    const bool cylSim                    = ctx.cylindrical;
-    std::vector<float>& elevationMap     = *ctx.elevationMap;
-    std::vector<float>& orogeny          = *ctx.orogeny;
-    std::vector<float>& sediment         = *ctx.sediment;
-    std::vector<float>& crustAgeTile     = *ctx.crustAgeTile;
-    std::vector<uint8_t>& marginTypeTile = *ctx.marginTypeTile;
-    std::vector<uint8_t>& ophioliteMask  = *ctx.ophioliteMask;
+void runPostSimPasses(MapGenContext& context) {
+    HexGrid& grid                        = *context.grid;
+    const int32_t width                  = context.width;
+    const int32_t height                 = context.height;
+    const bool cylSim                    = context.cylindrical;
+    std::vector<float>& elevationMap     = *context.elevationMap;
+    std::vector<float>& orogeny          = *context.orogeny;
+    std::vector<float>& sediment         = *context.sediment;
+    std::vector<float>& crustAgeTile     = *context.crustAgeTile;
+    std::vector<uint8_t>& marginTypeTile = *context.marginTypeTile;
+    std::vector<uint8_t>& ophioliteMask  = *context.ophioliteMask;
 
     auto neighbourIdx = [&](int32_t col, int32_t row, int32_t dir, int32_t& outIdx) {
         return hexNeighbor(width, height, cylSim, col, row, dir, outIdx);

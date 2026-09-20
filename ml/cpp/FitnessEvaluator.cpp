@@ -329,24 +329,24 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
     aoc::sim::placeGoodyHuts(goodyHuts, grid, startPositions, rng);
 
     // Build TurnContext
-    aoc::sim::TurnContext turnCtx{};
-    turnCtx.grid = &grid;
-    turnCtx.economy = &economy;
-    turnCtx.diplomacy = &diplomacy;
-    turnCtx.barbarians = &barbarians;
-    turnCtx.rng = &rng;
-    turnCtx.gameState = &gameState;
+    aoc::sim::TurnContext turnContext{};
+    turnContext.grid = &grid;
+    turnContext.economy = &economy;
+    turnContext.diplomacy = &diplomacy;
+    turnContext.barbarians = &barbarians;
+    turnContext.rng = &rng;
+    turnContext.gameState = &gameState;
     for (aoc::sim::ai::AIController& ai : aiControllers) {
-        turnCtx.aiControllers.push_back(&ai);
-        turnCtx.allPlayers.push_back(ai.player());
+        turnContext.aiControllers.push_back(&ai);
+        turnContext.allPlayers.push_back(ai.player());
     }
-    turnCtx.humanPlayer = aoc::INVALID_PLAYER;
-    turnCtx.currentTurn = 0;
-    turnCtx.maxTurns = static_cast<aoc::TurnNumber>(turns);
-    turnCtx.victoryTypeMask = aoc::sim::VICTORY_MASK_ALL;
+    turnContext.humanPlayer = aoc::INVALID_PLAYER;
+    turnContext.currentTurn = 0;
+    turnContext.maxTurns = static_cast<aoc::TurnNumber>(turns);
+    turnContext.victoryTypeMask = aoc::sim::VICTORY_MASK_ALL;
 
     aoc::sim::TurnEventLog eventLog;
-    turnCtx.eventLog = &eventLog;
+    turnContext.eventLog = &eventLog;
 
     // Main simulation loop (no CSV, no progress bar)
     for (int32_t turn = 1; turn <= turns; ++turn) {
@@ -357,10 +357,10 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
             return result;
         }
 
-        turnCtx.currentTurn = static_cast<aoc::TurnNumber>(turn);
+        turnContext.currentTurn = static_cast<aoc::TurnNumber>(turn);
         eventLog.clear();
 
-        aoc::sim::processTurn(turnCtx);
+        aoc::sim::processTurn(turnContext);
 
         // Track peak city count (survival metric)
         for (int32_t p = 0; p < playerCount; ++p) {
@@ -437,7 +437,7 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
         }
 
         // Check victory: read cached result from processTurn.
-        const aoc::sim::VictoryResult& vr = turnCtx.lastVictoryResult;
+        const aoc::sim::VictoryResult& vr = turnContext.lastVictoryResult;
         if (vr.type != aoc::sim::VictoryType::None) {
             result.victoryType = vr.type;
             result.winner      = vr.winner;

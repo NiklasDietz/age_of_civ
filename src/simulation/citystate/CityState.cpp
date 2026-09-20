@@ -110,9 +110,9 @@ void spawnCityStates(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
         // Create the city-state's city via the player object model.
         // City-state players are allocated in the player list by the caller;
         // if that player slot exists we use it, otherwise we skip city creation.
-        aoc::game::Player* csPlayerObj = gameState.player(csPlayer);
-        if (csPlayerObj != nullptr) {
-            aoc::game::City& csCity = csPlayerObj->addCity(bestPos, std::string(csDef.name));
+        aoc::game::Player* cityStatePlayer = gameState.player(csPlayer);
+        if (cityStatePlayer != nullptr) {
+            aoc::game::City& csCity = cityStatePlayer->addCity(bestPos, std::string(csDef.name));
             csCity.setPopulation(3);
 
             // Seed city-center district.
@@ -132,7 +132,7 @@ void spawnCityStates(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                     break;
                 }
             }
-            csPlayerObj->addUnit(UnitTypeId{0}, warriorPos);
+            cityStatePlayer->addUnit(UnitTypeId{0}, warriorPos);
         }
 
         occupiedPositions.push_back(bestPos);

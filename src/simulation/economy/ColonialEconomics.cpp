@@ -88,11 +88,11 @@ void processEconomicZones(aoc::game::GameState& gameState,
         EconomicZone& zone = *it;
         ++zone.turnsActive;
 
-        aoc::game::Player* hostPlayerObj = gameState.player(zone.host);
-        if (hostPlayerObj == nullptr) { it = tracker.zones.erase(it); continue; }
+        aoc::game::Player* hostPlayer = gameState.player(zone.host);
+        if (hostPlayer == nullptr) { it = tracker.zones.erase(it); continue; }
 
-        aoc::game::City* hostCityObj = hostPlayerObj->cityAt(zone.hostCityLocation);
-        if (hostCityObj == nullptr) {
+        aoc::game::City* hostCity = hostPlayer->cityAt(zone.hostCityLocation);
+        if (hostCity == nullptr) {
             // Host city was captured or destroyed. The zone's invariant
             // (zone exists iff host city exists under host player) is
             // broken; erase rather than leaving an orphan that accumulates
@@ -104,7 +104,7 @@ void processEconomicZones(aoc::game::GameState& gameState,
             continue;
         }
 
-        CityStockpileComponent& hostStockpile = hostCityObj->stockpile();
+        CityStockpileComponent& hostStockpile = hostCity->stockpile();
 
         CurrencyAmount totalExtractedValue = 0;
         for (std::pair<const uint16_t, int32_t>& entry : hostStockpile.goods) {
@@ -145,12 +145,12 @@ void processEconomicZones(aoc::game::GameState& gameState,
                     : 0;
             if (paid > 0) {
                 colonizer->addGold(-paid, aoc::sim::MoneyFlow::transfer(zone.host));
-                hostPlayerObj->addGold(paid, aoc::sim::MoneyFlow::transfer(zone.colonizer));
+                hostPlayer->addGold(paid, aoc::sim::MoneyFlow::transfer(zone.colonizer));
             }
         }
 
         // Reduce host city loyalty
-        CityLoyaltyComponent& loyalty = hostCityObj->loyalty();
+        CityLoyaltyComponent& loyalty = hostCity->loyalty();
         loyalty.loyalty -= ZONE_LOYALTY_PENALTY;
         loyalty.loyalty  = std::max(0.0f, loyalty.loyalty);
 

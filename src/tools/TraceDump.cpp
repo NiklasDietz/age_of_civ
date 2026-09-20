@@ -41,8 +41,8 @@ struct Ctx {
 }
 
 void writeProduction(void* raw, const aoc::core::ProductionRecord& r) {
-    auto* ctx = static_cast<Ctx*>(raw);
-    std::ofstream& o = *ctx->prod;
+    auto* context = static_cast<Ctx*>(raw);
+    std::ofstream& o = *context->prod;
     o << r.turn << ',' << static_cast<int>(r.player) << ',' << r.cityIdx
       << ',' << aoc::core::productionItemKindName(r.chosenKind)
       << ',' << r.chosenId
@@ -61,8 +61,8 @@ void writeProduction(void* raw, const aoc::core::ProductionRecord& r) {
 }
 
 void writeResearch(void* raw, const aoc::core::ResearchRecord& r) {
-    auto* ctx = static_cast<Ctx*>(raw);
-    std::ofstream& o = *ctx->res;
+    auto* context = static_cast<Ctx*>(raw);
+    std::ofstream& o = *context->res;
     const std::string_view name = techNameSafe(r.chosenTechId);
     o << r.turn << ',' << static_cast<int>(r.player)
       << ',' << r.chosenTechId
@@ -80,8 +80,8 @@ void writeResearch(void* raw, const aoc::core::ResearchRecord& r) {
 }
 
 void writeSummary(void* raw, const aoc::core::TurnSummaryRecord& r) {
-    auto* ctx = static_cast<Ctx*>(raw);
-    std::ofstream& o = *ctx->sum;
+    auto* context = static_cast<Ctx*>(raw);
+    std::ofstream& o = *context->sum;
     const aoc::core::TurnSummary& s = r.summary;
     o << r.turn << ',' << static_cast<int>(r.player)
       << ',' << static_cast<int>(s.era)
@@ -132,13 +132,13 @@ int main(int argc, char** argv) {
     sumCsv  << "turn,player,era,cities,units,treasury,science,culture,faith,"
                "techsResearched,grievances,wars,victoryLead\n";
 
-    Ctx ctx{};
-    ctx.prod = &prodCsv;
-    ctx.res  = &resCsv;
-    ctx.sum  = &sumCsv;
+    Ctx context{};
+    context.prod = &prodCsv;
+    context.res  = &resCsv;
+    context.sum  = &sumCsv;
 
     aoc::core::DecisionLogVisitor v{};
-    v.ctx = &ctx;
+    v.context = &context;
     v.onProduction  = &writeProduction;
     v.onResearch    = &writeResearch;
     v.onTurnSummary = &writeSummary;

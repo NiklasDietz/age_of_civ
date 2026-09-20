@@ -82,14 +82,14 @@ void processOilShock(PlayerEnergyComponent& energy) {
     }
 }
 
-int32_t countRenewableBuildings(const aoc::game::GameState& gameState, PlayerId player) {
-    const aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+int32_t countRenewableBuildings(const aoc::game::GameState& gameState, PlayerId playerId) {
+    const aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return 0;
     }
 
     int32_t count = 0;
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
         if (cityPtr == nullptr) { continue; }
         for (const CityDistrictsComponent::PlacedDistrict& district : cityPtr->districts().districts) {
             for (BuildingId bid : district.buildings) {
@@ -221,10 +221,10 @@ void processElectricityAgreements(aoc::game::GameState& gameState,
     }
 }
 
-void breakElectricityAgreementsFor(aoc::game::GameState& gameState, PlayerId player) {
+void breakElectricityAgreementsFor(aoc::game::GameState& gameState, PlayerId playerId) {
     for (ElectricityAgreementComponent& a : gameState.electricityAgreements()) {
         if (!a.isActive) { continue; }
-        if (a.buyer == player || a.seller == player) {
+        if (a.buyer == playerId || a.seller == playerId) {
             a.isActive = false;
         }
     }

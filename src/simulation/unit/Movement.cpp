@@ -37,7 +37,7 @@ namespace aoc::sim {
 /**
  * @brief Check whether a unit may legally occupy a tile given stacking rules.
  *
- * Only one military unit and one civilian unit of the same player may occupy
+ * Only one military unit and one civilian unit of the same playerId may occupy
  * the same tile simultaneously. A unit that is itself already on the tile
  * does not block itself.
  */
@@ -185,7 +185,7 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
             break;
         }
 
-        // Stacking check: no two units of the same classification per player per tile
+        // Stacking check: no two units of the same classification per playerId per tile
         if (!canOccupyTile(gameState, nextTile, unit.owner(), unitIsMilitary, &unit)) {
             unit.clearPath();
             break;
@@ -232,11 +232,11 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
         // re-firing setOwner on) a city that is already ours.
         bool wallsBlockedStep = false;
         if (unitIsMilitary) {
-            for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
-                if (player->id() == unit.owner()) {
+            for (const std::unique_ptr<aoc::game::Player>& playerId : gameState.players()) {
+                if (playerId->id() == unit.owner()) {
                     continue;
                 }
-                aoc::game::City* city = player->cityAt(nextTile);
+                aoc::game::City* city = playerId->cityAt(nextTile);
                 if (city == nullptr) {
                     continue;
                 }
@@ -331,28 +331,28 @@ bool orderUnitMove(aoc::game::Unit& unit,
     return true;
 }
 
-void refreshMovement(aoc::game::GameState& gameState, PlayerId player) {
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+void refreshMovement(aoc::game::GameState& gameState, PlayerId playerId) {
+    aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return;
     }
 
-    for (const std::unique_ptr<aoc::game::Unit>& unit : playerObj->units()) {
+    for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
         unit->refreshMovement();
     }
 }
 
-void executeMovement(aoc::game::GameState& gameState, PlayerId player,
+void executeMovement(aoc::game::GameState& gameState, PlayerId playerId,
                       const aoc::map::HexGrid& grid) {
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+    aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return;
     }
 
     // Collect raw pointers first; the vector itself is not modified during iteration,
     // but clearPath / setPosition mutate the units, which is safe through raw pointers.
     std::vector<aoc::game::Unit*> pendingUnits;
-    for (const std::unique_ptr<aoc::game::Unit>& unit : playerObj->units()) {
+    for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
         if (!unit->pendingPath().empty()) {
             pendingUnits.push_back(unit.get());
         }

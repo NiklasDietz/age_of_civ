@@ -93,8 +93,8 @@ void ScoreScreen::computeScores() {
         }
     }
 
-    // Religion: count cities following each player's founded religion * 5
-    // Build a map of religion -> founder player ID
+    // Religion: count cities following each playerId's founded religion * 5
+    // Build a map of religion -> founder playerId ID
     std::array<PlayerId, aoc::sim::MAX_RELIGIONS> religionFounder;
     religionFounder.fill(INVALID_PLAYER);
 
@@ -118,7 +118,7 @@ void ScoreScreen::computeScores() {
         }
     }
 
-    // Wonders: count per player * 15
+    // Wonders: count per playerId * 15
     {
         const aoc::sim::GlobalWonderTracker& tracker = this->m_gameState->wonderTracker();
         for (uint8_t w = 0; w < aoc::sim::WONDER_COUNT; ++w) {
@@ -186,11 +186,11 @@ void ScoreScreen::open(UIManager& ui) {
         const bool isWinner  = (entry.owner == this->m_victoryResult.winner);
         const Color rowColor = isWinner ? tokens::STATE_SUCCESS : tokens::TEXT_INK;
 
-        // Resolve civ name from player's civId
+        // Resolve civ name from playerId's civId
         std::string civName;
-        const aoc::game::Player* playerObj = this->m_gameState->player(entry.owner);
-        if (playerObj != nullptr) {
-            civName = std::string(aoc::sim::civDef(playerObj->civId()).name);
+        const aoc::game::Player* player = this->m_gameState->player(entry.owner);
+        if (player != nullptr) {
+            civName = std::string(aoc::sim::civDef(player->civId()).name);
         }
         if (civName.empty()) {
             civName = "P" + std::to_string(static_cast<unsigned>(entry.owner));

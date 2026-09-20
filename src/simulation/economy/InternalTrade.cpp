@@ -1,6 +1,6 @@
 /**
  * @file InternalTrade.cpp
- * @brief Internal trade between a player's own cities.
+ * @brief Internal trade between a playerId's own cities.
  *
  * Implements surplus/deficit matching with distance-based transport losses.
  * Creates natural internal trade lanes: mining towns feed industrial cities,
@@ -97,13 +97,13 @@ int32_t cityRecipeNeedForGood(const aoc::game::City& city, uint16_t goodId) {
 
 void processInternalTrade(aoc::game::GameState& gameState,
                           const aoc::map::HexGrid& grid,
-                          PlayerId player) {
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+                          PlayerId playerId) {
+    aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return;
     }
 
-    const std::vector<std::unique_ptr<aoc::game::City>>& cities = playerObj->cities();
+    const std::vector<std::unique_ptr<aoc::game::City>>& cities = player->cities();
     if (cities.size() < 2) {
         return;
     }
@@ -186,17 +186,17 @@ void processInternalTrade(aoc::game::GameState& gameState,
 
             if (!srcStockpile.consumeGoods(goodId, transferAmount)) {
                 LOG_WARN("Internal trade: consumeGoods failed for good %u at (%d,%d) "
-                         "despite prior surplus check (player %u)",
+                         "despite prior surplus check (playerId %u)",
                          static_cast<unsigned>(goodId),
                          surplusCity.location().q, surplusCity.location().r,
-                         static_cast<unsigned>(player));
+                         static_cast<unsigned>(playerId));
                 continue;
             }
             dstStockpile.addGoods(goodId, arrivedAmount);
 
-            LOG_DEBUG("Internal trade: player %u, good %u, %d units from (%d,%d) to (%d,%d), "
+            LOG_DEBUG("Internal trade: playerId %u, good %u, %d units from (%d,%d) to (%d,%d), "
                       "%d arrived (%.0f%% efficiency)",
-                      static_cast<unsigned>(player), static_cast<unsigned>(goodId),
+                      static_cast<unsigned>(playerId), static_cast<unsigned>(goodId),
                       transferAmount,
                       surplusCity.location().q, surplusCity.location().r,
                       deficitCity.location().q, deficitCity.location().r,

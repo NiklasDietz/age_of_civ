@@ -34,7 +34,7 @@ void TooltipManager::update(float mouseX, float mouseY,
                             const aoc::map::HexGrid& grid,
                             const aoc::render::CameraController& camera,
                             const aoc::map::FogOfWar& fog,
-                            PlayerId player,
+                            PlayerId playerId,
                             uint32_t screenW, uint32_t screenH,
                             EntityId selectedEntity) {
     // Convert screen to world coordinates
@@ -64,7 +64,7 @@ void TooltipManager::update(float mouseX, float mouseY,
     }
 
     const int32_t tileIndex = grid.toIndex(hovered);
-    const aoc::map::TileVisibility vis = fog.visibility(player, tileIndex);
+    const aoc::map::TileVisibility vis = fog.visibility(playerId, tileIndex);
 
     if (vis == aoc::map::TileVisibility::Unseen) {
         this->m_visible = false;
@@ -136,8 +136,8 @@ void TooltipManager::update(float mouseX, float mouseY,
         bool resourceRevealed = true;
         if (revealTech.isValid()) {
             resourceRevealed = false;
-            const aoc::game::Player* playerObj = gameState.player(player);
-            if (playerObj != nullptr && playerObj->tech().hasResearched(revealTech)) {
+            const aoc::game::Player* player = gameState.player(playerId);
+            if (player != nullptr && player->tech().hasResearched(revealTech)) {
                 resourceRevealed = true;
             }
         }
@@ -153,7 +153,7 @@ void TooltipManager::update(float mouseX, float mouseY,
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         for (const std::unique_ptr<aoc::game::Unit>& unit : playerPtr->units()) {
             // Show own units always, enemy units only on visible tiles
-            if (unit->owner() != player && vis != aoc::map::TileVisibility::Visible) {
+            if (unit->owner() != playerId && vis != aoc::map::TileVisibility::Visible) {
                 continue;
             }
             if (unit->position() == hovered) {
@@ -175,7 +175,7 @@ void TooltipManager::update(float mouseX, float mouseY,
     // Check for city on this tile
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         for (const std::unique_ptr<aoc::game::City>& city : playerPtr->cities()) {
-            if (city->owner() != player && vis == aoc::map::TileVisibility::Unseen) {
+            if (city->owner() != playerId && vis == aoc::map::TileVisibility::Unseen) {
                 continue;
             }
             if (city->location() == hovered) {

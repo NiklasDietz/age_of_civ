@@ -15,12 +15,12 @@
 namespace aoc::sim::ai {
 
 float scoreEventChoice(const aoc::game::GameState& gameState,
-                       PlayerId player,
+                       PlayerId playerId,
                        const aoc::sim::EventChoice& choice) {
-    const aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) { return 0.0f; }
+    const aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) { return 0.0f; }
 
-    const LeaderBehavior& behavior = leaderPersonality(playerObj->civId()).behavior;
+    const LeaderBehavior& behavior = leaderPersonality(player->civId()).behavior;
 
     float score = 0.0f;
 
@@ -57,14 +57,14 @@ float scoreEventChoice(const aoc::game::GameState& gameState,
 }
 
 int32_t chooseEventChoice(const aoc::game::GameState& gameState,
-                           PlayerId player,
+                           PlayerId playerId,
                            const aoc::sim::WorldEventDef& eventDef) {
     if (eventDef.choiceCount <= 0) { return 0; }
 
     int32_t bestIdx = 0;
     float bestScore = -std::numeric_limits<float>::infinity();
     for (int32_t i = 0; i < eventDef.choiceCount; ++i) {
-        const float s = scoreEventChoice(gameState, player, eventDef.choices[i]);
+        const float s = scoreEventChoice(gameState, playerId, eventDef.choices[i]);
         if (s > bestScore) {
             bestScore = s;
             bestIdx = i;
@@ -75,22 +75,22 @@ int32_t chooseEventChoice(const aoc::game::GameState& gameState,
 
 void resolvePendingAIEvents(aoc::game::GameState& gameState) {
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        aoc::game::Player* playerObj = playerPtr.get();
-        if (playerObj == nullptr || playerObj->isHuman()) { continue; }
+        aoc::game::Player* player = playerPtr.get();
+        if (player == nullptr || player->isHuman()) { continue; }
 
-        PlayerEventComponent& events = playerObj->events();
+        PlayerEventComponent& events = player->events();
         if (events.pendingEvent == static_cast<WorldEventId>(255)) { continue; }
 
         const WorldEventDef& eventDef = worldEventDef(events.pendingEvent);
-        const int32_t choice = chooseEventChoice(gameState, playerObj->id(), eventDef);
+        const int32_t choice = chooseEventChoice(gameState, player->id(), eventDef);
         LOG_INFO("AI %u event choice: event=%u pick=%d",
-                 static_cast<unsigned>(playerObj->id()),
+                 static_cast<unsigned>(player->id()),
                  static_cast<unsigned>(events.pendingEvent),
                  choice);
-        const ErrorCode ec = resolveWorldEvent(gameState, playerObj->id(), choice);
+        const ErrorCode ec = resolveWorldEvent(gameState, player->id(), choice);
         if (ec != ErrorCode::Ok) {
             LOG_INFO("AI %u failed to resolve pending world event (code %d)",
-                     static_cast<unsigned>(playerObj->id()),
+                     static_cast<unsigned>(player->id()),
                      static_cast<int>(ec));
         }
     }

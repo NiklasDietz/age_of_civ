@@ -139,11 +139,11 @@ const WorldEventDef& worldEventDef(WorldEventId id) {
     return EVENT_DEFS[static_cast<uint8_t>(id)];
 }
 
-void checkWorldEvents(aoc::game::GameState& gameState, PlayerId player, int32_t turnNumber) {
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) { return; }
+void checkWorldEvents(aoc::game::GameState& gameState, PlayerId playerId, int32_t turnNumber) {
+    aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) { return; }
 
-    PlayerEventComponent* events = &playerObj->events();
+    PlayerEventComponent* events = &player->events();
     if (events == nullptr) { return; }
 
     // Don't trigger if there's already a pending event
@@ -164,7 +164,7 @@ void checkWorldEvents(aoc::game::GameState& gameState, PlayerId player, int32_t 
 
         const uint32_t hash = static_cast<uint32_t>(turnNumber) * 2654435761u
                             + static_cast<uint32_t>(e) * 104729u
-                            + static_cast<uint32_t>(player) * 7919u;
+                            + static_cast<uint32_t>(playerId) * 7919u;
         if ((hash % 4294967295u) < TRIGGER_THRESHOLD) {
             eligible[eligibleCount++] = e;
         }
@@ -173,26 +173,26 @@ void checkWorldEvents(aoc::game::GameState& gameState, PlayerId player, int32_t 
     if (eligibleCount == 0) { return; }
 
     const uint32_t pickHash = static_cast<uint32_t>(turnNumber) * 2246822507u
-                            + static_cast<uint32_t>(player) * 3266489917u;
+                            + static_cast<uint32_t>(playerId) * 3266489917u;
     const int32_t chosen = eligible[pickHash % static_cast<uint32_t>(eligibleCount)];
 
     events->pendingEvent = static_cast<WorldEventId>(chosen);
     events->pendingChoice = -1;
     // H5.9: stamp the cooldown on trigger, not on resolution. Save/load round
     // trips and rewinds previously bypassed the cooldown because the stamp only
-    // landed after the player resolved the event.
+    // landed after the playerId resolved the event.
     events->lastFiredTurn[chosen] = turnNumber;
-    LOG_INFO("World event triggered for player %u: %.*s",
-             static_cast<unsigned>(player),
+    LOG_INFO("World event triggered for playerId %u: %.*s",
+             static_cast<unsigned>(playerId),
              static_cast<int>(EVENT_DEFS[static_cast<std::size_t>(chosen)].title.size()),
              EVENT_DEFS[static_cast<std::size_t>(chosen)].title.data());
 }
 
-ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, int32_t choice) {
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) { return ErrorCode::InvalidArgument; }
+ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId playerId, int32_t choice) {
+    aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) { return ErrorCode::InvalidArgument; }
 
-    PlayerEventComponent* events = &playerObj->events();
+    PlayerEventComponent* events = &player->events();
     if (events->pendingEvent == static_cast<WorldEventId>(255)) {
         return ErrorCode::InvalidArgument;
     }
@@ -212,22 +212,22 @@ ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, in
     // Gold goes through Player::addGold, the one treasury.
     if (chosen.goldChange > 0) {
         const int64_t gain = static_cast<int64_t>(chosen.goldChange) / 2;
-        playerObj->addGold(gain, aoc::sim::MoneyFlow::external()); // a windfall from beyond the map
+        player->addGold(gain, aoc::sim::MoneyFlow::external()); // a windfall from beyond the map
         const float gdpRef = std::max(
-            1.0f, static_cast<float>(playerObj->monetary().gdp));
-        playerObj->monetary().inflationRate = std::clamp(
-            playerObj->monetary().inflationRate
+            1.0f, static_cast<float>(player->monetary().gdp));
+        player->monetary().inflationRate = std::clamp(
+            player->monetary().inflationRate
                 + static_cast<float>(gain) / gdpRef * 0.02f,
             -0.20f, 0.50f);
     } else if (chosen.goldChange < 0) {
         const CurrencyAmount lost = std::min<CurrencyAmount>(-static_cast<CurrencyAmount>(chosen.goldChange),
-                                                             std::max<CurrencyAmount>(0, playerObj->treasury()));
-        playerObj->addGold(-lost, aoc::sim::MoneyFlow::loss());
+                                                             std::max<CurrencyAmount>(0, player->treasury()));
+        player->addGold(-lost, aoc::sim::MoneyFlow::loss());
     }
 
     // Apply population change to capital
     if (chosen.populationChange != 0) {
-        for (const std::unique_ptr<aoc::game::City>& city : playerObj->cities()) {
+        for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
             if (city->isOriginalCapital()) {
                 const int32_t newPop = std::max(1, city->population() + chosen.populationChange);
                 city->setPopulation(newPop);

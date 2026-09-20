@@ -18,7 +18,7 @@ void ReplayRecorder::recordFrame(const aoc::game::GameState& gameState, TurnNumb
     ReplayFrame frame{};
     frame.turn = turn;
 
-    const uint16_t techCnt = aoc::sim::techCount();
+    const uint16_t techCount = aoc::sim::techCount();
 
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         ReplayFrame::PlayerSnapshot snap{};
@@ -31,7 +31,7 @@ void ReplayRecorder::recordFrame(const aoc::game::GameState& gameState, TurnNumb
             snap.population += cityPtr->population();
         }
 
-        for (uint16_t t = 0; t < techCnt; ++t) {
+        for (uint16_t t = 0; t < techCount; ++t) {
             if (playerPtr->tech().hasResearched(TechId{t})) {
                 ++snap.techs;
             }

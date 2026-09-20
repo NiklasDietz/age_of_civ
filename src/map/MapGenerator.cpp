@@ -2307,20 +2307,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
 
         // 2026-05-03: POST-SIM GEOLOGICAL PASSES extracted to gen/PostSim.cpp.
         {
-            aoc::map::gen::MapGenContext ctx{};
-            ctx.grid           = &grid;
-            ctx.width          = width;
-            ctx.height         = height;
-            ctx.cylindrical    = cylSim;
-            ctx.plates         = &plates;
-            ctx.elevationMap   = &elevationMap;
-            ctx.orogeny        = &orogeny;
-            ctx.sediment       = &sediment;
-            ctx.crustAgeTile   = &crustAgeTile;
-            ctx.rockTypeTile   = &rockTypeTile;
-            ctx.marginTypeTile = &marginTypeTile;
-            ctx.ophioliteMask  = &ophioliteMask;
-            aoc::map::gen::runPostSimPasses(ctx);
+            aoc::map::gen::MapGenContext context{};
+            context.grid           = &grid;
+            context.width          = width;
+            context.height         = height;
+            context.cylindrical    = cylSim;
+            context.plates         = &plates;
+            context.elevationMap   = &elevationMap;
+            context.orogeny        = &orogeny;
+            context.sediment       = &sediment;
+            context.crustAgeTile   = &crustAgeTile;
+            context.rockTypeTile   = &rockTypeTile;
+            context.marginTypeTile = &marginTypeTile;
+            context.ophioliteMask  = &ophioliteMask;
+            aoc::map::gen::runPostSimPasses(context);
         }
     }
 

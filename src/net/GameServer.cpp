@@ -185,21 +185,21 @@ void GameServer::initialize(const GameConfig& config) {
     }
 
     // Build turn context
-    this->m_turnCtx.grid        = &this->m_grid;
-    this->m_turnCtx.economy     = &this->m_economy;
-    this->m_turnCtx.diplomacy   = &this->m_diplomacy;
-    this->m_turnCtx.barbarians  = &this->m_barbarians;
-    this->m_turnCtx.rng         = &this->m_rng;
-    this->m_turnCtx.currentTurn = 0;
-    this->m_turnCtx.gameState   = &this->m_gameState;
+    this->m_turnContext.grid        = &this->m_grid;
+    this->m_turnContext.economy     = &this->m_economy;
+    this->m_turnContext.diplomacy   = &this->m_diplomacy;
+    this->m_turnContext.barbarians  = &this->m_barbarians;
+    this->m_turnContext.rng         = &this->m_rng;
+    this->m_turnContext.currentTurn = 0;
+    this->m_turnContext.gameState   = &this->m_gameState;
 
     for (aoc::sim::ai::AIController& ai : this->m_aiControllers) {
-        this->m_turnCtx.aiControllers.push_back(&ai);
+        this->m_turnContext.aiControllers.push_back(&ai);
     }
-    this->m_turnCtx.allPlayers      = this->m_allPlayers;
-    this->m_turnCtx.maxTurns        = static_cast<TurnNumber>(this->m_maxTurns);
-    this->m_turnCtx.victoryTypeMask = aoc::sim::VICTORY_MASK_ALL;
-    this->m_turnCtx.humanPlayer =
+    this->m_turnContext.allPlayers      = this->m_allPlayers;
+    this->m_turnContext.maxTurns        = static_cast<TurnNumber>(this->m_maxTurns);
+    this->m_turnContext.victoryTypeMask = aoc::sim::VICTORY_MASK_ALL;
+    this->m_turnContext.humanPlayer =
         this->m_humanPlayers.empty() ? INVALID_PLAYER : this->m_humanPlayers[0];
 
     LOG_INFO("GameServer initialized: %d human + %d AI players, map %dx%d", config.humanPlayerCount,
@@ -241,10 +241,10 @@ bool GameServer::tick() {
     }
 
     // 3. Process turn
-    aoc::sim::processTurn(this->m_turnCtx);
+    aoc::sim::processTurn(this->m_turnContext);
 
     // 4. Check victory: read cached result from processTurn.
-    if (this->m_turnCtx.lastVictoryResult.type != aoc::sim::VictoryType::None) {
+    if (this->m_turnContext.lastVictoryResult.type != aoc::sim::VictoryType::None) {
         this->m_gameOver = true;
     }
 
@@ -550,7 +550,7 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
 GameStateSnapshot GameServer::generateSnapshot(PlayerId player) const {
     GameStateSnapshot snapshot{};
     snapshot.forPlayer  = player;
-    snapshot.turnNumber = this->m_turnCtx.currentTurn;
+    snapshot.turnNumber = this->m_turnContext.currentTurn;
     snapshot.gameOver   = this->m_gameOver;
 
     const aoc::game::Player* gsPlayer = this->m_gameState.player(player);

@@ -1074,10 +1074,10 @@ static bool cityCanAffordBuildingGoods(const aoc::game::City& city, const Buildi
 // -------------------------------------------------------------------------
 
 static float scoreBuildingCandidate(const LeaderBehavior& behavior, BuildingId buildingId,
-                                    const aoc::sim::AIContext& aiCtx, float techGap) {
+                                    const aoc::sim::AIContext& aiContext, float techGap) {
     // Delegate to the specialized building scorer in UtilityScoring, then
     // apply the building production weight and scale to a [0,1]-ish range.
-    const float rawScore = scoreBuildingForLeader(behavior, buildingId, aiCtx);
+    const float rawScore = scoreBuildingForLeader(behavior, buildingId, aiContext);
 
     // Raw scores are in the 40-200 range. Normalize against a 200-point ceiling
     // so the building score participates in the same 0-1 product as other candidates.
@@ -1371,22 +1371,22 @@ void AIController::executeCityActions(aoc::game::GameState& gameState, aoc::map:
 
         // --- Buildings ---
         {
-            aoc::sim::AIContext aiCtx{};
-            aiCtx.ownedCities         = ownedCityCount;
-            aiCtx.totalPopulation     = gsPlayer->totalPopulation();
-            aiCtx.militaryUnits       = unitCounts.military;
-            aiCtx.builderUnits        = unitCounts.builders;
-            aiCtx.settlerUnits        = unitCounts.settlers;
-            aiCtx.isThreatened        = unitCounts.military < 3;
-            aiCtx.needsImprovements   = (unimprovedTiles > 0 && unitCounts.builders == 0);
-            aiCtx.hasMint             = districts.hasBuilding(BUILDING_MINT);
-            aiCtx.hasCoins            = playerHasCoins;
-            aiCtx.hasCampus           = districts.hasDistrict(DistrictType::Campus);
-            aiCtx.hasCommercial       = districts.hasDistrict(DistrictType::Commercial);
-            aiCtx.treasury            = static_cast<CurrencyAmount>(gsPlayer->treasury());
-            aiCtx.targetMaxCities     = targets.maxCities;
-            aiCtx.desiredMilitary     = ownedCityCount * targets.desiredMilitaryPerCity + 2;
-            aiCtx.religionScienceCoef = aoc::sim::religionScienceCoefficient(
+            aoc::sim::AIContext aiContext{};
+            aiContext.ownedCities         = ownedCityCount;
+            aiContext.totalPopulation     = gsPlayer->totalPopulation();
+            aiContext.militaryUnits       = unitCounts.military;
+            aiContext.builderUnits        = unitCounts.builders;
+            aiContext.settlerUnits        = unitCounts.settlers;
+            aiContext.isThreatened        = unitCounts.military < 3;
+            aiContext.needsImprovements   = (unimprovedTiles > 0 && unitCounts.builders == 0);
+            aiContext.hasMint             = districts.hasBuilding(BUILDING_MINT);
+            aiContext.hasCoins            = playerHasCoins;
+            aiContext.hasCampus           = districts.hasDistrict(DistrictType::Campus);
+            aiContext.hasCommercial       = districts.hasDistrict(DistrictType::Commercial);
+            aiContext.treasury            = static_cast<CurrencyAmount>(gsPlayer->treasury());
+            aiContext.targetMaxCities     = targets.maxCities;
+            aiContext.desiredMilitary     = ownedCityCount * targets.desiredMilitaryPerCity + 2;
+            aiContext.religionScienceCoef = aoc::sim::religionScienceCoefficient(
                 aoc::sim::effectiveEraFromTech(*gsPlayer),
                 aoc::sim::countRenaissancePlusTechs(*gsPlayer));
 
@@ -1400,7 +1400,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState, aoc::map:
                     continue;
                 }
                 const float buildingScore =
-                    scoreBuildingCandidate(personality.behavior, bdef.id, aiCtx, bbTechGap);
+                    scoreBuildingCandidate(personality.behavior, bdef.id, aiContext, bbTechGap);
                 if (buildingScore > 0.0f) {
                     // Classify for posture multiplier: science=Library/University/ResearchLab,
                     // gold=Market/Bank/StockExchange/Mint.

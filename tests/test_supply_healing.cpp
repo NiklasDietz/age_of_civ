@@ -38,15 +38,15 @@ aoc::game::Unit& damagedWarrior(aoc::test::World& w, int32_t q, int32_t r, int32
 /// itself derives, not one forced from outside.
 void runTurn(aoc::test::World& w, aoc::sim::EconomySimulation& eco, aoc::sim::DiplomacyManager& dip,
              aoc::Random& rng) {
-    aoc::sim::TurnContext ctx;
-    ctx.gameState   = &w.gameState;
-    ctx.grid        = &w.grid;
-    ctx.economy     = &eco;
-    ctx.diplomacy   = &dip;
-    ctx.rng         = &rng;
-    ctx.allPlayers  = {PlayerId{0}};
-    ctx.currentTurn = 1;
-    aoc::sim::processPlayerTurn(ctx, PlayerId{0});
+    aoc::sim::TurnContext context;
+    context.gameState   = &w.gameState;
+    context.grid        = &w.grid;
+    context.economy     = &eco;
+    context.diplomacy   = &dip;
+    context.rng         = &rng;
+    context.allPlayers  = {PlayerId{0}};
+    context.currentTurn = 1;
+    aoc::sim::processPlayerTurn(context, PlayerId{0});
 }
 
 } // namespace

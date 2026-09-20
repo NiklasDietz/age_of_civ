@@ -30,23 +30,23 @@ namespace {
 /// A minimal turn context wired for one player.
 aoc::sim::TurnContext makeCtx(aoc::test::World& w, aoc::sim::EconomySimulation& eco,
                               aoc::sim::DiplomacyManager& dip, aoc::Random& rng) {
-    aoc::sim::TurnContext ctx;
-    ctx.gameState   = &w.gameState;
-    ctx.grid        = &w.grid;
-    ctx.economy     = &eco;
-    ctx.diplomacy   = &dip;
-    ctx.rng         = &rng;
-    ctx.allPlayers  = {PlayerId{0}};
-    ctx.currentTurn = 1;
-    return ctx;
+    aoc::sim::TurnContext context;
+    context.gameState   = &w.gameState;
+    context.grid        = &w.grid;
+    context.economy     = &eco;
+    context.diplomacy   = &dip;
+    context.rng         = &rng;
+    context.allPlayers  = {PlayerId{0}};
+    context.currentTurn = 1;
+    return context;
 }
 
 /// One turn for player 0, returns the research progress gained.
 float progressGained(aoc::test::World& w, aoc::sim::EconomySimulation& eco,
                      aoc::sim::DiplomacyManager& dip, aoc::Random& rng) {
     const float before        = w.gameState.player(PlayerId{0})->tech().researchProgress;
-    aoc::sim::TurnContext ctx = makeCtx(w, eco, dip, rng);
-    aoc::sim::processPlayerTurn(ctx, PlayerId{0});
+    aoc::sim::TurnContext context = makeCtx(w, eco, dip, rng);
+    aoc::sim::processPlayerTurn(context, PlayerId{0});
     return w.gameState.player(PlayerId{0})->tech().researchProgress - before;
 }
 

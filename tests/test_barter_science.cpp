@@ -66,16 +66,16 @@ Progress researchAfterOneTurn(aoc::sim::MonetarySystemType system0,
     aoc::sim::DiplomacyManager diplomacy;
     diplomacy.initialize(2);
     aoc::Random rng{11u};
-    aoc::sim::TurnContext ctx;
-    ctx.gameState   = &w.gameState;
-    ctx.grid        = &w.grid;
-    ctx.economy     = &economy;
-    ctx.diplomacy   = &diplomacy;
-    ctx.rng         = &rng;
-    ctx.allPlayers  = {PlayerId{0}, PlayerId{1}};
-    ctx.currentTurn = 1;
+    aoc::sim::TurnContext context;
+    context.gameState   = &w.gameState;
+    context.grid        = &w.grid;
+    context.economy     = &economy;
+    context.diplomacy   = &diplomacy;
+    context.rng         = &rng;
+    context.allPlayers  = {PlayerId{0}, PlayerId{1}};
+    context.currentTurn = 1;
     const float science = aoc::sim::computePlayerScience(b, w.grid);
-    aoc::sim::processTurn(ctx);
+    aoc::sim::processTurn(context);
     return {a.tech().researchProgress, b.tech().researchProgress, science};
 }
 
@@ -123,19 +123,19 @@ TEST_CASE("a civ that holds no city completes no tech, however much progress it 
     diplomacy.initialize(2);
     aoc::sim::EconomySimulation economy;
     aoc::Random rng(7);
-    aoc::sim::TurnContext ctx{};
-    ctx.gameState   = &w.gameState;
-    ctx.grid        = &w.grid;
-    ctx.economy     = &economy;
-    ctx.diplomacy   = &diplomacy;
-    ctx.rng         = &rng;
-    ctx.allPlayers  = {PlayerId{0}, PlayerId{1}};
-    ctx.currentTurn = 2;
-    aoc::sim::processTurn(ctx);
+    aoc::sim::TurnContext context{};
+    context.gameState   = &w.gameState;
+    context.grid        = &w.grid;
+    context.economy     = &economy;
+    context.diplomacy   = &diplomacy;
+    context.rng         = &rng;
+    context.allPlayers  = {PlayerId{0}, PlayerId{1}};
+    context.currentTurn = 2;
+    aoc::sim::processTurn(context);
     CHECK_FALSE(p.tech().hasResearched(aoc::TechId{0}));
 
     aoc::test::addCityAt(w, PlayerId{0}, 9, 5, "Gamma"); // settled again
-    ctx.currentTurn = 3;
-    aoc::sim::processTurn(ctx);
+    context.currentTurn = 3;
+    aoc::sim::processTurn(context);
     CHECK(p.tech().hasResearched(aoc::TechId{0}));
 }

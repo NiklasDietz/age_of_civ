@@ -18,6 +18,6 @@ namespace aoc::map::gen {
 
 struct MapGenContext;
 
-void runPostSimPasses(MapGenContext& ctx);
+void runPostSimPasses(MapGenContext& context);
 
 } // namespace aoc::map::gen

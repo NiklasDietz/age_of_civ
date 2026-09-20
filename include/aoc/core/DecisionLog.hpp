@@ -176,10 +176,10 @@ struct TurnSummaryRecord {
 
 /// Visitor-style callback set for the decision-log reader.
 struct DecisionLogVisitor {
-    void (*onProduction) (void* ctx, const ProductionRecord&)  = nullptr;
-    void (*onResearch)   (void* ctx, const ResearchRecord&)    = nullptr;
-    void (*onTurnSummary)(void* ctx, const TurnSummaryRecord&) = nullptr;
-    void* ctx = nullptr;
+    void (*onProduction) (void* context, const ProductionRecord&)  = nullptr;
+    void (*onResearch)   (void* context, const ResearchRecord&)    = nullptr;
+    void (*onTurnSummary)(void* context, const TurnSummaryRecord&) = nullptr;
+    void* context = nullptr;
 };
 
 /// Thread-local active logger. Set by the turn processor at the start of

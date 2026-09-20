@@ -70,14 +70,14 @@ ErrorCode proposeBilateralDeal(aoc::game::GameState& gameState,
     deal.isActive   = true;
     // Bilateral deals automatically establish a standing route: a Trader
     // unit spawns every N turns on the proposer's capital -> partner's
-    // capital leg. Destroyable/pillageable; player does not command it.
+    // capital leg. Destroyable/pillageable; playerId does not command it.
     deal.standingRouteInterval  = kDefaultStandingInterval;
     deal.standingRouteCountdown = kDefaultStandingInterval;
 
     proposerComp.agreements.push_back(deal);
     partnerComp.agreements.push_back(deal);
 
-    LOG_INFO("Trade deal: bilateral agreement between player %u and %u (-20%% tariff)",
+    LOG_INFO("Trade deal: bilateral agreement between playerId %u and %u (-20%% tariff)",
              static_cast<unsigned>(proposer), static_cast<unsigned>(partner));
 
     return ErrorCode::Ok;
@@ -96,9 +96,9 @@ ErrorCode createFreeTradeZone(aoc::game::GameState& gameState,
     ftz.isActive    = true;
 
     for (PlayerId member : members) {
-        aoc::game::Player* playerObj = gameState.player(member);
-        if (playerObj != nullptr) {
-            playerObj->tradeAgreements().agreements.push_back(ftz);
+        aoc::game::Player* player = gameState.player(member);
+        if (player != nullptr) {
+            player->tradeAgreements().agreements.push_back(ftz);
         }
     }
 
@@ -123,9 +123,9 @@ ErrorCode formCustomsUnion(aoc::game::GameState& gameState,
     cu.isActive        = true;
 
     for (PlayerId member : members) {
-        aoc::game::Player* playerObj = gameState.player(member);
-        if (playerObj != nullptr) {
-            playerObj->tradeAgreements().agreements.push_back(cu);
+        aoc::game::Player* player = gameState.player(member);
+        if (player != nullptr) {
+            player->tradeAgreements().agreements.push_back(cu);
         }
     }
 
@@ -170,7 +170,7 @@ ErrorCode proposeTransitTreaty(aoc::game::GameState& gameState,
     proposerPlayer->tradeAgreements().agreements.push_back(treaty);
     partnerPlayer->tradeAgreements().agreements.push_back(treaty);
 
-    LOG_INFO("Transit treaty: zero-toll passage between player %u and %u",
+    LOG_INFO("Transit treaty: zero-toll passage between playerId %u and %u",
              static_cast<unsigned>(proposer), static_cast<unsigned>(partner));
 
     return ErrorCode::Ok;
@@ -189,16 +189,16 @@ void processTradeAgreements(aoc::game::GameState& gameState) {
 
 namespace {
 
-/// Return the first city of `player`, or nullptr.
-[[nodiscard]] aoc::game::City* firstCity(aoc::game::Player& player) {
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : player.cities()) {
+/// Return the first city of `playerId`, or nullptr.
+[[nodiscard]] aoc::game::City* firstCity(aoc::game::Player& playerId) {
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerId.cities()) {
         if (cityPtr != nullptr) { return cityPtr.get(); }
     }
     return nullptr;
 }
 
 /// Attempt to spawn a standing-route Trader from memberA to memberB.
-/// Silently noops if either player has no cities, or unit creation fails.
+/// Silently noops if either playerId has no cities, or unit creation fails.
 void spawnStandingTrader(aoc::game::GameState& gameState,
                          aoc::map::HexGrid& grid,
                          const Market& market,
@@ -225,7 +225,7 @@ void spawnStandingTrader(aoc::game::GameState& gameState,
         return;
     }
 
-    LOG_INFO("Standing route spawned: player %u -> player %u",
+    LOG_INFO("Standing route spawned: playerId %u -> playerId %u",
              static_cast<unsigned>(memberA),
              static_cast<unsigned>(memberB));
 }

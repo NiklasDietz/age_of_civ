@@ -54,21 +54,21 @@ std::vector<GameNotification> drainNotifications(PlayerId viewer) {
     return out;
 }
 
-void generateTurnNotifications(const aoc::game::GameState& gameState, PlayerId player) {
+void generateTurnNotifications(const aoc::game::GameState& gameState, PlayerId playerId) {
     g_pendingNotifications.clear();
 
-    const aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+    const aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return;
     }
 
     // Currency crises
     {
-        const aoc::sim::CurrencyCrisisComponent& crisis = playerObj->currencyCrisis();
+        const aoc::sim::CurrencyCrisisComponent& crisis = player->currencyCrisis();
         if (crisis.activeCrisis != aoc::sim::CrisisType::None) {
             GameNotification n;
             n.category = NotificationCategory::Economy;
-            n.relevantPlayer = player;
+            n.relevantPlayer = playerId;
             n.priority = 10;
 
             switch (crisis.activeCrisis) {
@@ -97,12 +97,12 @@ void generateTurnNotifications(const aoc::game::GameState& gameState, PlayerId p
     // Industrial revolutions (placeholder - check if revolution level changed)
     {
         // NOTE: Turn-diff detection would require storing previous turn's revolution
-        // level. For now just note industrial state is available via player->industrial().
-        (void)playerObj->industrial();
+        // level. For now just note industrial state is available via playerId->industrial().
+        (void)player->industrial();
     }
 
-    // Labor strikes in the player's cities
-    for (const std::unique_ptr<aoc::game::City>& city : playerObj->cities()) {
+    // Labor strikes in the playerId's cities
+    for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
         if (city->strike().isOnStrike) {
             GameNotification n;
             n.category = NotificationCategory::City;
@@ -115,7 +115,7 @@ void generateTurnNotifications(const aoc::game::GameState& gameState, PlayerId p
 
     // Reserve currency status
     {
-        const aoc::sim::CurrencyTrustComponent& trust = playerObj->currencyTrust();
+        const aoc::sim::CurrencyTrustComponent& trust = player->currencyTrust();
         if (trust.isReserveCurrency && trust.turnsAsReserve == 1) {
             GameNotification n;
             n.category = NotificationCategory::Economy;
@@ -128,7 +128,7 @@ void generateTurnNotifications(const aoc::game::GameState& gameState, PlayerId p
 
     // Collapse warnings from victory tracker
     {
-        const aoc::sim::VictoryTrackerComponent& vt = playerObj->victoryTracker();
+        const aoc::sim::VictoryTrackerComponent& vt = player->victoryTracker();
 
         if (vt.turnsGDPBelowHalf >= 5) {
             GameNotification n;

@@ -32,15 +32,15 @@ TEST_CASE("an idle Trader consumes no coal") {
     aoc::sim::DiplomacyManager diplomacy;
     diplomacy.initialize(1);
     aoc::Random rng{5u};
-    aoc::sim::TurnContext ctx;
-    ctx.gameState   = &w.gameState;
-    ctx.grid        = &w.grid;
-    ctx.economy     = &economy;
-    ctx.diplomacy   = &diplomacy;
-    ctx.rng         = &rng;
-    ctx.allPlayers  = {PlayerId{0}};
-    ctx.currentTurn = 1;
-    aoc::sim::processTurn(ctx);
+    aoc::sim::TurnContext context;
+    context.gameState   = &w.gameState;
+    context.grid        = &w.grid;
+    context.economy     = &economy;
+    context.diplomacy   = &diplomacy;
+    context.rng         = &rng;
+    context.allPlayers  = {PlayerId{0}};
+    context.currentTurn = 1;
+    aoc::sim::processTurn(context);
 
     CHECK(city.stockpile().getAmount(aoc::sim::goods::COAL) == 5);
 }

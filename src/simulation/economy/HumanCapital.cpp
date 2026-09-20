@@ -13,18 +13,18 @@
 
 namespace aoc::sim {
 
-void updateHumanCapital(aoc::game::GameState& gameState, PlayerId player) {
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+void updateHumanCapital(aoc::game::GameState& gameState, PlayerId playerId) {
+    aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return;
     }
 
-    PlayerHumanCapitalComponent& hc = playerObj->humanCapital();
+    PlayerHumanCapitalComponent& hc = player->humanCapital();
 
     int32_t totalPopulation    = 0;
     int32_t educationCapacity  = 0;
 
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
         if (cityPtr == nullptr) { continue; }
         totalPopulation += cityPtr->population();
 

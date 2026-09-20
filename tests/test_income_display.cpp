@@ -35,17 +35,17 @@ TEST_CASE("net gold last turn equals the treasury delta of the turn") {
     aoc::sim::DiplomacyManager diplomacy;
     diplomacy.initialize(2);
     aoc::Random rng{7u};
-    aoc::sim::TurnContext ctx;
-    ctx.gameState   = &w.gameState;
-    ctx.grid        = &w.grid;
-    ctx.economy     = &economy;
-    ctx.diplomacy   = &diplomacy;
-    ctx.rng         = &rng;
-    ctx.allPlayers  = {PlayerId{0}, PlayerId{1}};
-    ctx.currentTurn = 1;
+    aoc::sim::TurnContext context;
+    context.gameState   = &w.gameState;
+    context.grid        = &w.grid;
+    context.economy     = &economy;
+    context.diplomacy   = &diplomacy;
+    context.rng         = &rng;
+    context.allPlayers  = {PlayerId{0}, PlayerId{1}};
+    context.currentTurn = 1;
 
     const aoc::CurrencyAmount before = p.treasury();
-    aoc::sim::processTurn(ctx);
+    aoc::sim::processTurn(context);
     const aoc::CurrencyAmount after = p.treasury();
 
     CHECK(p.netGoldLastTurn() == after - before);

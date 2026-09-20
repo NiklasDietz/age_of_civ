@@ -134,22 +134,22 @@ TEST_CASE("processTurn hands the diplomacy manager the turn's event log, or null
     diplomacy.initialize(1);
     aoc::sim::TurnEventLog log;
     aoc::Random rng{5u};
-    aoc::sim::TurnContext ctx;
-    ctx.gameState   = &w.gameState;
-    ctx.grid        = &w.grid;
-    ctx.economy     = &economy;
-    ctx.diplomacy   = &diplomacy;
-    ctx.rng         = &rng;
-    ctx.allPlayers  = {P0};
-    ctx.currentTurn = 1;
+    aoc::sim::TurnContext context;
+    context.gameState   = &w.gameState;
+    context.grid        = &w.grid;
+    context.economy     = &economy;
+    context.diplomacy   = &diplomacy;
+    context.rng         = &rng;
+    context.allPlayers  = {P0};
+    context.currentTurn = 1;
 
-    ctx.eventLog = &log;
-    aoc::sim::processTurn(ctx);
+    context.eventLog = &log;
+    aoc::sim::processTurn(context);
     CHECK(diplomacy.eventLog() == &log);
 
-    ctx.eventLog    = nullptr;
-    ctx.currentTurn = 2;
-    aoc::sim::processTurn(ctx);
+    context.eventLog    = nullptr;
+    context.currentTurn = 2;
+    aoc::sim::processTurn(context);
     CHECK(diplomacy.eventLog() == nullptr);
 }
 

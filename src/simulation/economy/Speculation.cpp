@@ -21,20 +21,20 @@ namespace aoc::sim {
 
 ErrorCode hoardCommodity(aoc::game::GameState& gameState,
                          const Market& market,
-                         PlayerId player,
+                         PlayerId playerId,
                          uint16_t goodId, int32_t amount) {
     if (amount <= 0 || goodId >= market.goodsCount()) {
         return ErrorCode::InvalidArgument; // coin is money, not a commodity to corner
     }
 
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+    aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return ErrorCode::InvalidArgument;
     }
 
-    // Pull goods from the player's city stockpiles
+    // Pull goods from the playerId's city stockpiles
     int32_t remaining = amount;
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
         if (cityPtr == nullptr || remaining <= 0) { continue; }
         CityStockpileComponent& stockpile = cityPtr->stockpile();
         int32_t available = stockpile.getAmount(goodId);
@@ -44,9 +44,9 @@ ErrorCode hoardCommodity(aoc::game::GameState& gameState,
                 remaining -= take;
             } else {
                 LOG_WARN("hoardCommodity: consumeGoods failed for good %u "
-                         "(player %u) despite prior availability check",
+                         "(playerId %u) despite prior availability check",
                          static_cast<unsigned>(goodId),
-                         static_cast<unsigned>(player));
+                         static_cast<unsigned>(playerId));
             }
         }
     }
@@ -58,7 +58,7 @@ ErrorCode hoardCommodity(aoc::game::GameState& gameState,
 
     CommodityHoardComponent* hoardPtr = nullptr;
     for (CommodityHoardComponent& h : gameState.commodityHoards()) {
-        if (h.owner == player) { hoardPtr = &h; break; }
+        if (h.owner == playerId) { hoardPtr = &h; break; }
     }
     if (hoardPtr == nullptr) {
         return ErrorCode::InvalidArgument;
@@ -93,22 +93,22 @@ ErrorCode hoardCommodity(aoc::game::GameState& gameState,
     }
 
     LOG_INFO("Player %u hoarded %d units of good %u",
-             static_cast<unsigned>(player), actuallyHoarded, static_cast<unsigned>(goodId));
+             static_cast<unsigned>(playerId), actuallyHoarded, static_cast<unsigned>(goodId));
     return ErrorCode::Ok;
 }
 
 ErrorCode releaseCommodity(aoc::game::GameState& gameState,
                            const Market& /*market*/,
-                           PlayerId player,
+                           PlayerId playerId,
                            uint16_t goodId, int32_t amount) {
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+    aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return ErrorCode::InvalidArgument;
     }
 
     int32_t released = 0;
     for (CommodityHoardComponent& h : gameState.commodityHoards()) {
-        if (h.owner != player) { continue; }
+        if (h.owner != playerId) { continue; }
         for (std::vector<CommodityHoardComponent::HoardPosition>::iterator it =
                  h.positions.begin(); it != h.positions.end(); ++it) {
             if (it->goodId == goodId) {
@@ -127,21 +127,21 @@ ErrorCode releaseCommodity(aoc::game::GameState& gameState,
         return ErrorCode::InvalidArgument;
     }
 
-    // Return goods to the player's first city stockpile
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+    // Return goods to the playerId's first city stockpile
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
         if (cityPtr == nullptr) { continue; }
         cityPtr->stockpile().addGoods(goodId, released);
         break;
     }
 
     LOG_INFO("Player %u released %d units of good %u from hoard",
-             static_cast<unsigned>(player), released, static_cast<unsigned>(goodId));
+             static_cast<unsigned>(playerId), released, static_cast<unsigned>(goodId));
     return ErrorCode::Ok;
 }
 
 float marketShareOfGood(const aoc::game::GameState& gameState,
                         const Market& /*market*/,
-                        PlayerId player, uint16_t goodId) {
+                        PlayerId playerId, uint16_t goodId) {
     int32_t totalSupply  = 0;
     int32_t playerSupply = 0;
 
@@ -152,18 +152,18 @@ float marketShareOfGood(const aoc::game::GameState& gameState,
             int32_t amount = cityPtr->stockpile().getAmount(goodId);
             if (amount > 0) {
                 totalSupply += amount;
-                if (playerPtr->id() == player) {
+                if (playerPtr->id() == playerId) {
                     playerSupply += amount;
                 }
             }
         }
     }
 
-    // Add hoarded supply from the per-player hoard components
+    // Add hoarded supply from the per-playerId hoard components
     for (const CommodityHoardComponent& h : gameState.commodityHoards()) {
         int32_t hoarded = h.hoarded(goodId);
         totalSupply += hoarded;
-        if (h.owner == player) {
+        if (h.owner == playerId) {
             playerSupply += hoarded;
         }
     }

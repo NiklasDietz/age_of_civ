@@ -42,21 +42,21 @@ void updateUnemployment(CityUnemploymentComponent& unemployment,
     unemployment.unemploymentRate = std::clamp(unemployment.unemploymentRate, 0.0f, 0.50f);
 }
 
-void processUnemployment(aoc::game::GameState& gameState, PlayerId player) {
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+void processUnemployment(aoc::game::GameState& gameState, PlayerId playerId) {
+    aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return;
     }
 
     const int32_t industrialLevel =
-        static_cast<int32_t>(playerObj->industrial().currentRevolution);
+        static_cast<int32_t>(player->industrial().currentRevolution);
 
     // Compute education level from campus buildings across all cities
     float   educationLevel  = 0.0f;
     int32_t campusBuildings = 0;
     int32_t totalCities     = 0;
 
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
         if (cityPtr == nullptr) { continue; }
         ++totalCities;
         for (const CityDistrictsComponent::PlacedDistrict& d : cityPtr->districts().districts) {
@@ -71,7 +71,7 @@ void processUnemployment(aoc::game::GameState& gameState, PlayerId player) {
         educationLevel = std::min(educationLevel, 0.80f);
     }
 
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
         if (cityPtr == nullptr) { continue; }
 
         CityUnemploymentComponent& unemployment = cityPtr->unemployment();
@@ -96,7 +96,7 @@ void processUnemployment(aoc::game::GameState& gameState, PlayerId player) {
         //   >15%: -1 amenity (unrest signal)
         //   >30%: -3 amenities + growth halted via foodSurplus clamp.
         // Without teeth the whole system was decorative; with it the
-        // player has a reason to invest in education or slow automation.
+        // playerId has a reason to invest in education or slow automation.
         const float rate = unemployment.unemploymentRate;
         CityHappinessComponent& h = cityPtr->happiness();
         if (rate > 0.30f) {

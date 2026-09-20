@@ -2378,22 +2378,22 @@ void Application::spectatorRevealAll() {
 
 void Application::spectatorAdvanceTurn() {
     // Build TurnContext for all AI players (no human player).
-    aoc::sim::TurnContext turnCtx{};
-    turnCtx.grid            = &this->m_hexGrid;
-    turnCtx.fogOfWar        = &this->m_fogOfWar;
-    turnCtx.economy         = &this->m_economy;
-    turnCtx.diplomacy       = &this->m_diplomacy;
-    turnCtx.barbarians      = &this->m_barbarianController;
-    turnCtx.allianceTracker = &this->m_allianceTracker;
+    aoc::sim::TurnContext turnContext{};
+    turnContext.grid            = &this->m_hexGrid;
+    turnContext.fogOfWar        = &this->m_fogOfWar;
+    turnContext.economy         = &this->m_economy;
+    turnContext.diplomacy       = &this->m_diplomacy;
+    turnContext.barbarians      = &this->m_barbarianController;
+    turnContext.allianceTracker = &this->m_allianceTracker;
     this->m_diplomacy.setAllianceTracker(&this->m_allianceTracker);
-    turnCtx.rng         = &this->m_gameRng;
-    turnCtx.gameState   = &this->m_gameState;
-    turnCtx.humanPlayer = aoc::INVALID_PLAYER;
-    turnCtx.currentTurn = static_cast<aoc::TurnNumber>(this->m_turnManager.currentTurn() + 1);
+    turnContext.rng         = &this->m_gameRng;
+    turnContext.gameState   = &this->m_gameState;
+    turnContext.humanPlayer = aoc::INVALID_PLAYER;
+    turnContext.currentTurn = static_cast<aoc::TurnNumber>(this->m_turnManager.currentTurn() + 1);
 
     for (aoc::sim::ai::AIController& ai : this->m_aiControllers) {
-        turnCtx.aiControllers.push_back(&ai);
-        turnCtx.allPlayers.push_back(ai.player());
+        turnContext.aiControllers.push_back(&ai);
+        turnContext.allPlayers.push_back(ai.player());
     }
 
     // Submit all players so the TurnManager is ready.
@@ -2404,7 +2404,7 @@ void Application::spectatorAdvanceTurn() {
     if (this->m_turnManager.allPlayersReady()) {
         this->m_turnManager.executeTurn(this->m_gameState);
 
-        aoc::sim::processTurn(turnCtx);
+        aoc::sim::processTurn(turnContext);
 
         // Execute AI movement after processTurn (AI decisions ran inside it).
         for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
@@ -2449,7 +2449,7 @@ void Application::spectatorAdvanceTurn() {
         }
 
         // Check victory conditions: read cached result from processTurn.
-        const aoc::sim::VictoryResult& vr = turnCtx.lastVictoryResult;
+        const aoc::sim::VictoryResult& vr = turnContext.lastVictoryResult;
         if (vr.type != aoc::sim::VictoryType::None) {
             this->m_spectatorPaused = true;
             LOG_INFO("Spectator: Player %u wins by type %d at turn %u",
@@ -7157,26 +7157,26 @@ void Application::handleEndTurn() {
         CivicId prevCivic                = humanGs->civics().currentResearch;
 
         // Build TurnContext and execute all game logic via TurnProcessor
-        aoc::sim::TurnContext turnCtx{};
+        aoc::sim::TurnContext turnContext{};
 
-        turnCtx.grid            = &this->m_hexGrid;
-        turnCtx.fogOfWar        = &this->m_fogOfWar;
-        turnCtx.economy         = &this->m_economy;
-        turnCtx.diplomacy       = &this->m_diplomacy;
-        turnCtx.barbarians      = &this->m_barbarianController;
-        turnCtx.allianceTracker = &this->m_allianceTracker;
+        turnContext.grid            = &this->m_hexGrid;
+        turnContext.fogOfWar        = &this->m_fogOfWar;
+        turnContext.economy         = &this->m_economy;
+        turnContext.diplomacy       = &this->m_diplomacy;
+        turnContext.barbarians      = &this->m_barbarianController;
+        turnContext.allianceTracker = &this->m_allianceTracker;
         this->m_diplomacy.setAllianceTracker(&this->m_allianceTracker);
-        turnCtx.rng         = &this->m_gameRng;
-        turnCtx.gameState   = &this->m_gameState;
-        turnCtx.humanPlayer = 0;
-        turnCtx.currentTurn = this->m_turnManager.currentTurn();
-        turnCtx.allPlayers.push_back(0);
+        turnContext.rng         = &this->m_gameRng;
+        turnContext.gameState   = &this->m_gameState;
+        turnContext.humanPlayer = 0;
+        turnContext.currentTurn = this->m_turnManager.currentTurn();
+        turnContext.allPlayers.push_back(0);
         for (aoc::sim::ai::AIController& ai : this->m_aiControllers) {
-            turnCtx.aiControllers.push_back(&ai);
-            turnCtx.allPlayers.push_back(ai.player());
+            turnContext.aiControllers.push_back(&ai);
+            turnContext.allPlayers.push_back(ai.player());
         }
 
-        aoc::sim::processTurn(turnCtx);
+        aoc::sim::processTurn(turnContext);
 
         // AI movement execution (after AI decisions ran inside processTurn)
         for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
@@ -7401,7 +7401,7 @@ void Application::handleEndTurn() {
         }
 
         // Check victory conditions: read cached result from processTurn.
-        const aoc::sim::VictoryResult& vr = turnCtx.lastVictoryResult;
+        const aoc::sim::VictoryResult& vr = turnContext.lastVictoryResult;
         if (vr.type != aoc::sim::VictoryType::None) {
             this->m_gameOver      = true;
             this->m_victoryResult = vr;

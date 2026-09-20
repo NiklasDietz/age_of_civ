@@ -31,21 +31,21 @@ static_assert(static_cast<std::size_t>(IndustrialRevolutionId::Fifth)
 
 #ifdef AOC_DIAG_IR
 namespace {
-// Phase 1 diagnostic: emit a structured BLOCKED line when a player fails an
-// IR check. Throttle per (player, nextRev, reason) so a 1500-turn sim does
+// Phase 1 diagnostic: emit a structured BLOCKED line when a playerId fails an
+// IR check. Throttle per (playerId, nextRev, reason) so a 1500-turn sim does
 // not produce >2k lines per civ. Throttle window: 50 turns.
 //
-// Format: "IR_BLOCKED player=<id> ir=<n> reason=<tag> detail=<int> turn=<t>"
+// Format: "IR_BLOCKED playerId=<id> ir=<n> reason=<tag> detail=<int> turn=<t>"
 // Reasons: tech, cityCount, good. Detail = TechId for tech, count for
 // cityCount, GoodId for good. Plain LOG_INFO under AOC_DIAG_IR; production
 // builds compile this out entirely.
 struct DiagKey {
-    uint32_t player;
+    uint32_t playerId;
     uint8_t  rev;
     uint8_t  reason;     // 0=tech, 1=cityCount, 2=good
     uint16_t detail;
     bool operator==(const DiagKey& other) const noexcept {
-        return player == other.player && rev == other.rev
+        return playerId == other.player && rev == other.rev
             && reason == other.reason && detail == other.detail;
     }
 };
@@ -61,13 +61,13 @@ struct DiagKeyHash {
 };
 constexpr int32_t kDiagThrottleTurns = 50;
 
-bool diagShouldEmit(uint32_t player, uint8_t rev, uint8_t reason,
+bool diagShouldEmit(uint32_t playerId, uint8_t rev, uint8_t reason,
                     uint16_t detail, int32_t turn) {
     // thread_local: aoc_simulate runs single-threaded per OMP_NUM_THREADS=1
     // in audit_matrix.sh; thread_local is still the safe default in case a
-    // future change re-introduces parallelism over the player loop.
+    // future change re-introduces parallelism over the playerId loop.
     thread_local std::unordered_map<DiagKey, int32_t, DiagKeyHash> lastEmit;
-    DiagKey key{player, rev, reason, detail};
+    DiagKey key{playerId, rev, reason, detail};
     auto it = lastEmit.find(key);
     if (it == lastEmit.end()) {
         lastEmit.emplace(key, turn);
@@ -82,14 +82,14 @@ bool diagShouldEmit(uint32_t player, uint8_t rev, uint8_t reason,
 } // anonymous namespace
 #endif // AOC_DIAG_IR
 
-bool checkIndustrialRevolution(aoc::game::GameState& gameState, PlayerId player,
+bool checkIndustrialRevolution(aoc::game::GameState& gameState, PlayerId playerId,
                                TurnNumber currentTurn) {
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+    aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return false;
     }
 
-    PlayerIndustrialComponent& ind = playerObj->industrial();
+    PlayerIndustrialComponent& ind = player->industrial();
 
     uint8_t nextRevId = static_cast<uint8_t>(ind.currentRevolution) + 1;
     if (nextRevId > static_cast<uint8_t>(IndustrialRevolutionId::Fifth)) {
@@ -99,16 +99,16 @@ bool checkIndustrialRevolution(aoc::game::GameState& gameState, PlayerId player,
     const RevolutionDef& rev = REVOLUTION_DEFS[nextRevId - 1];
 
     // Check tech requirements
-    const PlayerTechComponent& playerTech = playerObj->tech();
+    const PlayerTechComponent& playerTech = player->tech();
     for (int32_t i = 0; i < 3; ++i) {
         TechId reqTech = rev.requirements.requiredTechs[i];
         if (reqTech.isValid() && !playerTech.hasResearched(reqTech)) {
 #ifdef AOC_DIAG_IR
-            if (diagShouldEmit(static_cast<uint32_t>(player), nextRevId, 0,
+            if (diagShouldEmit(static_cast<uint32_t>(playerId), nextRevId, 0,
                                static_cast<uint16_t>(reqTech.value),
                                static_cast<int32_t>(currentTurn))) {
-                LOG_INFO("IR_BLOCKED player=%u ir=%u reason=tech detail=%u turn=%d",
-                         static_cast<unsigned>(player),
+                LOG_INFO("IR_BLOCKED playerId=%u ir=%u reason=tech detail=%u turn=%d",
+                         static_cast<unsigned>(playerId),
                          static_cast<unsigned>(nextRevId),
                          static_cast<unsigned>(reqTech.value),
                          static_cast<int>(currentTurn));
@@ -118,17 +118,17 @@ bool checkIndustrialRevolution(aoc::game::GameState& gameState, PlayerId player,
         }
     }
 
-    // Check city count requirement. IR thresholds gate on cities the player
+    // Check city count requirement. IR thresholds gate on cities the playerId
     // currently controls, not the raw vector size -- a seceded city does not
     // contribute its industrial base to the former owner.
-    int32_t cityCount = playerObj->ownedCityCount();
+    int32_t cityCount = player->ownedCityCount();
     if (cityCount < rev.requirements.minCityCount) {
 #ifdef AOC_DIAG_IR
-        if (diagShouldEmit(static_cast<uint32_t>(player), nextRevId, 1,
+        if (diagShouldEmit(static_cast<uint32_t>(playerId), nextRevId, 1,
                            static_cast<uint16_t>(cityCount),
                            static_cast<int32_t>(currentTurn))) {
-            LOG_INFO("IR_BLOCKED player=%u ir=%u reason=cityCount detail=%d turn=%d",
-                     static_cast<unsigned>(player),
+            LOG_INFO("IR_BLOCKED playerId=%u ir=%u reason=cityCount detail=%d turn=%d",
+                     static_cast<unsigned>(playerId),
                      static_cast<unsigned>(nextRevId),
                      cityCount,
                      static_cast<int>(currentTurn));
@@ -146,21 +146,21 @@ bool checkIndustrialRevolution(aoc::game::GameState& gameState, PlayerId player,
     // once. The boolean-set semantic replaces the older totalSupply integer
     // map which accidentally accumulated forever and was renamed to
     // lastTurnProduction, which the revolution thresholds read.
-    const aoc::sim::PlayerEconomyComponent& econ = playerObj->economy();
+    const aoc::sim::PlayerEconomyComponent& econ = player->economy();
     for (int32_t i = 0; i < 3; ++i) {
         uint16_t reqGood = rev.requirements.requiredGoods[i];
         if (reqGood == 0xFFFF) { continue; }
 
         bool found = false;
         // Path A: in any city's stockpile right now.
-        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
             if (cityPtr == nullptr) { continue; }
             if (cityPtr->stockpile().getAmount(reqGood) > 0) {
                 found = true;
                 break;
             }
         }
-        // Path B: or ever supplied at the player level (capture goods
+        // Path B: or ever supplied at the playerId level (capture goods
         // produced and immediately consumed). std::unordered_set::contains
         // (C++20) is the readable membership-check form; .count() on a
         // set is also O(1) but reads as a counted-quantity query.
@@ -169,10 +169,10 @@ bool checkIndustrialRevolution(aoc::game::GameState& gameState, PlayerId player,
         }
         if (!found) {
 #ifdef AOC_DIAG_IR
-            if (diagShouldEmit(static_cast<uint32_t>(player), nextRevId, 2,
+            if (diagShouldEmit(static_cast<uint32_t>(playerId), nextRevId, 2,
                                reqGood, static_cast<int32_t>(currentTurn))) {
-                LOG_INFO("IR_BLOCKED player=%u ir=%u reason=good detail=%u turn=%d",
-                         static_cast<unsigned>(player),
+                LOG_INFO("IR_BLOCKED playerId=%u ir=%u reason=good detail=%u turn=%d",
+                         static_cast<unsigned>(playerId),
                          static_cast<unsigned>(nextRevId),
                          static_cast<unsigned>(reqGood),
                          static_cast<int>(currentTurn));
@@ -186,7 +186,7 @@ bool checkIndustrialRevolution(aoc::game::GameState& gameState, PlayerId player,
     ind.turnAchieved[nextRevId] = static_cast<int32_t>(currentTurn);
 
     LOG_INFO("Player %u achieved the %.*s (Industrial Revolution #%u) on turn %d!",
-             static_cast<unsigned>(player),
+             static_cast<unsigned>(playerId),
              static_cast<int>(rev.name.size()), rev.name.data(),
              static_cast<unsigned>(nextRevId),
              static_cast<int>(currentTurn));

@@ -737,27 +737,27 @@ int runHeadlessSimulation(
     aoc::sim::spawnCityStates(gameState, grid, cityStateCount, rng);
 
     // Build TurnContext
-    aoc::sim::TurnContext turnCtx{};
-    turnCtx.grid            = &grid;
-    turnCtx.economy         = &economy;
-    turnCtx.diplomacy       = &diplomacy;
-    turnCtx.barbarians      = &barbarians;
-    turnCtx.allianceTracker = &allianceTracker;
+    aoc::sim::TurnContext turnContext{};
+    turnContext.grid            = &grid;
+    turnContext.economy         = &economy;
+    turnContext.diplomacy       = &diplomacy;
+    turnContext.barbarians      = &barbarians;
+    turnContext.allianceTracker = &allianceTracker;
     diplomacy.setAllianceTracker(&allianceTracker);
-    turnCtx.rng       = &rng;
-    turnCtx.gameState = &gameState;
+    turnContext.rng       = &rng;
+    turnContext.gameState = &gameState;
     for (aoc::sim::ai::AIController& ai : aiControllers) {
-        turnCtx.aiControllers.push_back(&ai);
-        turnCtx.allPlayers.push_back(ai.player());
+        turnContext.aiControllers.push_back(&ai);
+        turnContext.allPlayers.push_back(ai.player());
     }
-    turnCtx.humanPlayer     = aoc::INVALID_PLAYER;
-    turnCtx.currentTurn     = 0;
-    turnCtx.maxTurns        = static_cast<aoc::TurnNumber>(maxTurns);
-    turnCtx.victoryTypeMask = victoryMask;
+    turnContext.humanPlayer     = aoc::INVALID_PLAYER;
+    turnContext.currentTurn     = 0;
+    turnContext.maxTurns        = static_cast<aoc::TurnNumber>(maxTurns);
+    turnContext.victoryTypeMask = victoryMask;
 
     // Mid-turn event log for ML training data
     aoc::sim::TurnEventLog eventLog;
-    turnCtx.eventLog = &eventLog;
+    turnContext.eventLog = &eventLog;
 
     // Structured per-decision binary log. Opt-in via --trace-file / trace_file:
     // yaml key. Carries candidate scores, top alternates, per-turn summaries.
@@ -770,7 +770,7 @@ int runHeadlessSimulation(
         if (!decisionLog.open(tracePath, hdr)) {
             LOG_ERROR("Failed to open trace file: %s", tracePath.c_str());
         } else {
-            turnCtx.decisionLog = &decisionLog;
+            turnContext.decisionLog = &decisionLog;
             LOG_INFO("Decision trace -> %s", tracePath.c_str());
         }
     }
@@ -797,7 +797,7 @@ int runHeadlessSimulation(
 
     // === Main simulation loop ===
     for (int32_t turn = 1; turn <= maxTurns; ++turn) {
-        turnCtx.currentTurn = static_cast<aoc::TurnNumber>(turn);
+        turnContext.currentTurn = static_cast<aoc::TurnNumber>(turn);
         eventLog.clear();
 
         const int64_t moneyBefore = aoc::sim::worldMoney(gameState);
@@ -805,7 +805,7 @@ int runHeadlessSimulation(
         for (const std::unique_ptr<aoc::game::Player>& pl : gameState.players()) {
             poolsBefore.push_back(moneyPools(*pl));
         }
-        aoc::sim::processTurn(turnCtx);
+        aoc::sim::processTurn(turnContext);
         {
             const int64_t moneyAfter = aoc::sim::worldMoney(gameState);
             if (!aoc::sim::moneyConserved(moneyBefore, moneyAfter, economy.moneyLedger())) {
@@ -1094,7 +1094,7 @@ int runHeadlessSimulation(
 
         // Check victory: read result cached by processTurn (see TurnContext).
         // Kept as a local so downstream log formatting is unchanged.
-        const aoc::sim::VictoryResult& vr = turnCtx.lastVictoryResult;
+        const aoc::sim::VictoryResult& vr = turnContext.lastVictoryResult;
         if (vr.type != aoc::sim::VictoryType::None) {
             printProgressBar(turn, maxTurns);
             std::fprintf(stderr, "\n\n  GAME OVER on turn %d: Player %u wins (type %d)\n", turn,

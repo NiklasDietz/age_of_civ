@@ -25,13 +25,13 @@ namespace aoc::sim {
 // Communication tier determination
 // ============================================================================
 
-CommTier determineCommTier(const aoc::game::GameState& gameState, PlayerId player) {
-    const aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+CommTier determineCommTier(const aoc::game::GameState& gameState, PlayerId playerId) {
+    const aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return CommTier::FootMessenger;
     }
 
-    const PlayerTechComponent& playerTech = playerObj->tech();
+    const PlayerTechComponent& playerTech = player->tech();
 
     // Check from highest tier downward, return first that's researched
     for (int32_t t = static_cast<int32_t>(CommTier::Internet); t >= 0; --t) {
@@ -51,24 +51,24 @@ CommTier determineCommTier(const aoc::game::GameState& gameState, PlayerId playe
 
 void updateCommunicationDistances(aoc::game::GameState& gameState,
                                    const aoc::map::HexGrid& grid,
-                                   PlayerId player) {
+                                   PlayerId playerId) {
     // Grid is used for wrapping-aware distance computation.
 
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+    aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return;
     }
 
-    PlayerCommunicationComponent& comm = playerObj->communication();
+    PlayerCommunicationComponent& comm = player->communication();
 
     // Determine comm tier
-    comm.currentTier = determineCommTier(gameState, player);
+    comm.currentTier = determineCommTier(gameState, playerId);
     int32_t speed    = commSpeedTilesPerTurn(comm.currentTier);
 
-    // Find the player's capital
+    // Find the playerId's capital
     hex::AxialCoord capitalPos{0, 0};
     bool hasCapital = false;
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
         if (cityPtr == nullptr) {
             continue;
         }
@@ -80,7 +80,7 @@ void updateCommunicationDistances(aoc::game::GameState& gameState,
     }
     if (!hasCapital) {
         // Use first city as de-facto capital
-        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
             if (cityPtr != nullptr) {
                 capitalPos = cityPtr->location();
                 hasCapital = true;
@@ -99,7 +99,7 @@ void updateCommunicationDistances(aoc::game::GameState& gameState,
     };
     std::vector<RegionalCapital> regionalCapitals;
 
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
         if (cityPtr == nullptr) {
             continue;
         }
@@ -113,7 +113,7 @@ void updateCommunicationDistances(aoc::game::GameState& gameState,
 
     // Compute communication distance for each city
     comm.cityCount = 0;
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
         if (cityPtr == nullptr) {
             continue;
         }
@@ -141,9 +141,9 @@ void updateCommunicationDistances(aoc::game::GameState& gameState,
         // Communication distance = hex distance / comm speed
         float commDist = static_cast<float>(effectiveDist) / static_cast<float>(speed);
 
-        // Check for garrison: any military unit belonging to this player at this tile
+        // Check for garrison: any military unit belonging to this playerId at this tile
         bool hasGarrison = false;
-        for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerObj->units()) {
+        for (const std::unique_ptr<aoc::game::Unit>& unitPtr : player->units()) {
             if (unitPtr == nullptr) {
                 continue;
             }

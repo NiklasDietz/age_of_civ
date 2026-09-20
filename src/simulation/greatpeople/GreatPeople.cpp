@@ -92,16 +92,16 @@ const std::array<GreatPersonDef, GREAT_PERSON_COUNT>& allGreatPersonDefs() {
 // Point accumulation
 // ============================================================================
 
-void accumulateGreatPeoplePoints(aoc::game::GameState& gameState, PlayerId player) {
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+void accumulateGreatPeoplePoints(aoc::game::GameState& gameState, PlayerId playerId) {
+    aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return;
     }
 
-    PlayerGreatPeopleComponent& gpComp = playerObj->greatPeople();
+    PlayerGreatPeopleComponent& gpComp = player->greatPeople();
 
-    // Tally district/building contributions across all of the player's cities
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+    // Tally district/building contributions across all of the playerId's cities
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
         if (cityPtr == nullptr) {
             continue;
         }
@@ -229,17 +229,17 @@ void accumulateGreatPeoplePoints(aoc::game::GameState& gameState, PlayerId playe
     return -1;
 }
 
-void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId player) {
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playerId) {
+    aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return;
     }
 
-    PlayerGreatPeopleComponent& gpComp = playerObj->greatPeople();
+    PlayerGreatPeopleComponent& gpComp = player->greatPeople();
 
-    // Find the player's capital (first city) for spawn location
+    // Find the playerId's capital (first city) for spawn location
     hex::AxialCoord spawnPos = {0, 0};
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
         if (cityPtr != nullptr) {
             spawnPos = cityPtr->location();
             break;
@@ -259,13 +259,13 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
         // A civ that passed on the current offer cannot take it. The pass is
         // spent when somebody else claims that figure.
         GlobalGreatPeopleRoster& roster = gameState.greatPeopleRoster();
-        if (roster.hasPassed(type, player)) {
+        if (roster.hasPassed(type, playerId)) {
             continue;
         }
 
-        // The offer is the world's next figure of this type, not this player's.
+        // The offer is the world's next figure of this type, not this playerId's.
         // Recruitment used to index by `gpComp.recruited[typeIdx]`, privately
-        // per player, so every civ walked the same list and two of them could
+        // per playerId, so every civ walked the same list and two of them could
         // each hold their own Isaac Newton.
         // Era gate: the world stops offering a figure the age has left behind,
         // so an Ancient philosopher is not still on the table in the Atomic era.
@@ -301,18 +301,18 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
 
         const uint8_t defIdU = static_cast<uint8_t>(defId);
 
-        // Spawn the great person as a unit owned by the player
+        // Spawn the great person as a unit owned by the playerId
         // Spawn as the dedicated Great Person marker type (UnitTypeId{102}).
         // Earlier code used UnitTypeId{50} which collides with Stealth Fighter
         // and caused unitTypeDef() lookups to return the Air unit for GPs.
-        aoc::game::Unit& gpUnit = playerObj->addUnit(UnitTypeId{102}, spawnPos);
+        aoc::game::Unit& gpUnit = player->addUnit(UnitTypeId{102}, spawnPos);
         // The nth person of a type takes the nth historical name of the matching
         // roster category; MAX_GP_PER_TYPE equals the per-category count, so the
         // twelve names of a category are used exactly once each.
         const NamedGreatPersonDef& named = namedGreatPersonForCategory(
             categoryForGreatPersonType(type), roster.claimed[typeIdx]);
         GreatPersonComponent& comp = gpUnit.greatPerson();
-        comp.owner       = player;
+        comp.owner       = playerId;
         comp.defId       = defIdU;
         comp.namedId     = named.id;
         comp.position    = spawnPos;
@@ -322,7 +322,7 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
             VisibilityEvent ev{};
             ev.type = VisibilityEventType::GreatPersonSpawned;
             ev.location = spawnPos;
-            ev.actor = player;
+            ev.actor = playerId;
             // The notification names the person, so carry the roster id, not defId.
             ev.payload = static_cast<int32_t>(named.id);
             gameState.visibilityBus().emit(ev);
@@ -333,11 +333,11 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
         gpComp.recruited[typeIdx] += 1;
         // The world moves on, and every pass on the figure just taken is spent.
         roster.advance(type);
-        addEraScore(*playerObj, gameState.currentTurn(), 2,
+        addEraScore(*player, gameState.currentTurn(), 2,
                     "Recruited " + std::string(named.name));
 
         LOG_INFO("Player %u recruited %s %.*s (%.*s)",
-                 static_cast<unsigned>(player),
+                 static_cast<unsigned>(playerId),
                  greatPersonCategoryName(categoryForGreatPersonType(type)),
                  static_cast<int>(named.name.size()), named.name.data(),
                  static_cast<int>(named.abilityName.size()), named.abilityName.data());
@@ -350,11 +350,11 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
 
 ErrorCode requestGreatPersonActivation(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                                        PlayerId owner, hex::AxialCoord unitAt) {
-    aoc::game::Player* player = gameState.player(owner);
-    if (player == nullptr) {
+    aoc::game::Player* playerId = gameState.player(owner);
+    if (playerId == nullptr) {
         return ErrorCode::InvalidArgument;
     }
-    aoc::game::Unit* unit = player->unitAt(unitAt);
+    aoc::game::Unit* unit = playerId->unitAt(unitAt);
     if (unit == nullptr || unit->typeId() != UnitTypeId{102}
         || unit->greatPerson().owner != owner || unit->greatPerson().isActivated) {
         return ErrorCode::InvalidUnitAction;
@@ -376,8 +376,8 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
     assert(gp.defId < GREAT_PERSON_COUNT);
     const GreatPersonDef& def = defs[gp.defId];
 
-    aoc::game::Player* playerObj = gameState.player(gp.owner);
-    if (playerObj == nullptr) {
+    aoc::game::Player* player = gameState.player(gp.owner);
+    if (player == nullptr) {
         return;
     }
 
@@ -398,16 +398,16 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
     if (takesTypeDefault && who.bonusCulture > 0.0f) {
         // Culture accumulates on the victory tracker; there is no per-turn
         // culture pool to add to.
-        playerObj->victoryTracker().totalCultureAccumulated += who.bonusCulture;
+        player->victoryTracker().totalCultureAccumulated += who.bonusCulture;
     }
     if (takesTypeDefault && who.bonusFaith > 0.0f) {
-        playerObj->faith().faith += who.bonusFaith;
+        player->faith().faith += who.bonusFaith;
     }
     if (takesTypeDefault && who.bonusScience > 0.0f) {
-        playerObj->tech().researchProgress += who.bonusScience;
+        player->tech().researchProgress += who.bonusScience;
     }
     if (takesTypeDefault && who.bonusGold > 0) {
-        playerObj->addGold(static_cast<CurrencyAmount>(who.bonusGold), aoc::sim::MoneyFlow::external());
+        player->addGold(static_cast<CurrencyAmount>(who.bonusGold), aoc::sim::MoneyFlow::external());
     }
     if (takesTypeDefault && (who.bonusCulture > 0.0f || who.bonusFaith > 0.0f ||
                              who.bonusScience > 0.0f || who.bonusGold > 0)) {
@@ -423,8 +423,8 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                 // Bank every boost attached to what this civ is researching.
                 // A banked boost is consumed when that research starts, so the
                 // gift is never wasted on a tech already finished.
-                PlayerEurekaComponent& boosts = playerObj->eureka();
-                const TechId researching      = playerObj->tech().currentResearch;
+                PlayerEurekaComponent& boosts = player->eureka();
+                const TechId researching      = player->tech().currentResearch;
                 int32_t banked                = 0;
                 for (const EurekaBoostDef& boost : getEurekaBoosts()) {
                     if (!researching.isValid() || boost.techId != researching) { continue; }
@@ -432,14 +432,14 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                     boosts.markPending(boost.boostIndex);
                     ++banked;
                 }
-                LOG_INFO("Eureka: banked %d discoveries for player %u", banked,
+                LOG_INFO("Eureka: banked %d discoveries for playerId %u", banked,
                          static_cast<unsigned>(gp.owner));
                 break;
             }
             case GreatPersonEffect::TrainTroops: {
                 // Experience, not healing: a general who trains rather than mends.
                 int32_t taught = 0;
-                for (const std::unique_ptr<aoc::game::Unit>& unit : playerObj->units()) {
+                for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
                     if (unit == nullptr || !unit->isMilitary()) { continue; }
                     if (grid.distance(unit->position(), gp.position) > GP_AURA_RADIUS) { continue; }
                     unit->experience().addExperience(def.experience);
@@ -449,7 +449,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                 break;
             }
             case GreatPersonEffect::Pilgrimage: {
-                playerObj->faith().faith += def.faith * scale;
+                player->faith().faith += def.faith * scale;
                 LOG_INFO("Pilgrimage: +%.0f faith", static_cast<double>(def.faith));
                 break;
             }
@@ -457,7 +457,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                 break;
         }
         gp.isActivated = true;
-        playerObj->removeUnit(&gpUnit);
+        player->removeUnit(&gpUnit);
         return;
     }
 
@@ -466,7 +466,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
             // WP-A3: if nearest owned city has a Research Lab (BuildingId 12),
             // start a 20-turn sustained science pulse (+8/turn) instead of a
             // one-shot jolt. Otherwise fall back to +50% of current research.
-            aoc::game::City* nearestCity = playerObj->nearestCity(grid, gp.position);
+            aoc::game::City* nearestCity = player->nearestCity(grid, gp.position);
             // WP-A3: pulse triggers in any city with a science-focused
             // building (Library 7, University 19, Research Lab 12).
             // Audit 2026-04: Research-Lab-only gate never fired in 1000t
@@ -476,13 +476,13 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                  || nearestCity->districts().hasBuilding(BuildingId{19})
                  || nearestCity->districts().hasBuilding(BuildingId{7}));
             if (hasLab) {
-                PlayerGreatPeopleComponent& gpComp = playerObj->greatPeople();
+                PlayerGreatPeopleComponent& gpComp = player->greatPeople();
                 gpComp.pulseScienceAmount = def.pulseAmount * scale;
                 gpComp.pulseScienceTurns  = def.pulseTurns;
                 LOG_INFO("Scientist: %d-turn +%.0f science pulse (science-building synergy)",
                          def.pulseTurns, static_cast<double>(def.pulseAmount));
             } else {
-                PlayerTechComponent& tech = playerObj->tech();
+                PlayerTechComponent& tech = player->tech();
                 if (tech.currentResearch.isValid()) {
                     const float bonus =
                         effectiveResearchCost(tech, tech.currentResearch) * def.researchFraction * scale;
@@ -498,7 +498,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
             // WP-A3: find nearest owned city, grant +100 production. Additionally,
             // if the city has no Industrial district yet, create one at no cost
             // -- "Renaissance Man" unlocks industry.
-            aoc::game::City* nearestCity = playerObj->nearestCity(grid, gp.position);
+            aoc::game::City* nearestCity = player->nearestCity(grid, gp.position);
             if (nearestCity != nullptr) {
                 if (!nearestCity->production().isEmpty()) {
                     nearestCity->production().queue.front().progress += def.production * scale;
@@ -519,7 +519,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
 
         case GreatPersonType::General: {
             // Heal all friendly units within 2 hexes to full
-            for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerObj->units()) {
+            for (const std::unique_ptr<aoc::game::Unit>& unitPtr : player->units()) {
                 if (unitPtr == nullptr) {
                     continue;
                 }
@@ -533,7 +533,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
 
         case GreatPersonType::Admiral: {
             // Heal every friendly ship within 2 hexes to full.
-            for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerObj->units()) {
+            for (const std::unique_ptr<aoc::game::Unit>& unitPtr : player->units()) {
                 if (unitPtr == nullptr
                     || unitPtr->typeDef().unitClass != UnitClass::Naval) {
                     continue;
@@ -550,7 +550,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
             // A work of Art in the nearest own city with a free Theatre slot; that is
             // what tourism counts since 2026-09-05. Without a slot, the culture bomb.
             if (aoc::game::City* home =
-                    cityWithFreeGreatWorkSlot(*playerObj, grid, gp.position)) {
+                    cityWithFreeGreatWorkSlot(*player, grid, gp.position)) {
                 const GreatWork work{GreatWorkType::Art, gp.owner, gp.namedId,
                                      gameState.currentTurn()};
                 static_cast<void>(placeGreatWork(*home, work));
@@ -576,19 +576,19 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
 
         case GreatPersonType::Prophet: {
             // The faith comes first, because founding spends it. Then the
-            // prophet walks the same path a player does: a pantheon if the civ
+            // prophet walks the same path a playerId does: a pantheon if the civ
             // has none (which picks a follower belief properly, where setting
             // hasPantheon by hand left pantheonBelief unchosen at 255), then
             // the religion itself. When there is nothing left to found -- the
             // civ already has a religion, or the world has run out of them --
             // the faith is the whole gift.
-            playerObj->faith().faith += def.faith * scale;
-            if (!playerObj->faith().hasPantheon) {
+            player->faith().faith += def.faith * scale;
+            if (!player->faith().hasPantheon) {
                 static_cast<void>(foundPantheonFor(gameState, gp.owner));
             }
             const ReligionId founded = foundReligionFor(gameState, gp.owner);
             if (founded != NO_RELIGION) {
-                LOG_INFO("Prophet founded a religion for player %u",
+                LOG_INFO("Prophet founded a religion for playerId %u",
                          static_cast<unsigned>(gp.owner));
             } else {
                 LOG_INFO("Prophet: +%.0f faith, nothing left to found",
@@ -599,7 +599,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
 
         case GreatPersonType::Writer: {
             if (aoc::game::City* home =
-                    cityWithFreeGreatWorkSlot(*playerObj, grid, gp.position)) {
+                    cityWithFreeGreatWorkSlot(*player, grid, gp.position)) {
                 const GreatWork work{GreatWorkType::Writing, gp.owner, gp.namedId,
                                      gameState.currentTurn()};
                 static_cast<void>(placeGreatWork(*home, work));
@@ -607,31 +607,31 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                 break;
             }
             // Nowhere to shelve it: the words still move people, so they push
-            // the civic the player is working through instead.
-            playerObj->civics().researchProgress += 100.0f;
+            // the civic the playerId is working through instead.
+            player->civics().researchProgress += 100.0f;
             LOG_INFO("Writer: no free slot, +100 civic progress instead");
             break;
         }
 
         case GreatPersonType::Musician: {
             if (aoc::game::City* home =
-                    cityWithFreeGreatWorkSlot(*playerObj, grid, gp.position)) {
+                    cityWithFreeGreatWorkSlot(*player, grid, gp.position)) {
                 const GreatWork work{GreatWorkType::Music, gp.owner, gp.namedId,
                                      gameState.currentTurn()};
                 static_cast<void>(placeGreatWork(*home, work));
                 LOG_INFO("Musician placed a work of Music in %s", home->name().c_str());
                 break;
             }
-            playerObj->civics().researchProgress += 100.0f;
+            player->civics().researchProgress += 100.0f;
             LOG_INFO("Musician: no free slot, +100 civic progress instead");
             break;
         }
 
         case GreatPersonType::Merchant: {
             // WP-A3: gold (per person, see GreatPersonDef) AND a permanent trade slot.
-            playerObj->addGold(static_cast<CurrencyAmount>(static_cast<float>(def.gold) * scale),
+            player->addGold(static_cast<CurrencyAmount>(static_cast<float>(def.gold) * scale),
                                aoc::sim::MoneyFlow::external());
-            PlayerGreatPeopleComponent& gpComp = playerObj->greatPeople();
+            PlayerGreatPeopleComponent& gpComp = player->greatPeople();
             gpComp.extraTradeSlots += 1;
             LOG_INFO("Merchant: +%lld gold + 1 permanent trade slot (total %d)",
                      static_cast<long long>(def.gold), gpComp.extraTradeSlots);
@@ -644,8 +644,8 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
 
     gp.isActivated = true;
 
-    // Remove the unit from the player's roster after activation
-    playerObj->removeUnit(&gpUnit);
+    // Remove the unit from the playerId's roster after activation
+    player->removeUnit(&gpUnit);
 }
 
 float greatPersonAuraBonus(const aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
@@ -677,9 +677,9 @@ float greatPersonAuraBonus(const aoc::game::GameState& gameState, const aoc::map
     return 0.0f;
 }
 
-ErrorCode requestRetireGreatPerson(aoc::game::GameState& gameState, PlayerId player,
+ErrorCode requestRetireGreatPerson(aoc::game::GameState& gameState, PlayerId playerId,
                                    hex::AxialCoord at) {
-    aoc::game::Player* owner = gameState.player(player);
+    aoc::game::Player* owner = gameState.player(playerId);
     if (owner == nullptr) {
         return ErrorCode::InvalidArgument;
     }
@@ -688,12 +688,12 @@ ErrorCode requestRetireGreatPerson(aoc::game::GameState& gameState, PlayerId pla
         return ErrorCode::InvalidArgument;
     }
     const GreatPersonComponent& gp = unit->greatPerson();
-    if (gp.owner != player || gp.isActivated) {
+    if (gp.owner != playerId || gp.isActivated) {
         return ErrorCode::InvalidUnitAction;
     }
     owner->addGold(GP_RETIRE_GOLD, aoc::sim::MoneyFlow::external());
     owner->victoryTracker().eraVictoryPoints += GP_RETIRE_ERA_SCORE;
-    LOG_INFO("Player %u retired a great person for %lld gold", static_cast<unsigned>(player),
+    LOG_INFO("Player %u retired a great person for %lld gold", static_cast<unsigned>(playerId),
              static_cast<long long>(GP_RETIRE_GOLD));
     owner->removeUnit(unit);
     return ErrorCode::Ok;
@@ -718,15 +718,15 @@ float patronageFaithCost(const aoc::game::GameState& gameState, GreatPersonType 
 }
 
 ErrorCode requestPatronage(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
-                           PlayerId player, GreatPersonType type) {
+                           PlayerId playerId, GreatPersonType type) {
     static_cast<void>(grid);
-    aoc::game::Player* owner = gameState.player(player);
+    aoc::game::Player* owner = gameState.player(playerId);
     if (owner == nullptr || type >= GreatPersonType::Count) {
         return ErrorCode::InvalidArgument;
     }
     GlobalGreatPeopleRoster& roster = gameState.greatPeopleRoster();
     const auto t = static_cast<std::size_t>(type);
-    if (roster.hasPassed(type, player)) {
+    if (roster.hasPassed(type, playerId)) {
         return ErrorCode::InvalidState; // you already declined this one
     }
     const int32_t defId = offeredDefId(type, roster.claimed[t]);
@@ -744,7 +744,7 @@ ErrorCode requestPatronage(aoc::game::GameState& gameState, aoc::map::HexGrid& g
     } else {
         const int64_t price = patronageGoldCost(gameState, type);
         if (owner->treasury() < price) { return ErrorCode::InsufficientResources; }
-        owner->addGold(-price, aoc::sim::MoneyFlow::domestic(player));
+        owner->addGold(-price, aoc::sim::MoneyFlow::domestic(playerId));
     }
 
     // Spawn them where the civ's first city stands, as recruitment does.
@@ -756,7 +756,7 @@ ErrorCode requestPatronage(aoc::game::GameState& gameState, aoc::map::HexGrid& g
     const NamedGreatPersonDef& named = namedGreatPersonForCategory(
         categoryForGreatPersonType(type), roster.claimed[t]);
     GreatPersonComponent& comp = gpUnit.greatPerson();
-    comp.owner       = player;
+    comp.owner       = playerId;
     comp.defId       = static_cast<uint8_t>(defId);
     comp.namedId     = named.id;
     comp.position    = spawnPos;
@@ -766,14 +766,14 @@ ErrorCode requestPatronage(aoc::game::GameState& gameState, aoc::map::HexGrid& g
     owner->greatPeople().points[t] = 0.0f;
     roster.advance(type);
 
-    LOG_INFO("Player %u patronised %.*s", static_cast<unsigned>(player),
+    LOG_INFO("Player %u patronised %.*s", static_cast<unsigned>(playerId),
              static_cast<int>(named.name.size()), named.name.data());
     return ErrorCode::Ok;
 }
 
-ErrorCode requestPassGreatPerson(aoc::game::GameState& gameState, PlayerId player,
+ErrorCode requestPassGreatPerson(aoc::game::GameState& gameState, PlayerId playerId,
                                  GreatPersonType type) {
-    if (gameState.player(player) == nullptr || type >= GreatPersonType::Count) {
+    if (gameState.player(playerId) == nullptr || type >= GreatPersonType::Count) {
         return ErrorCode::InvalidArgument;
     }
     GlobalGreatPeopleRoster& roster = gameState.greatPeopleRoster();
@@ -781,12 +781,12 @@ ErrorCode requestPassGreatPerson(aoc::game::GameState& gameState, PlayerId playe
     if (offeredDefId(type, roster.claimed[t]) < 0) {
         return ErrorCode::InvalidState;
     }
-    if (roster.hasPassed(type, player)) {
+    if (roster.hasPassed(type, playerId)) {
         return ErrorCode::InvalidState;
     }
-    roster.pass(type, player);
+    roster.pass(type, playerId);
     LOG_INFO("Player %u passed on the offered great person of type %u",
-             static_cast<unsigned>(player), static_cast<unsigned>(t));
+             static_cast<unsigned>(playerId), static_cast<unsigned>(t));
     return ErrorCode::Ok;
 }
 

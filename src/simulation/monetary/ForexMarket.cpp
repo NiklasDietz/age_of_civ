@@ -81,7 +81,7 @@ ErrorCode buyCurrency(aoc::game::GameState& gameState,
     }
     targetForex.netOrderFlow += pressureScale * 10.0f;
 
-    LOG_INFO("Forex: player %u bought %lld gold of player %u's currency (buy pressure: +%.2f)",
+    LOG_INFO("Forex: playerId %u bought %lld gold of playerId %u's currency (buy pressure: +%.2f)",
              static_cast<unsigned>(buyer),
              static_cast<long long>(goldAmount),
              static_cast<unsigned>(target),
@@ -127,7 +127,7 @@ ErrorCode sellCurrency(aoc::game::GameState& gameState,
     }
     targetForex.netOrderFlow -= pressureScale * 10.0f;
 
-    LOG_INFO("Forex: player %u sold %lld of player %u's currency (sell pressure: -%.2f)",
+    LOG_INFO("Forex: playerId %u sold %lld of playerId %u's currency (sell pressure: -%.2f)",
              static_cast<unsigned>(seller),
              static_cast<long long>(currencyAmount),
              static_cast<unsigned>(target),
@@ -137,18 +137,18 @@ ErrorCode sellCurrency(aoc::game::GameState& gameState,
 }
 
 ErrorCode defendCurrency(aoc::game::GameState& gameState,
-                          PlayerId player,
+                          PlayerId playerId,
                           CurrencyAmount amount) {
     if (amount <= 0) {
         return ErrorCode::InvalidArgument;
     }
 
-    aoc::game::Player* playerObj = gameState.player(player);
-    if (playerObj == nullptr) {
+    aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
         return ErrorCode::InvalidArgument;
     }
 
-    CurrencyExchangeComponent& forex = playerObj->currencyExchange();
+    CurrencyExchangeComponent& forex = player->currencyExchange();
     if (forex.foreignReserves < amount) {
         return ErrorCode::InsufficientResources;
     }
@@ -161,14 +161,14 @@ ErrorCode defendCurrency(aoc::game::GameState& gameState,
 
     // Intervention creates strong buy pressure, normalised by own GDP
     float pressureScale = 1.0f;
-    const MonetaryStateComponent& state = playerObj->monetary();
+    const MonetaryStateComponent& state = player->monetary();
     if (state.gdp > 0) {
         pressureScale = static_cast<float>(amount) / static_cast<float>(state.gdp);
     }
     forex.netOrderFlow += pressureScale * 15.0f;  // Central bank is a bigger buyer
 
-    LOG_INFO("Forex: player %u defending currency with %lld foreign reserves",
-             static_cast<unsigned>(player), static_cast<long long>(amount));
+    LOG_INFO("Forex: playerId %u defending currency with %lld foreign reserves",
+             static_cast<unsigned>(playerId), static_cast<long long>(amount));
 
     return ErrorCode::Ok;
 }
@@ -240,7 +240,7 @@ void updateExchangeRates(aoc::game::GameState& gameState) {
         forex.exchangeRate = std::clamp(newRate, 0.20f, 5.0f);
 
         if (std::abs(forex.netOrderFlow) > 0.1f) {
-            LOG_INFO("Forex: player %u rate %.3f (fundamental: %.3f, order flow: %.2f)",
+            LOG_INFO("Forex: playerId %u rate %.3f (fundamental: %.3f, order flow: %.2f)",
                      static_cast<unsigned>(playerPtr->id()),
                      static_cast<double>(forex.exchangeRate),
                      static_cast<double>(forex.fundamentalRate),

@@ -248,7 +248,7 @@ bool readDecisionLog(const std::string& path, FileHeader& outHeader,
                     rec.alternates[i].kind = k;
                 }
                 if (visitor.onProduction != nullptr) {
-                    visitor.onProduction(visitor.ctx, rec);
+                    visitor.onProduction(visitor.context, rec);
                 }
                 break;
             }
@@ -269,7 +269,7 @@ bool readDecisionLog(const std::string& path, FileHeader& outHeader,
                     }
                 }
                 if (visitor.onResearch != nullptr) {
-                    visitor.onResearch(visitor.ctx, rec);
+                    visitor.onResearch(visitor.context, rec);
                 }
                 break;
             }
@@ -287,7 +287,7 @@ bool readDecisionLog(const std::string& path, FileHeader& outHeader,
                     std::fclose(f); return false;
                 }
                 if (visitor.onTurnSummary != nullptr) {
-                    visitor.onTurnSummary(visitor.ctx, rec);
+                    visitor.onTurnSummary(visitor.context, rec);
                 }
                 break;
             }

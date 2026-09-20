@@ -78,7 +78,7 @@ public:
     [[nodiscard]] const aoc::sim::EconomySimulation& economy() const { return this->m_economy; }
 
     /// Current turn number.
-    [[nodiscard]] TurnNumber currentTurn() const { return this->m_turnCtx.currentTurn; }
+    [[nodiscard]] TurnNumber currentTurn() const { return this->m_turnContext.currentTurn; }
 
     /// Check if the game is over.
     [[nodiscard]] bool isGameOver() const { return this->m_gameOver; }
@@ -106,7 +106,7 @@ private:
     aoc::Random                           m_rng;
 
     // Turn processor context
-    aoc::sim::TurnContext                  m_turnCtx;
+    aoc::sim::TurnContext                  m_turnContext;
 
     // AI
     std::vector<aoc::sim::ai::AIController> m_aiControllers;
