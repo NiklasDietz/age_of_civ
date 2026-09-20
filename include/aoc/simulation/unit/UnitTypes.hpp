@@ -44,6 +44,18 @@ enum class UnitState : uint8_t {
     Embarked,
 };
 
+/// Canonical name of a unit state, as the debug API reports it.
+[[nodiscard]] constexpr std::string_view unitStateName(UnitState state) {
+    switch (state) {
+    case UnitState::Idle:      return "Idle";
+    case UnitState::Moving:    return "Moving";
+    case UnitState::Fortified: return "Fortified";
+    case UnitState::Sleeping:  return "Sleeping";
+    case UnitState::Embarked:  return "Embarked";
+    }
+    return "Unknown";
+}
+
 /// Era that a unit belongs to (determines when it becomes available).
 enum class UnitEra : uint8_t {
     Ancient,      ///< Era 0

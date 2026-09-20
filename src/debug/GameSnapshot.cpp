@@ -17,21 +17,6 @@ namespace aoc::debug {
 
 namespace {
 
-std::string_view unitStateName(aoc::sim::UnitState s) {
-    switch (s) {
-    case aoc::sim::UnitState::Idle:
-        return "Idle";
-    case aoc::sim::UnitState::Moving:
-        return "Moving";
-    case aoc::sim::UnitState::Fortified:
-        return "Fortified";
-    case aoc::sim::UnitState::Sleeping:
-        return "Sleeping";
-    default:
-        return "Unknown";
-    }
-}
-
 UnitSnapshot snapshotUnit(const aoc::game::Unit& unit) {
     const aoc::sim::UnitTypeDef& def = unit.typeDef();
     return UnitSnapshot{
@@ -45,7 +30,7 @@ UnitSnapshot snapshotUnit(const aoc::game::Unit& unit) {
         .maxMovement       = def.movementPoints,
         .combatStrength    = def.combatStrength,
         .rangedStrength    = def.rangedStrength,
-        .state             = std::string(unitStateName(unit.state())),
+        .state             = std::string(aoc::sim::unitStateName(unit.state())),
     };
 }
 

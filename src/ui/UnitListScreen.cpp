@@ -12,6 +12,8 @@
 #include "aoc/ui/StyleTokens.hpp"
 #include "aoc/ui/UIManager.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <string>
 #include <utility>
@@ -32,13 +34,12 @@ void mixHash(uint64_t& hash, uint64_t value) {
     hash *= 1099511628211ULL;
 }
 
-const char* stateName(aoc::sim::UnitState state) {
-    switch (state) {
-        case aoc::sim::UnitState::Fortified: return "fortified";
-        case aoc::sim::UnitState::Embarked:  return "embarked";
-        case aoc::sim::UnitState::Sleeping:  return "sleeping";
-        default:                             return "idle";
-    }
+/// The canonical state name, lowercased to match the rest of the row.
+std::string stateName(aoc::sim::UnitState state) {
+    std::string name{aoc::sim::unitStateName(state)};
+    std::transform(name.begin(), name.end(), name.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return name;
 }
 
 } // namespace
@@ -127,7 +128,7 @@ void UnitListScreen::buildRows(UIManager& ui) {
         std::snprintf(buf, sizeof(buf), "%.*s  at (%d,%d)  |  hp %d/%d  |  moves %d/%d  |  %s",
                       static_cast<int>(def.name.size()), def.name.data(), unit.position().q,
                       unit.position().r, unit.hitPoints(), def.maxHitPoints,
-                      unit.movementRemaining(), def.movementPoints, stateName(unit.state()));
+                      unit.movementRemaining(), def.movementPoints, stateName(unit.state()).c_str());
 
         PanelData rowBg;
         rowBg.backgroundColor = tokens::SURFACE_PARCHMENT_DIM;

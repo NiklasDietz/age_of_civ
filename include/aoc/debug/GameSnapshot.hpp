@@ -24,7 +24,7 @@ struct UnitSnapshot {
     int32_t maxMovement;
     int32_t combatStrength;
     int32_t rangedStrength;
-    std::string state; // "Idle" | "Moving" | "Fortified" | "Sleeping"
+    std::string state; ///< aoc::sim::unitStateName() of the unit's state.
 };
 
 struct ProductionItemSnapshot {
