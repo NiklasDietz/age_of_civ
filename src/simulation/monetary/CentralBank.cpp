@@ -10,6 +10,7 @@
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace aoc::sim {
 
@@ -20,13 +21,23 @@ CurrencyAmount fiatIssueTarget(const MonetaryStateComponent& state, CurrencyAmou
         return 0;
     }
     CurrencyAmount issue = std::max<CurrencyAmount>(0, unpaidLastTurn);
-    if (state.inflationRate < FIAT_DEFLATION_TRIGGER && population > 0) {
+    if (state.inflationRate < FIAT_DEFLATION_TRIGGER) {
         const CurrencyAmount money = std::max<CurrencyAmount>(0, state.treasury) +
                                      std::max<CurrencyAmount>(0, state.privateSpecie) +
                                      std::max<CurrencyAmount>(0, state.privateNotes);
-        const CurrencyAmount floor = static_cast<CurrencyAmount>(
-            aoc::balance::params().priceAnchorK * static_cast<float>(population) / 2.0f);
-        issue += std::max<CurrencyAmount>(0, floor - money);
+        // Two ways to lean against a slide. A collapsed civ is refilled to the
+        // anchor's floor. A civ whose money is ample but whose economy has
+        // outgrown it (every deflating fiat row measured on the 400-turn run
+        // sat far above the floor) gets the slide's own size: printing |pi| x M
+        // lifts next turn's money-growth term by |pi|, which is what the
+        // Fisher rate reads.
+        const CurrencyAmount floor =
+            population > 0 ? static_cast<CurrencyAmount>(aoc::balance::params().priceAnchorK *
+                                                         static_cast<float>(population) / 2.0f)
+                           : 0;
+        const CurrencyAmount lean = static_cast<CurrencyAmount>(std::llround(
+            -static_cast<double>(state.inflationRate) * static_cast<double>(money) * FIAT_LEAN_GAIN));
+        issue += std::max(std::max<CurrencyAmount>(0, floor - money), std::max<CurrencyAmount>(0, lean));
     }
     return issue;
 }

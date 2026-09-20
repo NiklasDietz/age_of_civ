@@ -382,3 +382,55 @@ TEST_CASE("the ranking is a total order and the AI's choice is its head") {
     aoc::sim::aiChooseMoneyGood(w.gameState, market, nullptr, P0);
     CHECK(p.monetary().moneyGood == ranking.front().goodId);
 }
+
+TEST_CASE("the late metals are hidden until their tech, so antiquity cannot mint nickel") {
+    using aoc::sim::resourceRevealTech;
+    CHECK(resourceRevealTech(aoc::sim::goods::NICKEL) == aoc::TechId{14});
+    CHECK(resourceRevealTech(aoc::sim::goods::COBALT) == aoc::TechId{14});
+    CHECK(resourceRevealTech(aoc::sim::goods::HELIUM) == aoc::TechId{14});
+    CHECK(resourceRevealTech(aoc::sim::goods::PLATINUM) == aoc::TechId{65});
+    CHECK(resourceRevealTech(aoc::sim::goods::LITHIUM) == aoc::TechId{65});
+    CHECK(resourceRevealTech(aoc::sim::goods::TITANIUM) == aoc::TechId{23});
+    CHECK(resourceRevealTech(aoc::sim::goods::RARE_EARTH) == aoc::TechId{23});
+    // The ancient money metals stay visible from the first turn.
+    CHECK_FALSE(resourceRevealTech(SILVER_ORE).isValid());
+    CHECK_FALSE(resourceRevealTech(aoc::sim::goods::GOLD_ORE).isValid());
+}
+
+TEST_CASE("a recipe whose other input cannot be seen yet is no draw on the money metal") {
+    // Recipe 67, Platinum Jewelry, eats gold ore and platinum at a Textile
+    // Mill (building 8) with no tech gate. Platinum is revealed by Chemistry.
+    aoc::test::World w   = aoc::test::makeWorld(2);
+    aoc::game::Player& p = *w.gameState.player(P0);
+    aoc::game::City& a   = aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
+    a.districts().districts.push_back(
+        {aoc::sim::DistrictType::Industrial, a.location(), {aoc::BuildingId{8}}});
+    CHECK(aoc::sim::industrialDrawFor(w.gameState, P0, aoc::sim::goods::GOLD_ORE) == 0);
+    // Platinum in the stockpile (an import) makes the recipe runnable even
+    // before the tech that reveals its tiles.
+    a.stockpile().addGoods(aoc::sim::goods::PLATINUM, 1);
+    CHECK(aoc::sim::industrialDrawFor(w.gameState, P0, aoc::sim::goods::GOLD_ORE) == 1);
+    a.stockpile().consumeGoods(aoc::sim::goods::PLATINUM, 1);
+    CHECK(aoc::sim::industrialDrawFor(w.gameState, P0, aoc::sim::goods::GOLD_ORE) == 0);
+    p.tech().completedTechs[65] = true; // Chemistry: platinum can be mined
+    CHECK(aoc::sim::industrialDrawFor(w.gameState, P0, aoc::sim::goods::GOLD_ORE) == 1);
+}
+
+TEST_CASE("the incumbent's coin counts as its metal, a challenger's does not") {
+    aoc::test::World w   = aoc::test::makeWorld(2);
+    aoc::game::Player& p = *w.gameState.player(P0);
+    aoc::game::City& a   = aoc::test::addCityAt(w, P0, 5, 5, "Alpha");
+    a.stockpile().addGoods(SILVER_ORE, 2);
+    aoc::sim::Market market;
+    market.initialize();
+    p.monetary().system        = MonetarySystemType::CommodityMoney;
+    p.monetary().privateSpecie = 22 * 40; // forty silver's worth, struck at par 22
+    const aoc::sim::MoneyWorldView view = aoc::sim::moneyWorldView(w.gameState, nullptr, P0);
+
+    CHECK(aoc::sim::saleabilityInputsFor(w.gameState, market, view, P0, SILVER_ORE).held == 2);
+    p.monetary().moneyGood = static_cast<uint8_t>(SILVER_ORE);
+    CHECK(aoc::sim::saleabilityInputsFor(w.gameState, market, view, P0, SILVER_ORE).held == 42);
+    // Under barter the people hold no coin of their own: the stock is the stock.
+    p.monetary().system = MonetarySystemType::Barter;
+    CHECK(aoc::sim::saleabilityInputsFor(w.gameState, market, view, P0, SILVER_ORE).held == 2);
+}

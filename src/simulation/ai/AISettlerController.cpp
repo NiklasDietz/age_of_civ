@@ -28,6 +28,8 @@
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
+#include <utility>
+#include <algorithm>
 #include "aoc/simulation/turn/TurnProcessor.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
@@ -605,16 +607,24 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
                 continue;
             }
 
-            // No valid tile at the current position or its neighbours -- skip
-            // this turn without founding.  The settler will move next turn and
-            // the stuck counter resets when it reaches a new tile.
-            LOG_INFO("AI %u Settler at (%d,%d) stuck %d turn(s) but all nearby tiles "
-                     "violate minimum city distance -- skipping turn",
+            // Nothing foundable here or next door. Fall THROUGH to the move
+            // below rather than skipping the turn.
+            //
+            // This used to `continue`, and the comment claimed "the settler will
+            // move next turn and the stuck counter resets when it reaches a new
+            // tile". It could not: once stuckTurns passes the limit this branch
+            // runs every turn, and continuing from here skips the only code that
+            // moves the unit. So the settler stood still, the counter (which
+            // increments whenever a settler is seen on a tile it has not left)
+            // never reset, and at 50 it was disbanded -- while holding a good
+            // target it had never taken a step toward. Measured on seed 44:
+            // 2306 of these messages and 37 settlers disbanded, one of them
+            // sitting at (88,71) with a target at (94,63) scored 139.8.
+            LOG_INFO("AI %u Settler at (%d,%d) stuck %d turn(s), nothing foundable "
+                     "nearby -- moving on toward (%d,%d)",
                      static_cast<unsigned>(this->m_player),
                      snap.position.q, snap.position.r,
-                     stuckTurns);
-            this->m_settlerTargets.erase(snap.position);
-            continue;
+                     stuckTurns, target.q, target.r);
         }
 
         // --- Move toward the target ---
@@ -626,8 +636,62 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
             // the boarding and landing at the shorelines.
             const bool canEmbark =
                 gsPlayer->tech().hasResearched(aoc::TechId{31});
-            aoc::sim::orderUnitMove(*snap.ptr, target, grid, canEmbark);
-            aoc::sim::moveUnitAlongPath(gameState, *snap.ptr, grid);
+            bool ordered = aoc::sim::orderUnitMove(*snap.ptr, target, grid, canEmbark);
+
+            // The target cannot be reached at all -- not on foot and not by
+            // sea. THIS is the moment to look further afield, and getting the
+            // trigger right took two attempts: a first version fired when the
+            // local spiral scored nothing, which never happened, while seeds 44
+            // and 45 were disbanding 37 and 18 settlers apiece that each held a
+            // perfectly good target they simply could not walk to. Candidate
+            // scarcity and unreachability are different failures.
+            //
+            // Bounded on purpose: one wide sweep, and at most OVERSEAS_TRIES
+            // paths tested, for a settler that would otherwise idle until the
+            // stuck counter disbands it.
+            if (!ordered && canEmbark) {
+                constexpr int32_t OVERSEAS_RADIUS = 40;
+                constexpr int32_t OVERSEAS_TRIES  = 5;
+
+                std::vector<std::pair<float, aoc::hex::AxialCoord>> distant;
+                std::vector<aoc::hex::AxialCoord> wide;
+                wide.reserve(5000);
+                aoc::hex::spiral(snap.position, OVERSEAS_RADIUS,
+                                 std::back_inserter(wide));
+                for (const aoc::hex::AxialCoord& cand : wide) {
+                    if (!grid.isValid(cand) || cand == target) { continue; }
+                    const float sc = scoreCityLocation(
+                        cand, grid, gameState, this->m_player, peripheryTol);
+                    if (sc > -9999.0f) { distant.emplace_back(sc, cand); }
+                }
+                std::sort(distant.begin(), distant.end(),
+                          [](const std::pair<float, aoc::hex::AxialCoord>& a,
+                             const std::pair<float, aoc::hex::AxialCoord>& b) {
+                              return a.first > b.first;
+                          });
+
+                int32_t tried = 0;
+                for (const std::pair<float, aoc::hex::AxialCoord>& cand : distant) {
+                    if (tried >= OVERSEAS_TRIES) { break; }
+                    ++tried;
+                    if (aoc::sim::orderUnitMove(*snap.ptr, cand.second, grid, true)) {
+                        this->m_settlerTargets[snap.position] = cand.second;
+                        ordered = true;
+                        LOG_INFO("AI %u Settler at (%d,%d) could not reach (%d,%d) "
+                                 "-- retargeting (%d,%d), score=%.1f",
+                                 static_cast<unsigned>(this->m_player),
+                                 snap.position.q, snap.position.r,
+                                 target.q, target.r,
+                                 cand.second.q, cand.second.r,
+                                 static_cast<double>(cand.first));
+                        break;
+                    }
+                }
+            }
+
+            if (ordered) {
+                aoc::sim::moveUnitAlongPath(gameState, *snap.ptr, grid);
+            }
 
             // If the settler moved, remove the old position entry so the new
             // position starts with a clean stuck count.

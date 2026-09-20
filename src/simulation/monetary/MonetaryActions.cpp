@@ -531,6 +531,35 @@ void forEachRunnableRecipe(const aoc::game::Player& me, Fn&& fn) {
         if (recipe.requiredTech.isValid() && !me.hasResearched(recipe.requiredTech)) {
             continue;
         }
+        // A recipe whose other input the civ can neither see nor already
+        // holds is not a draw on anything: platinum jewellery counted as a use
+        // of gold from turn one and, against a coined-away stock of two or
+        // three ore, sank gold as money on every seed the moment a Textile
+        // Mill went up. A good in the stockpile (a starter kit, an import)
+        // can be worked whether or not its tiles are revealed.
+        bool sourceable = true;
+        for (const RecipeInput& input : recipe.inputs) {
+            if (!input.consumed || input.goodId >= goods::GOOD_COUNT) {
+                continue;
+            }
+            const TechId reveal = resourceRevealTech(input.goodId);
+            if (!reveal.isValid() || me.hasResearched(reveal)) {
+                continue;
+            }
+            int32_t held = 0;
+            for (const std::unique_ptr<aoc::game::City>& city : me.cities()) {
+                if (city != nullptr && city->owner() == me.id()) {
+                    held += city->stockpile().getAmount(input.goodId);
+                }
+            }
+            if (held <= 0) {
+                sourceable = false;
+                break;
+            }
+        }
+        if (!sourceable) {
+            continue;
+        }
         int32_t sites = 0;
         for (const std::unique_ptr<aoc::game::City>& city : me.cities()) {
             if (city != nullptr && city->owner() == me.id() &&
@@ -615,6 +644,18 @@ SaleabilityInputs saleabilityInputsFor(const aoc::game::GameState& gameState, co
     in.basePrice       = goodDef(goodId).basePrice;
     const aoc::game::Player* me = actorConst(gameState, player);
     in.isIncumbent              = me != nullptr && me->monetary().moneyGood == goodId;
+    // The incumbent's coin IS its metal, struck from this very good at par
+    // (coinToPay), so it counts as held: otherwise a money whose stock is
+    // mostly coined shows two or three ore against industry's draw and the
+    // industrial term sinks it the turn a consuming building goes up. Only the
+    // incumbent, so coin received from abroad cannot vouch for a good the civ
+    // holds none of; and not under Barter, whose people pay in the metal
+    // itself and hold no coin of their own.
+    if (in.isIncumbent && me->monetary().system != MonetarySystemType::Barter) {
+        const int64_t par  = std::max<int64_t>(1, in.basePrice);
+        const int64_t coin = std::max<CurrencyAmount>(0, me->monetary().privateSpecie) / par;
+        in.held            = static_cast<int32_t>(std::min<int64_t>(in.held + coin, 1000000));
+    }
 
     // Swing over the rolling window. Untouched history slots sit at zero, and
     // counting those would read as a collapse from the base price rather than

@@ -67,10 +67,14 @@ TEST_CASE("a fiat bank issues against deflation up to the anchor's money floor")
     // Seed 43 player 3 at turn 161: 163 in circulation, prices falling ten
     // percent a turn. The rule refills to the floor in one go.
     CHECK(aoc::sim::fiatIssueTarget(paperCiv(-0.10f, 163), 0, pop) == 250 - 163);
-    // Money at or above the floor: deflation alone buys nothing more.
-    CHECK(aoc::sim::fiatIssueTarget(paperCiv(-0.10f, 250), 0, pop) == 0);
-    CHECK(aoc::sim::fiatIssueTarget(paperCiv(-0.10f, 900), 0, pop) == 0);
-    // Nobody to price for: no floor.
+    // Money at or above the floor: the slide's own size is issued instead.
+    // Every deflating fiat row on the 400-turn seed 42 run had 1500 to 2200
+    // in circulation against a floor near 250; the floor alone did nothing.
+    // Half the slide a turn (FIAT_LEAN_GAIN), rounded to nearest.
+    CHECK(aoc::sim::fiatIssueTarget(paperCiv(-0.10f, 250), 0, pop) == 13);
+    CHECK(aoc::sim::fiatIssueTarget(paperCiv(-0.10f, 900), 0, pop) == 45);
+    CHECK(aoc::sim::fiatIssueTarget(paperCiv(-0.065f, 2436), 0, pop) == 79); // round(79.2)
+    // Nobody to price for and nothing held: nothing to lean on.
     CHECK(aoc::sim::fiatIssueTarget(paperCiv(-0.10f, 0), 0, 0) == 0);
 }
 
@@ -79,6 +83,8 @@ TEST_CASE("the deflation trigger is strict and sits at minus two percent") {
     CHECK(aoc::sim::fiatIssueTarget(paperCiv(aoc::sim::FIAT_DEFLATION_TRIGGER, 0), 0, pop) == 0);
     CHECK(aoc::sim::fiatIssueTarget(paperCiv(-0.0201f, 0), 0, pop) == 250);
     CHECK(aoc::sim::fiatIssueTarget(paperCiv(0.0f, 0), 0, pop) == 0);
+    // Just past the trigger with ample money: the lean is small but not zero.
+    CHECK(aoc::sim::fiatIssueTarget(paperCiv(-0.0201f, 1000), 0, pop) == 10);
 }
 
 TEST_CASE("unpaid bills are covered in full, in an inflation too, and add to the refill") {

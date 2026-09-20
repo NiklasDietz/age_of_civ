@@ -33,14 +33,21 @@ void setInterestRate(MonetaryStateComponent& state, Percentage rate);
 /// the bank leans against a real slide, not noise.
 inline constexpr float FIAT_DEFLATION_TRIGGER = -0.02f;
 
+/// Share of a deflation the bank corrects in one turn. At 1.0 the 200-turn
+/// seed 42 run swapped 30 deflating fiat turns for 26 above ten percent
+/// inflation; half the slide a turn converges without the overshoot.
+inline constexpr double FIAT_LEAN_GAIN = 0.5;
+
 /**
  * @brief How much a fiat-class bank should issue this turn, before the cap.
  *
  * Two terms. Under deflation (inflationRate < FIAT_DEFLATION_TRIGGER) it
- * refills the money stock (treasury + specie + notes) up to half the money
- * demand the price anchor already assumes, priceAnchorK x population / 2;
- * below that stock a specie civ's prices would sit at the anchor floor, so it
- * is the least a paper civ needs to stop deflating. The bill term covers what
+ * issues the larger of two amounts: the gap to half the money demand the
+ * price anchor already assumes, priceAnchorK x population / 2, below which a
+ * specie civ's prices would sit at the anchor floor; and FIAT_LEAN_GAIN of the
+ * slide's own size, |inflationRate| x money, which lifts next turn's
+ * money-growth term by that share. The first rescues a collapsed civ, the
+ * second one whose economy has outgrown ample money. The bill term covers what
  * went unpaid last turn in full: arrears disband a unit after five turns, and
  * the old "half the shortfall" rule was austerity against a treasury that can
  * no longer go negative. Neither term is gated on an inflation ceiling: the

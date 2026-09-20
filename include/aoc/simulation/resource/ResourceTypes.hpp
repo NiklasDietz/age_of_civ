@@ -197,9 +197,17 @@ struct GoodDef {
 ///   Apprenticeship (7)    → Niter
 ///   Industrialization (11)→ Coal
 ///   Refining (13)         → Oil
-///   Electricity (14)      → Aluminum
+///   Electricity (14)      → Aluminum, Nickel, Cobalt, Helium
 ///   Nuclear Fission (18)  → Uranium
+///   Chemistry (65)        → Platinum, Lithium
+///   Semiconductors (23)   → Titanium, Rare Earth
 ///   (none)                → Rubber, Cotton, Silver, Gold ore (always visible)
+///
+/// The late metals were always visible, so a people could mine nickel from
+/// turn one and, being durable and dear, elect it as its money in antiquity
+/// (measured on seed 42, 2026-09-17). Nickel was isolated in 1751 and
+/// platinum worked in the 18th century; a reveal tech is the table's own way
+/// of saying so, and the harvest step already honours it.
 [[nodiscard]] inline constexpr TechId resourceRevealTech(uint16_t goodId) {
     switch (goodId) {
     case 0:
@@ -222,6 +230,16 @@ struct GoodDef {
         return TechId{0}; // Tin → Mining
     case 12:
         return TechId{11}; // Natural Gas → Industrialization
+    case 151:
+    case 152:
+    case 153:
+        return TechId{14}; // Nickel, Cobalt, Helium → Electricity
+    case 154:
+    case 146:
+        return TechId{65}; // Platinum, Lithium → Chemistry
+    case 145:
+    case 150:
+        return TechId{23}; // Titanium, Rare Earth → Semiconductors
     default:
         return TechId{}; // Always visible (luxury, bonus, cotton, rubber, silver, gold)
     }
