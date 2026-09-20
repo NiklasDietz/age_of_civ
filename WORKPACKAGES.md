@@ -1,4 +1,4 @@
-# Age of Civilization — work packages
+# Age of Civilization -- work packages
 
 Tracking file for ongoing + planned work.  Status legend:
 `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` decided to skip
@@ -49,7 +49,7 @@ compound instead of running in parallel silos.
   disasters + amenity loss.
 
 ### A5  Supply / war weariness / grievance stacking
-- `[ ]`  When all three high simultaneously: city risks "revolt" — a
+- `[ ]`  When all three high simultaneously: city risks "revolt" -- a
   soft secession that flips the city to Free-City for 10 turns.
 - Acceptance: sim log shows distinct revolt events; currently only
   loyalty-driven secession exists.
@@ -130,7 +130,7 @@ Open late-game chain without needing a second map surface.
 
 ### C3  Tile infrastructure (multi-building per tile)
 - `[ ]`  Per-tile bitfield lanes: `hasRoad`, `hasRail`, `hasPowerPole`,
-  `hasPipeline` — all stack with existing `improvement`.
+  `hasPipeline` -- all stack with existing `improvement`.
 - `[ ]`  Power grid propagation via poles.  Cities in range of
   connected pole get +X production multiplier.
 - `[ ]`  Pipelines: +100% throughput + 1-turn settle on oil/gas/fuel

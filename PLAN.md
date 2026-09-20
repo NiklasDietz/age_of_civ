@@ -1,4 +1,4 @@
-# Age of Civilization — current plan
+# Age of Civilization -- current plan
 
 Snapshot of what's done, what's open, what's deferred. Kept terse so it
 stays up to date.
@@ -7,7 +7,7 @@ stays up to date.
 
 ### Production chains + goods
 - Dropped construction-cost prereqs from chain-enabler buildings (Refinery,
-  Electronics Plant, Factory, Semiconductor Fab, Industrial Complex) — broke
+  Electronics Plant, Factory, Semiconductor Fab, Industrial Complex) -- broke
   the chicken-and-egg loop that left late-tier industrial factories unbuilt.
 - Forced-enqueue list in AI production picker for Refinery, Electronics Plant,
   Food Processing Plant, Industrial Complex, Precision Workshop, Semiconductor
@@ -34,17 +34,17 @@ stays up to date.
 - Strategic tile work-priority: `autoAssignWorkers` now gives RawStrategic
   resources +8 score (was +2), so cities actually prefer Oil/Coal/Iron over
   generic grassland.
-- Periodic worker re-assignment every 10 turns per city — newly-revealed
+- Periodic worker re-assignment every 10 turns per city -- newly-revealed
   resources get picked up (e.g. Oil tiles after Refining tech).
 - CLAY + RICE placed on Grassland (Rice river-adjacent only). Both had
   recipes but no placement before.
 - Climate-zone tightening:
-  - Subtropical band carved at temperature [0.55, 0.70] — Tea, Silk, Wine.
+  - Subtropical band carved at temperature [0.55, 0.70] -- Tea, Silk, Wine.
   - Tropical (>0.65) restricted: Rubber is Jungle-only now.
   - Temperate narrowed to [0.30, 0.55).
 - Continent domain-warp (noise-offset sample coord) so `Continents` mapType
   produces irregular coastlines with bays/peninsulas, not discs.
-- Mountain coastal-ridge bias — BFS distance-to-coast + Gaussian elevation
+- Mountain coastal-ridge bias -- BFS distance-to-coast + Gaussian elevation
   bump at dist 3-5. Mountains cluster at young-margin bands, not tile centre.
 
 ### Rivers + terrain rendering
@@ -65,7 +65,7 @@ stays up to date.
 - 56 Forge Bronze Tools (Bronze → Tools, early tier)
 - 57 Rubber-Sealed Machinery (uses formerly-dead Rubber Goods)
 - 58 Heavy-Plated Armored Vehicles (uses formerly-dead Industrial Equip)
-- 60 Develop Software (Bootstrap) — 1 Microchip → 1 Software. Resource-light
+- 60 Develop Software (Bootstrap) -- 1 Microchip → 1 Software. Resource-light
   path for knowledge-economy civs.
 - Removed Surface Plate as a good. Recipes 18 (Basic) and 19 (Premium) now
   produce Precision Instruments directly; Surface Plate is now a
@@ -107,7 +107,7 @@ stays up to date.
 - Inflation moneyGrowth + printingInflation clamps (-0.15..+0.25) so the
   +50% cap no longer saturates early-game.
 
-## Open / deferred — next sessions
+## Open / deferred -- next sessions
 
 **Audited 2026-09-08 against the code.** Most of what this section listed has
 since shipped; those entries are recorded below as done rather than deleted, so
@@ -116,29 +116,29 @@ the next reader can tell "built" from "never wanted". Only the items under
 
 ### Shipped since this list was written
 
-- **Loyalty era decay** — era multiplier on foreign pressure plus a +3 loyalty
+- **Loyalty era decay** -- era multiplier on foreign pressure plus a +3 loyalty
   floor from Telecom Hub / Research Lab, both in `CityLoyalty.cpp`.
-- **Greenhouse / cross-zone crops** — present in `Terrain.hpp` and
+- **Greenhouse / cross-zone crops** -- present in `Terrain.hpp` and
   `HexGridLayers.hpp`.
-- **Recipe-preference UI** — the city detail screen calls
+- **Recipe-preference UI** -- the city detail screen calls
   `setRecipePreference` (`CityDetailTabs.cpp:1085`).
-- **Goods additions** — ELECTRICITY, PHARMACEUTICALS, BATTERIES and LITHIUM all
+- **Goods additions** -- ELECTRICITY, PHARMACEUTICALS, BATTERIES and LITHIUM all
   exist in `ResourceTypes.hpp`.
-- **Tile infrastructure** — `hasRoad`, `hasPowerPole` and `hasPipeline` lanes
+- **Tile infrastructure** -- `hasRoad`, `hasPowerPole` and `hasPipeline` lanes
   exist. `hasRail` does not; see *Still open*.
-- **Instrumentation** — the recipe fire counter is no longer a static
+- **Instrumentation** -- the recipe fire counter is no longer a static
   in-function array of 64. It is `m_recipeFireCount`, an
   `std::array<int32_t, MAX_RECIPES>` with `MAX_RECIPES = 128`, written behind a
   bounds check (`EconomySimulation.cpp:890`).
-- **Moon mining (WP-B)** — Lunar Colony is in `SpaceRace.hpp`.
+- **Moon mining (WP-B)** -- Lunar Colony is in `SpaceRace.hpp`.
 - **Geological resource placement and per-building environment modifiers**
-  (both from `IDEAS_ANALYSIS.md`) — `placeGeologyResources` with cratons and
+  (both from `IDEAS_ANALYSIS.md`) -- `placeGeologyResources` with cratons and
   sedimentary basins, `ResourcePlacementMode::Realistic` as the default, and
   `computeEnvironmentModifier`, called from `EconomySimulation.cpp:781`.
-- **Visibility event system** (`todo.txt`) — `VisibilityEventBus` emits,
+- **Visibility event system** (`todo.txt`) -- `VisibilityEventBus` emits,
   `processVisibilityEvents` filters per player through FogOfWar, and the AI
   blackboard consumes the result as `attackTargets` / `bestCitySites`.
-- **Monetary progression** (`ideas.txt`) — Barter -> CommodityMoney ->
+- **Monetary progression** (`ideas.txt`) -- Barter -> CommodityMoney ->
   GoldStandard -> FiatMoney -> Digital, with copper/silver/gold coin tiers and
   the gold standard gated behind Banking (era 3). The one part of that note not
   built is below.

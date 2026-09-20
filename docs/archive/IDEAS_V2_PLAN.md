@@ -1,4 +1,4 @@
-# Ideas v2 — plan and workpackets
+# Ideas v2 -- plan and workpackets
 
 Follows from the 4 ideas logged in `ideas.txt` (plus the hover-arrows UX
 request). Each workpacket has scope, acceptance, and a status marker.
@@ -158,11 +158,11 @@ wind, district). Shows the *why* behind the yield numbers.
 
 ## Execution order
 
-1. WP-F (PGO) — small, ships build infra today.
-2. WP-G (adjacency scaling) — data + logic, contained.
-3. WP-J (hover arrows) — builds on G data.
-4. WP-H (AI takeover) — UI plumbing, medium.
-5. WP-I (wind + rain shadow) — map-gen extension, deferred if earlier
+1. WP-F (PGO) -- small, ships build infra today.
+2. WP-G (adjacency scaling) -- data + logic, contained.
+3. WP-J (hover arrows) -- builds on G data.
+4. WP-H (AI takeover) -- UI plumbing, medium.
+5. WP-I (wind + rain shadow) -- map-gen extension, deferred if earlier
    work pressures timeline.
 
 Each batch ends with a full build + WORKPACKAGES.md update.

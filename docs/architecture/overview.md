@@ -1,4 +1,4 @@
-# Age of Civilization — Architecture Overview
+# Age of Civilization -- Architecture Overview
 
 Age of Civilization is a C++20 4X strategy game (hex map, plate-tectonics worldgen, deep
 economy/AI simulation) built as a single static library `aoc_lib` with five executables:
@@ -13,7 +13,7 @@ and type identifiers, a deterministic PRNG, structured logging, a compact binary
 for AI tracing, JSON string escaping, order-independent reductions over hash-ordered
 containers, and the `Selectable` interface for map objects.
 
-**game** owns the top-level runtime entity objects — `GameState`, `Player`, `City`, `Unit` —
+**game** owns the top-level runtime entity objects -- `GameState`, `Player`, `City`, `Unit` --
 that simulation, rendering, saving and the debug API all read and write through typed
 accessors, plus zone-of-control queries. Since save v34 `GameState` also owns the deals in
 force, so the turn processor, the AI, the UI and the save file see one list.

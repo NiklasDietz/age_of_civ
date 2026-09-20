@@ -1,4 +1,4 @@
-# Mechanic audit report — 2026-04
+# Mechanic audit report -- 2026-04
 
 12 simulations (3 seeds × 4 map types, 500 turns × 6 players each).
 Post-tune totals:
@@ -115,9 +115,9 @@ Second sweep with double the turns. Late-game mechanics verified.
 
 ## Remaining late-game gates
 
-- **Scientist pulse** requires Great Scientist activated in a Research Lab city. Research Lab is BuildingId 12 at 480 prod — feasible but rare. Needs longer sims or cheaper lab.
+- **Scientist pulse** requires Great Scientist activated in a Research Lab city. Research Lab is BuildingId 12 at 480 prod -- feasible but rare. Needs longer sims or cheaper lab.
 - **Spy cascade** needs 3+ `EspionageCaught` grievances on the same pair. Caught spies aren't dispersed enough across pairs to accumulate.
-- **Victory resolution** still doesn't log a terminal `VICTORY`. CSI era-evaluations fire (`VictoryCondition.cpp:410`) but no final winner declared in 1000t — may need 1500-2000t or explicit victory threshold tuning.
+- **Victory resolution** still doesn't log a terminal `VICTORY`. CSI era-evaluations fire (`VictoryCondition.cpp:410`) but no final winner declared in 1000t -- may need 1500-2000t or explicit victory threshold tuning.
 
 ## Victory-pacing rebalance pass (20 × 1500t)
 
@@ -144,8 +144,8 @@ User ask: "all victory types about same time; late-game techs usable".
 | DOMINATION (type 4) | 2 | 970, 1225 |
 | PRESTIGE (type 2, timeout) | 9 | 1500 |
 | CONFEDERATION (type 7, timeout) | 3 | 1500 |
-| SCIENCE (type 3) | 0 | — |
-| RELIGION (type 5) | 0 | — |
+| SCIENCE (type 3) | 0 | -- |
+| RELIGION (type 5) | 0 | -- |
 
 Domination now fires in late-game (was 0 before). Mars Colony + Exoplanet now complete (2 each). Nuclear strikes happen post-Manhattan (6).
 
@@ -159,20 +159,20 @@ Domination now fires in late-game (was 0 before). Mars Colony + Exoplanet now co
 - Unique recipes: 57/60
 - Wonders: 470, Districts: 4280
 - COMBINED REVOLT: 845 (was 0 pre-fix)
-- Spy cascade: 723 (was 0 pre-fix — grievance severity accumulation + threshold 40)
-- Scientist pulse: 356 (was 0 pre-broadening — Library/University/Lab trigger)
+- Spy cascade: 723 (was 0 pre-fix -- grievance severity accumulation + threshold 40)
+- Scientist pulse: 356 (was 0 pre-broadening -- Library/University/Lab trigger)
 - Faith rush: 4212, Religion conversions: 9801, GP activations: 1262
 - Merchant trade slot: 398, PowerPole: 3723, Pipeline: 2022, Greenhouse: 434
 - Nuclear strikes: 6, Mars drains: 2, Exoplanet: 2
 
 ### Remaining imbalance
 - Culture still fires around turn 500 (fast). Higher threshold keeps narrowing; next step is slowing *culture accumulation rate* per turn instead of raising threshold (wonder culture decay, faith/era coefficient).
-- Science/Religion victory types still fire at 0. Even with Mars reachable, all-5-projects requires Exoplanet (tech 25 = Nanotechnology); rarely researched. Religion needs 45% of every other civ's cities — spreads too slowly.
+- Science/Religion victory types still fire at 0. Even with Mars reachable, all-5-projects requires Exoplanet (tech 25 = Nanotechnology); rarely researched. Religion needs 45% of every other civ's cities -- spreads too slowly.
 - Prestige timeout is still default for 9/20. To bring to parity would require all paths to fire by turn 1000-1400.
 
 ### Tuning direction for next pass (deferred)
 - GA with fitness gradient penalizing "wins before turn 600" and "no winner in 1200t" would converge toward ~1000-turn decisive wins across paths.
-- Or: add a balancing "late-game hourglass" — after turn 800, cultural/religious spread rates 2× so trailing paths can catch up.
+- Or: add a balancing "late-game hourglass" -- after turn 800, cultural/religious spread rates 2× so trailing paths can catch up.
 
 ## Pacing-parity pass (20 × 1500t × 6p × 4 maps × 5 seeds)
 
@@ -183,8 +183,8 @@ User ask: "all victory types same time, late-tech usable".
 |---|---:|---|---|
 | **Culture** | 5 | 537 – 871 | Fires |
 | **Science** | 2 | 1048 – 1461 | **Fires** (was 0) |
-| **Domination** | 0 | — | Open |
-| **Religion** | 0 | — | Open |
+| **Domination** | 0 | -- | Open |
+| **Religion** | 0 | -- | Open |
 | **Prestige** (timeout) | 9 | 1500 | Fallback |
 | **Confederation** (timeout) | 4 | 1500 | Reduced (was 10) |
 

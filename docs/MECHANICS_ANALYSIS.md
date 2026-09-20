@@ -8,7 +8,7 @@ Based on research across Civ 6, Old World, Humankind, and FreeCiv.
 
 **Partially Implemented:** Golden/Dark Ages (era scores exist but limited), Tourism/Culture Victory (borders expand but no tourism mechanic).
 
-**Missing:** (was "Governors, Zone of Control" — both are implemented.
+**Missing:** (was "Governors, Zone of Control" -- both are implemented.
 Governors ship as titles from civics; zone of control lives in
 `game/ZoneOfControl.cpp` and, since 2026-09-07, binds city-states and
 barbarians as well as the major seats.)
@@ -22,18 +22,18 @@ barbarians as well as the major seats.)
 The existing spy system has 5 missions. Given the game's deep economy, espionage should be the primary way players interact with the hidden economic systems of other civilizations.
 
 **New Spy Missions (economic focus, unique to this game):**
-- **Monitor Treasury** — Passive. Reveals enemy's gold income/expenses per turn. Duration: ongoing while spy is placed.
-- **Monitor Research** — Passive. Reveals what tech the enemy is currently researching and progress. Ongoing.
-- **Siphon Funds** — Active. Steal % of enemy Commercial district income each turn (Civ 6 style but ongoing like Humankind's siphon).
-- **Market Manipulation** — Active. Temporarily crash an enemy's local market prices for goods you choose. Ties into the existing Market system.
-- **Currency Counterfeiting** — Active. Reduces enemy CurrencyTrust by 5-15 points. Ties into existing CurrencyTrust system.
-- **Supply Chain Disruption** — Active. Target a specific supply chain node (recipe) and reduce its efficiency by 50% for 10 turns.
-- **Insider Trading** — Active. Gain preview of enemy's stock market moves for 10 turns. Ties into StockMarket system.
-- **Steal Trade Secrets** — Active. Copy an enemy's industrial revolution bonus if they're ahead. Ties into IndustrialRevolution system.
-- **Embargo Intelligence** — Passive. Reveals who the enemy is trading with and what goods. Useful for sanctions enforcement.
-- **Recruit Double Agent** — Active. Captured enemy spy can be turned, feeding false intelligence back to origin.
+- **Monitor Treasury** -- Passive. Reveals enemy's gold income/expenses per turn. Duration: ongoing while spy is placed.
+- **Monitor Research** -- Passive. Reveals what tech the enemy is currently researching and progress. Ongoing.
+- **Siphon Funds** -- Active. Steal % of enemy Commercial district income each turn (Civ 6 style but ongoing like Humankind's siphon).
+- **Market Manipulation** -- Active. Temporarily crash an enemy's local market prices for goods you choose. Ties into the existing Market system.
+- **Currency Counterfeiting** -- Active. Reduces enemy CurrencyTrust by 5-15 points. Ties into existing CurrencyTrust system.
+- **Supply Chain Disruption** -- Active. Target a specific supply chain node (recipe) and reduce its efficiency by 50% for 10 turns.
+- **Insider Trading** -- Active. Gain preview of enemy's stock market moves for 10 turns. Ties into StockMarket system.
+- **Steal Trade Secrets** -- Active. Copy an enemy's industrial revolution bonus if they're ahead. Ties into IndustrialRevolution system.
+- **Embargo Intelligence** -- Passive. Reveals who the enemy is trading with and what goods. Useful for sanctions enforcement.
+- **Recruit Double Agent** -- Active. Captured enemy spy can be turned, feeding false intelligence back to origin.
 
-**Graduated Intelligence Levels (novel — inspired by real intelligence analysis):**
+**Graduated Intelligence Levels (novel -- inspired by real intelligence analysis):**
 - Level 0: No info (fog of war)
 - Level 1: Know what buildings/districts exist (embassy/basic contact)
 - Level 2: See military composition and approximate strength (scout/border contact)
@@ -41,7 +41,7 @@ The existing spy system has 5 missions. Given the game's deep economy, espionage
 - Level 4: See tech research, trade routes, diplomatic deals (advanced spy network)
 - Level 5: See exact stockpiles, supply chain state, internal politics (master spy network)
 
-This is a ML training signal too — it maps directly to what data the model should see.
+This is a ML training signal too -- it maps directly to what data the model should see.
 
 **Spy Levels and Promotions (Civ 6 style):**
 - Recruit → Agent → Secret Agent → Master Spy (4 levels)
@@ -56,7 +56,7 @@ This is a ML training signal too — it maps directly to what data the model sho
 - Polygraph promotion: enemy spies operate at -1 level in this city
 - Caught spies can be: released (small diplo hit), imprisoned (big diplo hit but you lose the spy), executed (massive diplo hit), or turned (double agent)
 
-### 2. Orders System (from Old World — highest-rated 4X innovation)
+### 2. Orders System (from Old World -- highest-rated 4X innovation)
 
 Replace per-unit fixed movement with a shared action economy. Each turn you get N Orders that can be spent on ANY unit/city action. This is the single most praised mechanic innovation in recent 4X games.
 
@@ -81,13 +81,13 @@ This would be the biggest differentiator from Civ 6.
 7 unique governors with promotion trees. Each city can have one governor.
 
 **Suggested governors tied to the game's economic focus:**
-- **The Financier** — +20% gold in city, commercial district adjacency +2. Promotions: bond market access, reduced trade route costs.
-- **The Industrialist** — +15% production, factory buildings +50% output. Promotions: auto-build improvements, reduced pollution.
-- **The Diplomat** — +8 loyalty, +2 amenities. Promotions: spy resistance, foreign trade route bonuses.
-- **The General** — +5 combat strength for garrisoned units, walls +25% HP. Promotions: militia units, reduced unit maintenance.
-- **The Scholar** — +15% science, +1 great scientist point. Promotions: eureka boosts, library gold bonus.
-- **The Merchant** — +1 trade route capacity, +30% trade route yield. Promotions: market price manipulation, resource monopoly bonuses.
-- **The Environmentalist** — -50% pollution, +2 appeal. Promotions: clean energy unlocks earlier, national park bonuses.
+- **The Financier** -- +20% gold in city, commercial district adjacency +2. Promotions: bond market access, reduced trade route costs.
+- **The Industrialist** -- +15% production, factory buildings +50% output. Promotions: auto-build improvements, reduced pollution.
+- **The Diplomat** -- +8 loyalty, +2 amenities. Promotions: spy resistance, foreign trade route bonuses.
+- **The General** -- +5 combat strength for garrisoned units, walls +25% HP. Promotions: militia units, reduced unit maintenance.
+- **The Scholar** -- +15% science, +1 great scientist point. Promotions: eureka boosts, library gold bonus.
+- **The Merchant** -- +1 trade route capacity, +30% trade route yield. Promotions: market price manipulation, resource monopoly bonuses.
+- **The Environmentalist** -- -50% pollution, +2 appeal. Promotions: clean energy unlocks earlier, national park bonuses.
 
 ---
 
@@ -95,7 +95,7 @@ This would be the biggest differentiator from Civ 6.
 
 ### 4. Zone of Control
 
-Military units and encampment districts exert ZoC on adjacent tiles. Entering a ZoC tile costs all remaining movement. This adds huge tactical depth to combat — blocking mountain passes, river crossings, city approaches.
+Military units and encampment districts exert ZoC on adjacent tiles. Entering a ZoC tile costs all remaining movement. This adds huge tactical depth to combat -- blocking mountain passes, river crossings, city approaches.
 
 ### 5. Tourism / Cultural Victory
 
@@ -114,7 +114,7 @@ Currently war declarations are binary. Add justification types:
 - Liberation War (freeing allies' cities, no penalty)
 - Reconquest War (retaking your own cities, no penalty)
 - Colonial War (target 2+ eras behind, reduced penalty)
-- Economic War (responding to trade sanctions/embargo, reduced penalty — unique to this game)
+- Economic War (responding to trade sanctions/embargo, reduced penalty -- unique to this game)
 
 ### 7. Alliance Types (Civ 6 style)
 
@@ -140,7 +140,7 @@ This connects gameplay to research and makes the tech tree feel dynamic.
 
 ## TIER 3: Differentiating Additions (Novel Mechanics)
 
-### 9. Tech Deck (from Old World — widely praised)
+### 9. Tech Deck (from Old World -- widely praised)
 
 Instead of a fixed tech tree, draw 4 tech cards per turn, pick 1, discard 3. Discarded cards re-enter the deck after 3-4 other techs. This eliminates "solved" optimal paths and forces adaptation.
 
@@ -190,8 +190,8 @@ Earned from alliances, city-state suzerainty, government type. Spent on World Co
 
 For maximum differentiation from Civ 6 while leveraging the game's economic depth:
 
-1. **Expanded Espionage** — Unique economic spy missions that interact with your existing deep economy (supply chains, currency, stocks). No other game does this.
-2. **Orders System** — The single most praised 4X innovation. Would immediately set the game apart.
-3. **Governors** — Standard feature that's missing. Easy to implement, high player satisfaction.
-4. **Zone of Control** — Essential for tactical combat depth. Small implementation, big gameplay impact.
-5. **Eureka Boosts** — Connects gameplay to research. Relatively easy to add.
+1. **Expanded Espionage** -- Unique economic spy missions that interact with your existing deep economy (supply chains, currency, stocks). No other game does this.
+2. **Orders System** -- The single most praised 4X innovation. Would immediately set the game apart.
+3. **Governors** -- Standard feature that's missing. Easy to implement, high player satisfaction.
+4. **Zone of Control** -- Essential for tactical combat depth. Small implementation, big gameplay impact.
+5. **Eureka Boosts** -- Connects gameplay to research. Relatively easy to add.

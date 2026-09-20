@@ -1,4 +1,4 @@
-# Ideas v3 — plan and workpackets
+# Ideas v3 -- plan and workpackets
 
 Carry-over of still-open work plus 5 new items from `ideas.txt`.
 
@@ -11,11 +11,11 @@ Execution order at the bottom.
 ## Carry-over from prior plans (still open / partial)
 
 ### Open from WORKPACKAGES.md
-- WP-A3 narrative wonder effects: Pyramids builder charge (done), Taj Mahal GA bonus (done), Oracle free civic (done), Manhattan unlock (done), Colosseum amenity (done). **Still open:** none — all wired or marked deferred.
+- WP-A3 narrative wonder effects: Pyramids builder charge (done), Taj Mahal GA bonus (done), Oracle free civic (done), Manhattan unlock (done), Colosseum amenity (done). **Still open:** none -- all wired or marked deferred.
 - WP-C2 cuts/migration: cuts via deprecation done. Save migration done. **Open:** none.
-- WP-C3 tile infrastructure: data, BFS bonus, AI build, render, human UI all live. **Open:** pipeline 1-turn settle on routes (current model uses speed doubling which is functionally equivalent — `[-]`).
+- WP-C3 tile infrastructure: data, BFS bonus, AI build, render, human UI all live. **Open:** pipeline 1-turn settle on routes (current model uses speed doubling which is functionally equivalent -- `[-]`).
 - WP-C4 Greenhouse plant-a-crop: live including AI heuristic. **Open:** none.
-- WP-C6 GA tuning: ran 25 gen × 10 pop × 5 games × 250t pass; current defaults committed. AI mode also ran (output `evolved_summary.txt`, not committed — per-civ).
+- WP-C6 GA tuning: ran 25 gen × 10 pop × 5 games × 250t pass; current defaults committed. AI mode also ran (output `evolved_summary.txt`, not committed -- per-civ).
 - WP-D4 1000-turn run: done, full audit report.
 - D1/D2 biofuel/biogas tuning: done.
 - IMPROVEMENT_DEFS JSON migration: done.
@@ -27,7 +27,7 @@ Execution order at the bottom.
 
 ### Open from IDEAS_V2_PLAN.md
 - Sub-checkboxes inside WPs F-J never updated even though top-level marked done. Cosmetic only.
-- Visual cluster fusion (idea 2 from old ideas.txt) — adjacent same-improvement tiles render as one bigger sprite. Skipped; covered in concept by adjacency-arrow overlay.
+- Visual cluster fusion (idea 2 from old ideas.txt) -- adjacent same-improvement tiles render as one bigger sprite. Skipped; covered in concept by adjacency-arrow overlay.
 
 ---
 
@@ -61,16 +61,16 @@ slots, scale range with era, allow inter-city slot transfer.
   too heavily.
 - Acceptance: log cargo throughput per route type; ratios match design.
 
-### K4  Range progression — tech-gated, per route type
+### K4  Range progression -- tech-gated, per route type
 Range scales as a side effect of transport-tech research, not era.
 
 | Tech researched | Land range | Sea range |
 |---|---:|---:|
 | (none) | 4 | 8 |
-| Animal Husbandry (1) | 6 | — |
-| Engineering (6) | 8 | — |
+| Animal Husbandry (1) | 6 | -- |
+| Engineering (6) | 8 | -- |
 | Apprenticeship (7) | 10 | 10 |
-| Metallurgy (8) | — | 12 |
+| Metallurgy (8) | -- | 12 |
 | Industrialization (11) | 16 | 16 |
 | Refining (12) | 20 | 22 |
 | Mass Production (15) | 24 | 26 |
@@ -84,14 +84,14 @@ Range scales as a side effect of transport-tech research, not era.
 - `[x]`  Logged: `"Trade route rejected: P%u land longest segment 12 > range 6"`.
 
 ### K5  Middle-man relay
-- `[-]`  Decided to skip — already covered by the existing toll
+- `[-]`  Decided to skip -- already covered by the existing toll
   mechanism. When A's trader crosses B's territory, B charges a
   per-tile toll (see `TollEntry` in TradeRouteSystem.cpp tile pre-
   scan). That's exactly the middle-man payout. Range still gates
   whether A can reach C at all; toll captures the relay-cut.
 
 ### K6  (removed)
-Subsumed by K1 — global pool eliminates per-city accounting entirely.
+Subsumed by K1 -- global pool eliminates per-city accounting entirely.
 
 ### K7  Trading Posts as range extenders
 Civ-6-style: chained relay nodes. Cities and Trading Post improvements
@@ -107,7 +107,7 @@ sit between origin and destination.
   `establishTradeRoute` rejects when longest unbroken segment > range.
 - `[ ]`  AI builder heuristic for placing Trading Posts on neutral
   land between distant trade partners (open).
-- `[x]`  Cities are intrinsic relay points — settling between trade
+- `[x]`  Cities are intrinsic relay points -- settling between trade
   partners extends range automatically.
 
 Acceptance: a 4-civ line A-B-C-D where range is 12 and total length
@@ -131,13 +131,13 @@ coverage so I can validate AI does sensible things.
 - `[~]`  Full per-turn event log: scaffolded `GameState::recordTileEvent`
   + `TileEvent` struct + `tileEvents()` accessor. Hook sites
   (BorderExpansion / Builder / city found-capture / NaturalDisasters
-  / Prospect) still pending — invasive cross-cutting change. Existing
+  / Prospect) still pending -- invasive cross-cutting change. Existing
   `_events.csv` already covers Tech / Unit / City / Diplomacy events
   per-turn so the gap is mainly per-tile transformation history.
 
 ### L2  Per-civ build/research order trace
 - `[ ]`  Capture every "Built X" + "Researched X" event with turn,
-  player, city. Already mostly logged — add structured CSV export.
+  player, city. Already mostly logged -- add structured CSV export.
 - `[ ]`  Compare across maps + seeds: is the AI consistently building
   the right things at the right tech tier?
 
@@ -206,23 +206,23 @@ curvature). Skybox + lighting + height-based terrain mesh.
 All five proposals evaluated:
 
 1. **Limit trader units, autogen still, slot expansion via building/
-   tile** — ✓ green light. Maps cleanly to existing `TraderComponent`.
+   tile** -- ✓ green light. Maps cleanly to existing `TraderComponent`.
    Slot pool already half-implemented via `monetary.maxTradeRoutes`.
    Scope: medium. Tracked as **WP-K1/K2/K3**.
-2. **Range grows with era; middle-man relay** — ✓ green for range
+2. **Range grows with era; middle-man relay** -- ✓ green for range
    gate, yellow for relay. Range = small change. Relay = pathing
    rewrite, route splitting, payout accounting. Tracked as **WP-K4**
    (range) and **WP-K5** (relay, stretch).
-3. **Per-city vs per-civ slots; transfer between cities** — ✓ green.
+3. **Per-city vs per-civ slots; transfer between cities** -- ✓ green.
    Tracked as **WP-K1** (per-city slots) and **WP-K6** (transfer).
    Recommendation: per-city slots that auto-rebalance, with manual
    override available. Models real-world trade hubs without forcing
    the player to micromanage.
 4. **Enhanced analysis covering all features + per-tile history +
-   AI decision tracking** — ✓ green. Tracked as **WP-L**. High value
+   AI decision tracking** -- ✓ green. Tracked as **WP-L**. High value
    for catching AI regressions and for the upcoming GA passes.
-5. **3D mode — flat hex grid with 3D tiles/units/cities, no planet
-   curvature** — ✓ green light **after** WP-K and WP-L land. Render
+5. **3D mode -- flat hex grid with 3D tiles/units/cities, no planet
+   curvature** -- ✓ green light **after** WP-K and WP-L land. Render
    pipeline lift but constrained scope (no planet curvature). Tracked
    as **WP-M**.
 

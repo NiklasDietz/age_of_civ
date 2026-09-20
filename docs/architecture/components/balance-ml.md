@@ -8,39 +8,39 @@ values and leader personalities automatically.
 
 ## Key files
 
-### `src/balance/` — runtime balance parameters
+### `src/balance/` -- runtime balance parameters
 
 - [include/aoc/balance/BalanceParams.hpp:29](../../../include/aoc/balance/BalanceParams.hpp#L29)
-  / `src/balance/BalanceParams.cpp` — `BalanceParams`: the struct of tunable floats and
+  / `src/balance/BalanceParams.cpp` -- `BalanceParams`: the struct of tunable floats and
   ints (loyalty, culture victory threshold, religion dominance, production chain
   multipliers, stockpile caps, …); `aoc::balance::params()` returns the process-global
   singleton. `BalanceGenome` ([:152](../../../include/aoc/balance/BalanceParams.hpp#L152))
   is the same values packed as a flat `std::array<float>` for GA operators, with
   `toParams()` / `fromParams()`.
 
-### `ml/cpp/` — genetic algorithm tuner (separate CMake target `aoc_evolve`)
+### `ml/cpp/` -- genetic algorithm tuner (separate CMake target `aoc_evolve`)
 
-- `ml/cpp/GeneticAlgorithm.hpp` / `.cpp` — `Individual`
+- `ml/cpp/GeneticAlgorithm.hpp` / `.cpp` -- `Individual`
   ([:73](../../../ml/cpp/GeneticAlgorithm.hpp#L73)), `GAConfig`
   ([:124](../../../ml/cpp/GeneticAlgorithm.hpp#L124)), `ParamBounds`, `DifficultyTiers`;
   real-valued selection, crossover and Gaussian mutation over the genome vector.
-- `ml/cpp/FitnessEvaluator.hpp` / `.cpp` — `runSimulation`
+- `ml/cpp/FitnessEvaluator.hpp` / `.cpp` -- `runSimulation`
   ([ml/cpp/FitnessEvaluator.cpp:75](../../../ml/cpp/FitnessEvaluator.cpp#L75)) runs an
   **embedded** headless game linked from `aoc_lib` (it does not shell out to
   `aoc_simulate` nor use `GameServer`) and returns a `SimulationResult`
   ([:27](../../../ml/cpp/FitnessEvaluator.hpp#L27)).
-- `ml/cpp/BalanceMetrics.hpp` — the per-run health metrics a result is scored on.
-- `ml/cpp/BalanceTuner.hpp` / `.cpp` — `BalanceHealth`, `BalanceIndividual`,
+- `ml/cpp/BalanceMetrics.hpp` -- the per-run health metrics a result is scored on.
+- `ml/cpp/BalanceTuner.hpp` / `.cpp` -- `BalanceHealth`, `BalanceIndividual`,
   `BalanceGAConfig` ([:44-61](../../../ml/cpp/BalanceTuner.hpp#L44)) and the driver that
   initialises the population, runs generations, and writes the best genome to a plain-text
   summary (`evolved_balance.txt`, plus a paste-ready block on stderr).
-- `ml/cpp/ThreadPool.hpp:28` — fixed-size thread pool running one embedded simulation per
+- `ml/cpp/ThreadPool.hpp:28` -- fixed-size thread pool running one embedded simulation per
   thread.
-- `ml/cpp/main.cpp:420` — the `aoc_evolve` entry point.
+- `ml/cpp/main.cpp:420` -- the `aoc_evolve` entry point.
 
 ## Public surface
 
-- `aoc::balance::params()` — read by `TurnProcessor` and simulation sub-modules as a
+- `aoc::balance::params()` -- read by `TurnProcessor` and simulation sub-modules as a
   runtime override on top of the compile-time constants in `BalanceConfig.hpp`.
 - `aoc_evolve` writes plain-text summaries (`evolved_balance.txt` for balance,
   `evolved_summary.txt` for AI leaders). Feedback into the game is manual: values are

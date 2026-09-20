@@ -1,6 +1,6 @@
-# Age of Civilization — UI Style Guide
+# Age of Civilization -- UI Style Guide
 
-Version 1.0 — premium historical-strategy aesthetic.
+Version 1.0 -- premium historical-strategy aesthetic.
 Custom Vulkan renderer (Renderer2D) + UIManager.
 
 Design intent: parchment + bronze + marble. Layered ornament. Information-dense without clutter. Reads at 1080p / 1440p / 4K.
@@ -13,11 +13,11 @@ Design intent: parchment + bronze + marble. Layered ornament. Information-dense 
 Civilization-spanning chronicle. Every panel feels like a page from an illuminated manuscript bound in tooled leather, mounted on a mahogany cabinet edged with bronze.
 
 **Material inspiration**
-- **Parchment / vellum** — primary panel surface. Aged ivory, faint fiber texture, occasional ink-bleed.
-- **Aged bronze / brushed gold** — borders, dividers, bullet markers. Not yellow gold — warm bronze, slightly desaturated, hints of patina.
-- **Polished marble** — modal backdrops and tooltip surfaces. Veined off-white.
-- **Walnut / dark mahogany** — outer frame of permanent HUD elements. Grain visible at high zoom.
-- **Ink and gilt** — text and accent embellishment.
+- **Parchment / vellum** -- primary panel surface. Aged ivory, faint fiber texture, occasional ink-bleed.
+- **Aged bronze / brushed gold** -- borders, dividers, bullet markers. Not yellow gold -- warm bronze, slightly desaturated, hints of patina.
+- **Polished marble** -- modal backdrops and tooltip surfaces. Veined off-white.
+- **Walnut / dark mahogany** -- outer frame of permanent HUD elements. Grain visible at high zoom.
+- **Ink and gilt** -- text and accent embellishment.
 
 **Decorative motifs**
 - Mitered corner cartouches with small fleur or laurel.
@@ -27,7 +27,7 @@ Civilization-spanning chronicle. Every panel feels like a page from an illuminat
 - Wax-seal style for important confirmations / signed treaties.
 
 **Environmental tone**
-Warm, low-contrast surfaces. Cool gameplay highlights (azure, violet) for selection / hover. Background music is orchestral; the UI should feel orchestral too — measured, layered, formal.
+Warm, low-contrast surfaces. Cool gameplay highlights (azure, violet) for selection / hover. Background music is orchestral; the UI should feel orchestral too -- measured, layered, formal.
 
 **Immersion principles**
 - The map is the world. UI is paper laid over the world.
@@ -38,7 +38,7 @@ Warm, low-contrast surfaces. Cool gameplay highlights (azure, violet) for select
 
 ## 2. COLOR SYSTEM
 
-All values sRGB hex. Engine accepts linear `Color{r,g,b,a}` floats — apply `pow(c, 2.2)` at load.
+All values sRGB hex. Engine accepts linear `Color{r,g,b,a}` floats -- apply `pow(c, 2.2)` at load.
 
 **Surfaces**
 | Token | Hex | Use |
@@ -67,7 +67,7 @@ All values sRGB hex. Engine accepts linear `Color{r,g,b,a}` floats — apply `po
 | `TEXT_PARCHMENT`  | `#E9DFC4` | Inverted (on dark) |
 | `TEXT_DISABLED`   | `#8E826A` | Greyed-out items |
 
-**Resource accents** — 8 values, distinct hue families, all desaturated to sit on parchment.
+**Resource accents** -- 8 values, distinct hue families, all desaturated to sit on parchment.
 | Resource | Hex |
 |---|---|
 | Food          | `#5C8B3E` (olive) |
@@ -106,11 +106,11 @@ All values sRGB hex. Engine accepts linear `Color{r,g,b,a}` floats — apply `po
 ## 3. PANEL DESIGN LANGUAGE
 
 **Panel anatomy** (from outer to inner):
-1. **Outer frame** — 1 px BRONZE_DARK stroke.
-2. **Bronze rail** — 4 px tall gradient (BRONZE_DARK → BRONZE_BASE → BRONZE_LIGHT → BRONZE_BASE → BRONZE_DARK), 9-slice tileable.
-3. **Inner stroke** — 1 px BRONZE_DARK shadow inset.
-4. **Surface** — SURFACE_PARCHMENT with subtle fiber texture at 8% opacity.
-5. **Content padding** — 16 px / 24 px / 32 px (small / standard / hero).
+1. **Outer frame** -- 1 px BRONZE_DARK stroke.
+2. **Bronze rail** -- 4 px tall gradient (BRONZE_DARK → BRONZE_BASE → BRONZE_LIGHT → BRONZE_BASE → BRONZE_DARK), 9-slice tileable.
+3. **Inner stroke** -- 1 px BRONZE_DARK shadow inset.
+4. **Surface** -- SURFACE_PARCHMENT with subtle fiber texture at 8% opacity.
+5. **Content padding** -- 16 px / 24 px / 32 px (small / standard / hero).
 
 **Corner treatment**
 - Standard panels: 6 px corner cartouche with fleur stamp (BRONZE_LIGHT).
@@ -119,12 +119,12 @@ All values sRGB hex. Engine accepts linear `Color{r,g,b,a}` floats — apply `po
 - Round corners not used for primary panels (square + ornament reads as period-appropriate).
 
 **Layering**
-- Layer 0 — world (map).
-- Layer 1 — anchor HUD bars (top resource, bottom unit panel). Always visible.
-- Layer 2 — side trackers (notifications, world tracker).
-- Layer 3 — modal panels (city detail, tech tree).
-- Layer 4 — tooltips.
-- Layer 5 — system menus (pause, settings).
+- Layer 0 -- world (map).
+- Layer 1 -- anchor HUD bars (top resource, bottom unit panel). Always visible.
+- Layer 2 -- side trackers (notifications, world tracker).
+- Layer 3 -- modal panels (city detail, tech tree).
+- Layer 4 -- tooltips.
+- Layer 5 -- system menus (pause, settings).
 
 Each layer adds a +1 z-step shadow (4 px down, blur 8, 25% black).
 
@@ -163,22 +163,22 @@ Primary action = brightest, most ornamented. Secondary = parchment + bronze rail
 
 Three families. Atlas as MSDF (multi-channel signed distance field) for crisp rendering at any zoom.
 
-**Title — `Trajan Pro` substitute**
+**Title -- `Trajan Pro` substitute**
 Free alternatives: **Cinzel** (Google Fonts) or **Cormorant SC**. Roman small-caps, generous letter-spacing.
 - Use: hero titles, screen names, era cards, leader portraits.
 - Sizes: 32 / 28 / 24 px.
 
-**Subtitle — `Cormorant Garamond` (serif)**
+**Subtitle -- `Cormorant Garamond` (serif)**
 - Use: section headers, panel titles, tooltip headers.
 - Sizes: 20 / 18 / 16 px.
 
-**Body — `IBM Plex Serif` (slab) or `Lora`**
+**Body -- `IBM Plex Serif` (slab) or `Lora`**
 - Use: paragraph text, descriptions, list items.
 - Sizes: 14 / 13 / 12 px. Min 12 px in HUD.
 - Line-height 1.45×.
 
-**Numerical — `Cinzel` ALL CAPS for resource counters; `IBM Plex Mono` for tabular data**
-- Tabular figures only — never proportional digits in changing counters.
+**Numerical -- `Cinzel` ALL CAPS for resource counters; `IBM Plex Mono` for tabular data**
+- Tabular figures only -- never proportional digits in changing counters.
 - Sizes: 18 / 16 / 14 px.
 
 **Hierarchy**
@@ -249,7 +249,7 @@ Three button tiers.
 - Two-tone: ink line (TEXT_INK) over bronze fill (BRONZE_BASE).
 - 2 px stroke at master, scaled.
 - All icons sit on a 8 px transparent margin so they read on any background.
-- No gradients inside icons — use flat fills + one shadow rim.
+- No gradients inside icons -- use flat fills + one shadow rim.
 
 **Sets**
 | Domain | Examples |
@@ -330,7 +330,7 @@ Subtle, purposeful, period-appropriate. No bouncy easing.
 **Motion principles**
 - Modal panels translate in from top (16 px) + fade.
 - Notifications slide in from right edge.
-- Tooltips fade only — no slide.
+- Tooltips fade only -- no slide.
 - Selection halo radiates outward 0 → 8 px and fades over 180 ms.
 - Era transitions (rare, dramatic): full-screen scroll unfurl 1.2 s with parchment shader.
 
@@ -373,7 +373,7 @@ Cap all animation at 60 fps; use deltaTime, no fixed-frame timers.
 - Horizontal scrolling, era columns (Ancient → Information).
 - Each tech: card-style, 200 × 80 px, parchment, bronze frame, era-tinted ribbon top.
 - Locked tech: greyscale + lockReason on hover.
-- Trade-acquired-but-locked: subtle blue ribbon (knownTechs flag) — distinct from completed (full color).
+- Trade-acquired-but-locked: subtle blue ribbon (knownTechs flag) -- distinct from completed (full color).
 - Connector lines: bronze ink, 2 px, with arrowheads.
 - Current research: gilt halo + glow.
 
@@ -508,12 +508,12 @@ Per panel: 3 draw calls.
 3. Corner cartouches (sprite quads).
 Plus 1 draw call for shadow rectangle behind panel.
 
-Batch by atlas page — should hit < 50 draw calls for a full HUD frame.
+Batch by atlas page -- should hit < 50 draw calls for a full HUD frame.
 
 ### 10.7 Scalable rendering
 - DPI-aware: pass `dpiScale` to UIManager. All token px values multiplied at layout time.
 - Resolution-independent fonts: MSDF atlas, single texture, glyph SDF sampled per-pixel in shader.
-- Re-layout on framebuffer resize (already done — wire new tokens to existing rebuild path).
+- Re-layout on framebuffer resize (already done -- wire new tokens to existing rebuild path).
 
 ### 10.8 Migration plan
 1. Create `StyleTokens.hpp` + new color set, alias old names.
@@ -546,7 +546,7 @@ Batch by atlas page — should hit < 50 draw calls for a full HUD frame.
 
 ---
 
-## Appendix A — Quick palette reference
+## Appendix A -- Quick palette reference
 
 ```
 SURFACE_PARCHMENT     #E9DFC4

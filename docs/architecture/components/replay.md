@@ -10,15 +10,15 @@ researched, and a composite score.
 
 - `src/replay/ReplayRecorder.cpp` /
   [include/aoc/replay/ReplayRecorder.hpp](../../../include/aoc/replay/ReplayRecorder.hpp)
-  — `ReplayRecorder`: holds a `std::vector<ReplayFrame>`. `recordFrame(gameState, turn)`
+  -- `ReplayRecorder`: holds a `std::vector<ReplayFrame>`. `recordFrame(gameState, turn)`
   iterates all major players and records a `ReplayFrame::PlayerSnapshot` per player.
   Score formula: `military * 5 + territory * 20 + population * 2 + techs * 10`.
 
 ## Public surface
 
-- `ReplayRecorder::recordFrame(gameState, turn)` — called from `TurnProcessor` at the
+- `ReplayRecorder::recordFrame(gameState, turn)` -- called from `TurnProcessor` at the
   end of each turn when a recorder is attached to `TurnContext`.
-- `ReplayRecorder::frames()` — read by the score screen and future replay viewer.
+- `ReplayRecorder::frames()` -- read by the score screen and future replay viewer.
 
 ## Internal structure
 

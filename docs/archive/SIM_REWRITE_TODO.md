@@ -1,15 +1,15 @@
-# Sim physics rewrite — task tracker
+# Sim physics rewrite -- task tracker
 
-## Phase 1 — Voronoi purge — DONE
-## Phase 2 — Subduction speed — DONE
-## Phase 3 — Boundary classification — DONE
-## Phase 4 — Slab-pull / ridge-push feedback — DONE
+## Phase 1 -- Voronoi purge -- DONE
+## Phase 2 -- Subduction speed -- DONE
+## Phase 3 -- Boundary classification -- DONE
+## Phase 4 -- Slab-pull / ridge-push feedback -- DONE
 
-## Phase 5 — Cleanup
+## Phase 5 -- Cleanup
 
 - [x] **5.1** applyContinentalDocking deleted (function body, header
   declaration, caller-side `contactAgeByPlatePair` vector all gone).
-- [x] **5.2 (deferred — non-blocking)** `Plate::cx`/`cy`/`rot` retained
+- [x] **5.2 (deferred -- non-blocking)** `Plate::cx`/`cy`/`rot` retained
   as derived 2D-projection cache, not deleted. Reason: 44 live read
   sites use them for proximity tests + map-snapshot export; full
   migration to lat/lon haversine would require behaviour-equivalence
@@ -21,7 +21,7 @@
   requirements". Schedule as a follow-up cleanup PR with its own
   characterisation tests.
 
-## Phase 6 — Audit — DONE
+## Phase 6 -- Audit -- DONE
 
 - [x] 21-sim sweep clean.
 - [x] Multi-seed mountain count: 6/8 seeds with visible mountains

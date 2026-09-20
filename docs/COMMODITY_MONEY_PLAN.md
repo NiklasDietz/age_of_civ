@@ -242,7 +242,7 @@ so **Phase 2 must not be built yet**. Three things block the ladder, in order:
    | Commodity money | 136 asked, 10 passed | 136, 10 | 136, 10 |
    | Gold standard | 5 asked, 5 passed | 234, 3 | 5, 5 |
    | Fiat, seed 42 | 34 asked, 0 passed, strength 34 | 0 asked | 34, 0, **strength 0** |
-   | Fiat, seed 43 | — | — | 21 asked, **2 passed** |
+   | Fiat, seed 43 | -- | -- | 21 asked, **2 passed** |
 
    Seed 43 is the first time in this programme that any civ has reached fiat
    through the gate rather than by crisis suspension. On seed 42 fiat is still

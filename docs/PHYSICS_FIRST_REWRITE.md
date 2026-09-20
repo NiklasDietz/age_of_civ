@@ -78,21 +78,21 @@ To regenerate: `git grep -nE '...the symbol regex...'` (see PR description for t
   - 21-sim sweep (4/6/8 players × 1000 turns × 7 seeds, continents): 0 crashes; victory mix CULTURE 14.3% / RELIGION 9.5% / DOMINATION 4.8% / SCORE 71.4%; 7444 routes / 1108 districts / 172 wonders. Physics rewrite preserves balance.
   - Obsolete docs archived to `docs/archive/`: SPHERE_MIGRATION.md, PHYSICS_REWRITE_CONTINUE.md.
 
-## Open debt — cleanup pass 2026-05-06
+## Open debt -- cleanup pass 2026-05-06
 
 Status update after the post-P7 cleanup pass:
 
 - ~~`PhysicsGrid` struct + helpers~~ DELETED. `PlatePhysics.cpp` removed entirely; `PlatePhysics.hpp` slimmed to just `PhysicsConstants`. `Plate::grid` member, all 5 `initialisePlatePhysicsGrid` callers, `AOC_PHYSICS_DEBUG` block, `--dump-physics-cells` CLI feature + writer + `Config::physicsCellDumpPath` all gone.
-- ~~`HexGrid` dead plate setters/getters~~ DELETED — `setPlateLatLon`/`Weight`/`EulerPole`/`AngularVelDeg`/`Rot` + `setPlatePolygons`/`PolygonEdgeTypes`/`PolygonNeighborIds` and matching getters + member vectors purged. Live ones kept (`setPlateMotions`/`Centers`/`LandFrac`/`CrustAge`/`MergesAbsorbed`/`IsPolar` — IceAndRock + Biogeography + EarthSystem + ClimateBiome consume the getters).
-- ~~Diagnostic CLI dumps~~ DELETED — `--dump-plates`, `--dump-edges`, `--dump-mountain-edges` writers + flag parsing in `MapGenCli.cpp` (consumed deleted Voronoi polygon overlay state).
+- ~~`HexGrid` dead plate setters/getters~~ DELETED -- `setPlateLatLon`/`Weight`/`EulerPole`/`AngularVelDeg`/`Rot` + `setPlatePolygons`/`PolygonEdgeTypes`/`PolygonNeighborIds` and matching getters + member vectors purged. Live ones kept (`setPlateMotions`/`Centers`/`LandFrac`/`CrustAge`/`MergesAbsorbed`/`IsPolar` -- IceAndRock + Biogeography + EarthSystem + ClimateBiome consume the getters).
+- ~~Diagnostic CLI dumps~~ DELETED -- `--dump-plates`, `--dump-edges`, `--dump-mountain-edges` writers + flag parsing in `MapGenCli.cpp` (consumed deleted Voronoi polygon overlay state).
 - ~~`isMountainTile` vector + foothill BFS~~ DELETED in `ClimateBiome.cpp`. `mountainDist` kept zero-filled so the foothill-belt branch keeps compiling (collapses to `hillChance == 0`).
 - ~~Dead 2D `cx/cy` motion blocks~~ DELETED in `MapGenerator.cpp`: legacy wrap/clamp loop + 2D polar-wandering rotation (latter never updated lat/lon, was overwritten by next Mollweide forward).
 - ~~Empty per-epoch crust-age advance loop~~ DELETED in `MapGenerator.cpp` (loop body was empty post-P4.3h-c-5).
-- ~~PostSim cx/cy boundary-normal computation~~ DELETED — result unused (vx/vy gone in P4.3h-a).
+- ~~PostSim cx/cy boundary-normal computation~~ DELETED -- result unused (vx/vy gone in P4.3h-a).
 - ~~`ophioliteMask` always-zero branches~~ DELETED in PostSim Pass 6 + IceAndRock rt=3 path. Vector + param signature retained for ABI stability.
 - ~~Tombstone-comment cleanup~~ Pass 2: down to 2 (legitimate) tombstones in MapGenerator.cpp (from 128 originally). Removed dead hotspot-trail per-plate ownership lookup loop, leading-margin-factor=0 dead branch, slab-rebound stamp comment, oceanWedge override / mid-ocean ridge bathymetry tombstones, MOUNTAIN_BASE_M/SCALE_M references, Wilson crust accounting block, microplateCount cap comment, hotspotTrail accumulation comment, glacial isostatic rebound comment, aspect oscillation block, failed-rift scar comment, terrane accretion narrative, slab-pull/Wilson scan tombstone, --dump-physics-cells tombstone, plate-pair velocity coupling tombstone. MapGenerator.cpp shrunk 2635→2446 lines (~190 LOC of dead comments).
 
 ### Still open (multi-session refactors)
 
-- `Plate::cx`, `Plate::cy`: 11 live refs remain across init seeds, hotspot proximity check, rift seeding, Mollweide derive, and `setPlateCenters` consumer (EarthSystem boundary-normal pass). Removing these requires rewriting hotspot/rift placement + EarthSystem to use lat/lon — multi-session blast radius.
-- `PlateBoundary.hpp`: actively used by `Resources.cpp` (`BoundaryType` enum drives strategic resource placement) — not deletable.
+- `Plate::cx`, `Plate::cy`: 11 live refs remain across init seeds, hotspot proximity check, rift seeding, Mollweide derive, and `setPlateCenters` consumer (EarthSystem boundary-normal pass). Removing these requires rewriting hotspot/rift placement + EarthSystem to use lat/lon -- multi-session blast radius.
+- `PlateBoundary.hpp`: actively used by `Resources.cpp` (`BoundaryType` enum drives strategic resource placement) -- not deletable.

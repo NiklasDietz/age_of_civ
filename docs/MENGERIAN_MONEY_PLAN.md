@@ -149,7 +149,7 @@ saleability(G, C) = held(G, C)            // can't monetise what you don't have
 - **industrial** is the fraction of G consumed by available recipes. Early,
   gold and silver score near 1 because nothing consumes them. When industrial
   uses arrive, the term collapses, the metal stops being good money, **and that
-  is what pushes a civ to fiat to free it** — the arc the user asked for, as a
+  is what pushes a civ to fiat to free it** -- the arc the user asked for, as a
   consequence rather than a scripted event.
 - **stability** is inverse variance of market price over a window.
 

@@ -12,11 +12,11 @@ Generated from 40-sim narrow sweep (players 4,8 × turns 1500 × maps continents
 | Civs reaching IR#4 | 0 / 240 (0%) | 1-2 firings / run | **REGRESSED** |
 | Civs reaching IR#5 | 0 / 240 (0%) | ~1-in-3 runs | **REGRESSED** |
 
-This sweep is significantly **worse** than the state described in memory. Recent commit log shows 10 consecutive "balance fix" commits (`ae68bb2 .. 4366a69`). One of those plausibly broke the IR#1 chain — every downstream IR is gated on IR#1, so a single Charcoal-supply break would cascade.
+This sweep is significantly **worse** than the state described in memory. Recent commit log shows 10 consecutive "balance fix" commits (`ae68bb2 .. 4366a69`). One of those plausibly broke the IR#1 chain -- every downstream IR is gated on IR#1, so a single Charcoal-supply break would cascade.
 
 ## Dominant blockers (per IR level, from diagnostic logging)
 
-### IR#1 (Steam Age) — 205 civs blocked
+### IR#1 (Steam Age) -- 205 civs blocked
 - **98.0%** missing **Charcoal good (id 79)**
 - 2.0% missing tech 18 (SurfacePlate)
 
@@ -25,13 +25,13 @@ Recipe 38 (Wood -> Charcoal) is supposed to be near-universal. The fact that 98%
 - recipe 38 producing Charcoal that is consumed faster than logged (but `totalSupply` would still show non-zero)
 - a recent commit disabled or re-gated the recipe
 
-### IR#2 (Electric Age) — 226 civ-cases blocked
+### IR#2 (Electric Age) -- 226 civ-cases blocked
 - **57.5% tech-blocked** -- top: Steel tech (id 47, 115 cases), Electricity (id 14, 8), Precision (id 22, 7)
 - **42.5% goods-blocked** -- top: Oil (id 3, 59 cases), Steel good (id 64, 37)
 
 Steel-tech reach is the single largest IR#2 gate. Of civs that DO have Steel tech, the next gate is Oil (the H1 hypothesis from the plan).
 
-### IR#3 (Digital Age) — 240 civ-cases blocked
+### IR#3 (Digital Age) -- 240 civ-cases blocked
 - **96.7% missing Semiconductors good (id 75)**
 - 3.3% missing Semiconductors tech (id 23)
 
@@ -56,11 +56,11 @@ Original ranking (from plan): H1 OIL > H2 tech-pacing > H3 chain combo > H4 geol
 
 Updated ranking (from this evidence):
 
-1. **H7 (new) — IR#1 Charcoal-supply regression** dominates everything else (98% of IR#1 blockers). Highest priority.
-2. **H2 — Steel tech reach** is the next gate after IR#1 unlocks (115 / 226 IR#2 cases). Tech pacing is real.
-3. **H1 — OIL gate** real and material (59 / 226 IR#2 cases) but secondary to Steel-tech.
-4. **H4 — geology** modulates the rates (archipelago 2% vs islands 27% IR#1) but the absolute numbers are too low everywhere for placement to be the root cause.
-5. **H3 / H5 / H6** are unfalsifiable from this corpus — IR#3+ never fires, so we cannot tell whether the Semiconductor-good blocker is missing-building, missing-recipe-input, or missing-trade. Defer.
+1. **H7 (new) -- IR#1 Charcoal-supply regression** dominates everything else (98% of IR#1 blockers). Highest priority.
+2. **H2 -- Steel tech reach** is the next gate after IR#1 unlocks (115 / 226 IR#2 cases). Tech pacing is real.
+3. **H1 -- OIL gate** real and material (59 / 226 IR#2 cases) but secondary to Steel-tech.
+4. **H4 -- geology** modulates the rates (archipelago 2% vs islands 27% IR#1) but the absolute numbers are too low everywhere for placement to be the root cause.
+5. **H3 / H5 / H6** are unfalsifiable from this corpus -- IR#3+ never fires, so we cannot tell whether the Semiconductor-good blocker is missing-building, missing-recipe-input, or missing-trade. Defer.
 
 ## Recommended Phase 2
 

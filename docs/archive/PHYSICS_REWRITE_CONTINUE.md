@@ -1,4 +1,4 @@
-# Physics Rewrite — Session Handoff
+# Physics Rewrite -- Session Handoff
 
 Paste the prompt below into a fresh Claude Code session to continue the
 multi-week physics-first map-generation rewrite without re-loading any
@@ -34,8 +34,8 @@ is the single source of truth for "where we are." Each session updates
 it before stopping. New sessions read it and pick up.
 
 This keeps the chat context small because:
-- No need to re-explain the goal — memory has it.
-- No need to re-list ripped LOC, audit numbers, tuning constants — memory
+- No need to re-explain the goal -- memory has it.
+- No need to re-list ripped LOC, audit numbers, tuning constants -- memory
   has them.
 - The prompt above is ~150 tokens; the memory file is ~3 KB; that's the
   full handoff.
@@ -51,11 +51,11 @@ This keeps the chat context small because:
    - One `NEXT` block listing the next concrete sub-step.
 
 3. **Each session does exactly ONE sub-step**, audits, updates memory,
-   stops. Don't chain — chained work bloats context and the audit signal
+   stops. Don't chain -- chained work bloats context and the audit signal
    gets lost.
 
 4. **Continuation prompts are tiny.** Just "read memory file X, do the
-   NEXT block." The agent does not need to know what came before — the
+   NEXT block." The agent does not need to know what came before -- the
    memory file is the codified summary.
 
 5. **When a phase finishes**, append a one-line entry to MEMORY.md

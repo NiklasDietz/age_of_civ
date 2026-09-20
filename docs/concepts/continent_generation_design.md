@@ -1,4 +1,4 @@
-# Continent Generation — Design Mapping
+# Continent Generation -- Design Mapping
 
 How real plate tectonics map to our procedural model. Reference for tuning.
 
@@ -99,12 +99,12 @@ For each world tile (col, row):
 
 5. **Bilinear scatter spreading**. Each stress contribution writes to 4 cells. Footprint per contribution ~5x5 after 1 blur pass. May be too smeared; could switch to nearest-cell scatter for sharper boundaries.
 
-6. **Cratonic stability**. Real cratons are STABLE for billions of years — no orogeny, no sediment except shallow cover. Our cratons can absorb stress at their margins (correct) but interior should stay quiet. Currently the per-plate orogeny grid only stores boundary stress, so center cells ARE quiet.
+6. **Cratonic stability**. Real cratons are STABLE for billions of years -- no orogeny, no sediment except shallow cover. Our cratons can absorb stress at their margins (correct) but interior should stay quiet. Currently the per-plate orogeny grid only stores boundary stress, so center cells ARE quiet.
 
 ## Tuning checklist (keep in sync with code)
 
-- `STRESS_GATE` 0.30 — stress threshold for orogeny accumulation
-- Boundary band cutoff `d1/d2 > 0.93` — only seam tiles
+- `STRESS_GATE` 0.30 -- stress threshold for orogeny accumulation
+- Boundary band cutoff `d1/d2 > 0.93` -- only seam tiles
 - Arc orogeny contribution 0.13/epoch (ocean→cont)
 - Collision orogeny 0.09/epoch (cont→cont)
 - Trench orogeny -0.07/epoch (subducting side)
@@ -121,7 +121,7 @@ For each world tile (col, row):
 
 ---
 
-## Audit 2026-09-08 — measured against the generator
+## Audit 2026-09-08 -- measured against the generator
 
 Four seeds (42, 7, 1234, 99), default 140x90 Lambert, via `aoc_mapgen
 --format csv`:
@@ -145,19 +145,19 @@ Two real defects, both now fixed:
 convergent continental cell and debited nobody, so crustal volume was created
 from nothing each epoch. Over a 3 Gy run that drove the whole convergent belt
 into the 70 km cap, and peak crust read p95 through p100 = exactly 70.0 on every
-seed — the top of the distribution carried no information to threshold against.
+seed -- the top of the distribution carried no information to threshold against.
 Thickening now conserves volume: a cell takes its material from the continental
 neighbours being shortened, which is what crustal shortening is. Because cells
 are equal in degrees, sharing the donated volume by donor area means every donor
-loses the same thickness. Where donors cannot supply, less is thickened — the
+loses the same thickness. Where donors cannot supply, less is thickened -- the
 conservation doing its job.
 
 *The criterion was a ratio that had outlived its reason.* `MOUNTAIN_CRUST_RATIO`
-existed to survive two measurement errors — freeboard (sea level solved to
+existed to survive two measurement errors -- freeboard (sea level solved to
 -910..-1255 m) and continental crust at half Earth-scale. Both are now fixed:
 sea level solves to 0 m and the median is 35.5-39.0 km. Worse, the ratio had
 become harmful, because with the scale corrected the median is nearly flat
-across seeds while the crust tail is not, and the two are ANTI-CORRELATED —
+across seeds while the crust tail is not, and the two are ANTI-CORRELATED --
 scaling the cutoff up with the median emptied precisely the seeds that had least
 high crust. It is replaced by `MOUNTAIN_ROOT_KM = 66.5`, an orogenic root
 measured directly in km (Earth: continental median ~40, orogens 50-70, Tibet
@@ -174,7 +174,7 @@ Result, mountain share of land:
 
 Mean 10.2 %, against Earth's ~10 % of land and this file's 7-12 % target. Two of
 four seeds sit inside the band. **Known limit:** the per-seed spread is a factor
-of 3.25, wider than the 1.7x band, so no single cutoff puts every seed in it —
+of 3.25, wider than the 1.7x band, so no single cutoff puts every seed in it --
 that is the generator's crust-tail variance rather than a threshold wanting more
 tuning, and a percentile quota would only hide it (CLAUDE.md forbids quota
 shapers). Resource placement follows the terrain: 68 resources now sit on

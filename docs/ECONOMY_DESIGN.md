@@ -25,7 +25,7 @@ Goods are needed by:
 
 Money enters the system through:
   - Mining + minting coins (commodity money stage)
-  - Government spending (fiat money stage — printing, with inflation risk)
+  - Government spending (fiat money stage -- printing, with inflation risk)
   - Trade surpluses (selling more than buying)
   - Taxation (% of economic activity)
 ```
@@ -35,7 +35,7 @@ Money enters the system through:
 ### Fix 1: Remove artificial gold generation from industrial buildings
 
 The "+gold per production bonus" I added contradicts commodity money. A factory doesn't
-create gold coins — it creates goods that are sold for coins. The gold should come from:
+create gold coins -- it creates goods that are sold for coins. The gold should come from:
 - Selling goods on the market (already implemented but underused)
 - Population taxation (already implemented)
 - Minting coins from ore (already implemented)
@@ -51,7 +51,7 @@ Currently goods pile up because demand is too low. Increase demand:
 - **Science from goods**: Certain goods (Paper, Glass, Computers) boost research speed.
   A civ with computers researches Information-era techs 25% faster.
 
-### Fix 3: Science should cost money — DONE
+### Fix 3: Science should cost money -- DONE
 
 Research is funded: `TurnProcessor` charges 0.2 gold per science point each turn, and
 a player who cannot pay researches at reduced efficiency, floored at 50%. This section
@@ -80,4 +80,4 @@ Currently war is purely destructive. Should also allow:
 Already partially implemented (industrial revolution per-citizen bonus). But the key
 mechanic is: small country with high-tech can produce high-value goods (electronics,
 software) that large countries with many people can't (they're still making steel).
-The comparative advantage system handles this — just needs the goods to actually matter.
+The comparative advantage system handles this -- just needs the goods to actually matter.

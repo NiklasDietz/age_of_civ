@@ -8,7 +8,7 @@ and the build-time font baker.
 
 ## Key files
 
-- `src/tools/HeadlessSimulation.cpp` (built as `aoc_simulate`) — `main`
+- `src/tools/HeadlessSimulation.cpp` (built as `aoc_simulate`) -- `main`
   ([:1044](../../../src/tools/HeadlessSimulation.cpp#L1044)) parses `--turns`, `--players`,
   `--seed`, `--output`, `--map-size`, `--map-cache`, `--trace-file`, `--victory-types`,
   `--placement`, `--log-level` or a YAML config, then `runHeadlessSimulation`
@@ -20,16 +20,16 @@ and the build-time font baker.
   per turn, a `_events.csv` from the `TurnEventLog`, a `_tiles.csv`, and an optional
   binary `DecisionLog`. Used by CI smoke tests, the golden and determinism gates, and
   `scripts/sim_health.py`.
-- `src/tools/MapGenCli.cpp` (built as `aoc_mapgen`) — `main`
+- `src/tools/MapGenCli.cpp` (built as `aoc_mapgen`) -- `main`
   ([:279](../../../src/tools/MapGenCli.cpp#L279)): seed, size, topology and physics flags;
   calls `MapGenerator::generate()` and exports the `HexGrid` as CSV/PNG. With the server
   flag it serves `GET /ping`, `/info`, `/plates`, `/tile` and `POST /dump/*`, `/sim/*`,
   `/quit` ([:749-965](../../../src/tools/MapGenCli.cpp#L749)) through `DebugServer` for the
   creator tooling and `tools/mapgen_metrics.py`.
-- `src/tools/TraceDump.cpp` (built as `aoc_trace_dump`) — `main`
+- `src/tools/TraceDump.cpp` (built as `aoc_trace_dump`) -- `main`
   ([:103](../../../src/tools/TraceDump.cpp#L103)) reads a binary `DecisionLog` and writes
   CSV or JSON via `readDecisionLog()` from `core`.
-- `src/tools/FontBake.cpp` (built as `aoc_font_bake`) — `main`
+- `src/tools/FontBake.cpp` (built as `aoc_font_bake`) -- `main`
   ([:84](../../../src/tools/FontBake.cpp#L84)) rasterises the bundled fonts with
   `stb_truetype` into the atlas blob described by `include/aoc/ui/FontAtlasFormat.hpp`; the
   only target that links the TrueType parser.

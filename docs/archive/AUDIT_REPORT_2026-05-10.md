@@ -1,4 +1,4 @@
-# Audit Report — Age of Civ
+# Audit Report -- Age of Civ
 
 Repo: `/home/ndietz/Repositories/private/age_of_civ`
 Audited: 2026-05-10
@@ -22,7 +22,7 @@ Standards: claude-code-tweaks (general + cpp), CLAUDE.md project rules
 
 ## Findings
 
-### CRITICAL — must fix
+### CRITICAL -- must fix
 
 #### Memory safety / UB
 
@@ -33,7 +33,7 @@ Standards: claude-code-tweaks (general + cpp), CLAUDE.md project rules
 - **[ai/AIBuilderController.cpp:66–555]** Builder snapshot raw `Unit*` ptrs dangle after in-loop `removeUnit` reallocation. *Fix: index-based snapshot or null-mark slots after removal.* (ai-reviewer)
 - **[map/gen/Plate.hpp:23–26]** `Plate` struct fields `cx, cy, rot, landFraction` (and possibly `latDeg/lonDeg/euler*/angularVelDeg`) lack default initializers. `Plate micro;` / `Plate fresh;` in `MapGenerator.cpp:1364,1482` produce indeterminate floats fed directly into Rodrigues rotation. UB. *Fix: add `= 0.0f` defaults to all float members.* (map-reviewer)
 - **[map/gen/SphereFieldPhysics.cpp:562]** `int16_t childId = static_cast<int16_t>(plates.size() - 1)` overflows silently if plates >32767, yielding negative pid that bypasses guards and causes OOB read of `plates[]`. *Fix: assert cap or widen to int32_t.* (map-reviewer)
-- **[economy/Market.cpp:91]** `marketData(goodId)` returns `m_goods[goodId]` unchecked — peer accessors guard. Bad goodId from save/mod = UB. *Fix: assert + bounds-check.* (economy-reviewer)
+- **[economy/Market.cpp:91]** `marketData(goodId)` returns `m_goods[goodId]` unchecked -- peer accessors guard. Bad goodId from save/mod = UB. *Fix: assert + bounds-check.* (economy-reviewer)
 - **[economy/ComparativeAdvantage.cpp:49]** `playerProductionRate` recurses without depth limit / cycle detection. Stack overflow possible if recipes form cycle. *Fix: add `visited` set or convert to topological pass.* (economy-reviewer)
 - **[monetary/CentralBank.cpp:39,65]** `goldAmount * goldPrice` (int64×int64) overflow in `buyGold`/`sellGold` produces negative cost = treasury credit. *Fix: saturating mul or precondition assert.* (economy-reviewer)
 
@@ -66,7 +66,7 @@ Standards: claude-code-tweaks (general + cpp), CLAUDE.md project rules
 
 ---
 
-### WARNING — should fix
+### WARNING -- should fix
 
 #### Determinism (GA / seed reproducibility)
 
@@ -82,7 +82,7 @@ Standards: claude-code-tweaks (general + cpp), CLAUDE.md project rules
 - **[net/GameDBus.cpp:122–125]** `stop()` accesses `m_impl->pendingCall` without `pendingMutex`. (concurrency)
 - **[net/GameDBus.cpp:73,99,107,133]** Raw `new`/`delete Impl` instead of `unique_ptr`. (concurrency)
 - **[tools/MapGenCli.cpp:759–777]** `/quit` → `server.stop()` may not drain in-flight handlers; HTTP threads dereference dangling stack locals (`grid`, `liveConfig`, `currentMy`). (concurrency)
-- **[app/Application.hpp:459, app/Application.cpp:1484]** `m_creatorEpochCache` unbounded — 60+ HexGrid copies with no LRU. (render)
+- **[app/Application.hpp:459, app/Application.cpp:1484]** `m_creatorEpochCache` unbounded -- 60+ HexGrid copies with no LRU. (render)
 
 #### Logic / correctness bugs
 
@@ -92,7 +92,7 @@ Standards: claude-code-tweaks (general + cpp), CLAUDE.md project rules
 - **[city/Secession.cpp:115–133]** Seceded city stays in ex-owner's `cities()` vector; inconsistent with other code that filters by `owner()`. *Fix: pick one canonical convention.* (gameplay)
 - **[city/CityGrowth.cpp:435–442]** O(P×T) worked-tile membership scan inside growth loop. *Fix: `unordered_set<int32_t>` lookup.* (gameplay)
 - **[diplomacy/WarWeariness.cpp:33]** Barbarian war weariness accumulates without bound (no `BARBARIAN_PLAYER` skip). (gameplay)
-- **[diplomacy/DiplomacyState.cpp + .hpp:25–31, 210–211]** `relation(a,b)` only `assert`s — `INVALID_PLAYER`/`BARBARIAN_PLAYER` from external callers may pass through release builds. (gameplay)
+- **[diplomacy/DiplomacyState.cpp + .hpp:25–31, 210–211]** `relation(a,b)` only `assert`s -- `INVALID_PLAYER`/`BARBARIAN_PLAYER` from external callers may pass through release builds. (gameplay)
 - **[victory/VictoryCondition.cpp:787–788]** Float compare `bestCulture >= CULTURE_VICTORY_THRESHOLD` with no epsilon; accumulator may stall sub-threshold. (gameplay)
 - **[ai/AIEconomicStrategy.cpp:107–124]** `aiSanctionStrategy` logs intent, never applies sanctions. Misleading log spam. (ai)
 - **[ai/AIEconomicStrategy.cpp:173–190]** `aiManagePowerGrid` is empty stub but called per-turn per civ. (ai)
@@ -100,8 +100,8 @@ Standards: claude-code-tweaks (general + cpp), CLAUDE.md project rules
 - **[ai/AIController.cpp:1699]** `totalStockpile[g]` insert-on-read inflates map size and erases supply-history meaning. (ai)
 - **[ai/AIController.cpp:98–112, AIMilitaryController.cpp:78–95]** Threat/composition functions don't skip eliminated civs. Wasted work + inflated threat. (ai)
 - **[ai/AIResearchPlanner.cpp:58–64]** `ownedBuildings` rebuilt every turn over all cities/districts. (ai)
-- **[debug/DebugServer.cpp:10]** `#define CPPHTTPLIB_THREAD_POOL_COUNT 4` in `.cpp` — ODR risk if `httplib.h` included elsewhere with default 8. *Fix: move to CMake `target_compile_definitions`.* (concurrency)
-- **[core/Log.hpp:66–86]** `logMessage` emits 3 separate `fprintf` calls — interleaving across threads garbles lines. *Fix: single `snprintf` then one `fprintf`.* (concurrency)
+- **[debug/DebugServer.cpp:10]** `#define CPPHTTPLIB_THREAD_POOL_COUNT 4` in `.cpp` -- ODR risk if `httplib.h` included elsewhere with default 8. *Fix: move to CMake `target_compile_definitions`.* (concurrency)
+- **[core/Log.hpp:66–86]** `logMessage` emits 3 separate `fprintf` calls -- interleaving across threads garbles lines. *Fix: single `snprintf` then one `fprintf`.* (concurrency)
 
 #### Hot-path performance
 
@@ -121,12 +121,12 @@ Standards: claude-code-tweaks (general + cpp), CLAUDE.md project rules
 
 #### Renderer correctness
 
-- **[render/SpriteRenderer.cpp:387–452]** Multi-batch upload writes same instance buffer offset 0 — risks overwriting in-flight GPU read at high sprite counts. *Fix: ring buffer of sub-ranges.* (render)
+- **[render/SpriteRenderer.cpp:387–452]** Multi-batch upload writes same instance buffer offset 0 -- risks overwriting in-flight GPU read at high sprite counts. *Fix: ring buffer of sub-ranges.* (render)
 - **[render/Particles.cpp:65–66]** `vx *= (1 - 2*dt)` is frame-rate-dependent and inverts at dt > 0.5. *Fix: `pow(damping, dt)`.* (render)
 
 #### Security (lower severity)
 
-- **[net/GameDBus.cpp:44–48]** `TakeScreenshot` accepts any absolute path — local DBus path traversal. *Fix: canonicalize + allowlist `$HOME/Pictures`.* (security)
+- **[net/GameDBus.cpp:44–48]** `TakeScreenshot` accepts any absolute path -- local DBus path traversal. *Fix: canonicalize + allowlist `$HOME/Pictures`.* (security)
 - **[net/GameServer.cpp:213–215]** `validateCommand` returns true unconditionally. Owner / range check missing. Latent risk if remote transport added. (security)
 - **[data/JsonParser.hpp:136–299]** No nesting depth limit → stack exhaustion on malicious mod JSON. *Fix: `depth` param, cap 64.* (security)
 - **[save/Serializer.cpp:106–109]** `writeString` truncates >65535-byte strings silently → save desync corrupting whole section. (security)
@@ -138,13 +138,13 @@ Standards: claude-code-tweaks (general + cpp), CLAUDE.md project rules
 - **[map/MapGenerator.cpp:1069–1077]** Plate collision uses Euclidean Mollweide distance, not haversine. Polar plates fuse early; equatorial plates miss. *Fix: haversine + threshold in radians.* (map)
 - **[map/gen/SphereFieldPhysics.cpp:204,314,438,810,1182,1414]** Six physics functions silently `return` on empty plate vector. (silent-failure)
 - **[ui/UIPersistence.cpp:35,40]** `catch(...) continue` discards parse errors on layout hot-reload. (silent-failure)
-- **[economy/Market.cpp:44,79]** `uint16_t goodIndex` — wraps at 65535. No `static_assert`. (economy)
+- **[economy/Market.cpp:44,79]** `uint16_t goodIndex` -- wraps at 65535. No `static_assert`. (economy)
 - **[economy/IndustrialRevolution.cpp:171]** `turnAchieved[Fifth]` index-5 OK today; no `static_assert` if Sixth is added. (economy)
-- **[economy/TradeRouteSystem.cpp:975,981]** `const_cast<DiplomacyManager*>` — broken const-correctness in call chain. (economy)
+- **[economy/TradeRouteSystem.cpp:975,981]** `const_cast<DiplomacyManager*>` -- broken const-correctness in call chain. (economy)
 - **[monetary/CurrencyCrisis.cpp:168]** Log says "25%%" but threshold is 30%. (economy)
 - **[ai/AIResearchPlanner.cpp:279]** `auto` lambda param violates project rule "never use auto". (ai)
 - **[resource/EconomySimulation.cpp + TradeRouteSystem.cpp]** Multiple `auto` usages violating project style. (economy)
-- **[map/MapGenerator.cpp:744–1535]** `DT` (drift fraction) vs `MY_PER_EPOCH_P1` (physical My) used interchangeably for plate motion vs physics — incommensurable scales. (map)
+- **[map/MapGenerator.cpp:744–1535]** `DT` (drift fraction) vs `MY_PER_EPOCH_P1` (physical My) used interchangeably for plate motion vs physics -- incommensurable scales. (map)
 - **[map/MapGenerator.cpp:1695]** `pid >= 0 && pid < 255` silently drops valid plate 255. Add `static_assert MAX_PLATE_CAP < 255`. (map)
 - **[render/SpriteRenderer.cpp:55–86]** Constructor exception path relies on implicit `vkDestroyDescriptorPool` set-cleanup semantics. Document. (render)
 - **[app/Application.cpp:1165–1167]** `glfwGetFramebufferSize` raw call with `int` shadows `Window::framebufferSize()` `uint32_t` abstraction. (render)
@@ -156,7 +156,7 @@ Standards: claude-code-tweaks (general + cpp), CLAUDE.md project rules
 Selected, not exhaustive:
 
 - **GameRenderer.cpp:83–84** uses `goto skip_to_ui_layer`. Refactor into helper. (render)
-- **app/Application.cpp** — plate-stats accumulation duplicated 3× (debug-cmd, `/info`, `/plates`). Extract free function. (render)
+- **app/Application.cpp** -- plate-stats accumulation duplicated 3× (debug-cmd, `/info`, `/plates`). Extract free function. (render)
 - **`HotkeyBinding::keyCode`** uninitialized; relies on aggregate zero-init. Add `= 0`. (render)
 - **`ProductionScores`** uninitialized members; computed at every call site, but adds-a-field bug magnet. Add `= 0.0f`. (ai)
 - **Magic building/tech/unit IDs** scattered as bare integer literals across 50+ scoring sites. Replace with named `constexpr`. (ai)
@@ -169,7 +169,7 @@ Selected, not exhaustive:
 - **Constants**: `SUPERCONTINENT_FRACTION = 0.20`, `RIFT_RAMP_MY = 100` lack literature citation per CLAUDE.md rule 3. (map)
 - **`PlateReference` deletion**: see Critical above. (map)
 - **`Plate::cx/cy/rot`**: mark `// LEGACY` per project memory snapshot. (map)
-- **`SphereFieldPhysics.cpp:1671`** stale comment about Voronoi — code no longer Voronoi-based. (map)
+- **`SphereFieldPhysics.cpp:1671`** stale comment about Voronoi -- code no longer Voronoi-based. (map)
 
 ---
 
@@ -185,23 +185,23 @@ Selected, not exhaustive:
 
 | Rule | Status |
 |---|---|
-| 1. No Voronoi | **PARTIALLY VIOLATED** — `MapGenerator.cpp:1381` microplate spawn uses Euclidean nearest-centroid |
-| 2. Algorithms over data | **VIOLATED** — `PlateReference.cpp` compiles Bird (2003) catalog (currently uncalled, but compiled) |
-| 3. Cited constants | **MOSTLY COMPLIANT** — K_THICKEN, K_EROSION, mantleDatumM cited; `SUPERCONTINENT_FRACTION`, `RIFT_RAMP_MY` missing |
+| 1. No Voronoi | **PARTIALLY VIOLATED** -- `MapGenerator.cpp:1381` microplate spawn uses Euclidean nearest-centroid |
+| 2. Algorithms over data | **VIOLATED** -- `PlateReference.cpp` compiles Bird (2003) catalog (currently uncalled, but compiled) |
+| 3. Cited constants | **MOSTLY COMPLIANT** -- K_THICKEN, K_EROSION, mantleDatumM cited; `SUPERCONTINENT_FRACTION`, `RIFT_RAMP_MY` missing |
 | 4. Mechanism-driven shapes | COMPLIANT |
 | 5. 3 Gy / 50 My epoch | COMPLIANT |
 | 6. No fudges | COMPLIANT (audit did not surface quota shapers) |
 
 ### Top-impact fix order
 
-1. **Lua sandbox** (LuaEngine.cpp:59) — arbitrary code execution from any mod.
-2. **Save deserialization** (Serializer.cpp ReadBuffer + reserve caps) — crash + DoS.
-3. **DebugServer worker-thread mutation** (Application.cpp:648–711) — race + GLFW thread safety.
-4. **Voronoi reintroduction** (MapGenerator.cpp:1381) — direct CLAUDE.md rule 1 violation.
-5. **`Plate` uninitialized fields** (Plate.hpp:23–26) — UB feeds Rodrigues rotation.
-6. **`unordered_map` non-determinism** (AIController.cpp:153, 1673) — breaks GA seed reproducibility.
-7. **Combat raw-pointer dangling** (Combat.cpp + AIBuilderController.cpp + EspionageSystem.cpp) — crashes under removeUnit pattern.
-8. **Save corruption** (Serializer.cpp:1341 — no atomic write, no log) + **DebugCommandFile rename** (silent failure of primary diagnostic instrument).
+1. **Lua sandbox** (LuaEngine.cpp:59) -- arbitrary code execution from any mod.
+2. **Save deserialization** (Serializer.cpp ReadBuffer + reserve caps) -- crash + DoS.
+3. **DebugServer worker-thread mutation** (Application.cpp:648–711) -- race + GLFW thread safety.
+4. **Voronoi reintroduction** (MapGenerator.cpp:1381) -- direct CLAUDE.md rule 1 violation.
+5. **`Plate` uninitialized fields** (Plate.hpp:23–26) -- UB feeds Rodrigues rotation.
+6. **`unordered_map` non-determinism** (AIController.cpp:153, 1673) -- breaks GA seed reproducibility.
+7. **Combat raw-pointer dangling** (Combat.cpp + AIBuilderController.cpp + EspionageSystem.cpp) -- crashes under removeUnit pattern.
+8. **Save corruption** (Serializer.cpp:1341 -- no atomic write, no log) + **DebugCommandFile rename** (silent failure of primary diagnostic instrument).
 
 ## Verdict
 

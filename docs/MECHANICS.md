@@ -1,7 +1,7 @@
-# Age of Civilization — Mechanics Reference
+# Age of Civilization -- Mechanics Reference
 
 Comprehensive list of simulated mechanics. Organized by subsystem. Each entry
-names the authoritative source file(s). Numbers are current balance values —
+names the authoritative source file(s). Numbers are current balance values --
 subject to change as GA-evolved personalities drift balance.
 
 ## Map & Terrain
@@ -16,7 +16,7 @@ subject to change as GA-evolved personalities drift balance.
   bumps), strategic (iron, coal, oil, uranium, horses, niter, aluminum),
   luxury (wine/spices/silk/ivory/gems/dyes/furs/incense/sugar/pearls/tea/
   coffee/tobacco). Mountain-mined metals also carried.
-- **Goody huts** (`simulation/map/GoodyHuts.hpp`): scattered reward tiles —
+- **Goody huts** (`simulation/map/GoodyHuts.hpp`): scattered reward tiles --
   gold / science / map reveal / unit.
 
 ## Cities
@@ -53,7 +53,7 @@ subject to change as GA-evolved personalities drift balance.
 - **Walls & bombardment** (`simulation/city/CityBombardment.cpp`): tiered
   walls (Ancient / Medieval / Renaissance / Steel), wall HP + auto-repair, ranged
   attack vs weakest unit in range. **Encampment district** also bombards
-  independently — strength 22 (+10 with Barracks), range 2 (+1 with
+  independently -- strength 22 (+10 with Barracks), range 2 (+1 with
   Barracks).
 - **Border expansion** (`simulation/city/BorderExpansion.hpp`): culture
   accumulates → next tile claimed by score (yields + resources).
@@ -106,8 +106,8 @@ subject to change as GA-evolved personalities drift balance.
   pop + capital bonus + **Theatre buildings' cultureBonus** + civ
   multiplier + economic stability.
 - **Tourism** (`simulation/culture/Tourism.cpp`): tourism-per-turn from
-  Great Works + wonders + national parks. Implemented — `computeTourism`
-  runs per player per turn. (This said "currently stubbed — header only"
+  Great Works + wonders + national parks. Implemented -- `computeTourism`
+  runs per player per turn. (This said "currently stubbed -- header only"
   long after it shipped.)
 
 ## Units
@@ -116,7 +116,7 @@ subject to change as GA-evolved personalities drift balance.
   Ancient→Information. Classes: Melee, Ranged, AntiCavalry, Cavalry,
   Armor, Artillery, Air, Helicopter, Naval, Civilian, Settler, Scout,
   Religious, Trader, Logistics. (This said "~100+" and listed Builder,
-  Spy and Diplomat as classes — all three are `Civilian` — while omitting
+  Spy and Diplomat as classes -- all three are `Civilian` -- while omitting
   seven that do exist.)
 - **Movement** (`simulation/unit/Movement.cpp`): terrain-costed move, ZoC,
   embarkation, transport.
@@ -200,7 +200,7 @@ subject to change as GA-evolved personalities drift balance.
 ## AI
 
 - **Leader personality** (`simulation/ai/LeaderPersonality.hpp`):
-  32-float LeaderBehavior vector — economicFocus, prodBuildings,
+  32-float LeaderBehavior vector -- economicFocus, prodBuildings,
   scienceFocus, cultureFocus, militaryAggression, expansionism,
   religiousZeal, trustworthiness, greatPersonFocus, environmentalism,
   speculationAppetite, riskTolerance, … Full list in `LeaderBehavior`.
@@ -217,7 +217,7 @@ subject to change as GA-evolved personalities drift balance.
 ## Turn Processing
 
 - **TurnProcessor** (`simulation/turn/TurnProcessor.cpp`): ordered phase
-  list — move → combat → production → growth → yields → diplomacy →
+  list -- move → combat → production → growth → yields → diplomacy →
   religion → climate → events → victory. Per-player TurnSummary written
   to DecisionLog each turn.
 - **Game length** (`simulation/turn/GameLength.hpp`): growth/research
@@ -225,7 +225,7 @@ subject to change as GA-evolved personalities drift balance.
 
 ## Logging & Tooling
 
-- **DecisionLog** (`core/DecisionLog.hpp`): binary AOCL trace — production
+- **DecisionLog** (`core/DecisionLog.hpp`): binary AOCL trace -- production
   choices, research choices, per-turn player summaries. Thread-local
   `currentDecisionLog()` keeps the hot path free of logger parameters.
 - **TraceDump** (`tools/TraceDump.cpp`): AOCL → 3 CSVs

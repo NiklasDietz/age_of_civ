@@ -23,7 +23,7 @@ instrument with two independent measurement defects, both fixed 2026-07-27:
 They were additionally generated with **Flat** topology while the game always
 runs **Cylindrical** (`src/app/Application.cpp`), and their `land_fraction` was
 a raw tile fraction over a rectangle of which ~21.4 % is outside the Mollweide
-ellipse and force-set to ocean — so it was not a planet-area fraction either.
+ellipse and force-set to ocean -- so it was not a planet-area fraction either.
 
 These files are kept only as a record of what the earlier phase programme
 believed it was measuring. The constants chosen against them are suspect;
@@ -46,7 +46,7 @@ python3 tools/mapgen_metrics.py baseline \
 ```
 
 Once the projection switches to Lambert cylindrical equal-area, drop both
-projection flags (equal-area is the default) — and expect a second
+projection flags (equal-area is the default) -- and expect a second
 discontinuity in the numbers at that point. Never compare across it.
 
 ## `resgeo-pre.json` (2026-09-11)

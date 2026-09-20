@@ -1,12 +1,12 @@
-# 3D Globe View — Future Implementation
+# 3D Globe View -- Future Implementation
 
-Scoped 2026-04-20. Deferred — notes preserved for later.
+Scoped 2026-04-20. Deferred -- notes preserved for later.
 
 ## Goal
 
 Render the hex map as a 3D globe (spinnable, orbit camera) instead of a flat plane. Civ 7-style presentation.
 
-## Key Finding — Topology Constraints
+## Key Finding -- Topology Constraints
 
 Closed spherical surfaces must satisfy Euler characteristic `V − E + F = 2`. This rules out naive hex-only tilings.
 
@@ -28,8 +28,8 @@ Then `V − E + F = 2F − 3F + F = 0 ≠ 2`. Closed sphere impossible with hex 
 
 ### Closure options
 
-- **12 pentagons + hexes** — Goldberg polyhedron (soccer ball / buckminsterfullerene). True uniform sphere tiling. Used by Catan globe edition.
-- **Cylinder topology with pole caps** — hex grid wrapped east-west only, clamped north-south. Visual cap (ice / ocean / terrain disc) at each pole. Civ 7 uses this.
+- **12 pentagons + hexes** -- Goldberg polyhedron (soccer ball / buckminsterfullerene). True uniform sphere tiling. Used by Catan globe edition.
+- **Cylinder topology with pole caps** -- hex grid wrapped east-west only, clamped north-south. Visual cap (ice / ocean / terrain disc) at each pole. Civ 7 uses this.
 
 ## North-South Crossing
 
@@ -37,13 +37,13 @@ Separate issue from cap rendering. With cylinder topology, **hex tiles cannot wr
 
 Three workarounds:
 
-- **A. Polar edges** — top-row tile `(q, 0)` neighbors `((q + W/2) mod W, 0)`. Fake adjacency in `HexGrid::neighbors()`. Units visually teleport or fade across pole. Minimal pathfinding change.
-- **B. Goldberg polyhedron** — true sphere, uniform travel. Requires rewrite of map gen + neighbor topology + coordinate system. Some tiles pentagons with 5 neighbors. Breaks game balance (combat/unit types tuned for 6-neighbor hex).
-- **C. Cylinder + no-cross** — standard Civ behavior. No pole crossing. Zero game-logic changes.
+- **A. Polar edges** -- top-row tile `(q, 0)` neighbors `((q + W/2) mod W, 0)`. Fake adjacency in `HexGrid::neighbors()`. Units visually teleport or fade across pole. Minimal pathfinding change.
+- **B. Goldberg polyhedron** -- true sphere, uniform travel. Requires rewrite of map gen + neighbor topology + coordinate system. Some tiles pentagons with 5 neighbors. Breaks game balance (combat/unit types tuned for 6-neighbor hex).
+- **C. Cylinder + no-cross** -- standard Civ behavior. No pole crossing. Zero game-logic changes.
 
 Recommended: **C** for initial implementation. **A** as optional follow-up (small pathfinding change, purely visual globe work stays untouched).
 
-## Recommended Approach — Path B (Full 3D Hex Tiles on Sphere)
+## Recommended Approach -- Path B (Full 3D Hex Tiles on Sphere)
 
 Skipped Path A (sprite-trick perspective). Full 3D, reuse existing `Renderer3D` + `forward3d.vert/frag` shaders.
 
@@ -51,7 +51,7 @@ Skipped Path A (sprite-trick perspective). Full 3D, reuse existing `Renderer3D` 
 
 - Keep existing `HexGrid` axial coordinate system untouched
 - `GlobeRenderer` (new): per-frame, project each tile `(q, r)` onto sphere surface, submit flat hex disc mesh with tangent-plane transform + terrain material to `Renderer3D`
-- `UIManager` / 2D overlay pass unchanged — renders on top
+- `UIManager` / 2D overlay pass unchanged -- renders on top
 - Hotkey `G` toggles flat/globe mode in `Application`
 
 ### Projection math
@@ -85,9 +85,9 @@ Two polar cones (or flattened spheres). Radius covers latitude gap `> 70°`. Mar
 - `src/render/OrbitCamera.cpp`
 
 **Modified**:
-- `src/app/Application.cpp` — init `Renderer3D`, `GlobeRenderer`, `OrbitCamera`; G-key toggle; branch render loop on flat/globe mode
-- `include/aoc/render/GameRenderer.hpp` — accept globe mode flag, route to Globe vs MapRenderer
-- `CMakeLists.txt` — add GlobeRenderer/OrbitCamera
+- `src/app/Application.cpp` -- init `Renderer3D`, `GlobeRenderer`, `OrbitCamera`; G-key toggle; branch render loop on flat/globe mode
+- `include/aoc/render/GameRenderer.hpp` -- accept globe mode flag, route to Globe vs MapRenderer
+- `CMakeLists.txt` -- add GlobeRenderer/OrbitCamera
 
 ### Orbit camera
 
@@ -99,22 +99,22 @@ Two polar cones (or flattened spheres). Radius covers latitude gap `> 70°`. Mar
 
 ### Render pipeline considerations
 
-- `Renderer3D` pipeline has depth test + back-face culling enabled. `RenderPipeline::createDepthResources()` already exists — render pass has depth attachment. Compatible.
+- `Renderer3D` pipeline has depth test + back-face culling enabled. `RenderPipeline::createDepthResources()` already exists -- render pass has depth attachment. Compatible.
 - 3D pass runs first (writes depth), 2D UI overlay pass runs after (disabled depth). Matches existing design comment in `Renderer3D.hpp`.
 - `MAX_FRAMES_IN_FLIGHT = 2` aligns between Renderer2D, Renderer3D, RenderPipeline.
 
 ### Estimated effort
 
-1-2 days. Risk: none major. Renderer3D is tested but unused — may surface init-order issues on first integration.
+1-2 days. Risk: none major. Renderer3D is tested but unused -- may surface init-order issues on first integration.
 
 ## Known Limitations of Path B
 
-- Hex tiles float as discs on sphere — gaps between tiles visible if zoomed close
+- Hex tiles float as discs on sphere -- gaps between tiles visible if zoomed close
 - Gaps can be masked by tinting sphere mesh underneath (ocean blue for water tiles, neutral for land)
-- Pole distortion (hexes become narrow slivers at high latitude) — accepted tradeoff
+- Pole distortion (hexes become narrow slivers at high latitude) -- accepted tradeoff
 
 ## Alternative Paths Considered
 
-- **Path A — 2.5D sprite projection** (~4 hours) — fake 3D by distorting flat map with curvature shader. Cheap, looks obviously flat near edges. Rejected for quality.
-- **Cube sphere** — 4-connectivity grid, wrong for hex-based game. Rejected.
-- **Goldberg rewrite** — correct but massive refactor. Deferred forever unless gameplay demands uniform sphere travel.
+- **Path A -- 2.5D sprite projection** (~4 hours) -- fake 3D by distorting flat map with curvature shader. Cheap, looks obviously flat near edges. Rejected for quality.
+- **Cube sphere** -- 4-connectivity grid, wrong for hex-based game. Rejected.
+- **Goldberg rewrite** -- correct but massive refactor. Deferred forever unless gameplay demands uniform sphere travel.

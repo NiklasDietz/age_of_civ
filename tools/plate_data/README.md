@@ -8,16 +8,16 @@ URLs below.
 ## Downloads (free, CC-BY)
 
 ```
-# Matthews et al. 2016 — Late Paleozoic to Present (410-0 Ma) — 11 MB
+# Matthews et al. 2016 -- Late Paleozoic to Present (410-0 Ma) -- 11 MB
 curl -L -o matthews2016.zip "https://zenodo.org/api/records/10526157/files/Matthews_etal_2016_GPC.zip/content"
 
-# Muller et al. 2022 — mantle reference frame (1000-0 Ma) — 12 MB
+# Muller et al. 2022 -- mantle reference frame (1000-0 Ma) -- 12 MB
 curl -L -o muller2022.zip "https://zenodo.org/api/records/13636799/files/Muller_etal_2022_SE_v1.2.4.zip/content"
 
-# Muller 2022 animations (optional) — 43 MB
+# Muller 2022 animations (optional) -- 43 MB
 curl -L -o muller2022_anim.zip "https://zenodo.org/api/records/13636799/files/Animations.zip/content"
 
-# Scotese PALEOMAP 2016 (1100-0 Ma) — 56 MB
+# Scotese PALEOMAP 2016 (1100-0 Ma) -- 56 MB
 curl -L -o scotese2016.zip "https://zenodo.org/api/records/10596610/files/Scotese_PaleoAtlas_2016_v3.zip/content"
 
 for z in *.zip; do unzip -q "$z" -d "${z%.zip}/"; done
@@ -32,7 +32,7 @@ for z in *.zip; do unzip -q "$z" -d "${z%.zip}/"; done
 - Plate birth/death events per 50 Ma (rift / merge cadence)
 - Recommendation block comparing real-Earth stats to current sim parameters
 
-Polygon (`.gpml`) files require `pygplates` for full analysis — not used
+Polygon (`.gpml`) files require `pygplates` for full analysis -- not used
 here. Rotation files alone capture plate count + motion which is the
 primary calibration target.
 

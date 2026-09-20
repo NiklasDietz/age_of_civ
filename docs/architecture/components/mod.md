@@ -9,7 +9,7 @@ implemented.
 ## Key files
 
 - `src/mod/ModLoader.cpp` /
-  [include/aoc/mod/ModLoader.hpp](../../../include/aoc/mod/ModLoader.hpp) — `ModLoader`:
+  [include/aoc/mod/ModLoader.hpp](../../../include/aoc/mod/ModLoader.hpp) -- `ModLoader`:
   four methods (`loadUnitDefs`, `loadBuildingDefs`, `loadTechDefs`, `loadCivDefs`) each
   accepting a filepath. Each logs `"JSON parsing not yet implemented"` and returns false.
 
@@ -18,13 +18,13 @@ Lua-based mod scripting is handled by the **scripting** subsystem; `LuaEngine` l
 
 ## Public surface
 
-- `ModLoader::loadUnitDefs(path)` etc. — intended to be called from `Application` at
+- `ModLoader::loadUnitDefs(path)` etc. -- intended to be called from `Application` at
   startup, to overlay mod definitions on top of the base game's constexpr tables.
 
 ## Internal structure
 
 Single file pair. The actual implementation is deferred pending a decision on which JSON
-library to add (see `DEPENDENCIES.txt` — there is currently no JSON parser dependency
+library to add (see `DEPENDENCIES.txt` -- there is currently no JSON parser dependency
 beyond `SimpleYaml` from `core`).
 
 <!-- arch-doc: class-diagram=skipped; a single class in this component -->

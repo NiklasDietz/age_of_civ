@@ -10,7 +10,7 @@ render pipeline. Built only when `AOC_HEADLESS=OFF`.
 ## Key files
 
 - [include/aoc/app/Application.hpp](../../../include/aoc/app/Application.hpp) /
-  `src/app/Application.cpp` — `Application`: owns `Window`, `GameState`, `HexGrid`,
+  `src/app/Application.cpp` -- `Application`: owns `Window`, `GameState`, `HexGrid`,
   `EconomySimulation`, `DiplomacyManager`, `TurnManager`, the `AIController` vector,
   `BarbarianController`, `AllianceObligationTracker`, `GameRenderer`, `UIManager`,
   `ScreenRegistry`, the optional `DebugServer`, `ReplayRecorder`, `MusicManager` and the
@@ -23,19 +23,19 @@ render pipeline. Built only when `AOC_HEADLESS=OFF`.
   ([:7111](../../../src/app/Application.cpp#L7111)) calls `processTurn`
   ([:7214](../../../src/app/Application.cpp#L7214)); `spectatorAdvanceTurn`
   ([:2410](../../../src/app/Application.cpp#L2410)) does the same for AI-only games.
-- `src/app/Application_CityControl.cpp` — the REST game-control handlers: 23 route
+- `src/app/Application_CityControl.cpp` -- the REST game-control handlers: 23 route
   registrations (from [:81](../../../src/app/Application_CityControl.cpp#L81)) and the
   `executeGameControlCommand` overloads that turn a validated command into a request-layer
   call.
-- `src/app/Application_HUD.cpp` — HUD construction and per-frame label updates (top bar,
+- `src/app/Application_HUD.cpp` -- HUD construction and per-frame label updates (top bar,
   unit panel, city panel) split from `Application.cpp` for file-size management.
-- `src/app/ApplicationHelpers.hpp` — small shared helpers for the three translation units.
-- `src/app/Window.cpp` — GLFW window creation, Vulkan surface setup, swapchain resize.
+- `src/app/ApplicationHelpers.hpp` -- small shared helpers for the three translation units.
+- `src/app/Window.cpp` -- GLFW window creation, Vulkan surface setup, swapchain resize.
 - `src/app/InputManager.cpp` / [include/aoc/app/InputActions.hpp](../../../include/aoc/app/InputActions.hpp)
-  — mouse and keyboard to named input actions; click-to-tile conversion via `CameraController`.
-- `src/app/UnitSelection.cpp` — the selected unit/city and its move-preview overlay.
-- `src/app/DebugCommandFile.cpp` — reads a text file of debug commands at startup.
-- `src/app/ScreenshotEncoder.cpp` — framebuffer capture to PNG via `stb_image_write`.
+  -- mouse and keyboard to named input actions; click-to-tile conversion via `CameraController`.
+- `src/app/UnitSelection.cpp` -- the selected unit/city and its move-preview overlay.
+- `src/app/DebugCommandFile.cpp` -- reads a text file of debug commands at startup.
+- `src/app/ScreenshotEncoder.cpp` -- framebuffer capture to PNG via `stb_image_write`.
 
 ## Public surface
 

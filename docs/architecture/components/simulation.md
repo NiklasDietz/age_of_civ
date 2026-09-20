@@ -10,7 +10,7 @@ that sequences them all.
 ## Key files
 
 - [include/aoc/simulation/turn/TurnProcessor.hpp:172](../../../include/aoc/simulation/turn/TurnProcessor.hpp#L172)
-  — `processTurn(TurnContext&)`: the single function called by `Application`
+  -- `processTurn(TurnContext&)`: the single function called by `Application`
   (`src/app/Application.cpp:7214`) and `HeadlessSimulation` (`src/tools/HeadlessSimulation.cpp:685`)
   to advance one turn. `TurnContext` ([:77](../../../include/aoc/simulation/turn/TurnProcessor.hpp#L77))
   carries pointers to the grid, optional fog, `EconomySimulation`, `DiplomacyManager`,
@@ -18,17 +18,17 @@ that sequences them all.
   the seat list, an optional `TurnEventLog` and an optional `DecisionLog`. The deals in
   force are read from `GameState::deals()` (v34), not from the context.
 - [include/aoc/simulation/resource/EconomySimulation.hpp:32](../../../include/aoc/simulation/resource/EconomySimulation.hpp#L32)
-  — `EconomySimulation::executeTurn()`: harvest raw resources → depletion → internal trade
+  -- `EconomySimulation::executeTurn()`: harvest raw resources → depletion → internal trade
   → building fuel → production recipes in DAG order → market report → needs → prices →
   monetary policy. Owns the global `Market`
   ([include/aoc/simulation/economy/Market.hpp:22](../../../include/aoc/simulation/economy/Market.hpp#L22)).
 - [include/aoc/simulation/diplomacy/DiplomacyState.hpp:224](../../../include/aoc/simulation/diplomacy/DiplomacyState.hpp#L224)
-  — `DiplomacyManager`: NxN relation-score matrix with decaying `RelationModifier` records,
+  -- `DiplomacyManager`: NxN relation-score matrix with decaying `RelationModifier` records,
   directional embargoes, and `DiplomaticStance` derived from score bands.
 - [include/aoc/simulation/BalanceConfig.hpp](../../../include/aoc/simulation/BalanceConfig.hpp)
-  — `aoc::sim::balance` namespace: compile-time balance constants grouped by system.
+  -- `aoc::sim::balance` namespace: compile-time balance constants grouped by system.
   Overridden at runtime by `BalanceParams` from the balance/ml subsystem.
-- Request layer — one validated entry per mutation, shared by the human UI, the AI, the
+- Request layer -- one validated entry per mutation, shared by the human UI, the AI, the
   REST API and the MCP tools: `city/CityActions.hpp`, `unit/UnitOrders.hpp`,
   `unit/AttackRequest.hpp`, `unit/BuilderActions.hpp`, `diplomacy/DiplomacyActions.hpp`,
   `diplomacy/DealProposals.hpp`, `monetary/MonetaryActions.hpp`.
@@ -64,10 +64,10 @@ that sequences them all.
 ## Public surface
 
 All sub-modules are called from `processTurn()`. External callers:
-- `Application` and `HeadlessSimulation` — call `processTurn()`; the UI reads `Market`
+- `Application` and `HeadlessSimulation` -- call `processTurn()`; the UI reads `Market`
   prices, stances, research and production state through the request layer's query side.
-- `save/Serializer` — serializes every simulation state struct to binary sections.
-- `debug` / `tools/mcp_server.py` — every mutation route ends in one request-layer function.
+- `save/Serializer` -- serializes every simulation state struct to binary sections.
+- `debug` / `tools/mcp_server.py` -- every mutation route ends in one request-layer function.
 
 ## Internal structure
 
@@ -79,14 +79,14 @@ point that orchestrates the others in the documented order.
 
 ## Core types
 
-`TurnContext` — [include/aoc/simulation/turn/TurnProcessor.hpp:77](../../../include/aoc/simulation/turn/TurnProcessor.hpp#L77);
-`EconomySimulation` — [include/aoc/simulation/resource/EconomySimulation.hpp:32](../../../include/aoc/simulation/resource/EconomySimulation.hpp#L32);
-`Market` — [include/aoc/simulation/economy/Market.hpp:22](../../../include/aoc/simulation/economy/Market.hpp#L22);
-`DiplomacyManager` — [include/aoc/simulation/diplomacy/DiplomacyState.hpp:224](../../../include/aoc/simulation/diplomacy/DiplomacyState.hpp#L224);
-`AIController` — [include/aoc/simulation/ai/AIController.hpp:57](../../../include/aoc/simulation/ai/AIController.hpp#L57);
-`BarbarianController` — [include/aoc/simulation/barbarian/BarbarianController.hpp:44](../../../include/aoc/simulation/barbarian/BarbarianController.hpp#L44);
-`TurnManager` — [include/aoc/simulation/turn/TurnManager.hpp:29](../../../include/aoc/simulation/turn/TurnManager.hpp#L29);
-`TurnEventLog` — [include/aoc/simulation/turn/TurnEventLog.hpp:65](../../../include/aoc/simulation/turn/TurnEventLog.hpp#L65).
+`TurnContext` -- [include/aoc/simulation/turn/TurnProcessor.hpp:77](../../../include/aoc/simulation/turn/TurnProcessor.hpp#L77);
+`EconomySimulation` -- [include/aoc/simulation/resource/EconomySimulation.hpp:32](../../../include/aoc/simulation/resource/EconomySimulation.hpp#L32);
+`Market` -- [include/aoc/simulation/economy/Market.hpp:22](../../../include/aoc/simulation/economy/Market.hpp#L22);
+`DiplomacyManager` -- [include/aoc/simulation/diplomacy/DiplomacyState.hpp:224](../../../include/aoc/simulation/diplomacy/DiplomacyState.hpp#L224);
+`AIController` -- [include/aoc/simulation/ai/AIController.hpp:57](../../../include/aoc/simulation/ai/AIController.hpp#L57);
+`BarbarianController` -- [include/aoc/simulation/barbarian/BarbarianController.hpp:44](../../../include/aoc/simulation/barbarian/BarbarianController.hpp#L44);
+`TurnManager` -- [include/aoc/simulation/turn/TurnManager.hpp:29](../../../include/aoc/simulation/turn/TurnManager.hpp#L29);
+`TurnEventLog` -- [include/aoc/simulation/turn/TurnEventLog.hpp:65](../../../include/aoc/simulation/turn/TurnEventLog.hpp#L65).
 
 ```mermaid
 classDiagram
@@ -130,7 +130,7 @@ classDiagram
 
 ## State machines
 
-**Monetary regime** — `MonetarySystemType`
+**Monetary regime** -- `MonetarySystemType`
 ([include/aoc/simulation/monetary/MonetarySystem.hpp:50](../../../include/aoc/simulation/monetary/MonetarySystem.hpp#L50)).
 The ladder is gated by the `MONETARY_TRANSITIONS` table ([:223](../../../include/aoc/simulation/monetary/MonetarySystem.hpp#L223))
 through `canTransition` ([:533](../../../include/aoc/simulation/monetary/MonetarySystem.hpp#L533))
@@ -150,7 +150,7 @@ stateDiagram-v2
 ```
 Anchors: `include/aoc/simulation/monetary/MonetarySystem.hpp`, `src/simulation/resource/EconomySimulation.cpp`, `src/simulation/ai/AIController.cpp`, `src/simulation/monetary/CurrencyCrisis.cpp`
 
-**Unit state** — `UnitState`
+**Unit state** -- `UnitState`
 ([include/aoc/simulation/unit/UnitTypes.hpp:39](../../../include/aoc/simulation/unit/UnitTypes.hpp#L39)),
 set unconditionally through `Unit::setState`. Sites: `Moving` in
 `src/simulation/unit/Movement.cpp:329`; `Embarked` in `src/simulation/unit/Naval.cpp:54` and
@@ -175,7 +175,7 @@ stateDiagram-v2
 ```
 Anchors: `include/aoc/simulation/unit/UnitTypes.hpp`, `src/simulation/unit/Movement.cpp`, `src/simulation/unit/Naval.cpp`, `src/simulation/unit/UnitTransport.cpp`, `src/simulation/unit/UnitOrders.cpp`, `src/simulation/automation/Automation.cpp`, `src/simulation/ai/AIMilitaryController.cpp`, `src/app/Application.cpp`, `src/app/Application_HUD.cpp`, `src/app/UnitSelection.cpp`
 
-**Logistics supply cycle** — `LogisticsState`
+**Logistics supply cycle** -- `LogisticsState`
 ([include/aoc/simulation/economy/LogisticsComponent.hpp:18](../../../include/aoc/simulation/economy/LogisticsComponent.hpp#L18)),
 advanced by the switch in `src/simulation/economy/TradeRouteSystem.cpp:1745-1845`
 (`EnRouteToCity` at `:1760`, `LoadingAtCity` at `:1767`, `EnRouteToDepot` at `:1806`,
@@ -193,7 +193,7 @@ stateDiagram-v2
 ```
 Anchors: `include/aoc/simulation/economy/LogisticsComponent.hpp`, `src/simulation/economy/TradeRouteSystem.cpp`
 
-**Speculation bubble** — `BubblePhase`
+**Speculation bubble** -- `BubblePhase`
 ([include/aoc/simulation/economy/SpeculationBubble.hpp:35](../../../include/aoc/simulation/economy/SpeculationBubble.hpp#L35)),
 advanced by the switch in `src/simulation/economy/SpeculationBubble.cpp:29-144`
 (`Formation` at `:39`, `Inflation` at `:59`, `Euphoria` at `:86`, `Crash` at `:95` and

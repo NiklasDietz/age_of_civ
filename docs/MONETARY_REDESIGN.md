@@ -5,7 +5,7 @@
 Money doesn't exist at game start. Players must barter. Eventually gold emerges
 as a medium of exchange because everyone values it. Gold coins are a physical good
 that gets mined, minted, spent, and can leave the system. Fiat money is paper
-backed only by trust — and trading between fiat currencies requires exchange.
+backed only by trust -- and trading between fiat currencies requires exchange.
 
 ## What shipped (2026-09-12, the money and trade programme, Phase 2)
 
@@ -59,7 +59,7 @@ specie drains, refusable fiat) at half the cost.
 - No treasury number. Can't "buy" anything with gold.
 - To build a unit, you pay in production (hammers) + physical resources (iron, wood)
 - Trading with other players: offer wheat for their iron, etc.
-- Problem: "double coincidence of wants" — you have wheat, they have iron, but 
+- Problem: "double coincidence of wants" -- you have wheat, they have iron, but 
   they don't want wheat. This makes trade inefficient (already modeled by the 
   50% trade efficiency in barter).
 
@@ -86,7 +86,7 @@ specie drains, refusable fiat) at half the cost.
    - Building a building costs coins (from treasury to workers/void)
    - Unit maintenance costs coins each turn
    - Purchasing items costs coins
-   - These coins DON'T disappear — they re-enter the private economy
+   - These coins DON'T disappear -- they re-enter the private economy
      (workers get paid, spend at shops, government taxes back later)
 
 3. **Gold mining creates new money:**

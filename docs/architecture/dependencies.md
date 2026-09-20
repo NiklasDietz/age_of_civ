@@ -12,7 +12,7 @@ libraries, vendored libraries, the Vulkan submodule, and the Python tooling.
 and C-function registration. The engine also calls `lua_newtable` and `lua_setfield` to
 build the read-only game-state table exposed to scripts.
 
-**Why pulled in:** Moddable game logic — victory conditions, world events, AI personality
+**Why pulled in:** Moddable game logic -- victory conditions, world events, AI personality
 overrides, building/unit special effects, and map generation rules are authored in Lua
 and loaded at runtime. LuaJIT is preferred for ~10-50× faster script execution over stock
 Lua 5.4.
@@ -20,7 +20,7 @@ Lua 5.4.
 **Compile guard:** `AOC_HAS_LUA` defined by CMake when either LuaJIT or Lua 5.4 headers
 are found. `LuaEngine` is a no-op stub when the define is absent.
 
-Import site: [src/scripting/LuaEngine.cpp](../../src/scripting/LuaEngine.cpp) — the only
+Import site: [src/scripting/LuaEngine.cpp](../../src/scripting/LuaEngine.cpp) -- the only
 file that references `LuaEngine`; no executable constructs one today.
 
 ---
@@ -34,7 +34,7 @@ concentrated in `third_party/vulkan_renderer/` (the submodule) and in
 
 **Why pulled in:** The sole graphics API for all platforms (MoltenVK on macOS).
 
-**Guard:** `NOT AOC_HEADLESS` — the entire render subsystem is excluded from headless
+**Guard:** `NOT AOC_HEADLESS` -- the entire render subsystem is excluded from headless
 builds. `find_package(Vulkan REQUIRED)` at `CMakeLists.txt:135`.
 
 ---
@@ -99,7 +99,7 @@ Import site: [src/debug/DebugServer.cpp](../../src/debug/DebugServer.cpp)
 ## stb_truetype v1.26 (vendored, build-time only)
 
 **What the code uses:** `stbtt_InitFont`, `stbtt_GetCodepointBitmap`,
-`stbtt_GetCodepointHMetrics` — rasterisation of the bundled fonts into the glyph atlas.
+`stbtt_GetCodepointHMetrics` -- rasterisation of the bundled fonts into the glyph atlas.
 
 **Why pulled in:** Font rasterisation. Since the atlas bake it is linked exclusively by the
 `aoc_font_bake` target (`CMakeLists.txt:900`); the game binary contains no TrueType parser
@@ -117,7 +117,7 @@ Import site: [src/tools/FontBake.cpp](../../src/tools/FontBake.cpp); runtime rea
 
 ## stb_image_write v1.16 (vendored)
 
-**What the code uses:** `stbi_write_png_to_func` — encodes a framebuffer capture to PNG.
+**What the code uses:** `stbi_write_png_to_func` -- encodes a framebuffer capture to PNG.
 
 **Why pulled in:** Screenshot export (`ScreenshotEncoder`, also reachable through
 `POST /debug/screenshot`).
@@ -140,7 +140,7 @@ Import site: test sources under [tests/](../../tests/)
 ## vulkan_renderer (git submodule)
 
 **What the code uses:** `vulkan_app::RenderPipeline`, `vulkan_app::renderer::Renderer2D`,
-`vulkan_app::GraphicsDevice` — the complete Vulkan abstraction layer providing pipeline
+`vulkan_app::GraphicsDevice` -- the complete Vulkan abstraction layer providing pipeline
 management, 2D sprite batching, and frame synchronization.
 
 **Why pulled in:** Encapsulates the Vulkan boilerplate (swapchain, render passes,
