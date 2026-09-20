@@ -358,15 +358,6 @@ void MainMenu::destroy(UIManager& ui) {
 // GameSetupScreen
 // ============================================================================
 
-/// Civilization names (indexed by CivId).
-static constexpr std::array<std::string_view, aoc::sim::CIV_COUNT> CIV_NAMES = {
-    {"Rome",      "Egypt",   "China",  "Germany",     "Greece",    "England",
-     "Japan",     "Persia",  "Aztec",  "India",       "Russia",    "Brazil",
-     "Mongolia",  "Arabia",  "Zulu",   "Scythia",     "Macedon",   "Mali",
-     "Sumeria",   "Babylon", "Khmer",  "Cree",        "Mapuche",   "Ottoman",
-     "Phoenicia", "Norway",  "Spain",  "Korea",       "Indonesia", "Vietnam",
-     "Maori",     "America", "France", "Netherlands", "Australia", "Canada"}};
-
 void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
                             std::function<void(const GameSetupConfig&)> onStart,
                             std::function<void()> onBack) {
@@ -1024,7 +1015,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
 
         // Civ cycle button
         {
-            const std::string civName(CIV_NAMES[this->m_config.players[slot].civId]);
+            const std::string civName(aoc::sim::civDef(this->m_config.players[slot].civId).name);
             ButtonData btn;
             btn.label        = civName;
             btn.fontSize     = 12.0f;
@@ -1244,7 +1235,7 @@ void GameSetupScreen::refresh(UIManager& ui) {
         ui.setVisible(this->m_playerRows[i], active);
         if (active) {
             ui.setButtonLabel(this->m_civLabels[i],
-                              std::string(CIV_NAMES[this->m_config.players[i].civId]));
+                              std::string(aoc::sim::civDef(this->m_config.players[i].civId).name));
             if (i == 0) {
                 ui.setButtonLabel(this->m_typeLabels[i], "Human");
             } else {
