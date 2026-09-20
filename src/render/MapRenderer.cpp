@@ -7,6 +7,7 @@
 #include "aoc/render/MapRenderer.hpp"
 #include "aoc/render/DrawCommandBuffer.hpp"
 #include "aoc/render/CameraController.hpp"
+#include "aoc/render/PlayerColors.hpp"
 #include "aoc/ui/BitmapFont.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
@@ -19,22 +20,6 @@
 #include <renderer/Renderer2D.hpp>
 
 #include <algorithm>
-
-namespace {
-
-/// Player colors for territory overlay (matches UnitRenderer).
-constexpr std::array<std::array<float, 3>, 8> TERRITORY_COLORS = {{
-    {0.20f, 0.40f, 0.90f}, // Player 0: blue
-    {0.90f, 0.20f, 0.20f}, // Player 1: red
-    {0.20f, 0.80f, 0.20f}, // Player 2: green
-    {0.90f, 0.80f, 0.10f}, // Player 3: yellow
-    {0.70f, 0.30f, 0.80f}, // Player 4: purple
-    {0.90f, 0.50f, 0.10f}, // Player 5: orange
-    {0.10f, 0.80f, 0.80f}, // Player 6: cyan
-    {0.80f, 0.40f, 0.60f}, // Player 7: pink
-}};
-
-} // anonymous namespace
 
 namespace aoc::render {
 
@@ -478,11 +463,8 @@ void MapRenderer::drawTerritoryBorders(vulkan_app::renderer::Renderer2D& rendere
                 continue;
             }
 
-            // Get player color
-            const std::size_t ci = static_cast<std::size_t>(tileOwner) % TERRITORY_COLORS.size();
-            const float cr       = TERRITORY_COLORS[ci][0];
-            const float cg       = TERRITORY_COLORS[ci][1];
-            const float cb       = TERRITORY_COLORS[ci][2];
+            float cr = 0.0f, cg = 0.0f, cb = 0.0f;
+            ownerColor(tileOwner, cr, cg, cb);
 
             // Civ 6-style single outline per territory: draw each of the 6
             // hex edges only when the neighbor across that edge belongs to a
