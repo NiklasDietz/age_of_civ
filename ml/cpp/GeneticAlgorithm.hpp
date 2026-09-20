@@ -143,21 +143,21 @@ struct GAConfig {
     int32_t      subjectCiv      = -1;
 
     /// Optional per-game turn counts. When non-empty, game k uses
-    /// turnsList[k % turnsList.size()] instead of turnsPerGame. Enables
+    /// turnCounts[k % turnCounts.size()] instead of turnsPerGame. Enables
     /// mixed-size training (short + long games in one fitness eval).
-    std::vector<int32_t> turnsList;
+    std::vector<int32_t> turnCounts;
 
     /// Optional per-game player counts. When non-empty, game k uses
-    /// playersList[k % playersList.size()] instead of playerCount.
-    std::vector<int32_t> playersList;
+    /// playerCounts[k % playerCounts.size()] instead of playerCount.
+    std::vector<int32_t> playerCounts;
 
     /// Optional per-game map types. When non-empty, game k uses
-    /// mapsList[k % mapsList.size()] instead of the default Realistic.
+    /// mapTypes[k % mapTypes.size()] instead of the default Realistic.
     /// Exposes each genome to varied geography (Continents vs Archipelago
     /// vs Pangaea etc.) so evolved weights must generalize across naval,
     /// land-war and expansion-friendly conditions instead of overfitting
     /// one map family.
-    std::vector<aoc::map::MapType> mapsList;
+    std::vector<aoc::map::MapType> mapTypes;
 
     /// External stop flag for fast SIGINT/SIGTERM abort. When non-null and
     /// true, runSimulation / evaluateFitness / evaluatePopulation exit at

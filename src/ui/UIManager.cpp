@@ -659,7 +659,7 @@ void UIManager::clearBindings(WidgetId id) {
 // Keyboard focus
 // --------------------------------------------------------------------------
 
-const std::vector<WidgetId>& UIManager::focusableList() const {
+const std::vector<WidgetId>& UIManager::focusableWidgets() const {
     if (!this->m_focusCacheDirty) {
         return this->m_focusableCache;
     }
@@ -685,7 +685,7 @@ const std::vector<WidgetId>& UIManager::focusableList() const {
 }
 
 WidgetId UIManager::focusNext() {
-    const std::vector<WidgetId>& list = this->focusableList();
+    const std::vector<WidgetId>& list = this->focusableWidgets();
     if (list.empty()) {
         this->m_focusedWidget = INVALID_WIDGET;
         return INVALID_WIDGET;
@@ -709,7 +709,7 @@ WidgetId UIManager::focusNext() {
 }
 
 WidgetId UIManager::focusPrev() {
-    const std::vector<WidgetId>& list = this->focusableList();
+    const std::vector<WidgetId>& list = this->focusableWidgets();
     if (list.empty()) {
         this->m_focusedWidget = INVALID_WIDGET;
         return INVALID_WIDGET;

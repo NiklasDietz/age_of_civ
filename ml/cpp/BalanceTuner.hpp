@@ -73,9 +73,9 @@ struct BalanceGAConfig {
 
     /// Optional per-game turns/players/maps cycling (same semantics as
     /// the AI-GA). Healthier balance tunes tend to emerge when mixed.
-    std::vector<int32_t>            turnsList;
-    std::vector<int32_t>            playersList;
-    std::vector<aoc::map::MapType>  mapsList;
+    std::vector<int32_t>            turnCounts;
+    std::vector<int32_t>            playerCounts;
+    std::vector<aoc::map::MapType>  mapTypes;
 
     /// Fitness weights (sum need not be 1.0 -- only ranking matters).
     float wEntropy   = 0.50f;

@@ -56,9 +56,9 @@ struct CLIArgs {
                                    ///< for each new best-ever fitness.
     uint64_t seed        = 0;
     bool    seedProvided = false;
-    std::vector<int32_t> turnsList;
-    std::vector<int32_t> playersList;
-    std::vector<aoc::map::MapType> mapsList;
+    std::vector<int32_t> turnCounts;
+    std::vector<int32_t> playerCounts;
+    std::vector<aoc::map::MapType> mapTypes;
     aoc::ga::OpponentMode opponentMode = aoc::ga::OpponentMode::Fixed;
     int32_t hallOfFameSize = 8;
     /// -1 = all 12 leaders rotate; [0,11] = tune that one leader's archetype.
@@ -251,11 +251,11 @@ struct CLIArgs {
             } else if (std::strcmp(argv[i], "--players") == 0) {
                 if (!parseIntArg(argv[++i], args.playerCount, "--players")) { return false; }
             } else if (std::strcmp(argv[i], "--turns-list") == 0) {
-                if (!parseIntList(argv[++i], args.turnsList, "--turns-list")) { return false; }
+                if (!parseIntList(argv[++i], args.turnCounts, "--turns-list")) { return false; }
             } else if (std::strcmp(argv[i], "--players-list") == 0) {
-                if (!parseIntList(argv[++i], args.playersList, "--players-list")) { return false; }
+                if (!parseIntList(argv[++i], args.playerCounts, "--players-list")) { return false; }
             } else if (std::strcmp(argv[i], "--maps") == 0) {
-                if (!parseMapList(argv[++i], args.mapsList, "--maps")) { return false; }
+                if (!parseMapList(argv[++i], args.mapTypes, "--maps")) { return false; }
             } else if (std::strcmp(argv[i], "--workers") == 0) {
                 char* endPtr = nullptr;
                 long parsed = std::strtol(argv[++i], &endPtr, 10);
@@ -449,9 +449,9 @@ int main(int argc, char* argv[]) {
 
     // Auto-bump gamesPerEval so every list entry is sampled at least once.
     {
-        std::size_t listMax = std::max({args.turnsList.size(),
-                                          args.playersList.size(),
-                                          args.mapsList.size()});
+        std::size_t listMax = std::max({args.turnCounts.size(),
+                                          args.playerCounts.size(),
+                                          args.mapTypes.size()});
         if (listMax > 0 && static_cast<std::size_t>(args.gamesPerEval) < listMax) {
             args.gamesPerEval = static_cast<int32_t>(listMax);
             std::fprintf(stderr,
@@ -468,25 +468,25 @@ int main(int argc, char* argv[]) {
                  args.population, args.generations, args.gamesPerEval);
     std::fprintf(stderr, "  Genome: %d parameters (LeaderBehavior)\n", aoc::ga::NUM_PARAMS);
     std::fprintf(stderr, "  Elitism: top 2 preserved\n");
-    if (args.turnsList.empty()) {
+    if (args.turnCounts.empty()) {
         std::fprintf(stderr, "  Turns per game: %d\n", args.turnsPerGame);
     } else {
         std::fprintf(stderr, "  Turns per game (cycled):");
-        for (int32_t t : args.turnsList) { std::fprintf(stderr, " %d", t); }
+        for (int32_t t : args.turnCounts) { std::fprintf(stderr, " %d", t); }
         std::fprintf(stderr, "\n");
     }
-    if (args.playersList.empty()) {
+    if (args.playerCounts.empty()) {
         std::fprintf(stderr, "  Players per game: %d\n", args.playerCount);
     } else {
         std::fprintf(stderr, "  Players per game (cycled):");
-        for (int32_t p : args.playersList) { std::fprintf(stderr, " %d", p); }
+        for (int32_t p : args.playerCounts) { std::fprintf(stderr, " %d", p); }
         std::fprintf(stderr, "\n");
     }
-    if (args.mapsList.empty()) {
+    if (args.mapTypes.empty()) {
         std::fprintf(stderr, "  Map type: continents\n");
     } else {
         std::fprintf(stderr, "  Map types (cycled):");
-        for (aoc::map::MapType m : args.mapsList) {
+        for (aoc::map::MapType m : args.mapTypes) {
             std::fprintf(stderr, " %s", aoc::ga::mapTypeName(m));
         }
         std::fprintf(stderr, "\n");
@@ -512,9 +512,9 @@ int main(int argc, char* argv[]) {
     config.gamesPerEval   = args.gamesPerEval;
     config.turnsPerGame   = args.turnsPerGame;
     config.playerCount    = args.playerCount;
-    config.turnsList      = args.turnsList;
-    config.playersList    = args.playersList;
-    config.mapsList       = args.mapsList;
+    config.turnCounts      = args.turnCounts;
+    config.playerCounts    = args.playerCounts;
+    config.mapTypes       = args.mapTypes;
     config.elitism        = 2;
     config.tournamentSize = 3;
     config.mutationRate   = 0.2f;
@@ -552,9 +552,9 @@ int main(int argc, char* argv[]) {
         bcfg.gamesPerEval   = args.gamesPerEval;
         bcfg.turnsPerGame   = args.turnsPerGame;
         bcfg.playerCount    = args.playerCount;
-        bcfg.turnsList      = args.turnsList;
-        bcfg.playersList    = args.playersList;
-        bcfg.mapsList       = args.mapsList;
+        bcfg.turnCounts      = args.turnCounts;
+        bcfg.playerCounts    = args.playerCounts;
+        bcfg.mapTypes       = args.mapTypes;
         bcfg.threadCount    = args.workers;
         bcfg.stopFlag       = &g_stopRequested;
 

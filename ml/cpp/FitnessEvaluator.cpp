@@ -601,18 +601,18 @@ GameScore scoreOneGame(std::span<const Individual* const> overrides,
     }
 
     const uint64_t gameSeed = baseSeed + static_cast<uint64_t>(game) * 7919;
-    const int32_t turns = config.turnsList.empty()
+    const int32_t turns = config.turnCounts.empty()
         ? config.turnsPerGame
-        : config.turnsList[static_cast<std::size_t>(game)
-                            % config.turnsList.size()];
-    const int32_t playerCount = config.playersList.empty()
+        : config.turnCounts[static_cast<std::size_t>(game)
+                            % config.turnCounts.size()];
+    const int32_t playerCount = config.playerCounts.empty()
         ? config.playerCount
-        : config.playersList[static_cast<std::size_t>(game)
-                              % config.playersList.size()];
-    const aoc::map::MapType mapType = config.mapsList.empty()
+        : config.playerCounts[static_cast<std::size_t>(game)
+                              % config.playerCounts.size()];
+    const aoc::map::MapType mapType = config.mapTypes.empty()
         ? aoc::map::MapType::Continents
-        : config.mapsList[static_cast<std::size_t>(game)
-                           % config.mapsList.size()];
+        : config.mapTypes[static_cast<std::size_t>(game)
+                           % config.mapTypes.size()];
 
     SimulationResult simResult = runSimulation(turns, playerCount, gameSeed,
                                                 config.stopFlag, overrides, mapType,
@@ -765,10 +765,10 @@ void evaluatePopulation(std::vector<Individual>& population,
         std::vector<const Individual*> overrides;
         buildOverrides(population[idx], population, idx, hallOfFame,
                        config.opponentMode,
-                       (config.playersList.empty()
+                       (config.playerCounts.empty()
                           ? config.playerCount
-                          : config.playersList[static_cast<std::size_t>(g)
-                                               % config.playersList.size()]),
+                          : config.playerCounts[static_cast<std::size_t>(g)
+                                               % config.playerCounts.size()]),
                        sampleSeed, overrides);
         std::span<const Individual* const> span(overrides.data(), overrides.size());
         return scoreOneGame(span, config, g, individualSeed);

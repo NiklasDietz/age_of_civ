@@ -2452,8 +2452,8 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 aoc::sim::TraderComponent trader;           // v34
                 bool autoRenewRoute;                        // v34
             };
-            std::vector<UnitData> unitDataList;
-            unitDataList.reserve(unitCount);
+            std::vector<UnitData> unitData;
+            unitData.reserve(unitCount);
 
             PlayerId maxOwner = 0;
             for (uint32_t i = 0; i < unitCount; ++i) {
@@ -2524,7 +2524,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 if (ud.owner > maxOwner) {
                     maxOwner = ud.owner;
                 }
-                unitDataList.push_back(std::move(ud));
+                unitData.push_back(std::move(ud));
             }
 
             // Cities
@@ -2558,8 +2558,8 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 std::vector<aoc::hex::AxialCoord> lockedTiles; // v17
                 aoc::sim::CityReligionComponent religion;    // v17
             };
-            std::vector<CityData> cityDataList;
-            cityDataList.reserve(cityCount);
+            std::vector<CityData> cityData;
+            cityData.reserve(cityCount);
 
             for (uint32_t i = 0; i < cityCount; ++i) {
                 CityData cd{};
@@ -2676,7 +2676,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
                 if (cd.holder > maxOwner) {
                     maxOwner = cd.holder;
                 }
-                cityDataList.push_back(std::move(cd));
+                cityData.push_back(std::move(cd));
             }
 
             // Initialize (or re-initialize) GameState with the correct player count.
@@ -2686,7 +2686,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
             gameState.initialize(requiredPlayers);
 
             // Populate Player objects with cities
-            for (const CityData& cd : cityDataList) {
+            for (const CityData& cd : cityData) {
                 aoc::game::Player* player = gameState.player(cd.holder);
                 if (player == nullptr) {
                     LOG_ERROR("Serializer.cpp: loadGame: invalid holder %u in Entities section",
@@ -2720,7 +2720,7 @@ ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
             }
 
             // Populate Player objects with units
-            for (const UnitData& ud : unitDataList) {
+            for (const UnitData& ud : unitData) {
                 aoc::game::Player* player = gameState.player(ud.owner);
                 if (player == nullptr) {
                     LOG_ERROR("Serializer.cpp: loadGame: invalid owner %u in Entities section",

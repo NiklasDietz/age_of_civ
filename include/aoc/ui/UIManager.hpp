@@ -386,7 +386,7 @@ private:
     mutable std::vector<WidgetId> m_focusableCache;
     mutable bool m_focusCacheDirty = true;
     void invalidateFocusCache() { this->m_focusCacheDirty = true; }
-    [[nodiscard]] const std::vector<WidgetId>& focusableList() const;
+    [[nodiscard]] const std::vector<WidgetId>& focusableWidgets() const;
 
     /// Per-slot generation counters. Bumped on `removeWidget` so
     /// stale `WidgetHandle` instances compare unequal after reuse.

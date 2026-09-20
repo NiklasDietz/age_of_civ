@@ -99,7 +99,7 @@ struct SimulationResult {
 /// Evaluate fitness of one individual by running multiple games.
 /// The individual's genes are used as Player 0's AI personality.
 /// Fitness = average normalized EraVP score across games.
-/// When config.turnsList / config.playersList are non-empty, game k uses
+/// When config.turnCounts / config.playerCounts are non-empty, game k uses
 /// the k-th entry (cycling) from the respective list; otherwise the scalar
 /// turnsPerGame / playerCount is used for every game.
 [[nodiscard]] float evaluateFitness(const Individual& individual,

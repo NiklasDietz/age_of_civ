@@ -126,12 +126,12 @@ struct GameSpec {
 /// Pick game parameters for game index k, cycling any per-game lists.
 GameSpec pickGameSpec(int32_t k, const BalanceGAConfig& cfg, uint64_t baseSeed) {
     GameSpec s{};
-    s.turns   = cfg.turnsList.empty() ? cfg.turnsPerGame
-              : cfg.turnsList[static_cast<std::size_t>(k) % cfg.turnsList.size()];
-    s.players = cfg.playersList.empty() ? cfg.playerCount
-              : cfg.playersList[static_cast<std::size_t>(k) % cfg.playersList.size()];
-    s.map     = cfg.mapsList.empty() ? aoc::map::MapType::Continents
-              : cfg.mapsList[static_cast<std::size_t>(k) % cfg.mapsList.size()];
+    s.turns   = cfg.turnCounts.empty() ? cfg.turnsPerGame
+              : cfg.turnCounts[static_cast<std::size_t>(k) % cfg.turnCounts.size()];
+    s.players = cfg.playerCounts.empty() ? cfg.playerCount
+              : cfg.playerCounts[static_cast<std::size_t>(k) % cfg.playerCounts.size()];
+    s.map     = cfg.mapTypes.empty() ? aoc::map::MapType::Continents
+              : cfg.mapTypes[static_cast<std::size_t>(k) % cfg.mapTypes.size()];
     s.seed    = baseSeed + static_cast<uint64_t>(k) * 0x9E3779B97F4A7C15ull;
     return s;
 }

@@ -147,16 +147,16 @@ void accrueIdeologicalGrievances(::aoc::game::GameState& gameState) {
 
     constexpr int32_t CAP_PER_PAIR = -50;
 
-    const std::vector<std::unique_ptr<::aoc::game::Player>>& playersVec =
+    const std::vector<std::unique_ptr<::aoc::game::Player>>& allPlayers =
         gameState.players();
-    for (std::size_t i = 0; i < playersVec.size(); ++i) {
-        ::aoc::game::Player* a = playersVec[i].get();
+    for (std::size_t i = 0; i < allPlayers.size(); ++i) {
+        ::aoc::game::Player* a = allPlayers[i].get();
         if (a == nullptr) { continue; }
         const GovernmentType govA = a->government().government;
         if (!isIdeology(govA)) { continue; }
 
-        for (std::size_t j = i + 1; j < playersVec.size(); ++j) {
-            ::aoc::game::Player* b = playersVec[j].get();
+        for (std::size_t j = i + 1; j < allPlayers.size(); ++j) {
+            ::aoc::game::Player* b = allPlayers[j].get();
             if (b == nullptr) { continue; }
             const GovernmentType govB = b->government().government;
             if (!isIdeology(govB)) { continue; }
