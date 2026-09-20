@@ -12,6 +12,7 @@
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/culture/GreatWorks.hpp"
 #include "aoc/simulation/culture/Tourism.hpp"
+#include "aoc/simulation/diplomacy/DealProposals.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/ui/StyleTokens.hpp"
 #include "aoc/ui/UIManager.hpp"
@@ -39,14 +40,6 @@ constexpr int32_t MAX_MOVE_TARGETS = 3;
 void mixHash(uint64_t& hash, uint64_t value) {
     hash ^= value;
     hash *= 1099511628211ULL;
-}
-
-[[nodiscard]] std::string civName(const aoc::game::Player& player) {
-    const aoc::sim::CivilizationDef& def = aoc::sim::civDef(player.civId());
-    if (def.name.empty()) {
-        return "P" + std::to_string(static_cast<unsigned>(player.id()));
-    }
-    return std::string(def.name);
 }
 
 } // namespace
@@ -152,7 +145,8 @@ void GreatWorksScreen::addTourismRows(UIManager& ui) {
         const int32_t theirs = rival->tourism().domesticTourists;
         const bool ahead     = t.foreignTourists > theirs;
         std::snprintf(buf, sizeof(buf), "vs %s  their domestic %d  yours foreign %d  (%s)",
-                      civName(*rival).c_str(), theirs, t.foreignTourists, ahead ? "ahead" : "behind");
+                      aoc::sim::civName(*this->m_gameState, rival->id()).c_str(), theirs,
+                      t.foreignTourists, ahead ? "ahead" : "behind");
         this->addLine(ui, buf, !ahead);
     }
 }

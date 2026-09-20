@@ -3,6 +3,7 @@
  * @brief City-states with envoys, suzerain, quest and levy (see the header).
  */
 
+#include "aoc/simulation/diplomacy/DealProposals.hpp"
 #include "aoc/ui/CityStatesScreen.hpp"
 
 #include "aoc/core/Log.hpp"
@@ -36,14 +37,6 @@ void mixHash(uint64_t& hash, uint64_t value) {
     hash *= 1099511628211ULL;
 }
 
-[[nodiscard]] std::string civName(const aoc::game::Player& player) {
-    const aoc::sim::CivilizationDef& def = aoc::sim::civDef(player.civId());
-    if (def.name.empty()) {
-        return "P" + std::to_string(static_cast<unsigned>(player.id()));
-    }
-    return std::string(def.name);
-}
-
 [[nodiscard]] std::string seatName(const aoc::game::GameState& gameState, PlayerId me, PlayerId seat) {
     if (seat == INVALID_PLAYER) {
         return "none";
@@ -51,8 +44,7 @@ void mixHash(uint64_t& hash, uint64_t value) {
     if (seat == me) {
         return "you";
     }
-    const aoc::game::Player* p = gameState.player(seat);
-    return p != nullptr ? civName(*p) : "P" + std::to_string(static_cast<unsigned>(seat));
+    return aoc::sim::civName(gameState, seat);
 }
 
 [[nodiscard]] std::string cityStateName(const aoc::game::GameState& gameState,

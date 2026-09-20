@@ -12,6 +12,7 @@
 #include "aoc/game/Unit.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/diplomacy/DealProposals.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/Espionage.hpp"
 #include "aoc/simulation/diplomacy/EspionageSystem.hpp"
@@ -50,10 +51,6 @@ constexpr int32_t MAX_HISTORY_ROWS = 10;
 
 [[nodiscard]] std::string percentText(float fraction) {
     return std::to_string(static_cast<int32_t>(fraction * 100.0f + 0.5f)) + "%";
-}
-
-[[nodiscard]] std::string civName(const aoc::game::Player& player) {
-    return std::string(aoc::sim::civDef(player.civId()).name);
 }
 
 void mixHash(uint64_t& hash, uint64_t value) {
@@ -196,7 +193,7 @@ void EspionageScreen::addSpyRows(UIManager& ui, const aoc::game::Unit& unit) {
 
     std::string where = coordText(at);
     if (city != nullptr && host != nullptr) {
-        where = city->name() + " (" + civName(*host) + ")";
+        where = city->name() + " (" + aoc::sim::civName(*this->m_gameState, host->id()) + ")";
     }
     const bool busy                        = spy.turnsRemaining > 0;
     const aoc::sim::SpyMissionDef& current = aoc::sim::spyMissionDef(spy.currentMission);
@@ -299,7 +296,8 @@ void EspionageScreen::addTargetRows(UIManager& ui) {
             intel = std::string(aoc::sim::intelligenceLevelName(
                 static_cast<aoc::sim::IntelligenceLevel>(level)));
         }
-        this->addLine(ui, civName(*rival) + "  |  Intel: " + intel, false);
+        this->addLine(ui, aoc::sim::civName(*this->m_gameState, rival->id()) + "  |  Intel: " + intel,
+                  false);
         for (const std::unique_ptr<aoc::game::City>& city : rival->cities()) {
             int32_t stationed = 0;
             for (const std::unique_ptr<aoc::game::Unit>& unit : self->units()) {
@@ -351,7 +349,8 @@ void EspionageScreen::addHistoryRows(UIManager& ui) {
             row += rec.success ? std::string("success") : "failed, " + outcome;
         } else {
             const aoc::game::Player* enemy = this->m_gameState->player(rec.spyOwner);
-            row += "Caught " + (enemy != nullptr ? civName(*enemy) : std::string("an enemy")) +
+            row += "Caught " + (enemy != nullptr ? aoc::sim::civName(*this->m_gameState, enemy->id())
+                                                : std::string("an enemy")) +
                    " spy in " + where + " (" + outcome + ")";
         }
         this->addLine(ui, std::move(row), !mine);

@@ -10,6 +10,7 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/diplomacy/DealProposals.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 
 #include <algorithm>
@@ -27,14 +28,6 @@ constexpr float LIST_W  = PANEL_W - 30.0f;
 constexpr float LIST_H  = PANEL_H - 130.0f;
 constexpr float ROW_W   = LIST_W - 10.0f;
 constexpr float ROW_H   = 16.0f;
-
-[[nodiscard]] std::string civName(const aoc::game::Player& player) {
-    const aoc::sim::CivilizationDef& def = aoc::sim::civDef(player.civId());
-    if (def.name.empty()) {
-        return "P" + std::to_string(static_cast<unsigned>(player.id()));
-    }
-    return std::string(def.name);
-}
 
 /// Population over cities the player still owns, the rule the CSI stats use.
 [[nodiscard]] int64_t ownedPopulation(const aoc::game::Player& player) {
@@ -209,7 +202,7 @@ void DemographicsScreen::addCivRows(UIManager& ui, std::vector<Row> rows) {
         if (p == nullptr) {
             continue;
         }
-        std::string text = civName(*p);
+        std::string text = aoc::sim::civName(*this->m_gameState, p->id());
         if (r.id == this->m_player) {
             text += " (you)";
         }
