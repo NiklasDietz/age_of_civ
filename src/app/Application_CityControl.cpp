@@ -59,11 +59,9 @@ bool readIntParam(const std::unordered_map<std::string, std::string>& query, con
 } // namespace
 
 void Application::registerCityControlRoutes() {
-    using DSM   = aoc::debug::DebugServer::Method;
-    using Query = std::unordered_map<std::string, std::string>;
 
     // Every city route names the city by its centre tile: player, q, r.
-    const auto readCity = [](const Query& q, int32_t& player, aoc::hex::AxialCoord& at,
+    const auto readCity = [](const std::unordered_map<std::string, std::string>& q, int32_t& player, aoc::hex::AxialCoord& at,
                              std::string& err) -> bool {
         int32_t cq = 0;
         int32_t cr = 0;
@@ -82,8 +80,8 @@ void Application::registerCityControlRoutes() {
 
     // POST /game/city/purchase?player=&q=&r=&type=&item=&faith=   (type 0 unit, 1 building)
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/city/purchase",
-        [this, readCity, queued](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/city/purchase",
+        [this, readCity, queued](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -115,8 +113,8 @@ void Application::registerCityControlRoutes() {
 
     // POST /game/city/focus?player=&q=&r=&focus=   (0 Balanced .. 5 Military)
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/city/focus",
-        [this, readCity, queued](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/city/focus",
+        [this, readCity, queued](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -140,8 +138,8 @@ void Application::registerCityControlRoutes() {
 
     // POST /game/city/lock-tile?player=&q=&r=&tq=&tr=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/city/lock-tile",
-        [this, readCity, queued](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/city/lock-tile",
+        [this, readCity, queued](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -164,8 +162,8 @@ void Application::registerCityControlRoutes() {
 
     // POST /game/city/queue/remove?player=&q=&r=&index=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/city/queue/remove",
-        [this, readCity, queued](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/city/queue/remove",
+        [this, readCity, queued](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -187,8 +185,8 @@ void Application::registerCityControlRoutes() {
     // POST /game/city/project?player=&q=&r=&project=   (0 Bread and Circuses .. 5 Military
     // Training)
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/city/project",
-        [this, readCity, queued](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/city/project",
+        [this, readCity, queued](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -212,9 +210,7 @@ void Application::registerCityControlRoutes() {
 }
 
 void Application::registerBuilderControlRoutes() {
-    using DSM           = aoc::debug::DebugServer::Method;
-    using Query         = std::unordered_map<std::string, std::string>;
-    const auto readUnit = [](const Query& q, int32_t& player, aoc::hex::AxialCoord& at,
+    const auto readUnit = [](const std::unordered_map<std::string, std::string>& q, int32_t& player, aoc::hex::AxialCoord& at,
                              std::string& err) -> bool {
         int32_t uq = 0;
         int32_t ur = 0;
@@ -233,8 +229,8 @@ void Application::registerBuilderControlRoutes() {
 
     // POST /game/builder/improve?player=&q=&r=&type=   (ImprovementType value)
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/builder/improve",
-        [this, readUnit, queued](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/builder/improve",
+        [this, readUnit, queued](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -258,8 +254,8 @@ void Application::registerBuilderControlRoutes() {
 
     // POST /game/builder/chop?player=&q=&r=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/builder/chop",
-        [this, readUnit, queued](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/builder/chop",
+        [this, readUnit, queued](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -278,8 +274,8 @@ void Application::registerBuilderControlRoutes() {
 
     // POST /game/builder/harvest?player=&q=&r=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/builder/harvest",
-        [this, readUnit, queued](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/builder/harvest",
+        [this, readUnit, queued](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -298,9 +294,7 @@ void Application::registerBuilderControlRoutes() {
 }
 
 void Application::registerUnitOrderRoutes() {
-    using DSM           = aoc::debug::DebugServer::Method;
-    using Query         = std::unordered_map<std::string, std::string>;
-    const auto readUnit = [](const Query& q, int32_t& player, aoc::hex::AxialCoord& at,
+    const auto readUnit = [](const std::unordered_map<std::string, std::string>& q, int32_t& player, aoc::hex::AxialCoord& at,
                              std::string& err) -> bool {
         int32_t uq = 0;
         int32_t ur = 0;
@@ -318,8 +312,8 @@ void Application::registerUnitOrderRoutes() {
     };
     const auto simpleRoute = [this, readUnit, queued](const char* path, auto makeCommand) {
         this->m_debugServer->routeJson(
-            DSM::Post, path,
-            [this, readUnit, queued, makeCommand](const Query& q,
+            aoc::debug::DebugServer::Method::Post, path,
+            [this, readUnit, queued, makeCommand](const std::unordered_map<std::string, std::string>& q,
                                                   const std::string&) -> std::string {
                 if (this->m_appState != AppState::InGame) {
                     throw aoc::debug::ServiceUnavailableError("no active game");
@@ -348,8 +342,8 @@ void Application::registerUnitOrderRoutes() {
     });
     // POST /game/unit/promote?player=&q=&r=&promotion=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/unit/promote",
-        [this, readUnit, queued](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/unit/promote",
+        [this, readUnit, queued](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -372,8 +366,8 @@ void Application::registerUnitOrderRoutes() {
 
     // POST /game/unit/alert?player=&q=&r=&on=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/unit/alert",
-        [this, readUnit, queued](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/unit/alert",
+        [this, readUnit, queued](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -394,8 +388,6 @@ void Application::registerUnitOrderRoutes() {
 }
 
 void Application::registerReligionRoutes() {
-    using DSM         = aoc::debug::DebugServer::Method;
-    using Query       = std::unordered_map<std::string, std::string>;
     const auto queued = [this](const aoc::debug::GameControlCommand& cmd) -> std::string {
         std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
         this->m_pendingCommands.push_back(cmd);
@@ -403,8 +395,8 @@ void Application::registerReligionRoutes() {
     };
     // POST /game/religion/pantheon?player=&belief=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/religion/pantheon",
-        [this, queued](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/religion/pantheon",
+        [this, queued](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -424,8 +416,8 @@ void Application::registerReligionRoutes() {
         "player=&belief=");
     // POST /game/religion/found?player=&founder=&worship=&enhancer=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/religion/found",
-        [this, queued](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/religion/found",
+        [this, queued](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -600,12 +592,10 @@ void Application::executeGameControlCommand(const aoc::debug::FoundReligionComma
 }
 
 void Application::registerCultureRoutes() {
-    using DSM   = aoc::debug::DebugServer::Method;
-    using Query = std::unordered_map<std::string, std::string>;
 
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/greatwork/move",
-        [this](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/greatwork/move",
+        [this](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -638,14 +628,12 @@ void Application::executeGameControlCommand(const aoc::debug::MoveGreatWorkComma
 }
 
 void Application::registerCityStateRoutes() {
-    using DSM   = aoc::debug::DebugServer::Method;
-    using Query = std::unordered_map<std::string, std::string>;
 
     // player + index, then one command type per route.
     const auto csRoute = [this](const char* path, auto makeCommand) {
         this->m_debugServer->routeJson(
-            DSM::Post, path,
-            [this, makeCommand](const Query& q, const std::string&) -> std::string {
+            aoc::debug::DebugServer::Method::Post, path,
+            [this, makeCommand](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
                 if (this->m_appState != AppState::InGame) {
                     throw aoc::debug::ServiceUnavailableError("no active game");
                 }
@@ -681,7 +669,7 @@ void Application::registerCityStateRoutes() {
             });
 
     this->m_debugServer->routeJson(
-        DSM::Get, "/game/citystates", [this](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Get, "/game/citystates", [this](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -751,14 +739,12 @@ void Application::executeGameControlCommand(const aoc::debug::BullyCityStateComm
 }
 
 void Application::registerDiplomacyRoutes() {
-    using DSM   = aoc::debug::DebugServer::Method;
-    using Query = std::unordered_map<std::string, std::string>;
 
     // player + target, one command type per route; war also takes cb (CasusBelliType index).
     const auto pairRoute = [this](const char* path, bool withCasusBelli, auto makeCommand) {
         this->m_debugServer->routeJson(
-            DSM::Post, path,
-            [this, withCasusBelli, makeCommand](const Query& q, const std::string&) -> std::string {
+            aoc::debug::DebugServer::Method::Post, path,
+            [this, withCasusBelli, makeCommand](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
                 if (this->m_appState != AppState::InGame) {
                     throw aoc::debug::ServiceUnavailableError("no active game");
                 }
@@ -817,7 +803,7 @@ void Application::registerDiplomacyRoutes() {
               });
 
     this->m_debugServer->routeJson(
-        DSM::Get, "/game/diplomacy", [this](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Get, "/game/diplomacy", [this](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -959,12 +945,10 @@ std::string dealTermsJson(const aoc::game::GameState& gameState,
 } // namespace
 
 void Application::registerDealRoutes() {
-    using DSM   = aoc::debug::DebugServer::Method;
-    using Query = std::unordered_map<std::string, std::string>;
 
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/monetary/regime",
-        [this](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/monetary/regime",
+        [this](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -990,8 +974,8 @@ void Application::registerDealRoutes() {
             return std::string("{\"queued\":true}");
         });
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/monetary/moneygood",
-        [this](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/monetary/moneygood",
+        [this](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -1016,7 +1000,7 @@ void Application::registerDealRoutes() {
             return std::string("{\"queued\":true}");
         });
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/deal/propose", [this](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/deal/propose", [this](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -1069,7 +1053,7 @@ void Application::registerDealRoutes() {
         });
 
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/deal/respond", [this](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/deal/respond", [this](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -1092,7 +1076,7 @@ void Application::registerDealRoutes() {
         });
 
     this->m_debugServer->routeJson(
-        DSM::Get, "/game/deals", [this](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Get, "/game/deals", [this](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -1141,7 +1125,7 @@ void Application::registerDealRoutes() {
             return json;
         });
     this->m_debugServer->routeJson(
-        DSM::Get, "/game/market", [this](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Get, "/game/market", [this](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -1281,12 +1265,10 @@ void Application::executeGameControlCommand(const aoc::debug::RespondProposalCom
 }
 
 void Application::registerDistrictRoutes() {
-    using DSM   = aoc::debug::DebugServer::Method;
-    using Query = std::unordered_map<std::string, std::string>;
 
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/city/district/place",
-        [this](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/game/city/district/place",
+        [this](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }
@@ -1315,8 +1297,8 @@ void Application::registerDistrictRoutes() {
         });
 
     this->m_debugServer->routeJson(
-        DSM::Get, "/game/city/district/sites",
-        [this](const Query& q, const std::string&) -> std::string {
+        aoc::debug::DebugServer::Method::Get, "/game/city/district/sites",
+        [this](const std::unordered_map<std::string, std::string>& q, const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
                 throw aoc::debug::ServiceUnavailableError("no active game");
             }

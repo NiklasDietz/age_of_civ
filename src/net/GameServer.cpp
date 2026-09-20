@@ -270,9 +270,8 @@ bool GameServer::validateCommand(PlayerId player, const GameCommand& command) co
     // check up here.
     return std::visit(
         [player](const auto& cmd) -> bool {
-            using T = std::decay_t<decltype(cmd)>;
 
-            if constexpr (std::is_same_v<T, SetTaxRateCommand>) {
+            if constexpr (std::is_same_v<std::decay_t<decltype(cmd)>, SetTaxRateCommand>) {
                 // Reject commands that spoof a player id.
                 if (cmd.player != player) {
                     LOG_WARN("validateCommand: SetTaxRate rejected -- "
@@ -290,7 +289,7 @@ bool GameServer::validateCommand(PlayerId player, const GameCommand& command) co
                     return false;
                 }
                 return true;
-            } else if constexpr (std::is_same_v<T, SetResearchCommand>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(cmd)>, SetResearchCommand>) {
                 if (cmd.player != player) {
                     LOG_WARN("validateCommand: SetResearch rejected -- "
                              "cmd.player=%d != connection player=%d",
@@ -306,7 +305,7 @@ bool GameServer::validateCommand(PlayerId player, const GameCommand& command) co
                     return false;
                 }
                 return true;
-            } else if constexpr (std::is_same_v<T, EndTurnCommand>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(cmd)>, EndTurnCommand>) {
                 if (cmd.player != player) {
                     LOG_WARN("validateCommand: EndTurn rejected -- "
                              "cmd.player=%d != connection player=%d",
@@ -314,7 +313,7 @@ bool GameServer::validateCommand(PlayerId player, const GameCommand& command) co
                     return false;
                 }
                 return true;
-            } else if constexpr (std::is_same_v<T, TransitionMonetaryCommand>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(cmd)>, TransitionMonetaryCommand>) {
                 if (cmd.player != player) {
                     LOG_WARN("validateCommand: TransitionMonetary rejected -- "
                              "cmd.player=%d != connection player=%d",
@@ -344,9 +343,8 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
     // std::visit requires a generic lambda (type is not nameable) - the only valid use of auto here
     std::visit(
         [this, player](const auto& cmd) {
-            using T = std::decay_t<decltype(cmd)>;
 
-            if constexpr (std::is_same_v<T, EndTurnCommand>) {
+            if constexpr (std::is_same_v<std::decay_t<decltype(cmd)>, EndTurnCommand>) {
                 if (static_cast<std::size_t>(player) >= this->m_playerReady.size()) {
                     LOG_WARN("executeCommand: EndTurn dropped -- player id %d out of "
                              "range (size %zu)",
@@ -357,7 +355,7 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
                 if (this->m_transport != nullptr) {
                     this->m_transport->broadcastUpdate(PlayerEndedTurnUpdate{player});
                 }
-            } else if constexpr (std::is_same_v<T, MoveUnitCommand>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(cmd)>, MoveUnitCommand>) {
                 // Find the unit in the GameState object model via the player's unit list
                 aoc::game::Player* gsPlayer = this->m_gameState.player(player);
                 if (gsPlayer == nullptr) {
@@ -404,7 +402,7 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
                             cmd.unitEntity, player, fromPos, nextTile, ecsUnit->movementRemaining});
                     }
                 }
-            } else if constexpr (std::is_same_v<T, SetResearchCommand>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(cmd)>, SetResearchCommand>) {
                 // Reject an out-of-range tech id before writing it: cmd.techId is
                 // untrusted wire data and must not be stored unvalidated.
                 if (!(cmd.techId.isValid() && cmd.techId.value < aoc::sim::techCount())) {
@@ -426,7 +424,7 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
                     this->m_transport->broadcastUpdate(
                         ResearchChangedUpdate{cmd.player, cmd.techId.value, techName});
                 }
-            } else if constexpr (std::is_same_v<T, FoundCityCommand>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(cmd)>, FoundCityCommand>) {
                 // Find settler unit in the GameState object model
                 aoc::game::Player* gsPlayer = this->m_gameState.player(player);
                 if (gsPlayer == nullptr) {
@@ -473,7 +471,7 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
                     this->m_transport->broadcastUpdate(
                         CityFoundedUpdate{cityEntity, player, cmd.cityName, pos});
                 }
-            } else if constexpr (std::is_same_v<T, AttackUnitCommand>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(cmd)>, AttackUnitCommand>) {
                 // Resolve combat via the ECS-backed combat system (still authoritative for combat)
                 aoc::sim::UnitComponent* attacker = static_cast<aoc::sim::UnitComponent*>(
                     nullptr) /* network protocol migration pending */;
@@ -506,7 +504,7 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
                     update.defenderPos       = defPos;
                     this->m_transport->broadcastUpdate(update);
                 }
-            } else if constexpr (std::is_same_v<T, SetProductionCommand>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(cmd)>, SetProductionCommand>) {
                 // Find city in the GameState object model
                 aoc::game::Player* gsPlayer = this->m_gameState.player(player);
                 if (gsPlayer == nullptr) {
@@ -523,7 +521,7 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
                             ProductionChangedUpdate{cmd.cityEntity, player, "Item", 0.0f});
                     }
                 }
-            } else if constexpr (std::is_same_v<T, SetTaxRateCommand>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(cmd)>, SetTaxRateCommand>) {
                 // Defence in depth: validateCommand already rejects rates
                 // outside [0.0f, 1.0f] and a spoofed cmd.player. Clamp here
                 // anyway so any future caller that bypasses validate cannot
@@ -539,7 +537,7 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
                 if (gsPlayer != nullptr) {
                     aoc::sim::setTaxRate(gsPlayer->monetary(), cmd.rate);
                 }
-            } else if constexpr (std::is_same_v<T, TransitionMonetaryCommand>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(cmd)>, TransitionMonetaryCommand>) {
                 const aoc::sim::MonetarySystemType target =
                     static_cast<aoc::sim::MonetarySystemType>(cmd.targetSystem);
                 aoc::game::Player* gsPlayer = this->m_gameState.player(cmd.player);

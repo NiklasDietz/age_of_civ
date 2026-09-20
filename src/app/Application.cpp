@@ -579,7 +579,6 @@ ErrorCode Application::initialize(const Config& config) {
     // read goes through the immutable snapshot published by the main
     // thread (`debugGridSnapshot`), never through `m_hexGrid`, whose
     // buffers are reallocated by regen/load/reset on the main thread. --
-    using DSM           = aoc::debug::DebugServer::Method;
     this->m_debugServer = std::make_unique<aoc::debug::DebugServer>(9876);
 
     auto buildInfoJson = [this]() -> std::string {
@@ -601,14 +600,14 @@ ErrorCode Application::initialize(const Config& config) {
     };
 
     this->m_debugServer->routeJson(
-        DSM::Get, "/ping", [](const auto&, const auto&) { return std::string("{\"ok\":true}"); });
+        aoc::debug::DebugServer::Method::Get, "/ping", [](const auto&, const auto&) { return std::string("{\"ok\":true}"); });
 
     this->m_debugServer->routeJson(
-        DSM::Get, "/info", [buildInfoJson](const auto&, const auto&) { return buildInfoJson(); });
+        aoc::debug::DebugServer::Method::Get, "/info", [buildInfoJson](const auto&, const auto&) { return buildInfoJson(); });
 
     // GET /plates -- JSON array, one entry per plate present.
     this->m_debugServer->routeJson(
-        DSM::Get, "/plates",
+        aoc::debug::DebugServer::Method::Get, "/plates",
         [this](const std::unordered_map<std::string, std::string>&,
                const std::string&) -> std::string {
             const std::shared_ptr<const aoc::map::HexGrid> grid = this->debugGridSnapshot();
@@ -620,7 +619,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // GET /tile?idx=N -- single tile detail.
     this->m_debugServer->routeJson(
-        DSM::Get, "/tile",
+        aoc::debug::DebugServer::Method::Get, "/tile",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             const std::unordered_map<std::string, std::string>::const_iterator it = q.find("idx");
@@ -652,7 +651,7 @@ ErrorCode Application::initialize(const Config& config) {
     // for v1; mutation arrives with /sim/set-constant in a later
     // phase.
     this->m_debugServer->routeJson(
-        DSM::Get, "/constants", [](const auto&, const auto&) -> std::string {
+        aoc::debug::DebugServer::Method::Get, "/constants", [](const auto&, const auto&) -> std::string {
             std::ostringstream o;
             o << "{\"K_THICKEN\":250.0"
               << ",\"K_EROSION\":0.034"
@@ -671,7 +670,7 @@ ErrorCode Application::initialize(const Config& config) {
     // POST /dump/plates?path=PATH -- writes per-plate CSV to path
     // (confined to <cwd>/dumps; see resolveDumpTarget).
     this->m_debugServer->routeJson(
-        DSM::Post, "/dump/plates",
+        aoc::debug::DebugServer::Method::Post, "/dump/plates",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             const std::unordered_map<std::string, std::string>::const_iterator it = q.find("path");
@@ -732,7 +731,7 @@ ErrorCode Application::initialize(const Config& config) {
     // POST /dump/grid?path=PATH -- ASCII map (confined to <cwd>/dumps;
     // see resolveDumpTarget).
     this->m_debugServer->routeJson(
-        DSM::Post, "/dump/grid",
+        aoc::debug::DebugServer::Method::Post, "/dump/grid",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             const std::unordered_map<std::string, std::string>::const_iterator it = q.find("path");
@@ -830,7 +829,7 @@ ErrorCode Application::initialize(const Config& config) {
     // there. Last-writer-wins on the flag is intentional -- if two
     // POSTs land in the same frame the most recent target is honoured.
     this->m_debugServer->routeJson(
-        DSM::Post, "/sim/set-creator-time", [this](const auto& q, const auto&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/sim/set-creator-time", [this](const auto& q, const auto&) -> std::string {
             if (!this->m_continentCreatorMode) {
                 return std::string("{\"error\":\"not in creator mode\"}");
             }
@@ -856,7 +855,7 @@ ErrorCode Application::initialize(const Config& config) {
     // steps back; cache makes back-steps cheap, forward steps re-run
     // sim from seed to the new epoch.
     this->m_debugServer->routeJson(
-        DSM::Post, "/sim/step", [this](const auto& q, const auto&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/sim/step", [this](const auto& q, const auto&) -> std::string {
             if (!this->m_continentCreatorMode) {
                 return std::string("{\"error\":\"not in creator mode\"}");
             }
@@ -881,7 +880,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /sim/re-roll?seed=N -- new seed + regen.
     this->m_debugServer->routeJson(
-        DSM::Post, "/sim/re-roll", [this](const auto& q, const auto&) -> std::string {
+        aoc::debug::DebugServer::Method::Post, "/sim/re-roll", [this](const auto& q, const auto&) -> std::string {
             if (!this->m_continentCreatorMode) {
                 return std::string("{\"error\":\"not in creator mode\"}");
             }
@@ -907,7 +906,7 @@ ErrorCode Application::initialize(const Config& config) {
     // GLFW is not thread-safe; the worker thread must not call
     // `glfwSetWindowShouldClose`. Set the atomic flag and let the main
     // loop call the GLFW API on the render thread.
-    this->m_debugServer->routeJson(DSM::Post, "/quit",
+    this->m_debugServer->routeJson(aoc::debug::DebugServer::Method::Post, "/quit",
                                    [this](const auto&, const auto&) -> std::string {
                                        this->m_quitRequested.store(true, std::memory_order_release);
                                        return std::string("{\"closing\":true}");
@@ -915,7 +914,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // GET /game/state -- full game snapshot (turn, phase, all players).
     this->m_debugServer->routeJson(
-        DSM::Get, "/game/state",
+        aoc::debug::DebugServer::Method::Get, "/game/state",
         [this](const std::unordered_map<std::string, std::string>&,
                const std::string&) -> std::string {
             const std::shared_ptr<const aoc::debug::GameSnapshot> snap = this->gameSnapshot();
@@ -927,7 +926,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // GET /game/player?id=N -- single player detail.
     this->m_debugServer->routeJson(
-        DSM::Get, "/game/player",
+        aoc::debug::DebugServer::Method::Get, "/game/player",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             const std::shared_ptr<const aoc::debug::GameSnapshot> snap = this->gameSnapshot();
@@ -950,7 +949,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // GET /game/units?player=N -- unit list for a player.
     this->m_debugServer->routeJson(
-        DSM::Get, "/game/units",
+        aoc::debug::DebugServer::Method::Get, "/game/units",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             const std::shared_ptr<const aoc::debug::GameSnapshot> snap = this->gameSnapshot();
@@ -974,7 +973,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // GET /game/cities?player=N -- city list for a player.
     this->m_debugServer->routeJson(
-        DSM::Get, "/game/cities",
+        aoc::debug::DebugServer::Method::Get, "/game/cities",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             const std::shared_ptr<const aoc::debug::GameSnapshot> snap = this->gameSnapshot();
@@ -1000,7 +999,7 @@ ErrorCode Application::initialize(const Config& config) {
     // last within the drain pass, after any moves/attacks/production/
     // research queued in the same frame) on the main thread.
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/turn/end",
+        aoc::debug::DebugServer::Method::Post, "/game/turn/end",
         [this](const std::unordered_map<std::string, std::string>&,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1015,7 +1014,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/unit/move?player=&q=&r=&targetQ=&targetR=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/unit/move",
+        aoc::debug::DebugServer::Method::Post, "/game/unit/move",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1056,7 +1055,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/unit/attack?player=&q=&r=&targetQ=&targetR=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/unit/attack",
+        aoc::debug::DebugServer::Method::Post, "/game/unit/attack",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1097,7 +1096,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/unit/found-city?player=&q=&r=&name=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/unit/found-city",
+        aoc::debug::DebugServer::Method::Post, "/game/unit/found-city",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1138,7 +1137,7 @@ ErrorCode Application::initialize(const Config& config) {
     // cost are looked up server-side from the matching def table -- the
     // client supplies only the id, never authoritative name/cost.
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/city/production",
+        aoc::debug::DebugServer::Method::Post, "/game/city/production",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1196,7 +1195,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/spy/mission?player=&q=&r=&mission=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/spy/mission",
+        aoc::debug::DebugServer::Method::Post, "/game/spy/mission",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1236,7 +1235,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/greatperson/activate?player=&q=&r=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/greatperson/activate",
+        aoc::debug::DebugServer::Method::Post, "/game/greatperson/activate",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1268,7 +1267,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/congress/vote?player=&weight=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/congress/vote",
+        aoc::debug::DebugServer::Method::Post, "/game/congress/vote",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1300,7 +1299,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/congress/propose?player=&resolution=&target=   (target optional)
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/congress/propose",
+        aoc::debug::DebugServer::Method::Post, "/game/congress/propose",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1336,7 +1335,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/unit/merge?player=&q=&r=&sourceQ=&sourceR=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/unit/merge",
+        aoc::debug::DebugServer::Method::Post, "/game/unit/merge",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1377,7 +1376,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/unit/nuke?player=&q=&r=&type=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/unit/nuke",
+        aoc::debug::DebugServer::Method::Post, "/game/unit/nuke",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1414,7 +1413,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/greatperson/retire?player=&q=&r=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/greatperson/retire",
+        aoc::debug::DebugServer::Method::Post, "/game/greatperson/retire",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1446,7 +1445,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/city/disposition?player=&q=&r=&disposition=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/city/disposition",
+        aoc::debug::DebugServer::Method::Post, "/game/city/disposition",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1483,7 +1482,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/governor/assign?player=&q=&r=&type=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/governor/assign",
+        aoc::debug::DebugServer::Method::Post, "/game/governor/assign",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1523,7 +1522,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/policy/slot?player=&slot=&policy=   (policy -1 clears the slot)
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/policy/slot",
+        aoc::debug::DebugServer::Method::Post, "/game/policy/slot",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1562,7 +1561,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/government/change?player=&government=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/government/change",
+        aoc::debug::DebugServer::Method::Post, "/game/government/change",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1603,7 +1602,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/governor/promote?player=&q=&r=&promotion=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/governor/promote",
+        aoc::debug::DebugServer::Method::Post, "/game/governor/promote",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1644,7 +1643,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /game/research?player=&techId=
     this->m_debugServer->routeJson(
-        DSM::Post, "/game/research",
+        aoc::debug::DebugServer::Method::Post, "/game/research",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             if (this->m_appState != AppState::InGame) {
@@ -1679,7 +1678,7 @@ ErrorCode Application::initialize(const Config& config) {
     // exactly what a caller needs to navigate from the main menu into a
     // running game.
     this->m_debugServer->routeJson(
-        DSM::Get, "/ui/tree",
+        aoc::debug::DebugServer::Method::Get, "/ui/tree",
         [this](const std::unordered_map<std::string, std::string>&,
                const std::string&) -> std::string {
             const std::shared_ptr<const std::string> snap = this->uiSnapshot();
@@ -1694,7 +1693,7 @@ ErrorCode Application::initialize(const Config& config) {
     // kinds (Button/Icon/ListRow). No synchronous existence check on
     // widgetId, matching every /game/* mutation route's convention:
     // deep validation happens in the drain, poll /ui/tree to observe.
-    this->m_debugServer->routeJson(DSM::Post, "/ui/click",
+    this->m_debugServer->routeJson(aoc::debug::DebugServer::Method::Post, "/ui/click",
                                    [this](const std::unordered_map<std::string, std::string>& q,
                                           const std::string&) -> std::string {
                                        int32_t widgetId = 0;
@@ -1717,7 +1716,7 @@ ErrorCode Application::initialize(const Config& config) {
     // release) at a screen coordinate. Reuses UIManager::handleInput's
     // full dispatch -- the only way to pick a specific tab in a TabBarData
     // or interact with a SliderData, both coordinate-dependent.
-    this->m_debugServer->routeJson(DSM::Post, "/ui/click-at",
+    this->m_debugServer->routeJson(aoc::debug::DebugServer::Method::Post, "/ui/click-at",
                                    [this](const std::unordered_map<std::string, std::string>& q,
                                           const std::string&) -> std::string {
                                        int32_t x = 0;
@@ -1745,7 +1744,7 @@ ErrorCode Application::initialize(const Config& config) {
     // event at a screen coordinate (e.g. to pan a scroll list or the
     // tech-tree canvas). `shift` is "1"/absent, not an int.
     this->m_debugServer->routeJson(
-        DSM::Post, "/ui/scroll",
+        aoc::debug::DebugServer::Method::Post, "/ui/scroll",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
             int32_t x     = 0;
@@ -1782,7 +1781,7 @@ ErrorCode Application::initialize(const Config& config) {
     // HTTP worker blocks on a std::promise fulfilled by the render thread
     // (same thread that runs captureScreenshot). Max wait: 2 s.
     this->m_debugServer->routeJson(
-        DSM::Post, "/debug/screenshot",
+        aoc::debug::DebugServer::Method::Post, "/debug/screenshot",
         [this](const std::unordered_map<std::string, std::string>&,
                const std::string&) -> std::string {
             std::shared_ptr<std::promise<std::string>> promise =
@@ -1805,7 +1804,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // GET /schema -- self-describing route catalogue.
     this->m_debugServer->routeJson(
-        DSM::Get, "/schema", [this](const auto&, const auto&) -> std::string {
+        aoc::debug::DebugServer::Method::Get, "/schema", [this](const auto&, const auto&) -> std::string {
             return "{\"routes\":" + this->m_debugServer->routesJson() + "}";
         });
 
@@ -2982,8 +2981,7 @@ void Application::drainPendingCommands() {
         }
         std::visit(
             [this](const auto& c) {
-                using CommandType = std::decay_t<decltype(c)>;
-                if constexpr (!std::is_same_v<CommandType, aoc::debug::EndTurnCommand>) {
+                if constexpr (!std::is_same_v<std::decay_t<decltype(c)>, aoc::debug::EndTurnCommand>) {
                     this->executeGameControlCommand(c);
                 }
             },
@@ -3005,16 +3003,15 @@ void Application::drainPendingUiCommands() {
     for (const aoc::debug::UiControlCommand& cmd : commands) {
         std::visit(
             [this](const auto& c) {
-                using CommandType = std::decay_t<decltype(c)>;
-                if constexpr (std::is_same_v<CommandType, aoc::debug::ClickWidgetCommand>) {
+                if constexpr (std::is_same_v<std::decay_t<decltype(c)>, aoc::debug::ClickWidgetCommand>) {
                     this->m_uiManager.clickWidget(c.widgetId);
-                } else if constexpr (std::is_same_v<CommandType, aoc::debug::ClickAtCommand>) {
+                } else if constexpr (std::is_same_v<std::decay_t<decltype(c)>, aoc::debug::ClickAtCommand>) {
                     this->m_uiManager.handleInput(c.x, c.y, true, false);
                     this->m_uiManager.handleInput(c.x, c.y, false, true);
-                } else if constexpr (std::is_same_v<CommandType, aoc::debug::ScrollAtCommand>) {
+                } else if constexpr (std::is_same_v<std::decay_t<decltype(c)>, aoc::debug::ScrollAtCommand>) {
                     this->m_uiManager.handleInput(c.x, c.y, false, false, c.delta, false, false,
                                                   c.shiftHeld);
-                } else if constexpr (std::is_same_v<CommandType,
+                } else if constexpr (std::is_same_v<std::decay_t<decltype(c)>,
                                                     aoc::debug::TakeScreenshotCommand>) {
                     // Runs on the render thread -- same context as captureScreenshot requires.
                     const std::string path =
@@ -3804,9 +3801,8 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         ovl.labelColor   = aoc::ui::tokens::TEXT_GILT;
         ovl.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         ovl.onClick      = [this, mode]() {
-            using OM = aoc::render::GameRenderer::MapOverlay;
             this->m_gameRenderer.overlayMode =
-                (this->m_gameRenderer.overlayMode == mode) ? OM::None : mode;
+                (this->m_gameRenderer.overlayMode == mode) ? aoc::render::GameRenderer::MapOverlay::None : mode;
         };
         (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 64.0f, 36.0f},
                                              std::move(ovl));
@@ -4841,11 +4837,10 @@ void Application::run() {
         // None → TectonicPlates → None. Easy lookup tool for the
         // generator's plate layout while iterating on geology code.
         if (this->m_inputManager.isKeyPressed(GLFW_KEY_F8)) {
-            using OM = aoc::render::GameRenderer::MapOverlay;
             this->m_gameRenderer.overlayMode =
-                (this->m_gameRenderer.overlayMode == OM::None) ? OM::TectonicPlates : OM::None;
+                (this->m_gameRenderer.overlayMode == aoc::render::GameRenderer::MapOverlay::None) ? aoc::render::GameRenderer::MapOverlay::TectonicPlates : aoc::render::GameRenderer::MapOverlay::None;
             LOG_INFO("Overlay mode: %s",
-                     this->m_gameRenderer.overlayMode == OM::None ? "off" : "tectonic plates");
+                     this->m_gameRenderer.overlayMode == aoc::render::GameRenderer::MapOverlay::None ? "off" : "tectonic plates");
         }
         if (this->m_debugConsole.isOpen()) {
             // Route character input to console

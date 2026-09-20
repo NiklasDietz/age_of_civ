@@ -293,8 +293,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // never re-merge into a single landmass via the falloff sum.
     // Plate struct moved to include/aoc/map/gen/Plate.hpp on 2026-05-03 so
     // extracted post-sim / elevation passes can construct it directly.
-    using Plate = aoc::map::gen::Plate;
-    std::vector<Plate> plates;
+    std::vector<aoc::map::gen::Plate> plates;
     // Raster-derived per-plate metadata, filled at the end of the
     // tectonic block (sphereField is scoped there) and persisted to
     // the HexGrid after it.
@@ -375,7 +374,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         constexpr float OCEAN_MIN_GAP = 0.09f;
 
         const auto pushPlate = [&](float cx, float cy, bool isLand) {
-            Plate p;
+            aoc::map::gen::Plate p;
             p.cx = cx;
             p.cy = cy;
             // 2026-05-05: SPHERE MIGRATION - derive lat/lon from
@@ -574,7 +573,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             const float cx = centerRng.nextFloat(xLo, xHi);
             const float cy = centerRng.nextFloat(LAND_LAT_LO, LAND_LAT_HI);
             bool tooClose  = false;
-            for (const Plate& existing : plates) {
+            for (const aoc::map::gen::Plate& existing : plates) {
                 const float dx = wrapDx(cx, existing.cx);
                 const float dy = cy - existing.cy;
                 if (std::sqrt(dx * dx + dy * dy) < LAND_MIN_GAP) {
@@ -619,7 +618,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             const float cx = centerRng.nextFloat(xLoOcn, xHiOcn);
             const float cy = centerRng.nextFloat(0.04f, 0.96f);
             bool tooClose  = false;
-            for (const Plate& existing : plates) {
+            for (const aoc::map::gen::Plate& existing : plates) {
                 const float dx = wrapDx(cx, existing.cx);
                 const float dy = cy - existing.cy;
                 if (std::sqrt(dx * dx + dy * dy) < OCEAN_MIN_GAP) {
@@ -657,7 +656,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // Reject if too close to a LAND plate centre -- keep
                 // hotspots in the deep ocean where they belong.
                 bool nearLand = false;
-                for (const Plate& p : plates) {
+                for (const aoc::map::gen::Plate& p : plates) {
                     if (p.landFraction <= 0.40f) {
                         continue;
                     }
@@ -817,10 +816,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                          static_cast<uint64_t>(attempt) * 0x9E3779B97F4A7C15ULL;
 
             {
-                using SF                = aoc::map::gen::SphereField;
-                constexpr int32_t LON   = SF::LON_CELLS;
-                constexpr int32_t LAT   = SF::LAT_CELLS;
-                constexpr std::size_t N = SF::CELL_COUNT;
+                constexpr int32_t LON   = aoc::map::gen::SphereField::LON_CELLS;
+                constexpr int32_t LAT   = aoc::map::gen::SphereField::LAT_CELLS;
+                constexpr std::size_t N = aoc::map::gen::SphereField::CELL_COUNT;
                 // Independent RNG for cratonic seeding -- distinct from
                 // physicsRngState so changes here do not perturb the
                 // Wilson rifting cadence.
@@ -1041,11 +1039,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             cratonRng.nextFloat(-CRATON_LAT_LIMIT_SIN, CRATON_LAT_LIMIT_SIN);
                         const float latDeg    = std::asin(u) * 57.29577951f;
                         const float lonDeg    = cratonRng.nextFloat(-180.0f, 180.0f);
-                        const SF::CellCoord c = SF::locate(latDeg, lonDeg);
+                        const aoc::map::gen::SphereField::CellCoord c = aoc::map::gen::SphereField::locate(latDeg, lonDeg);
                         for (int32_t j = 0; j < i; ++j) {
-                            const aoc::map::gen::LatLon a = SF::cellCenter(c.lonIdx, c.latIdx);
+                            const aoc::map::gen::LatLon a = aoc::map::gen::SphereField::cellCenter(c.lonIdx, c.latIdx);
                             const aoc::map::gen::LatLon b =
-                                SF::cellCenter(seedLon[static_cast<std::size_t>(j)],
+                                aoc::map::gen::SphereField::cellCenter(seedLon[static_cast<std::size_t>(j)],
                                                seedLat[static_cast<std::size_t>(j)]);
                             const float d = aoc::map::gen::haversineRadians(a, b);
                             if (d < minSep) {
@@ -1094,7 +1092,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     if (targetArea <= 0.0) continue;
                     const int32_t sLon         = seedLon[static_cast<std::size_t>(cidx)];
                     const int32_t sLat         = seedLat[static_cast<std::size_t>(cidx)];
-                    const std::size_t startIdx = SF::cellIndex(sLon, sLat);
+                    const std::size_t startIdx = aoc::map::gen::SphereField::cellIndex(sLon, sLat);
                     if (claimed[startIdx]) continue; // overlap with prior craton
                     const float axisAz = cratonRng.nextFloat(0.0f, 3.14159265f);
                     const float axCos  = std::cos(axisAz);
@@ -1115,7 +1113,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         targetArea / rasterArea * 4.0 * 3.14159265358979;
                     const double semiMajorRad =
                         std::sqrt(targetSolidAngle * static_cast<double>(aniso) / 3.14159265358979);
-                    const aoc::map::gen::LatLon seedPos = SF::cellCenter(sLon, sLat);
+                    const aoc::map::gen::LatLon seedPos = aoc::map::gen::SphereField::cellCenter(sLon, sLat);
                     const double sLatR   = static_cast<double>(seedPos.latDeg) * 0.01745329252;
                     const double sinSLat = std::sin(sLatR);
                     const double cosSLat = std::cos(sLatR);
@@ -1129,10 +1127,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         const int32_t latS        = std::max(0, latI - 1);
                         const int32_t latN        = std::min(LAT - 1, latI + 1);
                         const std::size_t nbrs[4] = {
-                            SF::cellIndex(lonW, latI),
-                            SF::cellIndex(lonE, latI),
-                            SF::cellIndex(lonI, latS),
-                            SF::cellIndex(lonI, latN),
+                            aoc::map::gen::SphereField::cellIndex(lonW, latI),
+                            aoc::map::gen::SphereField::cellIndex(lonE, latI),
+                            aoc::map::gen::SphereField::cellIndex(lonI, latS),
+                            aoc::map::gen::SphereField::cellIndex(lonI, latN),
                         };
                         for (int32_t k = 0; k < 4; ++k) {
                             if (!claimed[nbrs[k]]) frontier.push_back(nbrs[k]);
@@ -1155,7 +1153,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // assembly axis by the bearing. Same ellipse at any
                         // latitude, and correct out to the 30-45 deg the largest
                         // cratons actually span.
-                        const aoc::map::gen::LatLon cellPos = SF::cellCenter(cellLon, cellLat);
+                        const aoc::map::gen::LatLon cellPos = aoc::map::gen::SphereField::cellCenter(cellLon, cellLat);
                         const double cLatR   = static_cast<double>(cellPos.latDeg) * 0.01745329252;
                         const double dLonR   = (static_cast<double>(cellPos.lonDeg) -
                                                 static_cast<double>(seedPos.lonDeg)) *
@@ -1213,16 +1211,16 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // with its 0.55 rad blend, recovered procedurally here).
                 for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
                     for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
-                        const std::size_t idx = SF::cellIndex(lonIdx, latIdx);
+                        const std::size_t idx = aoc::map::gen::SphereField::cellIndex(lonIdx, latIdx);
                         const int32_t lonW    = (lonIdx == 0) ? LON - 1 : lonIdx - 1;
                         const int32_t lonE    = (lonIdx == LON - 1) ? 0 : lonIdx + 1;
                         const int32_t latS    = std::max(0, latIdx - 1);
                         const int32_t latN    = std::min(LAT - 1, latIdx + 1);
                         const float self      = static_cast<float>(claimed[idx]);
-                        const float fW   = static_cast<float>(claimed[SF::cellIndex(lonW, latIdx)]);
-                        const float fE   = static_cast<float>(claimed[SF::cellIndex(lonE, latIdx)]);
-                        const float fS   = static_cast<float>(claimed[SF::cellIndex(lonIdx, latS)]);
-                        const float fN   = static_cast<float>(claimed[SF::cellIndex(lonIdx, latN)]);
+                        const float fW   = static_cast<float>(claimed[aoc::map::gen::SphereField::cellIndex(lonW, latIdx)]);
+                        const float fE   = static_cast<float>(claimed[aoc::map::gen::SphereField::cellIndex(lonE, latIdx)]);
+                        const float fS   = static_cast<float>(claimed[aoc::map::gen::SphereField::cellIndex(lonIdx, latS)]);
+                        const float fN   = static_cast<float>(claimed[aoc::map::gen::SphereField::cellIndex(lonIdx, latN)]);
                         const float frac = (self * 2.0f + fW + fE + fS + fN) / 6.0f;
                         sphereField.continentalFraction[idx] = frac;
                         sphereField.crustThicknessKm[idx] =
@@ -1300,7 +1298,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // every epoch by recomputePlateCentroidsFromCells, and the
                 // raster motion is integrated by advectPlateOwnership from
                 // the Euler parameters this jitter perturbs.
-                for (Plate& p : plates) {
+                for (aoc::map::gen::Plate& p : plates) {
                     if (p.eulerPoleLatDeg != 0.0f || p.eulerPoleLonDeg != 0.0f ||
                         p.angularVelDeg != 0.0f) {
                         p.eulerPoleLatDeg =
@@ -1787,15 +1785,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // globally small transitional share is fine if it is concentrated
             // where the coastlines are.
             {
-                using SF                       = aoc::map::gen::SphereField;
-                constexpr int32_t LON          = SF::LON_CELLS;
-                constexpr int32_t LAT          = SF::LAT_CELLS;
+                constexpr int32_t LON          = aoc::map::gen::SphereField::LON_CELLS;
+                constexpr int32_t LAT          = aoc::map::gen::SphereField::LAT_CELLS;
                 std::size_t bins[10]           = {};
                 std::size_t marginCells        = 0;
                 std::size_t marginTransitional = 0;
                 for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
                     for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
-                        const std::size_t idx = SF::cellIndex(lonIdx, latIdx);
+                        const std::size_t idx = aoc::map::gen::SphereField::cellIndex(lonIdx, latIdx);
                         const float cf        = sphereField.continentalFraction[idx];
                         const int32_t b       = std::clamp(static_cast<int32_t>(cf * 10.0f), 0, 9);
                         ++bins[b];
@@ -1804,10 +1801,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         const int32_t latS       = std::max(0, latIdx - 1);
                         const int32_t latN       = std::min(LAT - 1, latIdx + 1);
                         const std::size_t nbr[4] = {
-                            SF::cellIndex(lonW, latIdx),
-                            SF::cellIndex(lonE, latIdx),
-                            SF::cellIndex(lonIdx, latS),
-                            SF::cellIndex(lonIdx, latN),
+                            aoc::map::gen::SphereField::cellIndex(lonW, latIdx),
+                            aoc::map::gen::SphereField::cellIndex(lonE, latIdx),
+                            aoc::map::gen::SphereField::cellIndex(lonIdx, latS),
+                            aoc::map::gen::SphereField::cellIndex(lonIdx, latN),
                         };
                         bool anyCont = false;
                         bool anyOce  = false;
@@ -1826,7 +1823,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         }
                     }
                 }
-                const double N = static_cast<double>(SF::CELL_COUNT);
+                const double N = static_cast<double>(aoc::map::gen::SphereField::CELL_COUNT);
                 std::fprintf(stderr, "[contfrac] raster histogram (0.0..1.0 in tenths):");
                 for (const std::size_t b : bins) {
                     std::fprintf(stderr, " %.1f%%", 100.0 * static_cast<double>(b) / N);
@@ -1847,9 +1844,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // hex-level shelf count cannot distinguish "the physics did not
             // make a margin" from "the sampler could not see it".
             {
-                using SF              = aoc::map::gen::SphereField;
-                constexpr int32_t LON = SF::LON_CELLS;
-                constexpr int32_t LAT = SF::LAT_CELLS;
+                constexpr int32_t LON = aoc::map::gen::SphereField::LON_CELLS;
+                constexpr int32_t LAT = aoc::map::gen::SphereField::LAT_CELLS;
                 const float zsea      = sphereField.seaLevelM;
                 // Band edges in metres relative to sea level, land-to-abyss.
                 constexpr float EDGES[]        = {2000.0f,  500.0f,   0.0f,    -140.0f,
@@ -1862,10 +1858,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 double contSubmerged           = 0.0;
                 for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
                     const float latDeg =
-                        -90.0f + (static_cast<float>(latIdx) + 0.5f) * SF::CELL_DEG;
+                        -90.0f + (static_cast<float>(latIdx) + 0.5f) * aoc::map::gen::SphereField::CELL_DEG;
                     const double w = static_cast<double>(std::max(0.0f, std::cos(latDeg * 0.01745329252f)));
                     for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
-                        const std::size_t idx = SF::cellIndex(lonIdx, latIdx);
+                        const std::size_t idx = aoc::map::gen::SphereField::cellIndex(lonIdx, latIdx);
                         const float rel       = sphereField.surfaceElevationM[idx] - zsea;
                         std::size_t b         = 7;
                         for (std::size_t e = 0; e < std::size(EDGES); ++e) {
@@ -1905,8 +1901,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // invisible in it by construction -- which is exactly the
                 // population that decides whether a shelf exists.
                 std::vector<float> contH;
-                contH.reserve(SF::CELL_COUNT / 4);
-                for (std::size_t idx = 0; idx < SF::CELL_COUNT; ++idx) {
+                contH.reserve(aoc::map::gen::SphereField::CELL_COUNT / 4);
+                for (std::size_t idx = 0; idx < aoc::map::gen::SphereField::CELL_COUNT; ++idx) {
                     if (sphereField.continentalFraction[idx] >= 0.5f) {
                         contH.push_back(sphereField.crustThicknessKm[idx]);
                     }
@@ -1949,10 +1945,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     double sub[3]        = {};
                     for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
                         const float latDeg =
-                            -90.0f + (static_cast<float>(latIdx) + 0.5f) * SF::CELL_DEG;
+                            -90.0f + (static_cast<float>(latIdx) + 0.5f) * aoc::map::gen::SphereField::CELL_DEG;
                         const double w = static_cast<double>(std::max(0.0f, std::cos(latDeg * 0.01745329252f)));
                         for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
-                            const std::size_t idx = SF::cellIndex(lonIdx, latIdx);
+                            const std::size_t idx = aoc::map::gen::SphereField::cellIndex(lonIdx, latIdx);
                             if (sphereField.continentalFraction[idx] < 0.5f) continue;
                             const float h   = sphereField.crustThicknessKm[idx];
                             const int32_t k = (h >= matureKm) ? 0 : (h >= transKm ? 1 : 2);
@@ -2293,7 +2289,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         centers.reserve(plates.size());
         mergesAbsorbed.reserve(plates.size());
         isPolar.reserve(plates.size());
-        for (const Plate& p : plates) {
+        for (const aoc::map::gen::Plate& p : plates) {
             const aoc::map::gen::TangentVelocity v = aoc::map::gen::eulerVelocityAt(
                 aoc::map::gen::LatLon{p.latDeg, p.lonDeg},
                 aoc::map::gen::LatLon{p.eulerPoleLatDeg, p.eulerPoleLonDeg}, p.angularVelDeg);

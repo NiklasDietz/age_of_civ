@@ -34,11 +34,10 @@ namespace aoc::core {
 template <typename Map>
 [[nodiscard]] std::pair<typename Map::key_type, typename Map::mapped_type>
 argMaxByValueLowestKey(const Map& map, typename Map::key_type noneKey) {
-    using Key = Map::key_type;
-    using Val = Map::mapped_type;
-    Key bestKey = noneKey;
-    Val bestVal = Val{};
-    for (const std::pair<const Key, Val>& entry : map) {
+    typename Map::key_type bestKey    = noneKey;
+    typename Map::mapped_type bestVal = typename Map::mapped_type{};
+    for (const std::pair<const typename Map::key_type, typename Map::mapped_type>& entry :
+         map) {
         // Exact `==` on the value is intentional: a value differing by even one
         // ULP is already ordered by `>`, so the tie branch fires only on a true
         // bit-for-bit tie, where the smallest key is the deterministic winner.

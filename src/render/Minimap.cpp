@@ -114,8 +114,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
             // fills tiles with a flat color (matching the colors used
             // by GameRenderer's overlay pass) so the same view is
             // available from both surfaces.
-            using MO             = aoc::render::GameRenderer::MapOverlay;
-            const MO mode        = static_cast<MO>(overlayModeRaw);
+            const aoc::render::GameRenderer::MapOverlay mode        = static_cast<aoc::render::GameRenderer::MapOverlay>(overlayModeRaw);
             const std::size_t si = static_cast<std::size_t>(index);
             auto setRGB          = [&](float r, float g, float b) {
                 tc.r = r;
@@ -123,7 +122,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
                 tc.b = b;
             };
             switch (mode) {
-            case MO::Resources: {
+            case aoc::render::GameRenderer::MapOverlay::Resources: {
                 const aoc::ResourceId res = grid.resource(index);
                 if (res.isValid()) {
                     const uint16_t v = res.value;
@@ -148,7 +147,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
                 }
                 break;
             }
-            case MO::CrustAge: {
+            case aoc::render::GameRenderer::MapOverlay::CrustAge: {
                 const auto& a = grid.crustAgeTile();
                 if (!a.empty() && si < a.size()) {
                     const float t = std::clamp(a[si] / 200.0f, 0.0f, 1.0f);
@@ -156,7 +155,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
                 }
                 break;
             }
-            case MO::Sediment: {
+            case aoc::render::GameRenderer::MapOverlay::Sediment: {
                 const auto& s = grid.sedimentDepth();
                 if (!s.empty() && si < s.size() && s[si] > 0.005f) {
                     const float t = std::clamp(s[si] / 0.20f, 0.0f, 1.0f);
@@ -164,7 +163,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
                 }
                 break;
             }
-            case MO::RockType: {
+            case aoc::render::GameRenderer::MapOverlay::RockType: {
                 const auto& r = grid.rockType();
                 if (!r.empty() && si < r.size()) {
                     switch (r[si]) {
@@ -186,7 +185,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
                 }
                 break;
             }
-            case MO::Margins: {
+            case aoc::render::GameRenderer::MapOverlay::Margins: {
                 const auto& m = grid.marginType();
                 if (!m.empty() && si < m.size()) {
                     if (m[si] == 1) {
@@ -197,7 +196,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
                 }
                 break;
             }
-            case MO::Volcanism: {
+            case aoc::render::GameRenderer::MapOverlay::Volcanism: {
                 const auto& v = grid.volcanism();
                 if (!v.empty() && si < v.size() && v[si] != 0) {
                     switch (v[si]) {
@@ -228,7 +227,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
                 }
                 break;
             }
-            case MO::Hazard: {
+            case aoc::render::GameRenderer::MapOverlay::Hazard: {
                 const auto& h = grid.seismicHazard();
                 if (!h.empty() && si < h.size()) {
                     const uint8_t lvl = h[si] & 0x07;
@@ -240,7 +239,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
                 }
                 break;
             }
-            case MO::Soil: {
+            case aoc::render::GameRenderer::MapOverlay::Soil: {
                 const auto& s = grid.soilFertility();
                 if (!s.empty() && si < s.size()) {
                     const float v = s[si];
@@ -248,7 +247,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
                 }
                 break;
             }
-            case MO::Insolation: {
+            case aoc::render::GameRenderer::MapOverlay::Insolation: {
                 const auto& iv = grid.solarInsolation();
                 if (!iv.empty() && si < iv.size()) {
                     const float v = static_cast<float>(iv[si]) / 255.0f;
@@ -256,7 +255,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
                 }
                 break;
             }
-            case MO::PelagicProd: {
+            case aoc::render::GameRenderer::MapOverlay::PelagicProd: {
                 const auto& p = grid.pelagicProductivity();
                 if (!p.empty() && si < p.size() && p[si] > 0) {
                     const float v = static_cast<float>(p[si]) / 255.0f;
@@ -264,7 +263,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
                 }
                 break;
             }
-            case MO::Habit: {
+            case aoc::render::GameRenderer::MapOverlay::Habit: {
                 const auto& h = grid.habitability();
                 if (!h.empty() && si < h.size()) {
                     const float v = static_cast<float>(h[si]) / 255.0f;
@@ -272,7 +271,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
                 }
                 break;
             }
-            case MO::Trade: {
+            case aoc::render::GameRenderer::MapOverlay::Trade: {
                 const auto& tp = grid.tradeRoutePotential();
                 if (!tp.empty() && si < tp.size()) {
                     const float v = static_cast<float>(tp[si]) / 255.0f;
@@ -280,7 +279,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
                 }
                 break;
             }
-            case MO::Realms: {
+            case aoc::render::GameRenderer::MapOverlay::Realms: {
                 const auto& iso = grid.isolatedRealm();
                 const auto& bri = grid.landBridge();
                 const auto& ref = grid.refugium();
@@ -293,7 +292,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
                 }
                 break;
             }
-            case MO::Cliff: {
+            case aoc::render::GameRenderer::MapOverlay::Cliff: {
                 const auto& c = grid.cliffCoastAll();
                 if (!c.empty() && si < c.size() && c[si] != 0) {
                     switch (c[si]) {

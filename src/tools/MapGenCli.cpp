@@ -792,14 +792,13 @@ int main(int argc, char* argv[]) {
             return o.str();
         };
 
-        using DSM = aoc::debug::DebugServer::Method;
         aoc::debug::DebugServer server(httpPort);
 
-        server.routeJson(DSM::Get, "/ping",
+        server.routeJson(aoc::debug::DebugServer::Method::Get, "/ping",
                          [](const std::unordered_map<std::string, std::string>&,
                             const std::string&) -> std::string { return "\"pong\""; });
 
-        server.routeJson(DSM::Get, "/info",
+        server.routeJson(aoc::debug::DebugServer::Method::Get, "/info",
                          [&](const std::unordered_map<std::string, std::string>&,
                              const std::string&) -> std::string {
                              std::lock_guard<std::mutex> lock(gridMutex);
@@ -833,12 +832,12 @@ int main(int argc, char* argv[]) {
                              return o.str();
                          });
 
-        server.routeJson(DSM::Get, "/plates",
+        server.routeJson(aoc::debug::DebugServer::Method::Get, "/plates",
                          [&](const std::unordered_map<std::string, std::string>&,
                              const std::string&) -> std::string { return buildPlateStats(); });
 
         server.routeJson(
-            DSM::Get, "/tile",
+            aoc::debug::DebugServer::Method::Get, "/tile",
             [&](const std::unordered_map<std::string, std::string>& q,
                 const std::string&) -> std::string {
                 auto itC = q.find("col");
@@ -860,7 +859,7 @@ int main(int argc, char* argv[]) {
                 return o.str();
             });
 
-        server.routeJson(DSM::Post, "/dump/grid",
+        server.routeJson(aoc::debug::DebugServer::Method::Post, "/dump/grid",
                          [&](const std::unordered_map<std::string, std::string>& q,
                              const std::string&) -> std::string {
                              HandlerScope scope(inFlight, drainCv, drainMutex);
@@ -893,7 +892,7 @@ int main(int argc, char* argv[]) {
                              return o.str();
                          });
 
-        server.routeJson(DSM::Post, "/dump/plates",
+        server.routeJson(aoc::debug::DebugServer::Method::Post, "/dump/plates",
                          [&](const std::unordered_map<std::string, std::string>& q,
                              const std::string&) -> std::string {
                              HandlerScope scope(inFlight, drainCv, drainMutex);
@@ -958,7 +957,7 @@ int main(int argc, char* argv[]) {
                              return o.str();
                          });
 
-        server.routeJson(DSM::Post, "/sim/re-roll",
+        server.routeJson(aoc::debug::DebugServer::Method::Post, "/sim/re-roll",
                          [&](const std::unordered_map<std::string, std::string>& q,
                              const std::string&) -> std::string {
                              HandlerScope scope(inFlight, drainCv, drainMutex);
@@ -977,7 +976,7 @@ int main(int argc, char* argv[]) {
                              return o.str();
                          });
 
-        server.routeJson(DSM::Post, "/sim/step",
+        server.routeJson(aoc::debug::DebugServer::Method::Post, "/sim/step",
                          [&](const std::unordered_map<std::string, std::string>& q,
                              const std::string&) -> std::string {
                              HandlerScope scope(inFlight, drainCv, drainMutex);
@@ -994,7 +993,7 @@ int main(int argc, char* argv[]) {
                              return o.str();
                          });
 
-        server.routeJson(DSM::Post, "/sim/set-creator-time",
+        server.routeJson(aoc::debug::DebugServer::Method::Post, "/sim/set-creator-time",
                          [&](const std::unordered_map<std::string, std::string>& q,
                              const std::string&) -> std::string {
                              HandlerScope scope(inFlight, drainCv, drainMutex);
@@ -1011,7 +1010,7 @@ int main(int argc, char* argv[]) {
                              return o.str();
                          });
 
-        server.routeJson(DSM::Post, "/quit",
+        server.routeJson(aoc::debug::DebugServer::Method::Post, "/quit",
                          [&](const std::unordered_map<std::string, std::string>&,
                              const std::string&) -> std::string {
                              HandlerScope scope(inFlight, drainCv, drainMutex);

@@ -1605,9 +1605,8 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
     // auto required: generic lambda template parameter
     std::visit(
         [&](const auto& data) {
-            using T = std::decay_t<decltype(data)>;
 
-            if constexpr (std::is_same_v<T, PanelData>) {
+            if constexpr (std::is_same_v<std::decay_t<decltype(data)>, PanelData>) {
                 // Base fill -- `Widget.alpha` modulates so fade tweens
                 // ripple through. Gradient bottom is layered on top as a
                 // second band if provided.
@@ -1656,7 +1655,7 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
                                               data.accentBarColor.g, data.accentBarColor.b,
                                               data.accentBarColor.a * w->alpha);
                 }
-            } else if constexpr (std::is_same_v<T, ButtonData>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(data)>, ButtonData>) {
                 // Priority: disabled > pressed > selected > hover > normal.
                 // `selected` persists after mouseup so tabs/research picks
                 // show the active state even when the cursor leaves.
@@ -1756,17 +1755,17 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
                     BitmapFont::drawText(renderer2d, data.label, textX, textY, worldFontSize,
                                          data.labelColor, scale);
                 }
-            } else if constexpr (std::is_same_v<T, LabelData>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(data)>, LabelData>) {
                 if (!data.text.empty()) {
                     float worldFontSize = data.fontSize * scale;
                     BitmapFont::drawText(renderer2d, data.text, b.x, b.y, worldFontSize, data.color,
                                          scale);
                 }
-            } else if constexpr (std::is_same_v<T, ScrollListData>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(data)>, ScrollListData>) {
                 renderer2d.drawFilledRect(b.x, b.y, b.w, b.h, data.backgroundColor.r,
                                           data.backgroundColor.g, data.backgroundColor.b,
                                           data.backgroundColor.a);
-            } else if constexpr (std::is_same_v<T, TabBarData>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(data)>, TabBarData>) {
                 // One coloured pill per tab, horizontally stacked. An
                 // underline bar slides between tabs using `activeTabAnim`
                 // so selection transitions visibly animate.
@@ -1793,7 +1792,7 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
                 const float uThick = data.underlineThickness * scale;
                 renderer2d.drawFilledRect(ux, b.y + b.h - uThick, tabW, uThick, data.activeColor.r,
                                           data.activeColor.g, data.activeColor.b, 1.0f);
-            } else if constexpr (std::is_same_v<T, ProgressBarData>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(data)>, ProgressBarData>) {
                 const float cr = data.cornerRadius * scale;
                 if (cr > 0.0f) {
                     renderer2d.drawRoundedRect(b.x, b.y, b.w, b.h, cr, data.backgroundColor.r,
@@ -1832,7 +1831,7 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
                                          b.y + (b.h - textH) * 0.5f, worldFontSize, data.textColor,
                                          scale);
                 }
-            } else if constexpr (std::is_same_v<T, SliderData>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(data)>, SliderData>) {
                 // Track.
                 renderer2d.drawFilledRect(b.x, b.y + b.h * 0.4f, b.w, b.h * 0.2f, data.trackColor.r,
                                           data.trackColor.g, data.trackColor.b, data.trackColor.a);
@@ -1855,7 +1854,7 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
                 const float thumbX = b.x + b.w * t - thumbW * 0.5f;
                 renderer2d.drawFilledRect(thumbX, b.y, thumbW, b.h, data.thumbColor.r,
                                           data.thumbColor.g, data.thumbColor.b, data.thumbColor.a);
-            } else if constexpr (std::is_same_v<T, IconData>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(data)>, IconData>) {
                 // Registered icons carry a colour and, for the ones that
                 // appear in the HUD, a vector recipe. Unknown ids fall back to
                 // the widget's own `fallbackColor` so ad-hoc icons still draw.
@@ -1880,7 +1879,7 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
                     drawIcon(renderer2d, shape, b.x + (b.w - side) * 0.5f,
                              b.y + (b.h - side) * 0.5f, side, tinted);
                 }
-            } else if constexpr (std::is_same_v<T, RichTextData>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(data)>, RichTextData>) {
                 // Walk spans left-to-right, advancing cursor by measured
                 // span width. Icons render as tinted boxes pending the
                 // sprite pipeline. Wrapping wraps on whitespace boundaries
@@ -1914,7 +1913,7 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
                         cursorX += tw + scale * 2.0f;
                     }
                 }
-            } else if constexpr (std::is_same_v<T, PortraitData>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(data)>, PortraitData>) {
                 // Background sprite fallback.
                 Color c = data.fallbackColor;
                 renderer2d.drawFilledRect(b.x, b.y, b.w, b.h * 0.6f, c.r * data.tint.r,
@@ -1934,7 +1933,7 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
                                          data.titleColor, scale);
                     sy += lineH;
                 }
-            } else if constexpr (std::is_same_v<T, ListRowData>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(data)>, ListRowData>) {
                 // Row background: hover / pressed / selected variants
                 // layered with the optional left accent bar.
                 Color bg = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -1990,7 +1989,7 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
                     BitmapFont::drawText(renderer2d, data.rightValue, b.x + b.w - vw - 8.0f * scale,
                                          b.y + (b.h - vFont) * 0.5f, vFont, data.valueColor, scale);
                 }
-            } else if constexpr (std::is_same_v<T, MarkdownData>) {
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(data)>, MarkdownData>) {
                 // Minimal renderer: split source on '\n', dispatch by line
                 // prefix. Headings render in heading colour at +4 font.
                 const float baseFont    = data.fontSize * scale;

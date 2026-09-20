@@ -146,37 +146,36 @@ const char* techIconKey(const aoc::sim::TechDef& def) {
 }
 
 const char* unitClassIconKey(aoc::sim::UnitClass cls) {
-    using UC = aoc::sim::UnitClass;
     switch (cls) {
-    case UC::Melee:
+    case aoc::sim::UnitClass::Melee:
         return "units.melee";
-    case UC::Ranged:
+    case aoc::sim::UnitClass::Ranged:
         return "units.ranged";
-    case UC::Cavalry:
+    case aoc::sim::UnitClass::Cavalry:
         return "units.cavalry";
-    case UC::Armor:
+    case aoc::sim::UnitClass::Armor:
         return "units.armor";
-    case UC::Artillery:
+    case aoc::sim::UnitClass::Artillery:
         return "units.artillery";
-    case UC::AntiCavalry:
+    case aoc::sim::UnitClass::AntiCavalry:
         return "units.anticavalry";
-    case UC::Air:
+    case aoc::sim::UnitClass::Air:
         return "units.air-fighter";
-    case UC::Helicopter:
+    case aoc::sim::UnitClass::Helicopter:
         return "units.air-helicopter";
-    case UC::Naval:
+    case aoc::sim::UnitClass::Naval:
         return "units.naval-melee";
-    case UC::Settler:
+    case aoc::sim::UnitClass::Settler:
         return "units.settler";
-    case UC::Scout:
+    case aoc::sim::UnitClass::Scout:
         return "units.recon";
-    case UC::Civilian:
+    case aoc::sim::UnitClass::Civilian:
         return "units.builder";
-    case UC::Religious:
+    case aoc::sim::UnitClass::Religious:
         return "units.missionary";
-    case UC::Trader:
+    case aoc::sim::UnitClass::Trader:
         return "units.trader";
-    case UC::Logistics:
+    case aoc::sim::UnitClass::Logistics:
         return "units.support";
     default:
         return "units.unknown";
@@ -184,14 +183,13 @@ const char* unitClassIconKey(aoc::sim::UnitClass cls) {
 }
 
 const char* buildableIconKey(const aoc::sim::BuildableItem& item) {
-    using PT = aoc::sim::ProductionItemType;
     switch (item.type) {
-    case PT::Unit: {
+    case aoc::sim::ProductionItemType::Unit: {
         // Item id is the UnitTypeId.value packed into uint16.
         return unitClassIconKey(aoc::sim::unitTypeDef(UnitTypeId{item.id}).unitClass);
     }
-    case PT::Building:
-    case PT::BuildingUpgrade: {
+    case aoc::sim::ProductionItemType::Building:
+    case aoc::sim::ProductionItemType::BuildingUpgrade: {
         // For buildings, requiredDistrict drives the silhouette. An upgrade
         // shows the same building it raises.
         const aoc::sim::BuildingDef& def = aoc::sim::buildingDef(BuildingId{item.id});
@@ -216,69 +214,66 @@ const char* buildableIconKey(const aoc::sim::BuildableItem& item) {
             return "buildings.unknown";
         }
     }
-    case PT::Wonder:
+    case aoc::sim::ProductionItemType::Wonder:
         return "wonders.generic";
-    case PT::Project:
-    case PT::District:
+    case aoc::sim::ProductionItemType::Project:
+    case aoc::sim::ProductionItemType::District:
         return "districts.citycenter";
     }
     return "buildings.unknown";
 }
 
 Color buildableAccent(aoc::sim::ProductionItemType t) {
-    using PT = aoc::sim::ProductionItemType;
     switch (t) {
-    case PT::Unit:
+    case aoc::sim::ProductionItemType::Unit:
         return tokens::DIPLO_HOSTILE;
-    case PT::Building:
-    case PT::BuildingUpgrade:
+    case aoc::sim::ProductionItemType::Building:
+    case aoc::sim::ProductionItemType::BuildingUpgrade:
         return tokens::RES_PRODUCTION;
-    case PT::Wonder:
+    case aoc::sim::ProductionItemType::Wonder:
         return tokens::RES_GOLD;
-    case PT::Project:
-    case PT::District:
+    case aoc::sim::ProductionItemType::Project:
+    case aoc::sim::ProductionItemType::District:
         return tokens::RES_CULTURE;
     }
     return tokens::BRONZE_BASE;
 }
 
 const char* buildableTypeLabel(aoc::sim::ProductionItemType t) {
-    using PT = aoc::sim::ProductionItemType;
     switch (t) {
-    case PT::Unit:
+    case aoc::sim::ProductionItemType::Unit:
         return "Unit";
-    case PT::Building:
+    case aoc::sim::ProductionItemType::Building:
         return "Building";
-    case PT::BuildingUpgrade:
+    case aoc::sim::ProductionItemType::BuildingUpgrade:
         return "Upgrade";
-    case PT::Wonder:
+    case aoc::sim::ProductionItemType::Wonder:
         return "Wonder";
-    case PT::Project:
+    case aoc::sim::ProductionItemType::Project:
         return "Project";
-    case PT::District:
+    case aoc::sim::ProductionItemType::District:
         return "District";
     }
     return "?";
 }
 
 const char* buildingDistrictIconKey(aoc::sim::DistrictType dt) {
-    using DT = aoc::sim::DistrictType;
     switch (dt) {
-    case DT::CityCenter:
+    case aoc::sim::DistrictType::CityCenter:
         return "buildings.citycenter";
-    case DT::Campus:
+    case aoc::sim::DistrictType::Campus:
         return "buildings.campus";
-    case DT::Commercial:
+    case aoc::sim::DistrictType::Commercial:
         return "buildings.commercial";
-    case DT::Encampment:
+    case aoc::sim::DistrictType::Encampment:
         return "buildings.encampment";
-    case DT::Industrial:
+    case aoc::sim::DistrictType::Industrial:
         return "buildings.industrial";
-    case DT::HolySite:
+    case aoc::sim::DistrictType::HolySite:
         return "buildings.holysite";
-    case DT::Theatre:
+    case aoc::sim::DistrictType::Theatre:
         return "buildings.theatre";
-    case DT::Harbor:
+    case aoc::sim::DistrictType::Harbor:
         return "buildings.harbor";
     default:
         return "buildings.unknown";

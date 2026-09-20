@@ -321,35 +321,34 @@ void tickTradeShortfall(aoc::game::Player& player) {
 
 std::optional<MonetaryAdvice> monetaryAdvice(const MonetaryStateComponent& state,
                                              const MotiveInputs& in) {
-    using T = MonetarySystemType;
     switch (state.system) {
-    case T::Barter:
+    case MonetarySystemType::Barter:
         if (state.moneyGood != NO_MONEY_GOOD) {
-            return MonetaryAdvice{T::CommodityMoney, "the people already price in a good"};
+            return MonetaryAdvice{MonetarySystemType::CommodityMoney, "the people already price in a good"};
         }
         return std::nullopt;
-    case T::CommodityMoney:
+    case MonetarySystemType::CommodityMoney:
         if (in.shortfallTurns >= NOTES_MOTIVE_TURNS) {
-            return MonetaryAdvice{T::GoldStandard, "coin cannot carry our trade"};
+            return MonetaryAdvice{MonetarySystemType::GoldStandard, "coin cannot carry our trade"};
         }
         if (in.industrialDrawOfMoneyGood > 0) {
-            return MonetaryAdvice{T::GoldStandard, "industry competes for the metal"};
+            return MonetaryAdvice{MonetarySystemType::GoldStandard, "industry competes for the metal"};
         }
         return std::nullopt;
-    case T::GoldStandard:
+    case MonetarySystemType::GoldStandard:
         if (state.reserveStressTurns >= FIAT_MOTIVE_STRESS_TURNS) {
-            return MonetaryAdvice{T::FiatMoney, "the specie drain"};
+            return MonetaryAdvice{MonetarySystemType::FiatMoney, "the specie drain"};
         }
         if (in.industrialDrawOfMoneyGood > 0) {
-            return MonetaryAdvice{T::FiatMoney, "industry wants the metal"};
+            return MonetaryAdvice{MonetarySystemType::FiatMoney, "industry wants the metal"};
         }
         if (in.shortfallTurns >= NOTES_MOTIVE_TURNS) {
-            return MonetaryAdvice{T::FiatMoney, "notes cannot carry our trade"};
+            return MonetaryAdvice{MonetarySystemType::FiatMoney, "notes cannot carry our trade"};
         }
         return std::nullopt;
-    case T::FiatMoney:
+    case MonetarySystemType::FiatMoney:
         if (in.hasComputers && state.turnsInCurrentSystem >= DIGITAL_MOTIVE_TURNS) {
-            return MonetaryAdvice{T::Digital, "settlement can be electronic"};
+            return MonetaryAdvice{MonetarySystemType::Digital, "settlement can be electronic"};
         }
         return std::nullopt;
     default:

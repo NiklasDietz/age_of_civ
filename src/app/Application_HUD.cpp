@@ -461,9 +461,8 @@ void Application::buildHUD() {
             makeDropBtn(this->m_menuDropdown, "Religion Lens", [this]() {
                 this->m_uiManager.removeWidget(this->m_menuDropdown);
                 this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
-                using OM             = aoc::render::GameRenderer::MapOverlay;
                 this->m_gameRenderer.overlayMode =
-                    (this->m_gameRenderer.overlayMode == OM::Religion) ? OM::None : OM::Religion;
+                    (this->m_gameRenderer.overlayMode == aoc::render::GameRenderer::MapOverlay::Religion) ? aoc::render::GameRenderer::MapOverlay::None : aoc::render::GameRenderer::MapOverlay::Religion;
             });
 
             makeDropBtn(this->m_menuDropdown, "Unit List", [this]() {

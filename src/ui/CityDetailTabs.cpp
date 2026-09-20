@@ -904,30 +904,28 @@ void CityDetailScreen::buildBuildingsTab(UIManager& ui, WidgetId contentPanel) {
     if (!districts.districts.empty()) {
         IconAtlas& atlas = IconAtlas::instance();
         const auto districtIconKey = [](aoc::sim::DistrictType dt) -> const char* {
-            using DT = aoc::sim::DistrictType;
             switch (dt) {
-                case DT::CityCenter: return "districts.citycenter";
-                case DT::Campus:     return "districts.campus";
-                case DT::Commercial: return "districts.commercial";
-                case DT::Encampment: return "districts.encampment";
-                case DT::Industrial: return "districts.industrial";
-                case DT::HolySite:   return "districts.holysite";
-                case DT::Theatre:    return "districts.theatre";
-                case DT::Harbor:     return "districts.harbor";
+                case aoc::sim::DistrictType::CityCenter: return "districts.citycenter";
+                case aoc::sim::DistrictType::Campus:     return "districts.campus";
+                case aoc::sim::DistrictType::Commercial: return "districts.commercial";
+                case aoc::sim::DistrictType::Encampment: return "districts.encampment";
+                case aoc::sim::DistrictType::Industrial: return "districts.industrial";
+                case aoc::sim::DistrictType::HolySite:   return "districts.holysite";
+                case aoc::sim::DistrictType::Theatre:    return "districts.theatre";
+                case aoc::sim::DistrictType::Harbor:     return "districts.harbor";
                 default:             return "buildings.unknown";
             }
         };
         const auto districtAccent = [](aoc::sim::DistrictType dt) -> Color {
-            using DT = aoc::sim::DistrictType;
             switch (dt) {
-                case DT::CityCenter: return tokens::BRONZE_BASE;
-                case DT::Campus:     return tokens::RES_SCIENCE;
-                case DT::Commercial: return tokens::RES_GOLD;
-                case DT::Encampment: return tokens::DIPLO_HOSTILE;
-                case DT::Industrial: return tokens::RES_PRODUCTION;
-                case DT::HolySite:   return tokens::RES_FAITH;
-                case DT::Theatre:    return tokens::RES_CULTURE;
-                case DT::Harbor:     return tokens::DIPLO_ALLIED;
+                case aoc::sim::DistrictType::CityCenter: return tokens::BRONZE_BASE;
+                case aoc::sim::DistrictType::Campus:     return tokens::RES_SCIENCE;
+                case aoc::sim::DistrictType::Commercial: return tokens::RES_GOLD;
+                case aoc::sim::DistrictType::Encampment: return tokens::DIPLO_HOSTILE;
+                case aoc::sim::DistrictType::Industrial: return tokens::RES_PRODUCTION;
+                case aoc::sim::DistrictType::HolySite:   return tokens::RES_FAITH;
+                case aoc::sim::DistrictType::Theatre:    return tokens::RES_CULTURE;
+                case aoc::sim::DistrictType::Harbor:     return tokens::DIPLO_ALLIED;
                 default:             return tokens::BRONZE_BASE;
             }
         };
@@ -980,16 +978,15 @@ void CityDetailScreen::buildBuildingsTab(UIManager& ui, WidgetId contentPanel) {
                 IconData bIcon;
                 bIcon.spriteId      = atlas.id("buildings.commercial"); // gets overridden below
                 {
-                    using DT = aoc::sim::DistrictType;
                     switch (bdef.requiredDistrict) {
-                        case DT::CityCenter: bIcon.spriteId = atlas.id("buildings.citycenter"); break;
-                        case DT::Campus:     bIcon.spriteId = atlas.id("buildings.campus");     break;
-                        case DT::Commercial: bIcon.spriteId = atlas.id("buildings.commercial"); break;
-                        case DT::Encampment: bIcon.spriteId = atlas.id("buildings.encampment"); break;
-                        case DT::Industrial: bIcon.spriteId = atlas.id("buildings.industrial"); break;
-                        case DT::HolySite:   bIcon.spriteId = atlas.id("buildings.holysite");   break;
-                        case DT::Theatre:    bIcon.spriteId = atlas.id("buildings.theatre");    break;
-                        case DT::Harbor:     bIcon.spriteId = atlas.id("buildings.harbor");     break;
+                        case aoc::sim::DistrictType::CityCenter: bIcon.spriteId = atlas.id("buildings.citycenter"); break;
+                        case aoc::sim::DistrictType::Campus:     bIcon.spriteId = atlas.id("buildings.campus");     break;
+                        case aoc::sim::DistrictType::Commercial: bIcon.spriteId = atlas.id("buildings.commercial"); break;
+                        case aoc::sim::DistrictType::Encampment: bIcon.spriteId = atlas.id("buildings.encampment"); break;
+                        case aoc::sim::DistrictType::Industrial: bIcon.spriteId = atlas.id("buildings.industrial"); break;
+                        case aoc::sim::DistrictType::HolySite:   bIcon.spriteId = atlas.id("buildings.holysite");   break;
+                        case aoc::sim::DistrictType::Theatre:    bIcon.spriteId = atlas.id("buildings.theatre");    break;
+                        case aoc::sim::DistrictType::Harbor:     bIcon.spriteId = atlas.id("buildings.harbor");     break;
                         default:             bIcon.spriteId = atlas.id("buildings.unknown");    break;
                     }
                 }

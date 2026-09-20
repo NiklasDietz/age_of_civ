@@ -29,24 +29,23 @@
 
 namespace {
 
-using Key = std::uint8_t;
-constexpr Key NONE = 255;  // mirrors INVALID_PLAYER / NO_RELIGION
+constexpr std::uint8_t NONE = 255;  // mirrors INVALID_PLAYER / NO_RELIGION
 
 /// Build an unordered_map by inserting pairs in the given order.
-std::unordered_map<Key, std::int32_t> makeMap(
-    const std::vector<std::pair<Key, std::int32_t>>& pairs) {
-    std::unordered_map<Key, std::int32_t> m;
-    for (const std::pair<Key, std::int32_t>& p : pairs) { m[p.first] = p.second; }
+std::unordered_map<std::uint8_t, std::int32_t> makeMap(
+    const std::vector<std::pair<std::uint8_t, std::int32_t>>& pairs) {
+    std::unordered_map<std::uint8_t, std::int32_t> m;
+    for (const std::pair<std::uint8_t, std::int32_t>& p : pairs) { m[p.first] = p.second; }
     return m;
 }
 
 /// Brute-force reference: max value, ties broken by lowest key; NONE if no
 /// entry has a value greater than 0.
-std::pair<Key, std::int32_t> reference(
-    const std::vector<std::pair<Key, std::int32_t>>& pairs) {
-    Key bestKey = NONE;
+std::pair<std::uint8_t, std::int32_t> reference(
+    const std::vector<std::pair<std::uint8_t, std::int32_t>>& pairs) {
+    std::uint8_t bestKey = NONE;
     std::int32_t bestVal = 0;
-    for (const std::pair<Key, std::int32_t>& p : pairs) {
+    for (const std::pair<std::uint8_t, std::int32_t>& p : pairs) {
         if (p.second > bestVal || (p.second == bestVal && bestKey != NONE && p.first < bestKey)) {
             bestVal = p.second;
             bestKey = p.first;
@@ -59,20 +58,20 @@ std::pair<Key, std::int32_t> reference(
 
 TEST_CASE("argMaxByValueLowestKey: max value wins, ties broken by lowest key") {
     SUBCASE("unique maximum") {
-        const std::unordered_map<Key, std::int32_t> m = makeMap({{1, 5}, {2, 9}, {3, 7}});
-        const std::pair<Key, std::int32_t> r = aoc::core::argMaxByValueLowestKey(m, NONE);
+        const std::unordered_map<std::uint8_t, std::int32_t> m = makeMap({{1, 5}, {2, 9}, {3, 7}});
+        const std::pair<std::uint8_t, std::int32_t> r = aoc::core::argMaxByValueLowestKey(m, NONE);
         CHECK(r.first == 2);
         CHECK(r.second == 9);
     }
     SUBCASE("tie at the maximum -> lowest key") {
-        const std::unordered_map<Key, std::int32_t> m = makeMap({{5, 9}, {2, 9}, {3, 7}});
-        const std::pair<Key, std::int32_t> r = aoc::core::argMaxByValueLowestKey(m, NONE);
+        const std::unordered_map<std::uint8_t, std::int32_t> m = makeMap({{5, 9}, {2, 9}, {3, 7}});
+        const std::pair<std::uint8_t, std::int32_t> r = aoc::core::argMaxByValueLowestKey(m, NONE);
         CHECK(r.first == 2);
         CHECK(r.second == 9);
     }
     SUBCASE("tie including key 0") {
-        const std::unordered_map<Key, std::int32_t> m = makeMap({{7, 9}, {0, 9}});
-        const std::pair<Key, std::int32_t> r = aoc::core::argMaxByValueLowestKey(m, NONE);
+        const std::unordered_map<std::uint8_t, std::int32_t> m = makeMap({{7, 9}, {0, 9}});
+        const std::pair<std::uint8_t, std::int32_t> r = aoc::core::argMaxByValueLowestKey(m, NONE);
         CHECK(r.first == 0);
         CHECK(r.second == 9);
     }
@@ -81,16 +80,16 @@ TEST_CASE("argMaxByValueLowestKey: max value wins, ties broken by lowest key") {
 TEST_CASE("argMaxByValueLowestKey: independent of insertion order") {
     // A three-way tie at the max plus a lower entry; every insertion-order
     // permutation must yield the same winner as the brute-force reference.
-    std::vector<std::pair<Key, std::int32_t>> pairs = {{10, 8}, {4, 8}, {7, 8}, {2, 3}};
+    std::vector<std::pair<std::uint8_t, std::int32_t>> pairs = {{10, 8}, {4, 8}, {7, 8}, {2, 3}};
     std::sort(pairs.begin(), pairs.end());
-    const std::pair<Key, std::int32_t> expected = reference(pairs);  // {4, 8}
+    const std::pair<std::uint8_t, std::int32_t> expected = reference(pairs);  // {4, 8}
     REQUIRE(expected.first == 4);
     REQUIRE(expected.second == 8);
 
     std::size_t permutations = 0;
     do {
-        const std::unordered_map<Key, std::int32_t> m = makeMap(pairs);
-        const std::pair<Key, std::int32_t> r = aoc::core::argMaxByValueLowestKey(m, NONE);
+        const std::unordered_map<std::uint8_t, std::int32_t> m = makeMap(pairs);
+        const std::pair<std::uint8_t, std::int32_t> r = aoc::core::argMaxByValueLowestKey(m, NONE);
         CHECK(r.first == expected.first);
         CHECK(r.second == expected.second);
         ++permutations;
@@ -102,41 +101,41 @@ TEST_CASE("argMaxByValueLowestKey: threshold entries never win (Free-City guard)
     SUBCASE("all entries at the 0 threshold -> no winner") {
         // Mirrors the Secession edge: a zero-pressure neighbour must not become
         // the gainer; the city stays a Free City (winner == noneKey).
-        const std::unordered_map<Key, std::int32_t> m = makeMap({{3, 0}, {7, 0}});
-        const std::pair<Key, std::int32_t> r = aoc::core::argMaxByValueLowestKey(m, NONE);
+        const std::unordered_map<std::uint8_t, std::int32_t> m = makeMap({{3, 0}, {7, 0}});
+        const std::pair<std::uint8_t, std::int32_t> r = aoc::core::argMaxByValueLowestKey(m, NONE);
         CHECK(r.first == NONE);
         CHECK(r.second == 0);
     }
     SUBCASE("a positive entry beats a zero entry regardless of key") {
-        const std::unordered_map<Key, std::int32_t> m = makeMap({{3, 0}, {7, 5}});
-        const std::pair<Key, std::int32_t> r = aoc::core::argMaxByValueLowestKey(m, NONE);
+        const std::unordered_map<std::uint8_t, std::int32_t> m = makeMap({{3, 0}, {7, 5}});
+        const std::pair<std::uint8_t, std::int32_t> r = aoc::core::argMaxByValueLowestKey(m, NONE);
         CHECK(r.first == 7);
         CHECK(r.second == 5);
     }
 }
 
 TEST_CASE("argMaxByValueLowestKey: empty map returns the sentinel") {
-    const std::unordered_map<Key, std::int32_t> m;
-    const std::pair<Key, std::int32_t> r = aoc::core::argMaxByValueLowestKey(m, NONE);
+    const std::unordered_map<std::uint8_t, std::int32_t> m;
+    const std::pair<std::uint8_t, std::int32_t> r = aoc::core::argMaxByValueLowestKey(m, NONE);
     CHECK(r.first == NONE);
     CHECK(r.second == 0);
 }
 
 TEST_CASE("argMaxByValueLowestKey: exact float ties (Secession pressure)") {
     SUBCASE("bit-identical float tie -> lowest key") {
-        std::unordered_map<Key, float> m;
+        std::unordered_map<std::uint8_t, float> m;
         m[5] = 1.5f;
         m[2] = 1.5f;
         m[9] = 0.5f;
-        const std::pair<Key, float> r = aoc::core::argMaxByValueLowestKey(m, NONE);
+        const std::pair<std::uint8_t, float> r = aoc::core::argMaxByValueLowestKey(m, NONE);
         CHECK(r.first == 2);
         CHECK(r.second == doctest::Approx(1.5f));
     }
     SUBCASE("a strictly larger float wins without invoking the tie-break") {
-        std::unordered_map<Key, float> m;
+        std::unordered_map<std::uint8_t, float> m;
         m[2] = 1.5f;
         m[5] = 1.5001f;
-        const std::pair<Key, float> r = aoc::core::argMaxByValueLowestKey(m, NONE);
+        const std::pair<std::uint8_t, float> r = aoc::core::argMaxByValueLowestKey(m, NONE);
         CHECK(r.first == 5);
     }
 }
