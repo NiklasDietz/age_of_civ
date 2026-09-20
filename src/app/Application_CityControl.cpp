@@ -110,7 +110,8 @@ void Application::registerCityControlRoutes() {
             cmd.itemId    = static_cast<uint16_t>(item);
             cmd.withFaith = faith != 0;
             return queued(cmd);
-        });
+        },
+        "player=&q=&r=&type=&item=&faith=");
 
     // POST /game/city/focus?player=&q=&r=&focus=   (0 Balanced .. 5 Military)
     this->m_debugServer->routeJson(
@@ -134,7 +135,8 @@ void Application::registerCityControlRoutes() {
             cmd.at     = at;
             cmd.focus  = static_cast<aoc::sim::CityFocus>(focus);
             return queued(cmd);
-        });
+        },
+        "player=&q=&r=&focus=");
 
     // POST /game/city/lock-tile?player=&q=&r=&tq=&tr=
     this->m_debugServer->routeJson(
@@ -157,7 +159,8 @@ void Application::registerCityControlRoutes() {
             cmd.at     = at;
             cmd.tile   = aoc::hex::AxialCoord{tq, tr};
             return queued(cmd);
-        });
+        },
+        "player=&q=&r=&tq=&tr=");
 
     // POST /game/city/queue/remove?player=&q=&r=&index=
     this->m_debugServer->routeJson(
@@ -178,7 +181,8 @@ void Application::registerCityControlRoutes() {
             cmd.at     = at;
             cmd.index  = index;
             return queued(cmd);
-        });
+        },
+        "player=&q=&r=&index=");
 
     // POST /game/city/project?player=&q=&r=&project=   (0 Bread and Circuses .. 5 Military
     // Training)
@@ -203,7 +207,8 @@ void Application::registerCityControlRoutes() {
             cmd.at      = at;
             cmd.project = static_cast<aoc::sim::CityProjectType>(project);
             return queued(cmd);
-        });
+        },
+        "player=&q=&r=&project=");
 }
 
 void Application::registerBuilderControlRoutes() {
@@ -248,7 +253,8 @@ void Application::registerBuilderControlRoutes() {
             cmd.at     = at;
             cmd.type   = static_cast<aoc::map::ImprovementType>(type);
             return queued(cmd);
-        });
+        },
+        "player=&q=&r=&type=");
 
     // POST /game/builder/chop?player=&q=&r=
     this->m_debugServer->routeJson(
@@ -267,7 +273,8 @@ void Application::registerBuilderControlRoutes() {
             cmd.player = static_cast<aoc::PlayerId>(player);
             cmd.at     = at;
             return queued(cmd);
-        });
+        },
+        "player=&q=&r=");
 
     // POST /game/builder/harvest?player=&q=&r=
     this->m_debugServer->routeJson(
@@ -286,7 +293,8 @@ void Application::registerBuilderControlRoutes() {
             cmd.player = static_cast<aoc::PlayerId>(player);
             cmd.at     = at;
             return queued(cmd);
-        });
+        },
+        "player=&q=&r=");
 }
 
 void Application::registerUnitOrderRoutes() {
@@ -323,17 +331,18 @@ void Application::registerUnitOrderRoutes() {
                     return err;
                 }
                 return queued(makeCommand(static_cast<aoc::PlayerId>(player), at));
-            });
+            },
+            "player=&q=&r=");
     };
-    // POST /game/unit/pillage?player=&q=&r=
+    // POST /game/unit/pillage
     simpleRoute("/game/unit/pillage", [](aoc::PlayerId player, aoc::hex::AxialCoord at) {
         return aoc::debug::GameControlCommand{aoc::debug::PillageCommand{player, at}};
     });
-    // POST /game/builder/repair?player=&q=&r=
+    // POST /game/builder/repair
     simpleRoute("/game/builder/repair", [](aoc::PlayerId player, aoc::hex::AxialCoord at) {
         return aoc::debug::GameControlCommand{aoc::debug::RepairCommand{player, at}};
     });
-    // POST /game/unit/delete?player=&q=&r=
+    // POST /game/unit/delete
     simpleRoute("/game/unit/delete", [](aoc::PlayerId player, aoc::hex::AxialCoord at) {
         return aoc::debug::GameControlCommand{aoc::debug::DeleteUnitCommand{player, at}};
     });
@@ -358,7 +367,8 @@ void Application::registerUnitOrderRoutes() {
             return queued(
                 aoc::debug::PromoteUnitCommand{static_cast<aoc::PlayerId>(player), at,
                                                aoc::PromotionId{static_cast<uint8_t>(promotion)}});
-        });
+        },
+        "player=&q=&r=&promotion=");
 
     // POST /game/unit/alert?player=&q=&r=&on=
     this->m_debugServer->routeJson(
@@ -379,7 +389,8 @@ void Application::registerUnitOrderRoutes() {
             }
             return queued(
                 aoc::debug::SetAlertCommand{static_cast<aoc::PlayerId>(player), at, on != 0});
-        });
+        },
+        "player=&q=&r=&on=");
 }
 
 void Application::registerReligionRoutes() {
@@ -409,7 +420,8 @@ void Application::registerReligionRoutes() {
             }
             return queued(aoc::debug::FoundPantheonCommand{static_cast<aoc::PlayerId>(player),
                                                            static_cast<uint8_t>(belief)});
-        });
+        },
+        "player=&belief=");
     // POST /game/religion/found?player=&founder=&worship=&enhancer=
     this->m_debugServer->routeJson(
         DSM::Post, "/game/religion/found",
@@ -436,7 +448,8 @@ void Application::registerReligionRoutes() {
             return queued(aoc::debug::FoundReligionCommand{
                 static_cast<aoc::PlayerId>(player), static_cast<uint8_t>(founder),
                 static_cast<uint8_t>(worship), static_cast<uint8_t>(enhancer)});
-        });
+        },
+        "player=&founder=&worship=&enhancer=");
 }
 
 namespace {
@@ -651,7 +664,8 @@ void Application::registerCityStateRoutes() {
                 this->m_pendingCommands.push_back(
                     makeCommand(static_cast<aoc::PlayerId>(player), index));
                 return std::string("{\"queued\":true}");
-            });
+            },
+            "player=&index=");
     };
     csRoute("/game/citystate/envoy",
             [](aoc::PlayerId p, int32_t i) -> aoc::debug::GameControlCommand {
@@ -770,7 +784,8 @@ void Application::registerDiplomacyRoutes() {
                                                               static_cast<aoc::PlayerId>(target),
                                                               static_cast<uint8_t>(cb)));
                 return std::string("{\"queued\":true}");
-            });
+            },
+            withCasusBelli ? "player=&target=&cb=" : "player=&target=");
     };
     pairRoute("/game/diplomacy/war", true,
               [](aoc::PlayerId p, aoc::PlayerId t, uint8_t cb) -> aoc::debug::GameControlCommand {

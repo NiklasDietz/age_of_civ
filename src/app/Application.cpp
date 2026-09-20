@@ -645,7 +645,8 @@ ErrorCode Application::initialize(const Config& config) {
               << "\",\"owner\":" << static_cast<int32_t>(grid->owner(idx))
               << ",\"river_edges\":" << static_cast<int32_t>(grid->riverEdges(idx)) << "}";
             return o.str();
-        });
+        },
+        "idx=N");
 
     // GET /constants -- current physics tunables snapshot. Read-only
     // for v1; mutation arrives with /sim/set-constant in a later
@@ -725,7 +726,8 @@ ErrorCode Application::initialize(const Config& config) {
             std::ostringstream o;
             o << "{\"path\":\"" << safePath << "\",\"plates\":" << emitted << "}";
             return o.str();
-        });
+        },
+        "path=PATH");
 
     // POST /dump/grid?path=PATH -- ASCII map (confined to <cwd>/dumps;
     // see resolveDumpTarget).
@@ -814,7 +816,8 @@ ErrorCode Application::initialize(const Config& config) {
             std::ostringstream o;
             o << "{\"path\":\"" << safePath << "\",\"width\":" << W << ",\"height\":" << H << "}";
             return o.str();
-        });
+        },
+        "path=PATH");
 
     // POST /sim/set-creator-time?my=N -- jump scrub.
     //
@@ -845,7 +848,8 @@ ErrorCode Application::initialize(const Config& config) {
             std::ostringstream o;
             o << "{\"queuedCreatorTime\":" << my << "}";
             return o.str();
-        });
+        },
+        "my=N");
 
     // POST /sim/step?dy=N -- advance scrub by N My from the current
     // creator-time (default 50 = one physics epoch). Negative dy
@@ -872,7 +876,8 @@ ErrorCode Application::initialize(const Config& config) {
             std::ostringstream o;
             o << "{\"queuedCreatorTime\":" << safeTarget << ",\"step\":" << dy << "}";
             return o.str();
-        });
+        },
+        "dy=N");
 
     // POST /sim/re-roll?seed=N -- new seed + regen.
     this->m_debugServer->routeJson(
@@ -894,7 +899,8 @@ ErrorCode Application::initialize(const Config& config) {
             std::ostringstream o;
             o << "{\"queuedRerollSeed\":" << seed << "}";
             return o.str();
-        });
+        },
+        "seed=N");
 
     // POST /quit -- clean shutdown.
     //
@@ -939,7 +945,8 @@ ErrorCode Application::initialize(const Config& config) {
                 }
             }
             return std::string("{\"error\":\"player not found\"}");
-        });
+        },
+        "id=N");
 
     // GET /game/units?player=N -- unit list for a player.
     this->m_debugServer->routeJson(
@@ -962,7 +969,8 @@ ErrorCode Application::initialize(const Config& config) {
                 }
             }
             return std::string("{\"error\":\"player not found\"}");
-        });
+        },
+        "player=N");
 
     // GET /game/cities?player=N -- city list for a player.
     this->m_debugServer->routeJson(
@@ -985,7 +993,8 @@ ErrorCode Application::initialize(const Config& config) {
                 }
             }
             return std::string("{\"error\":\"player not found\"}");
-        });
+        },
+        "player=N");
 
     // POST /game/turn/end -- queue an end-turn command. Drained (and run
     // last within the drain pass, after any moves/attacks/production/
@@ -1042,7 +1051,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&q=&r=&targetQ=&targetR=");
 
     // POST /game/unit/attack?player=&q=&r=&targetQ=&targetR=
     this->m_debugServer->routeJson(
@@ -1082,7 +1092,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&q=&r=&targetQ=&targetR=");
 
     // POST /game/unit/found-city?player=&q=&r=&name=
     this->m_debugServer->routeJson(
@@ -1119,7 +1130,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&q=&r=&name=");
 
     // POST /game/city/production?player=&q=&r=&type=&itemId=
     // `type` is one of "Unit"/"Building"/"District"/"Wonder". Name and
@@ -1179,7 +1191,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&q=&r=&type=&itemId=");
 
     // POST /game/spy/mission?player=&q=&r=&mission=
     this->m_debugServer->routeJson(
@@ -1218,7 +1231,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&q=&r=&mission=");
 
     // POST /game/greatperson/activate?player=&q=&r=
     this->m_debugServer->routeJson(
@@ -1249,7 +1263,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&q=&r=");
 
     // POST /game/congress/vote?player=&weight=
     this->m_debugServer->routeJson(
@@ -1280,7 +1295,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&weight=");
 
     // POST /game/congress/propose?player=&resolution=&target=   (target optional)
     this->m_debugServer->routeJson(
@@ -1315,7 +1331,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&resolution=&target=");
 
     // POST /game/unit/merge?player=&q=&r=&sourceQ=&sourceR=
     this->m_debugServer->routeJson(
@@ -1355,7 +1372,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&q=&r=&sourceQ=&sourceR=");
 
     // POST /game/unit/nuke?player=&q=&r=&type=
     this->m_debugServer->routeJson(
@@ -1391,7 +1409,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&q=&r=&type=");
 
     // POST /game/greatperson/retire?player=&q=&r=
     this->m_debugServer->routeJson(
@@ -1422,7 +1441,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&q=&r=");
 
     // POST /game/city/disposition?player=&q=&r=&disposition=
     this->m_debugServer->routeJson(
@@ -1458,7 +1478,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&q=&r=&disposition=");
 
     // POST /game/governor/assign?player=&q=&r=&type=
     this->m_debugServer->routeJson(
@@ -1497,7 +1518,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&q=&r=&type=");
 
     // POST /game/policy/slot?player=&slot=&policy=   (policy -1 clears the slot)
     this->m_debugServer->routeJson(
@@ -1535,7 +1557,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&slot=&policy=");
 
     // POST /game/government/change?player=&government=
     this->m_debugServer->routeJson(
@@ -1565,7 +1588,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&government=");
 
     this->registerCityControlRoutes();
     this->registerBuilderControlRoutes();
@@ -1615,7 +1639,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&q=&r=&promotion=");
 
     // POST /game/research?player=&techId=
     this->m_debugServer->routeJson(
@@ -1645,7 +1670,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "player=&techId=");
 
     // GET /ui/tree -- widget-tree snapshot (id/kind/text/bounds/etc. per
     // widget) plus which top-level screens are currently open. Valid in
@@ -1684,7 +1710,8 @@ ErrorCode Application::initialize(const Config& config) {
                                            this->m_pendingUiCommands.push_back(cmd);
                                        }
                                        return std::string("{\"queued\":true}");
-                                   });
+                                   },
+        "widgetId=N");
 
     // POST /ui/click-at?x=&y= -- synthesize a real mouse click (press +
     // release) at a screen coordinate. Reuses UIManager::handleInput's
@@ -1711,7 +1738,8 @@ ErrorCode Application::initialize(const Config& config) {
                                            this->m_pendingUiCommands.push_back(cmd);
                                        }
                                        return std::string("{\"queued\":true}");
-                                   });
+                                   },
+        "x=&y=");
 
     // POST /ui/scroll?x=&y=&delta=&shift= -- synthesize a scroll-wheel
     // event at a screen coordinate (e.g. to pan a scroll list or the
@@ -1746,7 +1774,8 @@ ErrorCode Application::initialize(const Config& config) {
                 this->m_pendingUiCommands.push_back(cmd);
             }
             return std::string("{\"queued\":true}");
-        });
+        },
+        "x=&y=&delta=&shift=");
 
     // POST /debug/screenshot -- capture a Vulkan swapchain PNG, return its
     // path synchronously. Useful from the main menu and in-game alike. The
@@ -1776,77 +1805,8 @@ ErrorCode Application::initialize(const Config& config) {
 
     // GET /schema -- self-describing route catalogue.
     this->m_debugServer->routeJson(
-        DSM::Get, "/schema", [](const auto&, const auto&) -> std::string {
-            return std::string(
-                "{"
-                "\"routes\":["
-                "{\"method\":\"GET\",\"path\":\"/ping\"},"
-                "{\"method\":\"GET\",\"path\":\"/info\"},"
-                "{\"method\":\"GET\",\"path\":\"/plates\"},"
-                "{\"method\":\"GET\",\"path\":\"/tile?idx=N\"},"
-                "{\"method\":\"GET\",\"path\":\"/constants\"},"
-                "{\"method\":\"GET\",\"path\":\"/schema\"},"
-                "{\"method\":\"GET\",\"path\":\"/game/state\"},"
-                "{\"method\":\"GET\",\"path\":\"/game/player?id=N\"},"
-                "{\"method\":\"GET\",\"path\":\"/game/units?player=N\"},"
-                "{\"method\":\"GET\",\"path\":\"/game/cities?player=N\"},"
-                "{\"method\":\"POST\",\"path\":\"/dump/plates?path=PATH\"},"
-                "{\"method\":\"POST\",\"path\":\"/dump/grid?path=PATH\"},"
-                "{\"method\":\"POST\",\"path\":\"/sim/set-creator-time?my=N\"},"
-                "{\"method\":\"POST\",\"path\":\"/sim/step?dy=N\"},"
-                "{\"method\":\"POST\",\"path\":\"/sim/re-roll?seed=N\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/turn/end\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/unit/"
-                "move?player=&q=&r=&targetQ=&targetR=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/unit/"
-                "attack?player=&q=&r=&targetQ=&targetR=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/unit/found-city?player=&q=&r=&name=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/city/"
-                "production?player=&q=&r=&type=&itemId=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/research?player=&techId=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/spy/mission?player=&q=&r=&mission=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/greatperson/activate?player=&q=&r=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/congress/vote?player=&weight=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/congress/"
-                "propose?player=&resolution=&target=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/unit/"
-                "merge?player=&q=&r=&sourceQ=&sourceR=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/city/"
-                "disposition?player=&q=&r=&disposition=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/greatperson/"
-                "retire?player=&q=&r=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/unit/"
-                "nuke?player=&q=&r=&type=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/governor/assign?player=&q=&r=&type=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/governor/"
-                "promote?player=&q=&r=&promotion=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/policy/slot?player=&slot=&policy=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/government/change?player=&government=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/city/"
-                "purchase?player=&q=&r=&type=&item=&faith=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/city/focus?player=&q=&r=&focus=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/city/lock-tile?player=&q=&r=&tq=&tr=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/city/queue/remove?player=&q=&r=&index=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/city/project?player=&q=&r=&project=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/builder/improve?player=&q=&r=&type=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/builder/chop?player=&q=&r=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/builder/harvest?player=&q=&r=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/builder/repair?player=&q=&r=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/unit/pillage?player=&q=&r=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/unit/delete?player=&q=&r=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/unit/alert?player=&q=&r=&on=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/unit/promote?player=&q=&r=&promotion=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/religion/pantheon?player=&belief=\"},"
-                "{\"method\":\"POST\",\"path\":\"/game/religion/"
-                "found?player=&founder=&worship=&enhancer=\"},"
-                "{\"method\":\"GET\",\"path\":\"/ui/tree\"},"
-                "{\"method\":\"POST\",\"path\":\"/ui/click?widgetId=N\"},"
-                "{\"method\":\"POST\",\"path\":\"/ui/click-at?x=&y=\"},"
-                "{\"method\":\"POST\",\"path\":\"/ui/scroll?x=&y=&delta=&shift=\"},"
-                "{\"method\":\"POST\",\"path\":\"/debug/screenshot\"},"
-                "{\"method\":\"POST\",\"path\":\"/quit\"}"
-                "]"
-                "}");
+        DSM::Get, "/schema", [this](const auto&, const auto&) -> std::string {
+            return "{\"routes\":" + this->m_debugServer->routesJson() + "}";
         });
 
     // Opt-in only: the routes above stay registered (cheap, no socket)

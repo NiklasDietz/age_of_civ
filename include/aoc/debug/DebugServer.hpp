@@ -79,7 +79,9 @@ public:
     DebugServer& operator=(const DebugServer&) = delete;
 
     /// Register an HTTP handler. Must be called before `start()`.
-    void route(Method method, std::string path, Handler handler);
+    /// `queryParams` is the route's query string as `/schema` should
+    /// advertise it, e.g. "player=&q=&r=".
+    void route(Method method, std::string path, Handler handler, std::string queryParams = "");
 
     /// Convenience: register a handler that takes a query-parameter
     /// map and returns a JSON string. Status defaults to 200, content
@@ -88,7 +90,12 @@ public:
     using JsonHandler = std::function<std::string(
         const std::unordered_map<std::string, std::string>& query,
         const std::string& body)>;
-    void routeJson(Method method, std::string path, JsonHandler handler);
+    void routeJson(Method method, std::string path, JsonHandler handler,
+                   std::string queryParams = "");
+
+    /// Every registered route as a JSON array, in registration order, so
+    /// `/schema` describes the server instead of repeating it by hand.
+    [[nodiscard]] std::string routesJson() const;
 
     /// Spawn the listener thread. Returns once the socket is bound;
     /// `false` indicates bind failure (port in use, perms, etc.).

@@ -988,6 +988,7 @@ if(AOC_BUILD_TESTS)
         test_mapgen_regenerate
         test_game_snapshot
         test_game_control_validation
+        test_debug_server_routes
         test_leader_agendas
         test_great_people_names
         test_culture_victory_paths

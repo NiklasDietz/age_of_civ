@@ -23,6 +23,7 @@
 #include <string_view>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace aoc::debug {
 
@@ -74,6 +75,13 @@ struct DebugServer::Impl {
     /// still so any in-flight handler can short-circuit on the flag.
     std::jthread listener;
     std::atomic<bool> running{false};
+
+    struct RegisteredRoute {
+        Method method;
+        std::string path;
+        std::string queryParams;
+    };
+    std::vector<RegisteredRoute> routes;
 };
 
 DebugServer::DebugServer(int32_t port) : m_impl(std::make_unique<Impl>()) {
@@ -104,7 +112,8 @@ DebugServer::~DebugServer() {
     this->stop();
 }
 
-void DebugServer::routeJson(Method method, std::string path, JsonHandler handler) {
+void DebugServer::routeJson(Method method, std::string path, JsonHandler handler,
+                           std::string queryParams) {
     this->route(method, std::move(path),
                 [h = std::move(handler)](const httplib::Request& req, httplib::Response& res) {
                     std::unordered_map<std::string, std::string> q;
@@ -132,10 +141,12 @@ void DebugServer::routeJson(Method method, std::string path, JsonHandler handler
                         res.status = 500;
                         res.set_content("{\"error\":\"unknown exception\"}\n", "application/json");
                     }
-                });
+                },
+                std::move(queryParams));
 }
 
-void DebugServer::route(Method method, std::string path, Handler handler) {
+void DebugServer::route(Method method, std::string path, Handler handler,
+                       std::string queryParams) {
     if (this->m_impl->running.load(std::memory_order_acquire)) {
         LOG_WARN("DebugServer: ignoring route(%s) registered after start()", path.c_str());
         return;
@@ -148,6 +159,27 @@ void DebugServer::route(Method method, std::string path, Handler handler) {
         this->m_impl->server.Post(path, std::move(handler));
         break;
     }
+    this->m_impl->routes.push_back({method, std::move(path), std::move(queryParams)});
+}
+
+std::string DebugServer::routesJson() const {
+    std::string out = "[";
+    for (const Impl::RegisteredRoute& r : this->m_impl->routes) {
+        if (out.size() > 1) {
+            out += ',';
+        }
+        out += "{\"method\":\"";
+        out += (r.method == Method::Get ? "GET" : "POST");
+        out += "\",\"path\":\"";
+        out += escapeJsonString(r.path);
+        if (!r.queryParams.empty()) {
+            out += '?';
+            out += escapeJsonString(r.queryParams);
+        }
+        out += "\"}";
+    }
+    out += ']';
+    return out;
 }
 
 bool DebugServer::start() {
