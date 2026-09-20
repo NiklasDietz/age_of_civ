@@ -110,16 +110,15 @@ struct TileFacts {
 
 /// How many clusters of each luxury a 4000-land-tile map carries, and how big.
 [[nodiscard]] ClusterSpec specFor(uint16_t goodId) {
-    using namespace aoc::sim::goods;
     switch (goodId) {
-        case PLATINUM:      return {goodId, 1, 3};
-        case GEMS:          return {goodId, 2, 4};
-        case GOLD_ORE:      return {goodId, 2, 4};
-        case ALLUVIAL_GOLD: return {goodId, 2, 4};
-        case PEARLS:        return {goodId, 2, 4};
-        case SALT:          return {goodId, 4, 5};
-        case FURS:          return {goodId, 4, 6};
-        default:            return {goodId, 3, 5};
+        case aoc::sim::goods::PLATINUM:      return {goodId, 1, 3};
+        case aoc::sim::goods::GEMS:          return {goodId, 2, 4};
+        case aoc::sim::goods::GOLD_ORE:      return {goodId, 2, 4};
+        case aoc::sim::goods::ALLUVIAL_GOLD: return {goodId, 2, 4};
+        case aoc::sim::goods::PEARLS:        return {goodId, 2, 4};
+        case aoc::sim::goods::SALT:          return {goodId, 4, 5};
+        case aoc::sim::goods::FURS:          return {goodId, 4, 6};
+        default:                             return {goodId, 3, 5};
     }
 }
 
@@ -210,45 +209,44 @@ bool luxuryEligible(const HexGrid& grid, uint16_t goodId, int32_t index) {
         return false;
     }
     const TileFacts f = factsOf(grid, index);
-    using namespace aoc::sim::goods;
     switch (goodId) {
-        case SPICES: // tropical humid coasts and jungle
+        case aoc::sim::goods::SPICES: // tropical humid coasts and jungle
             return f.lat < 0.28f && !f.arid && (f.feature == FeatureType::Jungle || f.coast);
-        case SILK: // temperate humid interior
+        case aoc::sim::goods::SILK: // temperate humid interior
             return f.lat >= 0.28f && f.lat < 0.55f && openLand(f.terrain) && !f.coast &&
                    (f.feature == FeatureType::Forest || f.river);
-        case IVORY: // savanna big game
+        case aoc::sim::goods::IVORY: // savanna big game
             return f.lat < 0.35f && openLand(f.terrain) && f.feature == FeatureType::None &&
                    (f.wildlife == 1u || f.terrain == TerrainType::Plains);
-        case WINE: // dry-summer temperate hills or coasts
+        case aoc::sim::goods::WINE: // dry-summer temperate hills or coasts
             return f.biome == 1u || (f.lat >= 0.33f && f.lat < 0.5f && f.hills && (f.coast || f.river));
-        case DYES: // warm coasts, jungle rivers
+        case aoc::sim::goods::DYES: // warm coasts, jungle rivers
             return f.lat < 0.4f && !f.arid && (f.coast || (f.feature == FeatureType::Jungle && f.river));
-        case FURS: // boreal
+        case aoc::sim::goods::FURS: // boreal
             return f.terrain == TerrainType::Tundra || f.biome == 5u || f.wildlife == 2u ||
                    (f.lat > 0.6f && f.feature == FeatureType::Forest);
-        case INCENSE: // arid subtropical hills
+        case aoc::sim::goods::INCENSE: // arid subtropical hills
             return f.lat >= 0.15f && f.lat < 0.45f && f.arid && f.hills;
-        case SALT: // arid basins, passive-margin lowlands
+        case aoc::sim::goods::SALT: // arid basins, passive-margin lowlands
             return f.elev <= 0 && (f.terrain == TerrainType::Desert || (f.margin == 2u && f.coast));
-        case MARBLE: // collision-belt hills
+        case aoc::sim::goods::MARBLE: // collision-belt hills
             return f.hills && (f.boundary == 1u || f.rock == 2u);
-        case PEARLS: // warm shallow coasts
+        case aoc::sim::goods::PEARLS: // warm shallow coasts
             return f.coast && f.lat < 0.35f && f.terrain != TerrainType::Desert;
-        case TEA: // subtropical humid highlands
+        case aoc::sim::goods::TEA: // subtropical humid highlands
             return f.lat >= 0.25f && f.lat < 0.45f && f.hills && openLand(f.terrain) && f.humid;
-        case COFFEE: // tropical highlands
+        case aoc::sim::goods::COFFEE: // tropical highlands
             return f.lat < 0.25f && f.hills && !f.arid;
-        case TOBACCO: // subtropical humid lowlands
+        case aoc::sim::goods::TOBACCO: // subtropical humid lowlands
             return f.lat >= 0.2f && f.lat < 0.4f && !f.hills && openLand(f.terrain) &&
                    (f.river || f.feature == FeatureType::Floodplains || f.feature == FeatureType::Marsh);
-        case GOLD_ORE: // convergent arcs
+        case aoc::sim::goods::GOLD_ORE: // convergent arcs
             return f.boundary == 1u || f.volcanism == 1u;
-        case GEMS: // stable interior hills
+        case aoc::sim::goods::GEMS: // stable interior hills
             return f.hills && f.boundary == 0u && f.margin == 0u && (f.rock == 1u || f.rock == 2u);
-        case PLATINUM: // stable interior igneous hills
+        case aoc::sim::goods::PLATINUM: // stable interior igneous hills
             return f.hills && f.boundary == 0u && f.margin == 0u && f.rock == 1u;
-        case ALLUVIAL_GOLD: // rivers below orogens
+        case aoc::sim::goods::ALLUVIAL_GOLD: // rivers below orogens
             return f.river && nearConvergent(grid, index);
         default:
             return false;

@@ -344,31 +344,30 @@ void TooltipManager::render(vulkan_app::renderer::Renderer2D& renderer2d) const 
     const float tooltipW = (static_cast<float>(maxLineLen) * FONT_SIZE * 0.7f + PADDING * 2.0f) * scale;
     const float tooltipH = (static_cast<float>(lineCount) * LINE_HEIGHT + PADDING * 2.0f) * scale;
 
-    // Style guide §7: marble surface, 1 px BRONZE_DARK border.
-    using namespace tokens;
+    // Style guide §7: marble surface, 1 px tokens::BRONZE_DARK border.
     const float r = tokens::CORNER_TOOLTIP * scale;
 
-    // Drop shadow (style guide SHADOW_HOVER tier).
+    // Drop shadow (style guide tokens::SHADOW_HOVER tier).
     renderer2d.drawRoundedRect(this->m_x + 1.0f, this->m_y + 2.0f,
                                tooltipW, tooltipH, r,
-                               0.0f, 0.0f, 0.0f, SHADOW_HOVER.a);
+                               0.0f, 0.0f, 0.0f, tokens::SHADOW_HOVER.a);
     // Marble surface.
     renderer2d.drawRoundedRect(this->m_x, this->m_y, tooltipW, tooltipH, r,
-                               SURFACE_MARBLE.r, SURFACE_MARBLE.g,
-                               SURFACE_MARBLE.b, 0.95f);
+                               tokens::SURFACE_MARBLE.r, tokens::SURFACE_MARBLE.g,
+                               tokens::SURFACE_MARBLE.b, 0.95f);
     // Bronze hairline border.
     renderer2d.drawRoundedRect(this->m_x, this->m_y, tooltipW, tooltipH, r,
-                               BRONZE_DARK.r, BRONZE_DARK.g,
-                               BRONZE_DARK.b, 0.9f);
+                               tokens::BRONZE_DARK.r, tokens::BRONZE_DARK.g,
+                               tokens::BRONZE_DARK.b, 0.9f);
     // Inner gilt highlight (1 px inset top edge) -- drawn as a thin
     // bright rect; subtle "engraved" feel.
     renderer2d.drawRoundedRect(this->m_x + 1.0f, this->m_y + 1.0f,
                                tooltipW - 2.0f, 1.0f * scale, 0.0f,
-                               GOLD_HIGHLIGHT.r, GOLD_HIGHLIGHT.g,
-                               GOLD_HIGHLIGHT.b, 0.6f);
+                               tokens::GOLD_HIGHLIGHT.r, tokens::GOLD_HIGHLIGHT.g,
+                               tokens::GOLD_HIGHLIGHT.b, 0.6f);
 
     // Draw text lines. First line (if multi-line) renders as header
-    // in TEXT_HEADER; remaining lines render in TEXT_INK body color.
+    // in tokens::TEXT_HEADER; remaining lines render in tokens::TEXT_INK body color.
     float lineY = this->m_y + scaledPadding;
     std::size_t lineStart = 0;
     std::size_t lineIdx = 0;
@@ -378,7 +377,7 @@ void TooltipManager::render(vulkan_app::renderer::Renderer2D& renderer2d) const 
             const std::string_view line(this->m_text.data() + lineStart, i - lineStart);
             if (!line.empty()) {
                 const Color& c = (lineIdx == 0 && lineCount > 1)
-                                     ? TEXT_HEADER : TEXT_INK;
+                                     ? tokens::TEXT_HEADER : tokens::TEXT_INK;
                 BitmapFont::drawText(renderer2d, line,
                                      this->m_x + scaledPadding, lineY,
                                      scaledFontSize, c, scale);
@@ -390,7 +389,7 @@ void TooltipManager::render(vulkan_app::renderer::Renderer2D& renderer2d) const 
                         lineY + scaledLineHeight - 2.0f * scale,
                         tooltipW - 2.0f * scaledPadding,
                         1.0f * scale, 0.0f,
-                        BRONZE_BASE.r, BRONZE_BASE.g, BRONZE_BASE.b, 0.7f);
+                        tokens::BRONZE_BASE.r, tokens::BRONZE_BASE.g, tokens::BRONZE_BASE.b, 0.7f);
                 }
             }
             lineY += scaledLineHeight;

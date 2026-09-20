@@ -130,17 +130,16 @@ const char* eraIconKey(uint16_t era) {
 const char* techIconKey(const aoc::sim::TechDef& def) {
     // Specific overrides take priority for the iconic techs; everything
     // else falls back to its era band.
-    using namespace std::string_view_literals;
-    if (def.name == "Mining"sv) {
+    if (def.name == "Mining") {
         return "techs.mining";
     }
-    if (def.name == "Iron Working"sv) {
+    if (def.name == "Iron Working") {
         return "techs.iron-working";
     }
-    if (def.name == "Electricity"sv) {
+    if (def.name == "Electricity") {
         return "techs.electricity";
     }
-    if (def.name == "Computers"sv) {
+    if (def.name == "Computers") {
         return "techs.computers";
     }
     return eraIconKey(def.era.value);

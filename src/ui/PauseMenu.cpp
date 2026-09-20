@@ -20,7 +20,6 @@ namespace aoc::ui {
 void PauseMenu::build(UIManager& ui, float screenW, float screenH, std::function<void()> onResume,
                       std::function<void(int)> onSaveSlot, std::function<void(int)> onLoadSlot,
                       std::function<void()> onMainMenu, std::function<void()> onQuit) {
-    using namespace tokens;
     assert(!this->m_isBuilt);
     this->m_onResume   = std::move(onResume);
     this->m_onSaveSlot = std::move(onSaveSlot);
@@ -32,7 +31,7 @@ void PauseMenu::build(UIManager& ui, float screenW, float screenH, std::function
 
     // Full-screen frost dim -- map shows through faintly.
     this->m_rootPanel =
-        ui.createPanel({0.0f, 0.0f, screenW, screenH}, PanelData{SURFACE_FROST_DIM, 0.0f});
+        ui.createPanel({0.0f, 0.0f, screenW, screenH}, PanelData{tokens::SURFACE_FROST_DIM, 0.0f});
     {
         // Frame, rail and panel below are overlapping layers at absolute
         // positions; the default vertical stack laid them out one below the
@@ -50,53 +49,53 @@ void PauseMenu::build(UIManager& ui, float screenW, float screenH, std::function
     // --- Outer dark frame (mahogany shadow) -- sits 4 px outside the panel.
     [[maybe_unused]] WidgetId outerFrame = ui.createPanel(
         this->m_rootPanel, {panelX - 4.0f, panelY - 4.0f, PANEL_W + 8.0f, PANEL_H + 8.0f},
-        PanelData{SURFACE_MAHOGANY, CORNER_PANEL + 2.0f});
+        PanelData{tokens::SURFACE_MAHOGANY, tokens::CORNER_PANEL + 2.0f});
 
     // --- Bronze rail (top edge) ---
     [[maybe_unused]] WidgetId rail =
-        ui.createPanel(this->m_rootPanel, {panelX, panelY, PANEL_W, BORDER_RAIL},
-                       PanelData{BRONZE_BASE, CORNER_PANEL});
+        ui.createPanel(this->m_rootPanel, {panelX, panelY, PANEL_W, tokens::BORDER_RAIL},
+                       PanelData{tokens::BRONZE_BASE, tokens::CORNER_PANEL});
 
     // --- Main parchment panel ---
     WidgetId panel = ui.createPanel(this->m_rootPanel,
-                                    {panelX, panelY + BORDER_RAIL, PANEL_W, PANEL_H - BORDER_RAIL},
-                                    PanelData{SURFACE_PARCHMENT, CORNER_PANEL});
+                                    {panelX, panelY + tokens::BORDER_RAIL, PANEL_W, PANEL_H - tokens::BORDER_RAIL},
+                                    PanelData{tokens::SURFACE_PARCHMENT, tokens::CORNER_PANEL});
     {
         Widget* p = ui.getWidget(panel);
         assert(p != nullptr);
-        p->padding      = {S5, S5, S5, S5};
-        p->childSpacing = S2;
+        p->padding      = {tokens::S5, tokens::S5, tokens::S5, tokens::S5};
+        p->childSpacing = tokens::S2;
     }
-    const float innerW = PANEL_W - 2 * S5;
+    const float innerW = PANEL_W - 2 * tokens::S5;
 
     // --- Title ribbon: deep header text ---
     [[maybe_unused]] WidgetId title =
-        ui.createLabel(panel, {0.0f, 0.0f, innerW, 36.0f}, LabelData{"PAUSED", TEXT_HEADER, FS_H2});
+        ui.createLabel(panel, {0.0f, 0.0f, innerW, 36.0f}, LabelData{"PAUSED", tokens::TEXT_HEADER, tokens::FS_H2});
 
     // Bronze divider rule under title.
     [[maybe_unused]] WidgetId rule =
-        ui.createPanel(panel, {0.0f, 0.0f, innerW, 2.0f}, PanelData{BRONZE_DARK, 1.0f});
+        ui.createPanel(panel, {0.0f, 0.0f, innerW, 2.0f}, PanelData{tokens::BRONZE_DARK, 1.0f});
 
     [[maybe_unused]] WidgetId spacer1 =
-        ui.createPanel(panel, {0.0f, 0.0f, innerW, S2}, PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        ui.createPanel(panel, {0.0f, 0.0f, innerW, tokens::S2}, PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
 
     // --- Button factory: ornate (primary) and standard (secondary) variants.
     auto makeBtn = [&](WidgetId parent, const char* label, float w, float h, Color color,
                        Color hover, Color pressed, Color labelColor, std::function<void()> cb) {
         ButtonData btn;
         btn.label                    = label;
-        btn.fontSize                 = FS_BODY;
+        btn.fontSize                 = tokens::FS_BODY;
         btn.normalColor              = color;
         btn.hoverColor               = hover;
         btn.pressedColor             = pressed;
         btn.labelColor               = labelColor;
-        btn.cornerRadius             = CORNER_BUTTON;
+        btn.cornerRadius             = tokens::CORNER_BUTTON;
         btn.onClick                  = std::move(cb);
         [[maybe_unused]] WidgetId id = ui.createButton(parent, {0.0f, 0.0f, w, h}, std::move(btn));
     };
 
     // --- Resume (primary action, bronze + gilt label) ---
-    makeBtn(panel, "Resume", innerW, 36.0f, BRONZE_BASE, BRONZE_LIGHT, STATE_PRESSED, TEXT_GILT,
+    makeBtn(panel, "Resume", innerW, 36.0f, tokens::BRONZE_BASE, tokens::BRONZE_LIGHT, tokens::STATE_PRESSED, tokens::TEXT_GILT,
             [this]() {
                 if (this->m_onResume) {
                     this->m_onResume();
@@ -104,10 +103,10 @@ void PauseMenu::build(UIManager& ui, float screenW, float screenH, std::function
             });
 
     [[maybe_unused]] WidgetId spacer2 =
-        ui.createPanel(panel, {0.0f, 0.0f, innerW, S2}, PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        ui.createPanel(panel, {0.0f, 0.0f, innerW, tokens::S2}, PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
 
     // --- 5 save slots: Save N + Load N per row ---
-    const float slotBtnW = (innerW - S2) * 0.5f;
+    const float slotBtnW = (innerW - tokens::S2) * 0.5f;
     for (int slot = 0; slot < 5; ++slot) {
         WidgetId row = ui.createPanel(panel, {0.0f, 0.0f, innerW, 32.0f},
                                       PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
@@ -115,7 +114,7 @@ void PauseMenu::build(UIManager& ui, float screenW, float screenH, std::function
             Widget* w = ui.getWidget(row);
             assert(w != nullptr);
             w->layoutDirection = LayoutDirection::Horizontal;
-            w->childSpacing    = S2;
+            w->childSpacing    = tokens::S2;
         }
 
         std::string saveLabel = "Save " + std::to_string(slot + 1);
@@ -123,12 +122,12 @@ void PauseMenu::build(UIManager& ui, float screenW, float screenH, std::function
 
         ButtonData saveBtn;
         saveBtn.label        = saveLabel;
-        saveBtn.fontSize     = FS_SMALL;
-        saveBtn.normalColor  = SURFACE_PARCHMENT_DIM;
-        saveBtn.hoverColor   = BRONZE_LIGHT;
-        saveBtn.pressedColor = BRONZE_DARK;
-        saveBtn.labelColor   = TEXT_INK;
-        saveBtn.cornerRadius = CORNER_BUTTON;
+        saveBtn.fontSize     = tokens::FS_SMALL;
+        saveBtn.normalColor  = tokens::SURFACE_PARCHMENT_DIM;
+        saveBtn.hoverColor   = tokens::BRONZE_LIGHT;
+        saveBtn.pressedColor = tokens::BRONZE_DARK;
+        saveBtn.labelColor   = tokens::TEXT_INK;
+        saveBtn.cornerRadius = tokens::CORNER_BUTTON;
         saveBtn.onClick      = [this, slot]() {
             if (this->m_onSaveSlot) {
                 this->m_onSaveSlot(slot);
@@ -139,12 +138,12 @@ void PauseMenu::build(UIManager& ui, float screenW, float screenH, std::function
 
         ButtonData loadBtn;
         loadBtn.label        = loadLabel;
-        loadBtn.fontSize     = FS_SMALL;
-        loadBtn.normalColor  = SURFACE_PARCHMENT_DIM;
-        loadBtn.hoverColor   = BRONZE_LIGHT;
-        loadBtn.pressedColor = BRONZE_DARK;
-        loadBtn.labelColor   = TEXT_INK;
-        loadBtn.cornerRadius = CORNER_BUTTON;
+        loadBtn.fontSize     = tokens::FS_SMALL;
+        loadBtn.normalColor  = tokens::SURFACE_PARCHMENT_DIM;
+        loadBtn.hoverColor   = tokens::BRONZE_LIGHT;
+        loadBtn.pressedColor = tokens::BRONZE_DARK;
+        loadBtn.labelColor   = tokens::TEXT_INK;
+        loadBtn.cornerRadius = tokens::CORNER_BUTTON;
         loadBtn.onClick      = [this, slot]() {
             if (this->m_onLoadSlot) {
                 this->m_onLoadSlot(slot);
@@ -155,19 +154,19 @@ void PauseMenu::build(UIManager& ui, float screenW, float screenH, std::function
     }
 
     [[maybe_unused]] WidgetId spacer3 =
-        ui.createPanel(panel, {0.0f, 0.0f, innerW, S3}, PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        ui.createPanel(panel, {0.0f, 0.0f, innerW, tokens::S3}, PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
 
     // --- Main Menu (secondary) ---
-    makeBtn(panel, "Main Menu", innerW, 32.0f, SURFACE_PARCHMENT_DIM, BRONZE_LIGHT, BRONZE_DARK,
-            TEXT_INK, [this]() {
+    makeBtn(panel, "Main Menu", innerW, 32.0f, tokens::SURFACE_PARCHMENT_DIM, tokens::BRONZE_LIGHT, tokens::BRONZE_DARK,
+            tokens::TEXT_INK, [this]() {
                 if (this->m_onMainMenu) {
                     this->m_onMainMenu();
                 }
             });
 
     // --- Quit (danger) ---
-    makeBtn(panel, "Quit Game", innerW, 32.0f, STATE_DANGER, {0.767f, 0.272f, 0.197f, 1.0f},
-            {0.511f, 0.182f, 0.131f, 1.0f}, TEXT_PARCHMENT, [this]() {
+    makeBtn(panel, "Quit Game", innerW, 32.0f, tokens::STATE_DANGER, {0.767f, 0.272f, 0.197f, 1.0f},
+            {0.511f, 0.182f, 0.131f, 1.0f}, tokens::TEXT_PARCHMENT, [this]() {
                 if (this->m_onQuit) {
                     this->m_onQuit();
                 }
