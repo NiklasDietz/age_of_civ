@@ -97,7 +97,7 @@ void updateBorderViolations(aoc::game::GameState& gameState,
     }
 
     // Escalation cascade for each player pair with violations.
-    // Warnings fire immediately (turn 0) — no constant needed.
+    // Warnings fire immediately (turn 0) -- no constant needed.
     constexpr int32_t REPUTATION_TURN    = 3;   // -3/turn reputation penalty starts
     constexpr int32_t CASUS_BELLI_TURN   = 10;  // Casus belli granted
     constexpr int32_t NEAR_CITY_RADIUS   = 3;   // Units near cities escalate 2x
@@ -177,7 +177,7 @@ void updateBorderViolations(aoc::game::GameState& gameState,
                     rel.turnsWithViolation = 0;
                     rel.warningIssued = false;
                     // Casus belli persists for 20 turns after withdrawal
-                    // (not reset here — decayed separately or via peace)
+                    // (not reset here -- decayed separately or via peace)
                 }
             }
         }

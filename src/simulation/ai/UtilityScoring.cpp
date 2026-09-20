@@ -87,7 +87,7 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
     float score = 50.0f;  // Base score for any building
 
     switch (buildingId.value) {
-        // City Center — amenity sources, scaled up to combat empire-penalty unhappiness
+        // City Center -- amenity sources, scaled up to combat empire-penalty unhappiness
         case 15: score = 110.0f; break;   // Granary: food + amenity
         case 16: score = 110.0f * b.cultureFocus; break;  // Monument: culture + amenity
         case 22: score = 130.0f; break;   // Hospital: strongest amenity
@@ -123,7 +123,7 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
         // and the rest of the production tree stays dormant.  Bias the
         // gateway buildings above the tier-1 default when the owning civ
         // has already unlocked their technology window (handled by the
-        // tech-gate already — if tech isn't researched, building can't be
+        // tech-gate already -- if tech isn't researched, building can't be
         // queued).
         case  0: score = 200.0f * b.techIndustrial; break;  // Forge (smelting, tools, charcoal)
         case  1: score = 180.0f * b.techIndustrial; break;  // Workshop (lumber, bricks, construction)
@@ -149,12 +149,12 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
         case 30: score = 110.0f; break;                     // Solar
         case 31: score = 105.0f; break;                     // Wind
 
-        // Biofuel Plant — renewable gas/biofuel from crops.  Was scored as
+        // Biofuel Plant -- renewable gas/biofuel from crops.  Was scored as
         // 40 (default), meaning AI never built it even though it enables
         // biogas (Natural_Gas substitute) and wheat/sugar→biofuel chains.
         case 33: score = 150.0f * b.techIndustrial; break;  // Biofuel Plant
 
-        // Goods-economy chain — outputs feed incomeGoodsEcon tax so boost
+        // Goods-economy chain -- outputs feed incomeGoodsEcon tax so boost
         // scoring above generic economic buildings. Previously 140/150
         // lost to Forge (200) so AI never completed the consumer chain.
         case  8: score = 180.0f * b.economicFocus; break;   // Textile Mill (textiles, clothing)
@@ -258,7 +258,7 @@ float scoreTechForLeader(const LeaderBehavior& b, TechId techId,
                 score += 100.0f * b.techIndustrial;  // Industrial chain
             }
             if (bid.value == 8 || bid.value == 9) {
-                // Textile Mill / Food Processing — goods-econ chain.
+                // Textile Mill / Food Processing -- goods-econ chain.
                 // Score on economicFocus because their outputs (clothing,
                 // processed food) feed the goods-economy tax path.
                 score += 100.0f * b.economicFocus;

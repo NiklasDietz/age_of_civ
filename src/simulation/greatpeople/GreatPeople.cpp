@@ -497,7 +497,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
         case GreatPersonType::Engineer: {
             // WP-A3: find nearest owned city, grant +100 production. Additionally,
             // if the city has no Industrial district yet, create one at no cost
-            // — "Renaissance Man" unlocks industry.
+            // -- "Renaissance Man" unlocks industry.
             aoc::game::City* nearestCity = playerObj->nearestCity(grid, gp.position);
             if (nearestCity != nullptr) {
                 if (!nearestCity->production().isEmpty()) {

@@ -605,7 +605,7 @@ void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber current
         // active). The previous `inDefault && inHyper` check on the same
         // enum was therefore vacuous and DebtSpiral never fired.
         //
-        // `crisis.hasDefaulted` is the persistent default flag — it is set
+        // `crisis.hasDefaulted` is the persistent default flag -- it is set
         // when sovereign default triggers and stays true through the
         // 10-turn `defaultCooldown` window. Pairing it with a currently-
         // active hyperinflation captures the real-world spiral: the civ
@@ -655,7 +655,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
 
     // ================================================================
     // Classic Victory Conditions (checked alongside default system)
-    // These trigger regardless of VictoryMode — the mode only determines
+    // These trigger regardless of VictoryMode -- the mode only determines
     // whether they're the PRIMARY win conditions or bonus achievements.
     // ================================================================
     //
@@ -674,7 +674,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     // Audit 2026-04: full all-capitals requirement never fired in
     // 1500t sims (6-player game = conquer 5 capitals). Relaxed to 60%
     // (3-of-5 for 6-player) so a strong military civ has a reachable
-    // path. Still meaningful — conquering 3 capitals is a major
+    // path. Still meaningful -- conquering 3 capitals is a major
     // achievement.
     if (victoryWindowOpen && (enabledTypes & VICTORY_MASK_DOMINATION) != 0u) {
         // WP-D1 BUG FIX: candidate->cities() is the founder list; captured
@@ -714,7 +714,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                 : 0.0f;
             // 2026-05-02: now gated to victoryWindowOpen (≥60% of turns), so
             // tighten capital requirement to 60% of rivals (or all of them in
-            // smaller games) — keeps Domination from photo-finishing the
+            // smaller games) -- keeps Domination from photo-finishing the
             // moment the window opens just because one capital is held.
             if (alive > 1 && rivalCount > 0
                 && (ratio >= 0.55f || capitalsOwned >= rivalCount)) {
@@ -784,7 +784,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
 
             if (rivalCount > 0) {
                 // Audit 2026-04 third pass: 0.60 (3-of-5) still 0 fires.
-                // Relax to 0.50 (majority of rivals dominated) — a clear
+                // Relax to 0.50 (majority of rivals dominated) -- a clear
                 // bar but achievable for a faith-focused civ with the
                 // boosted BASE_PASSIVE_PRESSURE in Religion.cpp.
                 const float ratio = static_cast<float>(dominatedCount)
@@ -895,7 +895,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
 
     // 4. Turn limit (fallback): highest cumulative Era VP wins.
     // SCORE fires whenever enabled at turn-limit. In traditional mode
-    // (multi-path) it acts as the rare fallback — most games resolve
+    // (multi-path) it acts as the rare fallback -- most games resolve
     // via path victories (Culture/Science/Religion/Domination) before
     // the limit. In "score only" mode it's the sole victory metric.
     // Tiebreaker: primary = eraVictoryPoints, secondary = compositeCSI,

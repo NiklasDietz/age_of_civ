@@ -46,7 +46,7 @@ static void syncWallState(aoc::game::City& city,
                           const aoc::game::Player& owner) {
     const WallTier currentTier = detectWallTier(city, owner);
     if (currentTier != city.walls().tier) {
-        // Upgraded or built new walls — set new tier, heal to full
+        // Upgraded or built new walls -- set new tier, heal to full
         city.walls().setTier(currentTier);
     }
 }
@@ -121,7 +121,7 @@ void processCityBombardment(aoc::game::GameState& gameState,
 
         // Base ranged attack: walls (if intact AT START of turn) OR encampment.
         // H2.12: use wallsIntactAtStart so a wall auto-repaired from 0 this
-        // turn cannot also fire — repair XOR attack.
+        // turn cannot also fire -- repair XOR attack.
         float bombardStrength = 0.0f;
         int32_t attackRange = 0;
         if (baseStrikeOnly) {

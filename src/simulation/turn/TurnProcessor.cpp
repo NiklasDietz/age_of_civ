@@ -648,7 +648,7 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     // Science and tech research
     // Science costs gold: each point of science generated costs 0.2 gold (research
     // funding). This means a player generating 100 science/turn pays 20 gold/turn
-    // for research — making science an investment with ROI from better tech.
+    // for research -- making science an investment with ROI from better tech.
     // If the player can't afford it, science is reduced proportionally (unfunded
     // research operates at minimum 50% efficiency).
     {
@@ -765,7 +765,7 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         }
 
         // C38: literacy multiplies science output. Education buildings
-        // now pay off — unschooled civs research at 0.5x, fully literate
+        // now pay off -- unschooled civs research at 0.5x, fully literate
         // civs at 1.5x. Closes the loop between schools and tech speed.
         science *= gsPlayer->humanCapital().scienceMultiplier();
 
@@ -775,7 +775,7 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         // no caller, so half the reward for reaching an age was inert.
         science *= gsPlayer->industrial().cumulativeScienceMultiplier();
 
-        // WP-B1: Lunar Colony project — flat +20 science/turn empire-wide
+        // WP-B1: Lunar Colony project -- flat +20 science/turn empire-wide
         // ("low-gravity physics" research bonus).
         if (gsPlayer->spaceRace()
                 .completed[static_cast<int32_t>(aoc::sim::SpaceProjectId::LunarColony)]) {
@@ -1349,7 +1349,7 @@ void processGlobalSystems(TurnContext& turnContext) {
 
     // Electricity agreements: expire contracts, settle the per-turn gold
     // transfer, record delivery for computeCityPower to read on its next
-    // pass. Must run after diplomacy but before production/power —
+    // pass. Must run after diplomacy but before production/power --
     // production ticks still see lastDeliveredEnergy=0 until this fires,
     // which is the intended "one-turn lag" on new contracts.
     if (turnContext.diplomacy != nullptr) {
@@ -1366,7 +1366,7 @@ void processGlobalSystems(TurnContext& turnContext) {
     // Black market smuggling (for embargoed players)
     processBlackMarketTrade(gameState);
 
-    // Speculation bubble mechanic disabled 2026-05-02 — too noisy in
+    // Speculation bubble mechanic disabled 2026-05-02 -- too noisy in
     // long sims (12 crashes/civ over 1000 turns), and the post-crash
     // recovery state cluttered AI decisions without adding meaningful
     // strategic depth. Bubble component still exists but isn't updated.
@@ -1386,7 +1386,7 @@ void processGlobalSystems(TurnContext& turnContext) {
     ai::resolvePendingAIEvents(gameState);
     tickWorldEvents(gameState);
 
-    // Prestige accrual first — CSI diplomacy weighting reads prestige, so
+    // Prestige accrual first -- CSI diplomacy weighting reads prestige, so
     // accrue for this turn before the tracker snapshots it.
     processPrestige(gameState, grid, turnContext.diplomacy);
 
@@ -1413,7 +1413,7 @@ void processTurn(TurnContext& turnContext) {
     // via currentDecisionLog() without threading a pointer through every API.
     aoc::core::ScopedDecisionLog scopedLog(turnContext.decisionLog);
 
-    // Keep GameState's turn counter aligned with the processor's — several
+    // Keep GameState's turn counter aligned with the processor's -- several
     // systems (world events, AI blackboards) stamp this value and rely on
     // monotonic progression for cooldowns.
     turnContext.gameState->setCurrentTurn(static_cast<int32_t>(turnContext.currentTurn));

@@ -93,7 +93,7 @@ enum class VictoryType : uint8_t {
     Religion,
 };
 
-/// Number of VictoryType enumerators — single source of truth for histogram
+/// Number of VictoryType enumerators -- single source of truth for histogram
 /// sizing in the GA / balance tuners. VictoryType deliberately has no `Count`
 /// sentinel (one would trip -Wswitch in the exhaustive switches over it), so
 /// derive the count from the last enumerator instead.
@@ -170,7 +170,7 @@ struct VictoryTrackerComponent {
     bool    hasEverFoundedCity = false;  ///< Gate for conquest elimination:
                                          ///< a civ that has not yet settled
                                          ///< (turn-1 Settler still walking) is
-                                         ///< not "conquered" — otherwise
+                                         ///< not "conquered" -- otherwise
                                          ///< LastStanding fires immediately.
 
     // -- Legacy compatibility --

@@ -376,7 +376,7 @@ bool bullyCityState(aoc::game::GameState& gameState, PlayerId player,
 
     // Bullying: player gains 50 gold, loses 2 envoys at this CS, every
     // OTHER major player that has at least one envoy here gets a grievance
-    // against the bully — reputation cost baked in, not caller-dependent.
+    // against the bully -- reputation cost baked in, not caller-dependent.
     gsPlayer->addGold(CS_BULLY_GOLD, aoc::sim::MoneyFlow::external());
     cs.addEnvoys(player, -2);
     cs.turnsSinceBully = 0;

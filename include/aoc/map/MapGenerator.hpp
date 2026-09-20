@@ -44,10 +44,10 @@ enum class MapSize : uint8_t {
 };
 
 /// Resource placement policy.
-///   Realistic: geology-driven — coal in sedimentary basins, copper/iron on
+///   Realistic: geology-driven -- coal in sedimentary basins, copper/iron on
 ///              continental shield, oil near subduction boundaries, uranium
 ///              near fault lines.  (Current default.)
-///   Fair:      stratified per player spawn — every civ gets roughly equal
+///   Fair:      stratified per player spawn -- every civ gets roughly equal
 ///              strategic-resource access within their starting area.
 ///   Random:    uniform per-tile chance; ignore geology layer entirely.
 enum class ResourcePlacementMode : uint8_t {
@@ -139,7 +139,7 @@ public:
         /// intermediate states. 0 = run the full sim.
         int32_t runEpochsLimit = 0;
         // DEBT: driftFraction is dead since the legacy 2D plate motion
-        // was deleted (2026-07-05 phase 1) — raster advection uses the
+        // was deleted (2026-07-05 phase 1) -- raster advection uses the
         // physical Euler-pole velocities directly. Field + UI slider
         // kept this phase to avoid unplanned UI surgery; remove both
         // with the phase-7 unification cleanup.
@@ -153,7 +153,7 @@ public:
         //
         // climatePhase: 0 = neutral, 1 = greenhouse (warmer, less ice,
         //   higher sea level), 2 = icehouse (colder, expanded ice,
-        //   lower sea level — Pleistocene maximum).
+        //   lower sea level -- Pleistocene maximum).
         int32_t climatePhase = 0;
         // seaLevelDelta: creative sea-level slider, applied as a shift
         // of the final land/water cut in Thresholds (one unit = 1000 m
@@ -168,7 +168,7 @@ public:
         // ensoState: 0 = neutral, 1 = El Niño (Pacific-east warm/wet,
         // west dry), 2 = La Niña (opposite). Affects equatorial moisture.
         int32_t ensoState = 0;
-        // milankovitchPhase: 0..1 — orbital eccentricity cycle position.
+        // milankovitchPhase: 0..1 -- orbital eccentricity cycle position.
         // 0 = circular (mild seasons), 1 = elliptical (extreme).
         float milankovitchPhase = 0.0f;
     };

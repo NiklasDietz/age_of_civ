@@ -41,7 +41,7 @@ struct WonderAdjacencyReq {
     bool requiresFlat          = false;  ///< City center must NOT be hill/mountain (Aerodrome)
 };
 
-/// Alias — same struct reused by districts/buildings. Wonder name kept
+/// Alias -- same struct reused by districts/buildings. Wonder name kept
 /// for backwards compatibility.
 using SpatialReq = WonderAdjacencyReq;
 
@@ -144,7 +144,7 @@ enum class WonderLockReason : uint8_t {
     PopulationCap     = 17, ///< Specialty districts are capped at one per three citizens
 };
 
-/// Alias — generic name for the same enum used by buildings/units/districts.
+/// Alias -- generic name for the same enum used by buildings/units/districts.
 using BuildLockReason = WonderLockReason;
 
 /// ECS component on city entities listing which wonders it contains.

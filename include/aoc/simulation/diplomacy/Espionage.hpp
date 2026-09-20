@@ -16,10 +16,10 @@
  *   {16%, 25%, 37%, 50%, 63%, 74%, 84%, 90%}
  *
  * Failure Outcomes (graduated, not binary):
- *   1. Escaped undetected — spy returns safely, no diplo penalty
- *   2. Identified — enemy knows who sent the spy, small diplo hit
- *   3. Captured — enemy holds spy (can release/imprison/execute/turn)
- *   4. Killed — spy permanently lost
+ *   1. Escaped undetected -- spy returns safely, no diplo penalty
+ *   2. Identified -- enemy knows who sent the spy, small diplo hit
+ *   3. Captured -- enemy holds spy (can release/imprison/execute/turn)
+ *   4. Killed -- spy permanently lost
  *
  * Intelligence Levels (novel mechanic):
  *   Level 0: No info (fog of war)
@@ -86,7 +86,7 @@ enum class SpyLevel : uint8_t {
 /// Previous distribution (0.16..0.90) left level-0 Recruits at 16% success
 /// for the cheapest missions, producing ~85% batch failure.  Shifted the
 /// low end up so entry-level spies have an honest shot (≈ 35%) while the
-/// top still caps near 0.92 — stronger mission flavour per promotion.
+/// top still caps near 0.92 -- stronger mission flavour per promotion.
 inline constexpr std::array<float, 8> SPY_PROBABILITY_SCALE = {
     0.35f, 0.44f, 0.52f, 0.60f, 0.68f, 0.76f, 0.85f, 0.92f
 };
@@ -111,7 +111,7 @@ enum class SpyPromotion : uint8_t {
     Count
 };
 
-/// Failure outcome — graduated, not binary.
+/// Failure outcome -- graduated, not binary.
 enum class SpyFailureOutcome : uint8_t {
     EscapedUndetected,  ///< Spy returns to capital, no diplomatic penalty
     Identified,         ///< Enemy knows who sent the spy, small diplo hit (-5)
@@ -121,7 +121,7 @@ enum class SpyFailureOutcome : uint8_t {
 
 /// Intelligence level a player has about another player.
 enum class IntelligenceLevel : uint8_t {
-    None          = 0,  ///< Fog of war — no info
+    None          = 0,  ///< Fog of war -- no info
     Basic         = 1,  ///< Buildings/districts visible (embassy)
     Military      = 2,  ///< Military composition + approximate strength
     Economic      = 3,  ///< Treasury, income/turn, production queues

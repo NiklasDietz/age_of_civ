@@ -24,7 +24,7 @@ namespace aoc::sim {
 /// LeaderBehavior defaults, so field reordering and partial files are tolerated.
 ///
 /// Security: values are parsed with std::stof and each is accepted only if it
-/// is finite — a NaN/Inf token (or an out-of-float-range literal) is rejected
+/// is finite -- a NaN/Inf token (or an out-of-float-range literal) is rejected
 /// and that field keeps its default. A hostile or corrupt file therefore can
 /// never inject non-finite genes into the simulation.
 ///

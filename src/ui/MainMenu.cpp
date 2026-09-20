@@ -143,7 +143,7 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<
 
     const float innerW = PANEL_W - PAD * 2.0f;
 
-    // Title — gilt face with a dark outline so it stays legible whether
+    // Title -- gilt face with a dark outline so it stays legible whether
     // the menu sits over parchment or the in-game map background.
     {
         LabelData ld;
@@ -424,7 +424,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
     // Two-column body. `flex = 1` on each column makes the layout pass split
     // the row evenly (see UIManager flex pass), so the columns track the panel
     // width instead of a hardcoded constant. Each stays a ScrollList purely as
-    // a small-viewport fallback — at normal sizes the content fits and no
+    // a small-viewport fallback -- at normal sizes the content fits and no
     // scrollbar engages. createScrollList sets clipChildren, so if it ever
     // does scroll the rows clip at the column edge instead of bleeding out.
     WidgetId bodyRow = ui.createPanel(outerPanel, {0.0f, 0.0f, bodyW, 0.0f},
@@ -461,7 +461,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
     [[maybe_unused]] WidgetId mapTypeLabel = ui.createLabel(
         contentPanel, {0.0f, 0.0f, innerW, 24.0f}, LabelData{"Map Type:", SECTION_TEXT, 14.0f});
 
-    // HorizontalWrap container — 6 map-type buttons flow onto a
+    // HorizontalWrap container -- 6 map-type buttons flow onto a
     // second row when the panel is narrower than 6 × button width.
     // Height is 68 (two 32px rows + spacing) so both rows fit inside
     // the clamp even on the tightest panel size.
@@ -769,7 +769,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
     if (this->m_config.mapSeed == 0u) {
         // Initial seed: draw an OS-entropy value so the field shows a
         // real number rather than 0. User can re-roll or type a custom
-        // one (text input deferred — re-roll covers the common case).
+        // one (text input deferred -- re-roll covers the common case).
         std::random_device rdSeed;
         this->m_config.mapSeed = rdSeed();
     }
@@ -822,7 +822,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         plus.repeatDelaySec = 0.35f;
         plus.repeatRateHz   = 12.0f;
         plus.onClick        = [this, &ui]() {
-            // No upper cap — user-decided value, generator clamps the
+            // No upper cap -- user-decided value, generator clamps the
             // lower bound (3) and runs whatever the user picks above it.
             this->m_config.tectonicTotalMy += 100;
             this->refresh(ui);
@@ -1002,7 +1002,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         }
         this->m_playerRows[slot] = slotRow;
 
-        // Player colour swatch — 6px accent on the leading edge.
+        // Player colour swatch -- 6px accent on the leading edge.
         IconData swatch;
         swatch.tint          = theme().playerColor(slot);
         swatch.fallbackColor = swatch.tint;

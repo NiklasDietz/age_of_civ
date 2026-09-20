@@ -29,7 +29,7 @@ GovernmentModifiers computeGovernmentModifiers(
     GovernmentModifiers result = gdef.inherentBonuses;
 
     // Combine active policy card modifiers. Limit iteration to slots
-    // actually granted by the current government tier — early govs have
+    // actually granted by the current government tier -- early govs have
     // fewer slots, so policy cards in higher slots are inert until the
     // player advances to a government with enough slots.
     const uint8_t availableSlots = std::min<uint8_t>(MAX_POLICY_SLOTS,

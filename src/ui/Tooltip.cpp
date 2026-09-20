@@ -100,7 +100,7 @@ void TooltipManager::update(float mouseX, float mouseY,
         }
     }
 
-    // River + Road indicators — gameplay-relevant (river: fresh water +
+    // River + Road indicators -- gameplay-relevant (river: fresh water +
     // trade-route eligibility; road: movement cost reduction).
     if (grid.riverEdges(tileIndex) != 0) {
         text += "\nRiver: yes (fresh water, -1 movement for crossings)";
@@ -271,7 +271,7 @@ void TooltipManager::update(float mouseX, float mouseY,
 
 void TooltipManager::showText(std::string text, float mouseX, float mouseY,
                               uint32_t screenW, uint32_t screenH) {
-    // Reset delay when text identity changes — widgets tend to have
+    // Reset delay when text identity changes -- widgets tend to have
     // stable tooltip strings, so a same-text call lets the delay keep
     // accumulating and avoids flicker while the cursor drifts inside
     // the widget bounds.
@@ -360,7 +360,7 @@ void TooltipManager::render(vulkan_app::renderer::Renderer2D& renderer2d) const 
     renderer2d.drawRoundedRect(this->m_x, this->m_y, tooltipW, tooltipH, r,
                                BRONZE_DARK.r, BRONZE_DARK.g,
                                BRONZE_DARK.b, 0.9f);
-    // Inner gilt highlight (1 px inset top edge) — drawn as a thin
+    // Inner gilt highlight (1 px inset top edge) -- drawn as a thin
     // bright rect; subtle "engraved" feel.
     renderer2d.drawRoundedRect(this->m_x + 1.0f, this->m_y + 1.0f,
                                tooltipW - 2.0f, 1.0f * scale, 0.0f,

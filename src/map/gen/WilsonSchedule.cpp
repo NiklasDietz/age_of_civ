@@ -66,7 +66,7 @@ Vec3 randomPoleAvoiding(Vec3 avoid, float minSepDeg, uint32_t& rng) noexcept {
 // ---------------------------------------------------------------------------
 // WilsonSchedule::build
 //
-// FORWARD CONSTRUCTION — starts at t = 0 in a dispersal phase so the seeded
+// FORWARD CONSTRUCTION -- starts at t = 0 in a dispersal phase so the seeded
 // cratons are spreading from the first epoch, not converging.
 //
 // Geological motivation: the simulation opens at ~3 Ga, well into the
@@ -86,7 +86,7 @@ Vec3 randomPoleAvoiding(Vec3 avoid, float minSepDeg, uint32_t& rng) noexcept {
 // from the assembly pole, computed from hash(terraneId, cycleIndex).
 // This is what produces N separate continents rather than N terranes all
 // moving in the same direction.  It is stored by deriving the target at
-// each applyTo call from the hash — deterministic, zero per-terrane storage.
+// each applyTo call from the hash -- deterministic, zero per-terrane storage.
 // ---------------------------------------------------------------------------
 
 WilsonSchedule WilsonSchedule::build(uint32_t seed, float totalMy) {

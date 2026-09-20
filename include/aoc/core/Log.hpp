@@ -27,7 +27,7 @@ enum class Severity : uint8_t {
 };
 
 /// Runtime minimum severity. Messages strictly below this are dropped
-/// before any formatting or I/O — cheap enough to leave always-on.
+/// before any formatting or I/O -- cheap enough to leave always-on.
 /// Default: Debug (everything). GA harness bumps this to Warn to skip
 /// the per-turn INFO spam that otherwise dominates wall time.
 inline std::atomic<Severity> g_minSeverity{Severity::Debug};

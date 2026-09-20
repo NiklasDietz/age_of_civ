@@ -126,7 +126,7 @@ GoodyHutReward checkAndClaimGoodyHut(GoodyHutState& state,
                          static_cast<double>(bonus),
                          static_cast<int>(def.name.size()), def.name.data());
             } else {
-                // No active research — give gold instead
+                // No active research -- give gold instead
                 player.addGold(100, aoc::sim::MoneyFlow::external());
             }
             break;

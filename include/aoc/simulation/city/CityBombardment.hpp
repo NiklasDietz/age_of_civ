@@ -15,7 +15,7 @@
  *
  * Only bombard-class units (Artillery, Siege) deal full damage to walls.
  * Melee units deal 15% of their strength as wall damage.
- * Cities with intact walls cannot be captured by melee attack — the
+ * Cities with intact walls cannot be captured by melee attack -- the
  * attacker is repelled and takes damage.
  *
  * Walls repair 10 HP per turn when not under siege (no enemy within 3 tiles).

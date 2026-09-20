@@ -123,7 +123,7 @@ void computeCityHappiness(aoc::game::Player& player, const GlobalReligionTracker
         // Processed goods happiness: having consumer goods, food, clothing, and
         // electronics in the city stockpile = citizens are well-supplied.
         // Scales with quantity (diminishing returns via sqrt) so producing MORE
-        // goods of each type makes your cities happier — driving demand for the
+        // goods of each type makes your cities happier -- driving demand for the
         // entire supply chain. This is the key incentive for industrialization.
         const CityStockpileComponent& stockpile = city->stockpile();
         {

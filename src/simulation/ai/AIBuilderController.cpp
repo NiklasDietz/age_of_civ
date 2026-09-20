@@ -67,7 +67,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
         }
     }
 
-    // WP8 — deferred removal. Calling removeUnit() inside the per-builder
+    // WP8 -- deferred removal. Calling removeUnit() inside the per-builder
     // loop frees the unique_ptr storage and risks dangling raw Unit* in the
     // builders snapshot. Collect exhausted builders here and process them in
     // a single trailing pass.
@@ -237,7 +237,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
         // Cheap heuristic: post-Electricity, if tile is owned, has any
         // improvement (so poles thread along worked tiles), and no pole
         // yet AND any neighbor tile is either a city center or already
-        // has a pole — lay a pole. Bootstraps the grid from each city
+        // has a pole -- lay a pole. Bootstraps the grid from each city
         // outward. Consumes one charge.
         if (gsPlayer->hasResearched(TechId{14}) && grid.owner(currentIdx) == this->m_player &&
             !grid.hasPowerPole(currentIdx)) {
@@ -333,7 +333,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
         // Step 1d (WP-C3): lay a Pipeline along proven oil/gas tiles.
         // Post-Mass-Production (TechId 15), if builder stands on an owned
         // tile whose resource is OIL or NATURAL_GAS (or hasn't yet been
-        // piped AND a neighbor already has a pipeline) — lay a pipeline.
+        // piped AND a neighbor already has a pipeline) -- lay a pipeline.
         // Bootstraps pipelines outward from extraction tiles so traders
         // get the hauling speed bonus on the routes that matter.
         if (gsPlayer->hasResearched(TechId{15}) && grid.owner(currentIdx) == this->m_player &&
@@ -542,7 +542,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
         // Step 2b (WP-K7): deliberate relay-seek. AI drops Trading Posts
         // along trade-route paths so caravans crossing wide neutral land
         // don't fail with "longest segment > range".
-        // 2026-05-02: aggressive variant — any passable land terrain
+        // 2026-05-02: aggressive variant -- any passable land terrain
         // qualifies (was Desert/Plains only), pair-distance gate dropped
         // to >5 hex (was >8), builder-distance gate widened to 20 (was 12),
         // post cap raised to 8 + player_id (was 3 + player_id). Audit
@@ -589,7 +589,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                         if (grid.owner(midIdx) != INVALID_PLAYER) {
                             continue;
                         }
-                        // Skip tiles that already host a Trading Post — Posts
+                        // Skip tiles that already host a Trading Post -- Posts
                         // are owner-agnostic relays, no value in re-placing.
                         // Other improvements may be overbuilt (rival Mine on
                         // razed-city tile etc.).
@@ -728,7 +728,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
         }
     }
 
-    // WP8 — trailing removal pass. Each branch that exhausted a builder
+    // WP8 -- trailing removal pass. Each branch that exhausted a builder
     // pushes its pointer here and continues the outer loop, so by the time
     // we reach this pass no later iteration still derefs the freed Unit.
     // A single builder cannot be pushed twice because every push sits on a

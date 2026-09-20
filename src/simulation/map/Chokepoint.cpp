@@ -70,7 +70,7 @@ void detectChokepoints(aoc::map::HexGrid& grid) {
 
         // Water strait: shallow water tile where 5+ neighbors are land/mountain
         // (very narrow water passage between landmasses). Threshold at 5 keeps
-        // straits rare — only single-tile gaps between landmasses qualify.
+        // straits rare -- only single-tile gaps between landmasses qualify.
         if (aoc::map::isShallowWater(terrain)) {
             int32_t nonWaterCount = validNeighbors - waterCount;
             if (nonWaterCount >= 5) {

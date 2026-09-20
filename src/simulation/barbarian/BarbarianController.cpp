@@ -476,7 +476,7 @@ void BarbarianController::moveBarbarianUnits(aoc::game::GameState& gameState,
             int32_t dist = grid.distance(unit->position(), target->position());
 
             if (dist == 1) {
-                // Adjacent: resolve melee combat. Use the Unit& overload —
+                // Adjacent: resolve melee combat. Use the Unit& overload --
                 // `unit` (barbarian attacker) and `target` (defender) are both
                 // live, non-null here (unit guarded by isDead() above; target
                 // by the `!= nullptr && !isDead()` check). The EntityId overload

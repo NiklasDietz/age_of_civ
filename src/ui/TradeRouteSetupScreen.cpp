@@ -174,7 +174,7 @@ void TradeRouteSetupScreen::buildDestinationPanel(UIManager& ui, WidgetId innerP
     const aoc::game::Player* ownerPlayer = this->m_gameState->player(this->m_player);
     if (ownerPlayer != nullptr) {
         for (const std::unique_ptr<aoc::game::City>& city : ownerPlayer->cities()) {
-            // Skip the origin city (closest city to trader — show it but grayed out
+            // Skip the origin city (closest city to trader -- show it but grayed out
             // if it's the same tile as the trader)
             int32_t dist = this->m_grid->distance(this->m_selectedTrader->position(), city->location());
 
@@ -435,7 +435,7 @@ void TradeRouteSetupScreen::close(UIManager& ui) {
 }
 
 void TradeRouteSetupScreen::refresh(UIManager& /*ui*/) {
-    // Static screen — no dynamic refresh needed while open.
+    // Static screen -- no dynamic refresh needed while open.
     // Player re-opens the screen to see updated trader/city state.
 }
 

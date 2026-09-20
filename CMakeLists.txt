@@ -611,7 +611,7 @@ endif()
 find_package(Threads REQUIRED)
 target_link_libraries(aoc_lib PUBLIC Threads::Threads)
 
-# OpenMP — used for parallel per-tile passes in MapGenerator post-pass.
+# OpenMP -- used for parallel per-tile passes in MapGenerator post-pass.
 # Optional: builds without OpenMP fall back to serial loops via the
 # AOC_HAS_OPENMP guard in the generator.
 find_package(OpenMP)
@@ -690,9 +690,9 @@ if(UNIX AND NOT APPLE AND PkgConfig_FOUND)
 endif()
 
 # WP-F: profile-guided optimization. Two-stage GCC workflow.
-#   -DAOC_PGO_PHASE=off      (default) — normal build.
-#   -DAOC_PGO_PHASE=generate — instrument. Run a training sim after.
-#   -DAOC_PGO_PHASE=use      — rebuild using the collected profiles.
+#   -DAOC_PGO_PHASE=off      (default) -- normal build.
+#   -DAOC_PGO_PHASE=generate -- instrument. Run a training sim after.
+#   -DAOC_PGO_PHASE=use      -- rebuild using the collected profiles.
 # Only applied for Clang/GNU; MSVC ignores silently.
 set(AOC_PGO_PHASE "off" CACHE STRING "PGO phase: off | generate | use")
 set_property(CACHE AOC_PGO_PHASE PROPERTY STRINGS off generate use)
@@ -941,7 +941,7 @@ add_executable(aoc_mapgen
 )
 target_link_libraries(aoc_mapgen PRIVATE aoc_lib)
 target_include_directories(aoc_mapgen SYSTEM PRIVATE third_party)
-# Match aoc_lib: cpp-httplib pool size — see comment above on aoc_lib.
+# Match aoc_lib: cpp-httplib pool size -- see comment above on aoc_lib.
 target_compile_definitions(aoc_mapgen PRIVATE CPPHTTPLIB_THREAD_POOL_COUNT=4)
 
 # --------------------------------------------------------------------------

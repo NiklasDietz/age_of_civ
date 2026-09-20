@@ -141,7 +141,7 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
         int32_t cost = 0;
         if (unit.isNaval()) {
             // 2026-05-03: Navigation tech (id 30) gates Ocean for naval units
-            // too. Without it, ships are coast/shallow-water only — matches
+            // too. Without it, ships are coast/shallow-water only -- matches
             // the same rule applied to embarked land units.
             aoc::game::Player* navOwner = gameState.player(unit.owner());
             const bool hasNavigation = navOwner != nullptr
@@ -224,7 +224,7 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
 
         // City capture: a military unit stepping onto an enemy city captures it
         // ONLY if its walls are breached (or it has no walls). Cities with
-        // intact walls cannot be walked over — the unit stops on the
+        // intact walls cannot be walked over -- the unit stops on the
         // approach tile and must continue to siege the walls first.
         // A previously captured city is not removed from the original owner's
         // `m_cities` list, so `cityAt` can still find it there.  We must check
@@ -241,7 +241,7 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
                     continue;
                 }
                 if (city->owner() == unit.owner()) {
-                    continue;  // Already captured — stale entry in old owner's list.
+                    continue;  // Already captured -- stale entry in old owner's list.
                 }
                 // Pressing into an enemy city grinds its walls, then its hit
                 // points, and captures it when both are gone. Every side

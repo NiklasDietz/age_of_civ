@@ -706,7 +706,7 @@ static void buildMechanicsEntries(std::vector<WikiEntry>& entries) {
     // WP-C3 Transit Treaty
     entries.push_back({WikiCategory::Mechanics, "Transit Treaty",
                        "Two-player trade agreement granting zero-toll right-of-passage across\n"
-                       "each other's territory. No tariff relief on goods — purely transit.\n\n"
+                       "each other's territory. No tariff relief on goods -- purely transit.\n\n"
                        "Traders of either member cross the other's tiles without paying the\n"
                        "owner's territory toll. Use for land trade routes that would\n"
                        "otherwise be blocked by hostile tariff walls.\n\n"

@@ -50,7 +50,7 @@ using WidgetId                           = uint32_t;
 inline constexpr WidgetId INVALID_WIDGET = std::numeric_limits<WidgetId>::max();
 
 /// Versioned handle used when callers need to detect widget reuse
-/// across reallocation. Plain `WidgetId` still works everywhere — this
+/// across reallocation. Plain `WidgetId` still works everywhere -- this
 /// is opt-in. Pair `{id, generation}`: if the stored generation
 /// matches the current per-slot generation, the handle is live.
 /// Unused slots bump their generation on `removeWidget`.
@@ -173,7 +173,7 @@ struct LabelData {
     /// Optional 1-pixel outline drawn behind the glyphs in 8 directions.
     /// Alpha 0 = no outline. Use for titles + chip values laid over busy
     /// or low-contrast backgrounds where readability matters more than
-    /// crispness. Cost is 8× drawText calls — fine for a handful of
+    /// crispness. Cost is 8× drawText calls -- fine for a handful of
     /// titles, avoid for body text. The outline draws the glyph in the
     /// outline colour at offsets of `pixelScale` along the 8 cardinal/
     /// diagonal directions, then the main fill on top.
@@ -247,7 +247,7 @@ struct IconData {
     uint32_t spriteId   = 0;
     Color tint          = {1.0f, 1.0f, 1.0f, 1.0f};
     Color fallbackColor = {0.5f, 0.5f, 0.5f, 1.0f};
-    /// Optional click handler — fires on left-release over the icon.
+    /// Optional click handler -- fires on left-release over the icon.
     std::function<void()> onClick;
 };
 
@@ -277,7 +277,7 @@ struct RichTextData {
 /// Unit/city portrait card. Combines a sprite with a name + stats
 /// strip. Stats are a small std::vector<pair<key,value>> rendered in
 /// two columns. Acts as scaffold until the sprite asset path lands
-/// — falls back to a tinted rect like `IconData`.
+/// -- falls back to a tinted rect like `IconData`.
 struct PortraitData {
     uint32_t spriteId = 0;
     std::string title;
@@ -470,7 +470,7 @@ struct Widget {
     // Drag-and-drop
     // ------------------------------------------------------------------
     /// Mark the widget as a drag source. Callers populate `dragPayload`
-    /// with an opaque uint32 tag (e.g. unit id, good id) — UIManager
+    /// with an opaque uint32 tag (e.g. unit id, good id) -- UIManager
     /// ferries it during a drag and hands it to the drop target.
     bool canDrag         = false;
     uint32_t dragPayload = 0;
@@ -496,7 +496,7 @@ struct Widget {
     /// Intrinsic size of the pannable content, in the same units as
     /// `computedBounds`. Set by the caller that builds the canvas (it knows
     /// the graph extent; the children are absolutely placed so layout cannot
-    /// infer it). Drives pan clamping — 0 means "unclamped".
+    /// infer it). Drives pan clamping -- 0 means "unclamped".
     float panContentW = 0.0f;
     float panContentH = 0.0f;
 
@@ -516,7 +516,7 @@ struct Widget {
     /// the selection set and supports Shift-extend / Ctrl-toggle.
     bool selectable = false;
     bool isSelected = false;
-    /// Sequence index within the parent list — used by Shift-extend
+    /// Sequence index within the parent list -- used by Shift-extend
     /// to compute the inclusive range. Auto-assigned in creation order.
     int32_t selectIndex = 0;
 
@@ -574,7 +574,7 @@ struct Widget {
 
     /// Scissor clip: when true, children render clipped to this
     /// widget's bounds via a Vulkan scissor rect. Hard guarantee over
-    /// the layout-level clamp — geometry that still spills gets
+    /// the layout-level clamp -- geometry that still spills gets
     /// cropped at the panel edge. Opt-in per panel (off by default).
     bool clipChildren = false;
 

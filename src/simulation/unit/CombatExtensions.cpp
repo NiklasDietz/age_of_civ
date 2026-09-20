@@ -337,7 +337,7 @@ ErrorCode executeBombingRun(aoc::game::GameState& gameState,
     // rest between sorties. The in-game model parks air units on that tile,
     // so the bomber's current position IS the base tile. The previous loop
     // walked every city with a tautological index compare and left basePos
-    // at (0,0) whenever it fell through — the range gate then reduced to
+    // at (0,0) whenever it fell through -- the range gate then reduced to
     // "distance from map origin to target", which is meaningless.
     const hex::AxialCoord basePos = bomber.position();
     if (grid.distance(basePos, targetTile) > air.operationalRange) {

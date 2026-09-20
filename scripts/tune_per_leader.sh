@@ -76,7 +76,7 @@ SUMMARY="$OUT_DIR/_summary.md"
         NAME="${NAMES[$i]}"
         OUT="$OUT_DIR/$(printf '%02d' "$i")_${NAME}.txt"
         [ -f "$OUT" ] || continue
-        echo "## $i — $NAME"
+        echo "## $i -- $NAME"
         echo
         echo '```'
         awk '/^Hard AI/,/^Medium AI/' "$OUT" | sed '/^Medium AI/d'

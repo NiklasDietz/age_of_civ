@@ -13,7 +13,7 @@ Why PPO over other RL algorithms?
    prone to instability in such long-horizon settings.
 
 2. **On-policy simplicity**: PPO collects trajectories, computes advantages, and
-   updates — no replay buffer needed. For self-play where we re-run the game
+   updates -- no replay buffer needed. For self-play where we re-run the game
    simulator each iteration, on-policy is natural (each game IS the experience).
 
 3. **Continuous + discrete actions**: Our AI needs both discrete choices (what to
@@ -30,7 +30,7 @@ Self-play loop:
     4. Update policy with PPO clipped objective
     5. Periodically save checkpoints and evaluate against fixed baselines
 
-This script orchestrates the game simulator as a subprocess — it doesn't modify
+This script orchestrates the game simulator as a subprocess -- it doesn't modify
 the C++ code. The policy network outputs "personality weights" that override the
 AI's LeaderBehavior, letting the learned policy control aggression, expansion,
 science focus, etc.
@@ -105,8 +105,8 @@ def run_simulation(num_players: int = 8, num_turns: int = 200) -> dict:
     """Run one headless simulation and return results.
 
     Returns dict with:
-        - "final_scores": np.ndarray (num_players,) — final EraVP
-        - "winner": int — player index with highest score
+        - "final_scores": np.ndarray (num_players,) -- final EraVP
+        - "winner": int -- player index with highest score
         - "trajectories": np.ndarray (num_players, num_turns, NUM_FEATURES)
     """
     try:
@@ -199,7 +199,7 @@ class SelfPlayPolicy(nn.Module):
             state: (batch, state_dim)
 
         Returns:
-            action_logits: list of (batch, NUM_BINS) — one per personality dim
+            action_logits: list of (batch, NUM_BINS) -- one per personality dim
             value: (batch, 1)
         """
         h = self.shared(state)
@@ -344,7 +344,7 @@ def self_play_generation(policy: SelfPlayPolicy, device: torch.device,
     personality settings lead to winning.
 
     The policy learns: given a game's early state, which personality weights
-    maximize score? This is a step toward full RL — the policy learns to
+    maximize score? This is a step toward full RL -- the policy learns to
     map state → optimal personality without actually controlling the game
     turn-by-turn.
 
@@ -413,7 +413,7 @@ def train_selfplay(args):
     """Main self-play training loop."""
 
     print("=" * 60)
-    print("Age of Civilization — Self-Play RL Training Pipeline")
+    print("Age of Civilization -- Self-Play RL Training Pipeline")
     print("=" * 60)
 
     device = detect_device()

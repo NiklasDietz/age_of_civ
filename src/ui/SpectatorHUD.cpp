@@ -10,7 +10,7 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
-// aoc::game::City is accessed only via Player::cities() — no direct include needed.
+// aoc::game::City is accessed only via Player::cities() -- no direct include needed.
 
 #include <renderer/Renderer2D.hpp>
 

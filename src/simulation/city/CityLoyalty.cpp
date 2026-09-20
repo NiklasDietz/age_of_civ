@@ -257,7 +257,7 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             loyalty.ownCityPressure *= std::max(0.10f, (0.80f + 0.20f * mult) + ownAdjust);
         }
         if (city->hasBuilding(BuildingId{13}) || city->hasBuilding(BuildingId{12})) {
-            // Telecom Hub or Research Lab — +3 communication floor.
+            // Telecom Hub or Research Lab -- +3 communication floor.
             loyalty.monumentBonus += 3.0f;
         }
 
@@ -281,7 +281,7 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         // WP-A5 combined-stress revolt: if civ-level war-weariness and
         // grievance count are both high, AND the city itself is actively
         // unhappy (happiness < -1), flip to Free-City for 10 turns. Softer
-        // than true secession — city reverts automatically.
+        // than true secession -- city reverts automatically.
         if (civStressed && !revoltedThisTurn && loyalty.revoltFreeCityTurns == 0 &&
             city->happiness().happiness < -1.0f) {
             revoltedThisTurn            = true;

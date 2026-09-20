@@ -377,7 +377,7 @@ CurrencyAmount processUnitMaintenance(aoc::game::GameState& gameState,
     // tick (one-shot). If stockpile empty, unit takes attrition damage.
     {
         int32_t fuelCity = -1; // first city found with FUEL stockpile
-        // Units don't have direct stockpile — drain from any owned city.
+        // Units don't have direct stockpile -- drain from any owned city.
         for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
             if (unit == nullptr) {
                 continue;
@@ -774,7 +774,7 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState, const aoc::
         player.removeUnit(disbandTarget);
     }
 
-    // Food-upkeep log silenced 2026-05-02 — was firing per turn per
+    // Food-upkeep log silenced 2026-05-02 -- was firing per turn per
     // civ with deficit, producing 200+ "starving" lines per sim. The
     // mechanic still drives unit desertion (logged separately on
     // disband). Famine as a STANDALONE event is gated to drought

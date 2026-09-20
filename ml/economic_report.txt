@@ -387,9 +387,9 @@ Based on 3 simulations
     HeadlessSimulation.cpp             : 2279
 
 --- 31. ISSUES DETECTED ---
-  WARNING: Goods stockpiles averaging >500. Demand may be too low — goods are piling up without being consumed.
-  CRITICAL: IncomeGoodsEcon > 0 in only 1/24 final-turn samples. Consumer goods / clothing / electronics / processed food chains may never fire — AI may not build the required buildings.
-  WARNING: Inflation hits 0.500 in 11 turn buckets — looks like a hard cap. Verify this is intentional or inflation math is saturating.
+  WARNING: Goods stockpiles averaging >500. Demand may be too low -- goods are piling up without being consumed.
+  CRITICAL: IncomeGoodsEcon > 0 in only 1/24 final-turn samples. Consumer goods / clothing / electronics / processed food chains may never fire -- AI may not build the required buildings.
+  WARNING: Inflation hits 0.500 in 11 turn buckets -- looks like a hard cap. Verify this is intentional or inflation math is saturating.
   WARNING: >30% of players famine at game end. Food balance or granary building may be broken.
   INFO: 875 (player,turn) samples with CoinTier=None after turn 300. Expected 0 once coinage transitions fire.
-  INFO: Zero stock-market investments. StockMarket AI never invests — check AIInvestmentController gating.
+  INFO: Zero stock-market investments. StockMarket AI never invests -- check AIInvestmentController gating.

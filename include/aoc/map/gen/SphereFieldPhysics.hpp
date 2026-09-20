@@ -47,13 +47,13 @@ namespace aoc::map::gen {
 /// cell from its own frontier, claims it, and pushes the neighbours.
 /// Round order is reshuffled per round so no plate has a systematic
 /// ordering advantage. Plates expand at equal rates and their
-/// frontiers collide where they meet — boundaries are jagged by
+/// frontiers collide where they meet -- boundaries are jagged by
 /// construction and depend on seed-position adjacency, not on
 /// distance to centroid.
 ///
 /// After every cell is claimed every plate has an irregular
-/// non-convex footprint. Subsequent epoch physics — subduction, ridge
-/// accretion, Wilson rifting, continental docking — reshape the
+/// non-convex footprint. Subsequent epoch physics -- subduction, ridge
+/// accretion, Wilson rifting, continental docking -- reshape the
 /// footprints over the simulated lifetime. Initial geometry is
 /// overwhelmingly overwritten by mechanism history.
 ///
@@ -86,7 +86,7 @@ void mergePlatesBatch(SphereField& field, std::vector<Plate>& plates,
 /// the area-weighted mean of the cells currently assigned to it. Run
 /// once per epoch, after subduction and ridge accretion have rewritten
 /// `field.plateId`. With Lagrangian cell tracking the plate "drifts"
-/// because its cell set changes — boundary cells flip to neighbours
+/// because its cell set changes -- boundary cells flip to neighbours
 /// (subduction) or new oceanic cells appear at ridges, and the
 /// centroid moves to follow.
 void recomputePlateCentroidsFromCells(SphereField& field, std::vector<Plate>& plates);
@@ -102,7 +102,7 @@ int32_t compactPlateList(SphereField& field, std::vector<Plate>& plates);
 /// (divergent), the boundary is a mid-ocean ridge: hot mantle wells
 /// up between the retreating plates and freezes into new oceanic
 /// lithosphere on either side. Real Earth's Atlantic floor is the
-/// archetypal example — every band of seafloor records the time it
+/// archetypal example -- every band of seafloor records the time it
 /// was extruded at the Mid-Atlantic Ridge.
 ///
 /// On a fixed lat/lon raster the new lithosphere has nowhere new to
@@ -390,7 +390,7 @@ void routeSediment(SphereField& field, const std::vector<int32_t>& receiver,
 /// isostasy / erosion. `boundaryScratch` is re-allocated per call but
 /// the same vector is reused so the caller pays only the first
 /// epoch's allocation cost. `rngState` is a single uint32_t XorShift
-/// seed advanced by Wilson rifting each epoch — kept outside the
+/// seed advanced by Wilson rifting each epoch -- kept outside the
 /// call so it remains deterministic across runs with the same map
 /// seed.
 void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,

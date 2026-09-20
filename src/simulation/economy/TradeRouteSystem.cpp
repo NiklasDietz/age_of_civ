@@ -311,7 +311,7 @@ void selectTradeGoods(const aoc::game::City& origin,
 /// Land returns goodId 0 (free). Land rail uses COAL (steam). Sea
 /// pre-Refining uses COAL, post-Refining FUEL. Air uses FUEL post-Aviation.
 /// WP-T: Land rail with Electricity tech + power-pole coverage on path
-/// switches to electric mode (free — drains power grid implicitly).
+/// switches to electric mode (free -- drains power grid implicitly).
 struct FuelSpec {
     uint16_t goodId = 0;
     float    perTile = 0.0f;
@@ -553,7 +553,7 @@ bool evaluateTradeConsent(const aoc::game::GameState& gameState,
         }
     }
 
-    // 2026-05-02: Civ6-style consent — peace is sufficient. Earlier scoring
+    // 2026-05-02: Civ6-style consent -- peace is sufficient. Earlier scoring
     // formula (baseline 40 + resource match + treasury + relations*0.5)
     // produced 19k rejections per 36-sim audit because post-war negative
     // relations swung the score below zero. Trade is supposed to be the
@@ -710,7 +710,7 @@ int32_t maxTradeRange(const aoc::game::Player& player, TradeRouteType type) {
         default: {
             // 2026-05-02: bumped baseline 4→10 + tiers up. Audit showed
             // ~5800 trade-route rejections with "longest segment > range"
-            // — civs at game start could only reach 4-tile-distant cities,
+            // -- civs at game start could only reach 4-tile-distant cities,
             // and continental neighbours are typically 8-15 hexes apart.
             // Trading Post infrastructure relays the gaps but AI doesn't
             // build them often enough; bumping baseline lets early-game
@@ -914,7 +914,7 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
 
     // 2026-05-02: Harbor district no longer required for Sea routes.
     // Caravans/traders can hire boats out of any coastal city even before
-    // a civ researches shipbuilding — Harbor + ship-tech still gate
+    // a civ researches shipbuilding -- Harbor + ship-tech still gate
     // proper naval combat units, not commerce. Removing the gate so
     // island civs and pure-coastal empires can trade across water by
     // default. Harbor still gives bonuses (district adjacency, building
@@ -961,7 +961,7 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
         }
     } else if (trader.routeType == TradeRouteType::Sea) {
         // Sea routes: compare canal vs no-canal path for profitability.
-        // Canal paths are shorter but charge tolls — only use if time savings
+        // Canal paths are shorter but charge tolls -- only use if time savings
         // outweigh the toll cost.
         std::optional<aoc::map::PathResult> canalPath = aoc::map::findPath(
             grid, from, to, 0, nullptr, INVALID_PLAYER, true, false);
@@ -1396,7 +1396,7 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
 
         // WP-R: fuel-gate movement. If fuel needed and exhausted, stall + try
         // emergency resupply from owner stockpile. After 20 idle turns, give
-        // up — caller-side toRemove handles cargo recovery.
+        // up -- caller-side toRemove handles cargo recovery.
         bool stalled = false;
 
         if (trader.fuelGoodId != 0 && trader.fuelPerTile > 0.0f) {
@@ -1470,7 +1470,7 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 // Per-good embargoes are one-directional (plan 4.3), so customs
                 // asks the receiving court's own list as well as the shipper's.
                 const PairwiseRelation& back = diplomacy->relation(cityOwner, traderOwner);
-                // C29: embargo was toothless — grievance + rep hit but cargo
+                // C29: embargo was toothless -- grievance + rep hit but cargo
                 // still delivered. Seize embargoed cargo so violation costs
                 // the trip's goods, not just reputation. Keeps physical
                 // interdiction teeth without needing a separate customs pass.
@@ -2321,7 +2321,7 @@ TradeRouteEstimate estimateTradeRouteIncome(
     }
 
     // C31: AI was booking routes at gross value. Subtract expected tolls so
-    // the utility score matches realized profit — keeps AI from signing
+    // the utility score matches realized profit -- keeps AI from signing
     // negative-EV routes when partner raised their rate.
     CurrencyAmount expectedTolls = 0;
     if (destCity.owner() != traderUnit.owner()) {

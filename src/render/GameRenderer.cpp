@@ -102,7 +102,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     // (e.g. the Continent Creator's 3D globe); UI / minimap / tooltip
     // still render in that mode and run after this block. The block
     // is large (~1500 lines) because every layer ends up packed into
-    // one Renderer2D batch — extracting it into a separate helper would
+    // one Renderer2D batch -- extracting it into a separate helper would
     // require lifting > 30 locals (hexSize, topLeftX/Y, invZoom, every
     // layer-specific scratch) into a parameter struct, which we have
     // deliberately deferred until the renderer's locals are factored
@@ -185,7 +185,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                     if (this->overlayMode == MapOverlay::TectonicPlates) {
                         cat = grid.plateId(index);
                     }
-                    // PlateBoundaries skips the fill pass entirely — only
+                    // PlateBoundaries skips the fill pass entirely -- only
                     // borders are drawn, so collision-type colours read
                     // clearly without competing against plate-id hues.
                     // CrustAge / Sediment / RockType / Margins compute their
@@ -1155,28 +1155,28 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                         if (!ch.empty() && si < ch.size()) {
                             const uint8_t f = ch[si];
                             if ((f & 0x01) != 0) {
-                                // Hurricane belt — orange
+                                // Hurricane belt -- orange
                                 fillR   = 1.0f;
                                 fillG   = 0.55f;
                                 fillB   = 0.10f;
                                 fillA   = 0.55f;
                                 useFill = true;
                             } else if ((f & 0x02) != 0) {
-                                // Tornado alley — red
+                                // Tornado alley -- red
                                 fillR   = 0.95f;
                                 fillG   = 0.10f;
                                 fillB   = 0.20f;
                                 fillA   = 0.55f;
                                 useFill = true;
                             } else if ((f & 0x04) != 0) {
-                                // Storm track — light blue
+                                // Storm track -- light blue
                                 fillR   = 0.30f;
                                 fillG   = 0.55f;
                                 fillB   = 0.95f;
                                 fillA   = 0.50f;
                                 useFill = true;
                             } else if ((f & 0x08) != 0) {
-                                // Jet stream — purple
+                                // Jet stream -- purple
                                 fillR   = 0.55f;
                                 fillG   = 0.20f;
                                 fillB   = 0.85f;
@@ -1262,7 +1262,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                         if (!fl.empty() && si < fl.size()) {
                             const uint8_t d = fl[si];
                             if (d == 0xFFu) {
-                                // Sink / endorheic — black
+                                // Sink / endorheic -- black
                                 fillR = 0.0f;
                                 fillG = 0.0f;
                                 fillB = 0.0f;
@@ -1282,21 +1282,21 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                         const auto& ref      = grid.refugium();
                         const std::size_t si = static_cast<std::size_t>(index);
                         if (!iso.empty() && si < iso.size() && iso[si] != 0) {
-                            // Magenta — biogeographically isolated continent
+                            // Magenta -- biogeographically isolated continent
                             fillR   = 0.85f;
                             fillG   = 0.20f;
                             fillB   = 0.85f;
                             fillA   = 0.55f;
                             useFill = true;
                         } else if (!bri.empty() && si < bri.size() && bri[si] != 0) {
-                            // Cyan — potential land bridge
+                            // Cyan -- potential land bridge
                             fillR   = 0.20f;
                             fillG   = 0.85f;
                             fillB   = 0.95f;
                             fillA   = 0.65f;
                             useFill = true;
                         } else if (!ref.empty() && si < ref.size() && ref[si] != 0) {
-                            // Yellow-green — glacial refugium
+                            // Yellow-green -- glacial refugium
                             fillR   = 0.65f;
                             fillG   = 0.95f;
                             fillB   = 0.20f;
@@ -1515,19 +1515,19 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                     float fx = 0.0f, fy = 0.0f;
                     bool warm = false;
                     if (lat < 0.10f) {
-                        // Equatorial counter-current — eastward.
+                        // Equatorial counter-current -- eastward.
                         fx   = +1.0f;
                         warm = true;
                     } else if (lat < 0.32f) {
-                        // Tropical (trade-wind driven) — westward.
+                        // Tropical (trade-wind driven) -- westward.
                         fx   = -1.0f;
                         warm = true;
                     } else if (lat < 0.60f) {
-                        // Mid-lat (westerlies-driven) — eastward.
+                        // Mid-lat (westerlies-driven) -- eastward.
                         fx   = +1.0f;
                         warm = false;
                     } else {
-                        // Sub-polar — slow westward.
+                        // Sub-polar -- slow westward.
                         fx   = -0.7f;
                         warm = false;
                     }
@@ -1567,7 +1567,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                     const float pN = prox(distN);
                     const float pS = prox(distS);
                     // Land east of tile = WESTERN boundary of an ocean basin
-                    // (east coast of the continent the OCEAN is east of —
+                    // (east coast of the continent the OCEAN is east of --
                     // wait, this is the WEST coast of the next continent
                     // looking east). For gyres: the western boundary
                     // current (Gulf Stream, Kuroshio) is the FAST narrow
@@ -1619,7 +1619,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
 
                     // Coriolis deflection. Moving water in NH is deflected
                     // right (clockwise rotation), in SH left (counter-clockwise).
-                    // Magnitude scales with latitude (≈ sin(lat) — strongest
+                    // Magnitude scales with latitude (≈ sin(lat) -- strongest
                     // at poles, zero at equator). Rotates each tile's flow
                     // vector by a small angle, producing the gyre curl.
                     {
@@ -1656,7 +1656,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                     const float x1 = cx + fx * L * 0.5f;
                     const float y1 = cy + fy * L * 0.5f;
                     renderer2d.drawLine(x0, y0, x1, y1, r, g, b, 1.0f, 9.0f);
-                    // Arrowhead — perpendicular from tip backward.
+                    // Arrowhead -- perpendicular from tip backward.
                     const float head      = L * 0.30f;
                     const float headBackX = -fx * head;
                     const float headBackY = -fy * head;
@@ -1738,7 +1738,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
         this->m_mapRenderer.drawTerritoryBorders(renderer2d, grid, fog, viewingPlayer, camera,
                                                  screenWidth, screenHeight);
 
-        // WP-J: adjacency arrows from hovered tile. World-space call — safe to
+        // WP-J: adjacency arrows from hovered tile. World-space call -- safe to
         // emit from within the main camera-transformed pass; drawn only when
         // tooltip manager has a valid hovered tile.
         if (this->m_tooltipManager.hasHovered()) {
@@ -2200,7 +2200,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
             const aoc::game::Unit* selUnit = nullptr;
             for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
                 for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerPtr->units()) {
-                    // selectedEntity is currently unused in the object model — skip the overlay
+                    // selectedEntity is currently unused in the object model -- skip the overlay
                     // until callers migrate to tracking selection via Unit* directly.
                     (void)unitPtr;
                 }
@@ -2256,10 +2256,10 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
         eventLog->render(renderer2d, elX, elY, EVENT_LOG_W, EVENT_LOG_H, 1.0f);
     }
 
-    // Minimap. Suppressed while a modal screen is open — the world overview
+    // Minimap. Suppressed while a modal screen is open -- the world overview
     // shouldn't peek through the tech tree, etc. Dimensions come from the
     // shared `Minimap::computeRect` helper so the click-handler in
-    // Application.cpp uses identical bounds — and now identical coordinates,
+    // Application.cpp uses identical bounds -- and now identical coordinates,
     // since both are screen-space.
     if (!this->m_minimapSuppressed) {
         Minimap::Rect mmRect = Minimap::computeRect(grid, screenHeight);

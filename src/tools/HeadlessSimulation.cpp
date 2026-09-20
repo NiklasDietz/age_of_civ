@@ -419,9 +419,9 @@ int runHeadlessSimulation(
         return 1;
     }
 
-    // CSV header — includes game-level context and training signals.
+    // CSV header -- includes game-level context and training signals.
     // IsLastPlayer: 1 if this player is the last to finish their turn (temporal
-    // pressure signal — external state is frozen, must commit all actions now).
+    // pressure signal -- external state is frozen, must commit all actions now).
     csv << "Turn,Player,PlayerCount,MapWidth,MapHeight,CivId,MetPlayersMask,IsLastPlayer,"
         << "GDP,Treasury,MoneyGood,MonetarySystem,Inflation,"
         << "Population,Cities,Military,TechsResearched,CultureTotal,"
@@ -447,7 +447,7 @@ int runHeadlessSimulation(
     LOG_INFO("Headless RNG seed: %u (%s)", actualSeed,
              (seedOverride != 0) ? "from --seed override" : "from random_device");
 
-    // Generate map. New default 140x90 (was 80x52) — bigger maps per
+    // Generate map. New default 140x90 (was 80x52) -- bigger maps per
     // user request. --map-size W x H overrides.
     aoc::map::MapGenerator::Config mapConfig{};
     mapConfig.width     = (mapWidthOverride > 0) ? mapWidthOverride : 140;
@@ -603,7 +603,7 @@ int runHeadlessSimulation(
                 ++resourcesPlaced;
             }
         }
-        // Pass 2: ring-2 fallback — ensure minting ores (indices 0,1) are placed
+        // Pass 2: ring-2 fallback -- ensure minting ores (indices 0,1) are placed
         // even for coastal cities where ring-1 has few valid land tiles.
         if (resourcesPlaced < mintingOres) {
             std::vector<aoc::hex::AxialCoord> ring2;
@@ -1371,7 +1371,7 @@ int main(int argc, char* argv[]) {
     // Auto-derive game pace from --turns. Reference is 1000t = 1.0x cost
     // (matches existing balance defaults); shorter games scale costs DOWN
     // so content fits, longer games scale UP so progression feels paced.
-    // Movement does NOT scale — shorter games naturally favor Domination.
+    // Movement does NOT scale -- shorter games naturally favor Domination.
     {
         const float ref                                 = 1000.0f;
         const float mult                                = static_cast<float>(turns) / ref;

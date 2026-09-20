@@ -71,7 +71,7 @@ struct BalanceParams {
 
     // Victory: religion dominance fraction (0..1). Each other civ must have
     // this fraction of its cities following your religion for a religious win.
-    // Audit 2026-04: pushed to 0.10 — only 10% of rival cities need to
+    // Audit 2026-04: pushed to 0.10 -- only 10% of rival cities need to
     // adopt your religion to count that civ as dominated. With multi-
     // religion crowding (every player founds), high fractions are
     // architecturally impossible.
@@ -144,7 +144,7 @@ struct BalanceParams {
 /// Access the single global balance-params instance.
 [[nodiscard]] BalanceParams& params();
 
-/// Gene layout for the balance GA. Order fixed — used by toArray/fromArray.
+/// Gene layout for the balance GA. Order fixed -- used by toArray/fromArray.
 ///
 /// Slot layout (indices 0-10):
 ///   0 baseLoyalty, 1 loyaltyPressureRadius, 2 sustainedUnrestTurns,

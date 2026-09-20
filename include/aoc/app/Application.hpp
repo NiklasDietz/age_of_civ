@@ -384,7 +384,7 @@ private:
     void destroyHUD();
     void updateHUD();
     /// Rebuild the diplo strip children from the current met/at-war
-    /// state. Cheap — drops existing children + adds one icon per
+    /// state. Cheap -- drops existing children + adds one icon per
     /// major player. Called each frame.
     void updateDiploStrip();
 
@@ -441,7 +441,7 @@ private:
     /// Turn advance speed: 1.0 = one turn per second, 10.0 = ten turns per second.
     float m_spectatorSpeed = 1.0f;
 
-    /// Fractional turn accumulator — incremented by deltaTime * speed each frame.
+    /// Fractional turn accumulator -- incremented by deltaTime * speed each frame.
     float m_spectatorTurnAccumulator = 0.0f;
 
     /// Whether the simulation advance is paused (user can still pan/zoom camera).
@@ -509,7 +509,7 @@ private:
     int32_t m_creatorHeight = 200;
     /// Total plate-drift budget for the sim, in 10ths of a map width.
     /// 1 = 0.1x map width total drift, 60 = 6x. Default 12 = 1.2 of
-    /// map width — plates traverse the map ≥ once during the sim,
+    /// map width -- plates traverse the map ≥ once during the sim,
     /// enabling multi-cycle Pangea assembly/dispersal.
     // 2026-05-04: dropped 12 -> 8 (0.6 -> 0.4 map widths total drift).
     // Earth's continents drifted ~12 % of equator-circumference over
@@ -777,7 +777,7 @@ private:
     /// UI thread never blocks on the generator.
     void consumeRegenResult();
 
-    /// Play state — when true, m_creatorTimeCurrentMy advances by one
+    /// Play state -- when true, m_creatorTimeCurrentMy advances by one
     /// physics epoch (MY_PER_EPOCH_TARGET My) every PLAY_INTERVAL
     /// seconds, looping at m_creatorTotalMy.
     bool m_creatorPlaying                    = false;
@@ -871,7 +871,7 @@ private:
     /// the tectonic sim at `timeMy` millions of years simulated. The
     /// caller passes simulated geological age, not an epoch index;
     /// the regenerator snaps to the nearest physics-epoch boundary.
-    /// SYNCHRONOUS — blocks until the new grid is in `m_hexGrid`. Use
+    /// SYNCHRONOUS -- blocks until the new grid is in `m_hexGrid`. Use
     /// at startup or anywhere the caller must have the new grid before
     /// the next instruction. For UI scrub paths, prefer `enqueueRegen`
     /// which runs the generation on a worker thread so the UI stays
@@ -910,7 +910,7 @@ private:
     /// next mouse-down (so a single drag groups into one undo step).
     /// Each entry: tileIndex + previous TerrainType (or FeatureType
     /// encoded into the same byte slot since we never mix kinds in
-    /// one action — see m_undoLastWasFeature).
+    /// one action -- see m_undoLastWasFeature).
     struct EditorChange {
         int32_t tileIndex;
         uint8_t oldValue;

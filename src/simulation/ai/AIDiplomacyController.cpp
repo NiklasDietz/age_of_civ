@@ -40,7 +40,7 @@ namespace aoc::sim::ai {
 void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                                            DiplomacyManager& diplomacy, const Market& market,
                                            aoc::Random& rng, GlobalDealTracker* dealTracker) {
-    // Use the project-wide MAX_PLAYERS (= 20) instead of a local 16 — see
+    // Use the project-wide MAX_PLAYERS (= 20) instead of a local 16 -- see
     // include/aoc/core/Types.hpp. The previous local cap silently dropped
     // players 16-19's military counts, which produced stack-buffer-out-of
     // bounds writes for 17- to 20-player games (audit 2026-05-10 #4).
@@ -180,7 +180,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
                 static_cast<int32_t>(static_cast<float>(baseWarChance) * beh.militaryAggression);
 
             // Peace cooldown: cannot re-declare war within 40 turns of a peace
-            // treaty. Was 15 — too short for 1000-turn games (allowed up to
+            // treaty. Was 15 -- too short for 1000-turn games (allowed up to
             // ~66 wars between same pair).
             constexpr int32_t WAR_COOLDOWN_TURNS = 40;
             if (rel.turnsSincePeace < WAR_COOLDOWN_TURNS) {
@@ -355,7 +355,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
                 }
             }
 
-            // H6.4: research agreement — science-focused leaders at warm relations.
+            // H6.4: research agreement -- science-focused leaders at warm relations.
             if (openToAlliance && !rel.hasResearchAgreement && relationScore > 25 &&
                 beh.scienceFocus > 0.8f) {
                 const aoc::ErrorCode ec =
@@ -368,7 +368,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
                 }
             }
 
-            // H6.4: military alliance — requires aggressive or defensive profile
+            // H6.4: military alliance -- requires aggressive or defensive profile
             // AND strong trust. Warmongers seek allies; peaceniks don't.
             if (openToAlliance && !rel.hasMilitaryAlliance && relationScore > 35 &&
                 beh.militaryAggression > 0.8f) {
@@ -382,7 +382,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
                 }
             }
 
-            // Defensive alliance — low-aggression / diplomatic profiles that
+            // Defensive alliance -- low-aggression / diplomatic profiles that
             // want the war-deterrent of mutual defense without the force
             // projection of a full military alliance. A lower aggression
             // gate (< 0.4) complements the militaryAggression > 0.8 path
@@ -402,7 +402,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
                 }
             }
 
-            // H6.4: cultural alliance — culture-focused leaders.
+            // H6.4: cultural alliance -- culture-focused leaders.
             if (openToAlliance && !rel.hasCulturalAlliance && relationScore > 25 &&
                 beh.cultureFocus > 0.8f) {
                 const aoc::ErrorCode ec =
@@ -415,7 +415,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
                 }
             }
 
-            // H6.4: religious alliance — religious-zealot leaders only.
+            // H6.4: religious alliance -- religious-zealot leaders only.
             if (openToAlliance && !rel.hasReligiousAlliance && relationScore > 25 &&
                 beh.religiousZeal > 0.8f) {
                 const aoc::ErrorCode ec =
@@ -864,7 +864,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
                         tollRate += 0.05f;
                         tollRate = std::min(tollRate, 0.50f);
                     }
-                    // C25: reciprocal tariff — mirror partner's rate if they
+                    // C25: reciprocal tariff -- mirror partner's rate if they
                     // chose a higher one. Without this, trade wars are
                     // one-sided: AI A hikes tolls, AI B keeps being nice.
                     // Add a small premium above their rate so retaliation is
@@ -1030,7 +1030,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
         const int32_t elecTick = gameState.currentTurn() + static_cast<int32_t>(this->m_player) * 3;
         const bool industrial  = (me != nullptr && aoc::sim::effectiveEraFromTech(*me).value >= 4);
         if (industrial && (elecTick % 25 == 0)) {
-            // Crude per-player energy balance — supply = sum of
+            // Crude per-player energy balance -- supply = sum of
             // power-plant building outputs regardless of fuel gating (the
             // tick on processElectricityAgreements uses lastDelivered so
             // this over-estimates at worst, which is fine for gating).
@@ -1108,7 +1108,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState, aoc:
 
                 if (bestSeller != INVALID_PLAYER && bestSurplus > 0) {
                     // Cover the deficit but no more than the seller's
-                    // surplus. Gold: 2 gold per MW per turn — MVP price
+                    // surplus. Gold: 2 gold per MW per turn -- MVP price
                     // anchor; market tuning can come later.
                     const int32_t mw          = std::min(myDeficit, bestSurplus);
                     const int32_t goldPerTurn = std::max(1, mw * 2);

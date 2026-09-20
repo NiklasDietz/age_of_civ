@@ -135,7 +135,7 @@ public:
     /// seed + tectonic params survive into the actual game launch.
     /// Caller passes a partial config; only the continent-gen knobs
     /// (mapType / seed / tectonicTotalMy / landPlateCount) are
-    /// adopted — player slots and the rest stay at defaults.
+    /// adopted -- player slots and the rest stay at defaults.
     void setContinentPreset(aoc::map::MapType mapType, uint32_t seed, int32_t tectonicTotalMy,
                             int32_t landPlateCount) {
         this->m_config.mapType         = mapType;
@@ -172,7 +172,7 @@ private:
     WidgetId m_btnStandard              = INVALID_WIDGET;
     WidgetId m_btnLarge                 = INVALID_WIDGET;
     WidgetId m_btnHuge                  = INVALID_WIDGET;
-    /// Custom map dimension labels — updated when W/H spinners fire.
+    /// Custom map dimension labels -- updated when W/H spinners fire.
     WidgetId m_widthLabel  = INVALID_WIDGET;
     WidgetId m_heightLabel = INVALID_WIDGET;
 

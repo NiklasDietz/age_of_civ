@@ -1,6 +1,6 @@
 /**
  * @file Secession.cpp
- * @brief City secession — flip a disloyal city to a neighbor or Free City.
+ * @brief City secession -- flip a disloyal city to a neighbor or Free City.
  *
  * Extracted from CityLoyalty.cpp. The trigger uses the same loyalty pressure
  * radius as the loyalty computation (cities within 9 hexes exert pressure).

@@ -128,7 +128,7 @@ def _log_path_for(csv_path: str) -> str:
 
 
 # ============================================================================
-# Log scanning — extracts per-mechanic signals from unstructured log lines.
+# Log scanning -- extracts per-mechanic signals from unstructured log lines.
 # Every subsystem logs via LOG_INFO/LOG_WARN which the headless runner dumps
 # to <csv_base>.log. Line format:
 #
@@ -144,7 +144,7 @@ _LOG_PATTERNS = {
     "religion_spread":     re.compile(r"religion spread|converted to '"),
     "espionage_assigned":  re.compile(r"Spy \(P\d+,? ?\w*\) assigned to ([^ ]+(?: [A-Z][a-z]+)*) at"),
     "espionage_success":   re.compile(r"Spy \(P\d+\) (counterfeited|stole|sabotaged|recruited|infiltrated)"),
-    "espionage_failed":    re.compile(r"Spy .* failed .* — (Identified|Captured|Killed|Escaped)"),
+    "espionage_failed":    re.compile(r"Spy .* failed .* -- (Identified|Captured|Killed|Escaped)"),
     "world_congress_prop": re.compile(r"World Congress: Player \d+ proposes '([^']+)'"),
     "world_congress_pass": re.compile(r"World Congress: '([^']+)' PASSED"),
     "world_congress_fail": re.compile(r"World Congress: '([^']+)' FAILED"),
@@ -1087,7 +1087,7 @@ def generate_report(data: dict, num_sims: int) -> str:
         lines.append(f"    Latest IR turn        : {max(log['ir_turns'])}")
     lines.append(f"  Space race projects     : {c.get('space_project', 0)}")
 
-    # 30. Log coverage summary — which source files logged at all?
+    # 30. Log coverage summary -- which source files logged at all?
     sc = log["source_counts"]
     if sc:
         lines.append("\n--- 30. LOG COVERAGE (source files emitting log lines) ---")
@@ -1115,7 +1115,7 @@ def generate_report(data: dict, num_sims: int) -> str:
 
     # Goods piling up?
     if gs and np.mean(gs) > 500 and np.mean([t.get("goods", 0) for t in data["winner_traits"]] or [0]) > 500:
-        issues.append("WARNING: Goods stockpiles averaging >500. Demand may be too low — "
+        issues.append("WARNING: Goods stockpiles averaging >500. Demand may be too low -- "
                       "goods are piling up without being consumed.")
 
     # Small nations can't survive?
@@ -1140,7 +1140,7 @@ def generate_report(data: dict, num_sims: int) -> str:
             issues.append(
                 f"CRITICAL: IncomeGoodsEcon > 0 in only {nonzero}/{len(goods_econ_values)} "
                 "final-turn samples. Consumer goods / clothing / electronics / processed "
-                "food chains may never fire — AI may not build the required buildings."
+                "food chains may never fire -- AI may not build the required buildings."
             )
 
     # Inflation hitting a hard ceiling?
@@ -1152,7 +1152,7 @@ def generate_report(data: dict, num_sims: int) -> str:
                 clamped_buckets += 1
         if clamped_buckets >= 3:
             issues.append(
-                f"WARNING: Inflation hits 0.500 in {clamped_buckets} turn buckets — "
+                f"WARNING: Inflation hits 0.500 in {clamped_buckets} turn buckets -- "
                 "looks like a hard cap. Verify this is intentional or inflation math is saturating."
             )
 
@@ -1162,7 +1162,7 @@ def generate_report(data: dict, num_sims: int) -> str:
     if total_prod > 50 and total_killed == 0:
         issues.append(
             "WARNING: Zero UnitKilled events despite "
-            f"{total_prod} units produced. Combat may never fire — "
+            f"{total_prod} units produced. Combat may never fire -- "
             "check AI war targets / movement."
         )
 
@@ -1175,7 +1175,7 @@ def generate_report(data: dict, num_sims: int) -> str:
         )
     if ev.get("WarDeclared", 0) == 0:
         issues.append(
-            "INFO: Zero WarDeclared events — fully peaceful run. "
+            "INFO: Zero WarDeclared events -- fully peaceful run. "
             "Expected for small maps but unusual on multi-civ games."
         )
 
@@ -1212,7 +1212,7 @@ def generate_report(data: dict, num_sims: int) -> str:
     if fi and all(v == 0 for v in fi):
         issues.append(
             "WARNING: IndustrialRev stays 0 for every player at game end. "
-            "Industrial Revolution triggers may never fire — check thresholds."
+            "Industrial Revolution triggers may never fire -- check thresholds."
         )
 
     # Any player dies to famine?
@@ -1238,7 +1238,7 @@ def generate_report(data: dict, num_sims: int) -> str:
         latest = popt[latest_bucket]
         if latest and max(latest) > 400:
             issues.append(
-                f"WARNING: Max population {max(latest)} at end — housing/amenity "
+                f"WARNING: Max population {max(latest)} at end -- housing/amenity "
                 "cap may not bind. Check CityGrowth housing math."
             )
 
@@ -1254,7 +1254,7 @@ def generate_report(data: dict, num_sims: int) -> str:
             if food_vals and np.mean(food_vals) < -20:
                 issues.append(
                     f"WARNING: FoodPerTurn avg {np.mean(food_vals):.1f} at turn "
-                    f"bucket {bucket} — cities starving. Check food yield vs "
+                    f"bucket {bucket} -- cities starving. Check food yield vs "
                     "population growth pacing."
                 )
                 break
@@ -1275,7 +1275,7 @@ def generate_report(data: dict, num_sims: int) -> str:
     # Log-based detectors (non-economic mechanics).
     if c.get("religion_pantheon", 0) == 0:
         issues.append(
-            "WARNING: Zero pantheons founded. Religion loop may be dead — "
+            "WARNING: Zero pantheons founded. Religion loop may be dead -- "
             "check FaithSystem / Religion.cpp AI founding path.")
     if c.get("religion_founded", 0) == 0 and c.get("religion_pantheon", 0) > 0:
         issues.append(
@@ -1283,11 +1283,11 @@ def generate_report(data: dict, num_sims: int) -> str:
             "Religion gate (faith threshold?) may be too high.")
     if c.get("espionage_assigned", 0) == 0:
         issues.append(
-            "WARNING: Zero spy missions assigned. Espionage AI never fires — "
+            "WARNING: Zero spy missions assigned. Espionage AI never fires -- "
             "check EspionageSystem mission selection.")
     if c.get("civic_completed", 0) == 0:
         issues.append(
-            "WARNING: Zero civics completed. Civic research never advances — "
+            "WARNING: Zero civics completed. Civic research never advances -- "
             "check CivicTree progression / culture accumulation.")
     if c.get("greatperson_recr", 0) == 0:
         issues.append(
@@ -1299,7 +1299,7 @@ def generate_report(data: dict, num_sims: int) -> str:
             "disabled or frequency=0.")
     if c.get("world_congress_prop", 0) == 0:
         issues.append(
-            "INFO: Zero World Congress proposals. Congress never convenes — "
+            "INFO: Zero World Congress proposals. Congress never convenes -- "
             "check activation threshold (requires diplomatic contact).")
     if sum(log["disasters"].values()) == 0:
         issues.append(
@@ -1308,11 +1308,11 @@ def generate_report(data: dict, num_sims: int) -> str:
     if c.get("secession_flip", 0) + c.get("secession_free", 0) == 0 \
             and c.get("secession_warning", 0) > 0:
         issues.append(
-            "INFO: Secession warnings fired but no cities ever flipped — "
+            "INFO: Secession warnings fired but no cities ever flipped -- "
             "loyalty floor may prevent actual revolts.")
     if c.get("bonds_issued", 0) == 0:
         issues.append(
-            "INFO: Zero IOUs issued. Bond/lending market inactive — "
+            "INFO: Zero IOUs issued. Bond/lending market inactive -- "
             "AI may never enter BondIssuer role.")
     if c.get("spec_bubble_form", 0) > 0 and c.get("spec_bubble_burst", 0) == 0:
         issues.append(
@@ -1330,19 +1330,19 @@ def generate_report(data: dict, num_sims: int) -> str:
     if c.get("monopoly_form", 0) == 0:
         issues.append(
             "INFO: Zero monopolies formed. MonopolyPricing detection may "
-            "never trigger — check market share threshold.")
+            "never trigger -- check market share threshold.")
     if c.get("commodity_trade", 0) == 0:
         issues.append(
-            "INFO: Zero commodity swaps. CommodityExchange never matches — "
+            "INFO: Zero commodity swaps. CommodityExchange never matches -- "
             "bids/asks may not overlap.")
     if c.get("stock_invest", 0) == 0:
         issues.append(
             "INFO: Zero stock-market investments. StockMarket AI never "
-            "invests — check AIInvestmentController gating.")
+            "invests -- check AIInvestmentController gating.")
     if c.get("trade_deal", 0) == 0:
         issues.append(
             "WARNING: Zero bilateral trade deals. TradeAgreement AI "
-            "negotiates nothing — check acceptance logic.")
+            "negotiates nothing -- check acceptance logic.")
     if c.get("city_founded", 0) == 0:
         issues.append(
             "CRITICAL: Zero cities founded in log. Settler AI broken.")
@@ -1352,16 +1352,16 @@ def generate_report(data: dict, num_sims: int) -> str:
             "growth may be broken.")
     if c.get("ir_achieved", 0) == 0:
         issues.append(
-            "INFO: No player achieved Industrial Revolution via log — "
+            "INFO: No player achieved Industrial Revolution via log -- "
             "cross-check with IndustrialRev scalar in section 17.")
     if c.get("currency_hyperinfl", 0) == 0 and c.get("currency_reform", 0) > 0:
         issues.append(
-            "NOTE: Currency reform fired without hyperinflation crisis — "
+            "NOTE: Currency reform fired without hyperinflation crisis -- "
             "verify trigger ordering.")
     if c.get("canal_built", 0) == 0:
         issues.append(
             "INFO: Zero canals built. TerrainModification AI may never "
-            "consider canals — low priority but signals dead feature.")
+            "consider canals -- low priority but signals dead feature.")
     if c.get("nuclear_strike", 0) > 0:
         issues.append(
             f"NOTE: {c.get('nuclear_strike', 0)} nuclear strikes fired. "
@@ -1406,7 +1406,7 @@ def main():
         args.workers = max(1, multiprocessing.cpu_count() - 1)
 
     print("=" * 60)
-    print("Age of Civilization — Economic Diagnostic Tool")
+    print("Age of Civilization -- Economic Diagnostic Tool")
     print("=" * 60)
 
     if args.analyze:

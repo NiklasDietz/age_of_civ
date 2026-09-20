@@ -72,7 +72,7 @@ void SpriteRenderer::cleanup() {
     if (this->m_descriptorPool != VK_NULL_HANDLE) {
         // Destroying the pool implicitly frees every descriptor set
         // that was allocated from it. We deliberately do NOT call
-        // vkFreeDescriptorSets on m_descriptorSet — the pool was
+        // vkFreeDescriptorSets on m_descriptorSet -- the pool was
         // created without VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT
         // so individual frees are not permitted. Letting the pool
         // reclaim everything in one shot is the documented Vulkan
@@ -484,7 +484,7 @@ void SpriteRenderer::flushBatch(VkCommandBuffer cmdBuffer) {
 
         // The buffer is HOST_COHERENT (createBuffers sets
         // VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) so an explicit
-        // vkFlushMappedMemoryRanges is not required — coherent memory
+        // vkFlushMappedMemoryRanges is not required -- coherent memory
         // is implicitly visible to the GPU on queue submission.
 
         const VkBuffer instBuffers[] = {instanceBuffer->handle()};

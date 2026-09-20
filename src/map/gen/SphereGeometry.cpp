@@ -309,7 +309,7 @@ MollweideInverseResult tileToLatLon(int32_t col, int32_t row, int32_t width, int
 // ---------------------------------------------------------------------------
 //
 // nx = (lon + 180) / 360, ny = (90 - lat) / 180. Trivial inverse. The
-// rectangle is fully populated — no polar void corners — but areas
+// rectangle is fully populated -- no polar void corners -- but areas
 // near the poles are stretched horizontally by 1/cos(lat). Useful as
 // a "show me the whole sphere flat" mode and matches how most game
 // world maps render lat/lon textures.
@@ -371,7 +371,7 @@ static MollweideInverseResult mercatorInverse(float mapX, float mapY) {
 //
 // Tabulated pseudocylindrical (Robinson 1974). The standard table
 // gives X(lat) and Y(lat) at every 5° of latitude; we interpolate
-// linearly between table entries. A common atlas projection — areas
+// linearly between table entries. A common atlas projection -- areas
 // and shapes are both moderately preserved (no exact equal-area, no
 // exact conformal, but the global look is "natural").
 static const float kRobinsonX[19] = {1.0000f, 0.9986f, 0.9954f, 0.9900f, 0.9822f, 0.9730f, 0.9600f,

@@ -355,7 +355,7 @@ void processProductionQueues(aoc::game::GameState& gameState, aoc::map::HexGrid&
                 // Item is production-complete but lacks the consumable goods to
                 // finish. Leave progress at its accumulated value (do NOT pin it
                 // to totalCost) so the queue head is not silently wedged at 100%
-                // forever — it retries next turn once the good arrives. Warn so
+                // forever -- it retries next turn once the good arrives. Warn so
                 // the stall is diagnosable.
                 LOG_WARN("Production stalled in %s: %.*s needs good %u (insufficient stock)",
                          city->name().c_str(), static_cast<int>(item.name.size()),
@@ -385,7 +385,7 @@ void processProductionQueues(aoc::game::GameState& gameState, aoc::map::HexGrid&
             // Consume resources. The pre-check above already guaranteed
             // availability, so a false from consumeGoods means the stockpile
             // underflowed unexpectedly (a real bug). Abort the completion for
-            // this item — do NOT produce a unit/building we could not pay for —
+            // this item -- do NOT produce a unit/building we could not pay for --
             // and warn so the discrepancy is surfaced.
             bool consumed            = true;
             uint16_t underflowGoodId = 0xFFFF;
@@ -526,7 +526,7 @@ void processProductionQueues(aoc::game::GameState& gameState, aoc::map::HexGrid&
                              static_cast<int>(item.name.size()), item.name.c_str(),
                              city->name().c_str());
                     // Pop from queue without granting wonder. Skip the
-                    // shared `popCompleted()` below — we already erased the
+                    // shared `popCompleted()` below -- we already erased the
                     // queue head here, and a second erase would drop the
                     // *next* item the player just promoted into slot 0.
                     if (!queue.queue.empty()) {
@@ -541,7 +541,7 @@ void processProductionQueues(aoc::game::GameState& gameState, aoc::map::HexGrid&
                          city->name().c_str(), static_cast<unsigned>(city->owner()));
 
                 // A7 Oracle (WonderId 13): grant the owner one free
-                // researchable civic — the first eligible civic whose
+                // researchable civic -- the first eligible civic whose
                 // prereqs are met and which isn't already completed.
                 if (wonderId == 13) {
                     PlayerCivicComponent& civics = gsPlayer->civics();

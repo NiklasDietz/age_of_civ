@@ -18,7 +18,7 @@
 
 namespace aoc::sim {
 
-// A7: Taj Mahal (WonderId 16) — "+1 era score per Golden Age". On Golden Age
+// A7: Taj Mahal (WonderId 16) -- "+1 era score per Golden Age". On Golden Age
 // entry, seed the next accumulation period with a positive head-start so
 // subsequent Golden Ages chain more reliably for the owner.
 static bool playerOwnsTajMahal(const aoc::game::Player& player) {

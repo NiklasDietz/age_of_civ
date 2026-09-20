@@ -25,7 +25,7 @@ Why a Transformer, not an LSTM/GRU or plain MLP?
 
 4. **Proven on tabular time-series**: Recent work (TabTransformer, FT-Transformer)
    shows transformers match or beat gradient-boosted trees on tabular data when
-   combined with proper feature embedding — which is our situation exactly.
+   combined with proper feature embedding -- which is our situation exactly.
 
 Why NOT a larger model (GPT-style decoder, diffusion model)?
 - Our feature space is only 18 floats per timestep, not language tokens.
@@ -106,7 +106,7 @@ CSV_COLUMNS_LEGACY = [
     "GovernmentType"
 ]
 
-# Features used for training — game-level context is included so the model
+# Features used for training -- game-level context is included so the model
 # learns that a 4-player game plays differently from a 12-player game, and
 # that playing as Montezuma (CivId=8, aggressive) differs from Gandhi (CivId=9).
 FEATURE_COLUMNS = [
@@ -130,8 +130,8 @@ def load_simulation_csv(filepath: str) -> dict:
     Returns:
         {
             "sequences": np.ndarray (num_players, num_turns, num_features),
-            "winner": int (player id of winner — highest final EraVP),
-            "final_scores": np.ndarray (num_players,) — final EraVP per player
+            "winner": int (player id of winner -- highest final EraVP),
+            "final_scores": np.ndarray (num_players,) -- final EraVP per player
         }
     """
     with open(filepath, "r") as f:
@@ -162,7 +162,7 @@ def load_simulation_csv(filepath: str) -> dict:
             if col in row:
                 sequences[player_idx, turn_idx, fi] = float(row[col])
             else:
-                # Legacy CSV missing context columns — fill with defaults
+                # Legacy CSV missing context columns -- fill with defaults
                 if col == "PlayerCount":
                     sequences[player_idx, turn_idx, fi] = float(num_players)
                 elif col == "MapWidth":
@@ -290,7 +290,7 @@ class CivTransformer(nn.Module):
         - Input projection: 18 * 64 = 1,152
         - Each transformer layer: ~4 * 64^2 = 16,384 (attention + FFN)
         - Output heads: 64 * 2 + 64 * 1 = 192
-        - Total: ~34K parameters — fast on CPU, resistant to overfitting on 80 samples
+        - Total: ~34K parameters -- fast on CPU, resistant to overfitting on 80 samples
     """
 
     def __init__(self, num_features: int = NUM_FEATURES, d_model: int = 64,
@@ -352,7 +352,7 @@ class CivTransformer(nn.Module):
 class CivTransformerBottleneck(nn.Module):
     """Transformer with attention bottleneck for human-like limited perception.
 
-    A human player doesn't process all 300 turns of history equally — they
+    A human player doesn't process all 300 turns of history equally -- they
     focus on recent turns, active threats, and key milestones. This model
     simulates that by:
 
@@ -536,7 +536,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60)
-    print("Age of Civilization — Supervised AI Training Pipeline")
+    print("Age of Civilization -- Supervised AI Training Pipeline")
     print("=" * 60)
 
     # Device

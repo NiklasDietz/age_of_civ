@@ -12,15 +12,15 @@
 
 namespace aoc::ui {
 
-// Kept deliberately concrete — a tip that restates the UI ("click the button
+// Kept deliberately concrete -- a tip that restates the UI ("click the button
 // to build") teaches nothing. Each of these names a real mechanic the sim
 // actually models.
 const std::array<const char*, 14> LoadingScreen::TIPS = {
     "Cities founded on a river or coast gain extra trade and fresh water.",
-    "Keep loyalty above 30 — a city that stays disloyal will revolt and can cost you the game.",
+    "Keep loyalty above 30 -- a city that stays disloyal will revolt and can cost you the game.",
     "Citizens must be assigned to tiles. An unworked tile yields nothing.",
     "Eureka bonuses cut a technology's cost. Meeting one early pays off all game.",
-    "Trade routes need a road or river path — scout the terrain before committing a merchant.",
+    "Trade routes need a road or river path -- scout the terrain before committing a merchant.",
     "Hills give defenders a real combat edge. Fight uphill only when you outnumber them.",
     "Buildings have capacity tiers. Upgrading an existing one often beats building a new one.",
     "Ranged units strike without retaliation. Screen them with melee to keep them alive.",
@@ -28,7 +28,7 @@ const std::array<const char*, 14> LoadingScreen::TIPS = {
     "Watch your treasury: negative gold forces automatic unit disbandment.",
     "Diplomatic favour is spendable. Bank it before you need a vote.",
     "Founding a religion early gives you first pick of its beliefs.",
-    "Roads cut movement cost — connect cities before a war, not during one.",
+    "Roads cut movement cost -- connect cities before a war, not during one.",
     "Every leader has an agenda. Matching it turns an AI rival into a lasting ally.",
 };
 

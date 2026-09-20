@@ -2,7 +2,7 @@
  * @file Application_HUD.cpp
  * @brief HUD build/update/rebuild methods split out of Application.cpp.
  *
- * These functions still belong to `aoc::app::Application` — C++ lets a
+ * These functions still belong to `aoc::app::Application` -- C++ lets a
  * class's methods live in multiple translation units as long as the
  * class is declared in a common header. Splitting here pulled ~950
  * lines out of the 3800-line Application.cpp without semantic change.
@@ -103,7 +103,7 @@ void Application::buildHUD() {
     // ================================================================
     // Top bar: full width. Resources on left, buttons on right.
     // ================================================================
-    // Top bar — gradient from deep slate to black plus a gold hairline
+    // Top bar -- gradient from deep slate to black plus a gold hairline
     // bottom accent. Non-rounded so it flushes with the window edge.
     // Mahogany frame top-bar with bronze rail (style guide §9.1).
     aoc::ui::PanelData topBg;
@@ -315,10 +315,10 @@ void Application::buildHUD() {
             this->m_gameState.setHumanPlayerId(tookOver);
             LOG_INFO("HUD overtake: player %u is now human-controlled",
                      static_cast<unsigned>(tookOver));
-            this->m_notificationManager.push("Took over civ — switching control", 3.0f, 0.4f, 0.9f,
+            this->m_notificationManager.push("Took over civ -- switching control", 3.0f, 0.4f, 0.9f,
                                              0.4f);
         } else {
-            this->m_notificationManager.push("No civ selected — click civ in scoreboard first",
+            this->m_notificationManager.push("No civ selected -- click civ in scoreboard first",
                                              2.5f, 0.9f, 0.6f, 0.3f);
         }
     });
@@ -606,7 +606,7 @@ void Application::buildHUD() {
         }
     }
 
-    // End Turn — primary action button: bronze with gilt label.
+    // End Turn -- primary action button: bronze with gilt label.
     aoc::ui::ButtonData endTurnBtn;
     endTurnBtn.label        = "End Turn";
     endTurnBtn.fontSize     = 15.0f;
@@ -623,7 +623,7 @@ void Application::buildHUD() {
         {0.0f, 0.0f, aoc::ui::theme().scaled(130.0f), aoc::ui::theme().scaled(40.0f)},
         std::move(endTurnBtn));
 
-    // "Waiting for you" banner above the end-turn button — visible when
+    // "Waiting for you" banner above the end-turn button -- visible when
     // the human player is the last one still acting this turn.
     this->m_lastPlayerBanner = this->m_uiManager.createPanel(
         {0.0f, 0.0f, aoc::ui::theme().scaled(150.0f), aoc::ui::theme().scaled(24.0f)},
@@ -726,7 +726,7 @@ void Application::updateDiploStrip() {
         // Clickable → open diplomacy screen focused on this civ.
         aoc::ui::Widget* iw = this->m_uiManager.getWidget(iconId);
         if (iw != nullptr) {
-            // Flash red border if at war — rely on `flash` animation.
+            // Flash red border if at war -- rely on `flash` animation.
             if (atWar) {
                 this->m_uiManager.flash(iconId, {0.8f, 0.2f, 0.2f, 0.4f}, 1.0f);
             }
@@ -793,7 +793,7 @@ void Application::updateHUD() {
     // Selection-change detection: rebuild the unit action panel whenever
     // the selected unit or city pointer changes. Without this, clicking
     // a unit on the map sets `m_selectedUnit` but the action panel stays
-    // in its null-selection "End Turn only" form — left-click appears to
+    // in its null-selection "End Turn only" form -- left-click appears to
     // do nothing even though right-click-to-move still works because
     // `handleContextAction` reads `m_selectedUnit` directly.
     if (this->m_selectedUnit != this->m_prevSelectedUnit ||
@@ -853,7 +853,7 @@ void Application::updateHUD() {
 
     // Update resource display in top bar
     // Fill the per-yield chip labels (gold/sci/cul/faith). Per-tick text
-    // updates only — widget chrome stays static.
+    // updates only -- widget chrome stays static.
     {
         const aoc::game::Player* humanHud = this->m_gameState.humanPlayer();
         std::string goldText, sciText, culText, faithText, tourismText;
@@ -1238,7 +1238,7 @@ void Application::rebuildUnitActionPanel() {
     auto makeActionBtn = [this](const std::string& label, aoc::ui::Color tint,
                                 std::function<void()> onClick) {
         // Action buttons: parchment-dim with bronze hover, ink label.
-        // `tint` left in for callers that want category accent — used as
+        // `tint` left in for callers that want category accent -- used as
         // a thin colored ribbon on the left edge in future revision.
         (void)tint;
         constexpr float ACTION_BTN_W2 = 125.0f;
@@ -1761,7 +1761,7 @@ void Application::rebuildUnitActionPanel() {
         // -- Build Pole (WP-C3) --
         // Requires Electricity (TechId 14). Lays a PowerPole on the unit's
         // current tile. Consumes one builder charge. Allowed regardless of
-        // whether another improvement already sits on the tile — poles
+        // whether another improvement already sits on the tile -- poles
         // stack with any existing Farm/Mine/etc.
         makeActionBtn("Build Pole", {0.30f, 0.28f, 0.15f, 0.9f}, [this, selectedUnitPtr]() {
             if (selectedUnitPtr == nullptr) {

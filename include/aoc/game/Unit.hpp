@@ -85,7 +85,7 @@ public:
     /// Tiles the unit stepped through during the current turn.  Populated by
     /// moveUnitAlongPath, read + cleared by Application once per turn to feed
     /// fog-of-war reveal so intermediate tiles along an auto-move path stay
-    /// Revealed after the unit moves on — instead of only the final position
+    /// Revealed after the unit moves on -- instead of only the final position
     /// becoming Visible while the traversed tiles stay Unseen.
     [[nodiscard]] const std::vector<aoc::hex::AxialCoord>& movementTrace() const { return this->m_movementTrace; }
     std::vector<aoc::hex::AxialCoord>& movementTrace() { return this->m_movementTrace; }

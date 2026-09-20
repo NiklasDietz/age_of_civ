@@ -195,7 +195,7 @@ void processElectricityAgreements(aoc::game::GameState& gameState,
         }
 
         // Gold settlement. Buyer pays seller. If buyer can't afford, contract
-        // is suspended for the turn — but stays active so one bad turn
+        // is suspended for the turn -- but stays active so one bad turn
         // doesn't tear up a long-term deal. Seller sees no revenue and no
         // delivery (lastDeliveredEnergy set to 0 below).
         aoc::game::Player* buyerPlayer  = gameState.player(a.buyer);

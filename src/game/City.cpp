@@ -237,7 +237,7 @@ void City::autoAssignWorkers(const aoc::map::HexGrid& grid,
         if (resId.isValid() && resId.value < aoc::sim::goodCount()) {
             const aoc::sim::GoodDef& gd = aoc::sim::goodDef(resId.value);
             if (gd.category == aoc::sim::GoodCategory::RawStrategic) {
-                score += 8.0f;  // Strategic: oil/coal/iron/etc — chain-feeding
+                score += 8.0f;  // Strategic: oil/coal/iron/etc -- chain-feeding
             } else {
                 score += 2.0f;  // Generic resource bonus
             }

@@ -5,7 +5,7 @@ Pretrained PPO: supervised pretraining → self-play reinforcement learning.
 This implements the AlphaGo-style two-phase training:
 
 Phase 1 (Supervised): Train a Transformer on simulation data to predict winners.
-    This gives the model a "sense of what winning looks like" — feature extraction
+    This gives the model a "sense of what winning looks like" -- feature extraction
     layers learn which game-state patterns correlate with victory.
 
 Phase 2 (RL Fine-tuning): Transfer the pretrained encoder into a PPO policy

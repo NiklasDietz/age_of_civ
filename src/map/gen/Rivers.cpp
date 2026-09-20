@@ -122,7 +122,7 @@ void MapGenerator::generateRivers(HexGrid& grid, aoc::Random& rng) {
     // state represents "we are standing on `tile`, and the last step into
     // this tile used direction `prevDir` (from the previous tile to this
     // tile)".  A step is legal iff its direction satisfies (dir - prevDir)
-    // mod 6 ∈ {2, 4} — that constraint guarantees the two river-edges on
+    // mod 6 ∈ {2, 4} -- that constraint guarantees the two river-edges on
     // any intermediate tile share a vertex, producing a Civ 6-style
     // continuous curve instead of opposite-side bars.
     //

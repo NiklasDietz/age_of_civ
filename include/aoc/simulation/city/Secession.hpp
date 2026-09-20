@@ -1,7 +1,7 @@
 #pragma once
 
 /// @file Secession.hpp
-/// @brief City secession resolution — a distinct mechanic from loyalty decay.
+/// @brief City secession resolution -- a distinct mechanic from loyalty decay.
 ///
 /// Extracted from CityLoyalty.cpp so the "city flips owner" control flow lives
 /// on its own axis. Loyalty is the trigger; secession is the consequence.

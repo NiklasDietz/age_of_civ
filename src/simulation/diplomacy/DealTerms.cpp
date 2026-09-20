@@ -409,7 +409,7 @@ ErrorCode acceptDeal(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
             // Severity convention (Grievance.cpp:49-97): all grievances
             // are stored as NEGATIVE values and summed into a negative
             // opinion modifier. Prior +50 actually improved the
-            // fromPlayer's opinion of toPlayer — opposite of intent.
+            // fromPlayer's opinion of toPlayer -- opposite of intent.
             g.severity       = -50;
             g.turnsRemaining = 0; // Permanent (tickGrievances only
                                   // decrements when > 0)

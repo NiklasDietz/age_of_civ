@@ -3,7 +3,7 @@
  * @brief Embedded simulation runner for GA fitness evaluation.
  *
  * Each simulation creates its own GameState, grid, RNG, and AI controllers.
- * No shared mutable state — fully thread-safe.
+ * No shared mutable state -- fully thread-safe.
  */
 
 #include "FitnessEvaluator.hpp"
@@ -351,7 +351,7 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
     // Main simulation loop (no CSV, no progress bar)
     for (int32_t turn = 1; turn <= turns; ++turn) {
         // Fast SIGINT/SIGTERM abort: check once per turn. Relaxed load is
-        // fine — late by one turn is acceptable for a shutdown path.
+        // fine -- late by one turn is acceptable for a shutdown path.
         if (stopFlag != nullptr && stopFlag->load(std::memory_order_relaxed)) {
             result.valid = false;
             return result;
@@ -882,7 +882,7 @@ void evaluatePopulation(std::vector<Individual>& population,
     // common receives ~0.
     //
     // Also track ALL game endings (regardless of winner) for diagnostic output
-    // — this exposes whether non-Score/Culture conditions ever actually fire,
+    // -- this exposes whether non-Score/Culture conditions ever actually fire,
     // independent of whether the evaluated subject happened to win.
     constexpr std::size_t VT_COUNT = aoc::sim::VICTORY_TYPE_COUNT;
     std::array<int32_t, VT_COUNT> winsByType{};

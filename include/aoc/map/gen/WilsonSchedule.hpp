@@ -15,7 +15,7 @@
  * No constant can answer a question about the wrong object; that is the
  * evidence for this prescribed approach (commit `4086c17`).
  *
- * **Design (V4 dispersal-only — DISABLED, rate = 0).** A schedule of
+ * **Design (V4 dispersal-only -- DISABLED, rate = 0).** A schedule of
  * `numCycles` purely dispersal phases is drawn ONCE at t = 0.  Every cycle
  * has `assemblyStartMy = -9999` (prehistory sentinel), so no assembly phase
  * ever fires.  Assembly poles are still drawn per cycle and serve as the

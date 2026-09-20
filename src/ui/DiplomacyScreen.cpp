@@ -185,7 +185,7 @@ void DiplomacyScreen::open(UIManager& ui) {
         return;
     }
 
-    // Iterate over MET players only. Unmet civs don't surface here —
+    // Iterate over MET players only. Unmet civs don't surface here --
     // meeting someone via unit contact populates `hasMet`, then they
     // appear in diplomacy. Prevents the earlier exploit where every
     // player was visible from turn 0.
@@ -292,7 +292,7 @@ void DiplomacyScreen::open(UIManager& ui) {
         }
         if (rel.isAtWar) { stanceAccent = tokens::DIPLO_AT_WAR; }
 
-        // Player info panel — full card chrome: parchment surface,
+        // Player info panel -- full card chrome: parchment surface,
         // stance-coloured accent bar + border, gilt highlight, mahogany
         // shadow underline. Cards visually flag at-a-glance whether the
         // civ is friend or foe before you read the labels.
@@ -314,7 +314,7 @@ void DiplomacyScreen::open(UIManager& ui) {
             ppWidget->childSpacing = 4.0f;
         }
         ui.setWidgetTooltip(playerPanel,
-            std::string(civDefRef.name) + " — " + std::string(civDefRef.leaderName)
+            std::string(civDefRef.name) + " - " + std::string(civDefRef.leaderName)
             + "\nStance: " + std::string(aoc::sim::stanceName(stance))
             + (rel.isAtWar ? " (AT WAR)" : "")
             + "\nRelation score: " + std::to_string(score));

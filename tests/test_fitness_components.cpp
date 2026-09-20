@@ -1,6 +1,6 @@
 /**
  * @file test_fitness_components.cpp
- * @brief Pins playerOutcomeScore (ml/cpp/FitnessEvaluator.hpp) — the
+ * @brief Pins playerOutcomeScore (ml/cpp/FitnessEvaluator.hpp) -- the
  *        outcome-component fitness formula the GA optimises against.
  *
  * Pins:

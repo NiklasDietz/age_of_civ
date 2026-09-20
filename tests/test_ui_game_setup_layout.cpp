@@ -82,7 +82,7 @@ TEST_CASE("game setup body is two side-by-side scroll columns") {
     const Widget* b = scrollLists[1];
     // Side by side, not stacked: distinct x, overlapping y band.
     CHECK(a->computedBounds.x != b->computedBounds.x);
-    // Roughly equal widths — both columns carry flex = 1.
+    // Roughly equal widths -- both columns carry flex = 1.
     CHECK(std::abs(a->computedBounds.w - b->computedBounds.w) < 2.0f);
     // Non-degenerate: a zero-width column means the flex pass did not run.
     CHECK(a->computedBounds.w > 100.0f);

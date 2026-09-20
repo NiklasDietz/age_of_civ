@@ -49,7 +49,7 @@ std::vector<TechDef> buildTechDefs() {
         {}, {BuildingId{2}, BuildingId{27}, BuildingId{32}}, {}});
     techs.push_back({TechId{13}, "Economics", EraId{4}, 960, {{TechId{9}}}, {}, {BuildingId{21}}, {}});
 
-    // Era 5: Modern. Costs restored to 1500-1800 band — bulk era-5 cuts
+    // Era 5: Modern. Costs restored to 1500-1800 band -- bulk era-5 cuts
     // backfired in audit. Late-era pacing now adjusted at era-6/7 only.
     techs.push_back({TechId{14}, "Electricity", EraId{5}, 1500, {{TechId{11}}},
         {}, {BuildingId{4}, BuildingId{28}, BuildingId{31}}, {}});
@@ -379,7 +379,7 @@ std::vector<TechDef> buildTechDefs() {
                 if (rit != expandedRemap.end()) {
                     def.prerequisites.push_back(TechId{rit->second});
                 }
-                // Else: dangling reference — silently drop so the tech can
+                // Else: dangling reference -- silently drop so the tech can
                 // still be researched rather than trapping it permanently.
             }
         }

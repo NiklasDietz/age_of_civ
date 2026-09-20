@@ -293,7 +293,7 @@ std::vector<ProductionRecipe> buildRecipes() {
     // ================================================================
     // Precision manufacturing chain.  Surface Plate used to be its own
     // tracked good, but it's a tech/flavour concept ("Precision
-    // Engineering") not a tradeable commodity — so both entry recipes
+    // Engineering") not a tradeable commodity -- so both entry recipes
     // now produce PRECISION_INSTRUMENTS directly.  Two paths: an Iron-age
     // basic version and an Industrial glass/copper-wire premium.
     // ================================================================
@@ -332,7 +332,7 @@ std::vector<ProductionRecipe> buildRecipes() {
     // 2026-05-03: outputs bumped (1→2 / 1→2 / 1→2) to make this chain
     // profitable enough for the recipe ranker to prioritise. Audit showed
     // only 5/432 civs ever produced Semiconductors despite 37 building
-    // Semi Fab — recipes ranked below higher-output basic chains. Doubling
+    // Semi Fab -- recipes ranked below higher-output basic chains. Doubling
     // output flips the profitability comparison and lets IR #3 fire.
     recipes.push_back({21,
                        "Fabricate Semiconductors",
@@ -361,7 +361,7 @@ std::vector<ProductionRecipe> buildRecipes() {
     // Software: two paths, reflecting the knowledge-economy idea that a
     // resource-poor civ with strong research infrastructure can still
     // export code.
-    //   Premium: full Computers on hand (not consumed — "infrastructure")
+    //   Premium: full Computers on hand (not consumed -- "infrastructure")
     //             → Software 2 per batch, Research Lab.
     //   Bootstrap: Microchips consumed directly, no Computers needed
     //             → Software 1 per batch, Research Lab.  Lets a civ start
@@ -552,7 +552,7 @@ std::vector<ProductionRecipe> buildRecipes() {
         {45, "Distill Biofuel (Sugar)", {{goods::SUGAR, 3}}, goods::BIOFUEL, 1, BuildingId{33}, 1});
 
     // ================================================================
-    // Natural Gas processing — the map seeds NATURAL_GAS tiles but no
+    // Natural Gas processing -- the map seeds NATURAL_GAS tiles but no
     // recipe consumed them, so gas sat unused.  Gas runs through the same
     // Refinery as oil (BuildingId{2}) but yields slightly less: 2 gas →
     // 1 fuel + 1 plastics.  This gives civs an OIL-chain alternative when
@@ -579,13 +579,13 @@ std::vector<ProductionRecipe> buildRecipes() {
                        TechId{12}}); // Refining
 
     // ================================================================
-    // Biogas — renewable gas substitute from livestock/food waste.
+    // Biogas -- renewable gas substitute from livestock/food waste.
     // Available once Biofuel Plant is built; yields less than refined
     // natural gas but needs no gas tile.
     // ================================================================
     // WP-D2: Biogas output bumped 1→2 so the ranker actually picks it over
     // wheat/sugar biofuel in civs with surplus cattle + wood. Same building
-    // (33) as biofuel recipes, so preference still matters — but now the
+    // (33) as biofuel recipes, so preference still matters -- but now the
     // profit margin is competitive.
     recipes.push_back({52,
                        "Brew Biogas",
@@ -602,7 +602,7 @@ std::vector<ProductionRecipe> buildRecipes() {
     // Aluminium, Bronze) a downstream consumer so they are worth making.
     // ================================================================
 
-    // Clay-fired bricks — alternative to Stone bricks, available from the
+    // Clay-fired bricks -- alternative to Stone bricks, available from the
     // Workshop without needing a Quarry or Mountain Mine.  Keeps CLAY tiles
     // useful before Masonry unlocks.
     recipes.push_back(
@@ -615,11 +615,11 @@ std::vector<ProductionRecipe> buildRecipes() {
         {54, "Process Rice", {{goods::RICE, 2}}, goods::PROCESSED_FOOD, 2, BuildingId{9}, 1});
 
     // (Aluminium already flows directly into Aircraft Components recipe 25
-    //  — no separate smelting step.  Attempted a self-loop refining recipe
+    //  -- no separate smelting step.  Attempted a self-loop refining recipe
     //  but that blew out the profitability ranker because the 3:2 ratio
     //  compounded infinitely.  Leaving raw → aircraft as the single step.)
 
-    // Bronze tools — dead-end good gets a simple downstream use as a Tools
+    // Bronze tools -- dead-end good gets a simple downstream use as a Tools
     // input branch.  3 Bronze + 1 Wood → 2 Tools, alternative to the iron
     // path (recipe 6).  Lets early bronze age civs produce tools before
     // Iron Working.
@@ -646,7 +646,7 @@ std::vector<ProductionRecipe> buildRecipes() {
     // Industrial Equipment → Armored Vehicles input.  Was a capstone dead
     // end (nothing consumed it).  Now acts as a "heavy machinery" input
     // that gives Armored Vehicles a 50% output bump when present.  Simpler
-    // than restructuring the armored-vehicles recipe — this is an
+    // than restructuring the armored-vehicles recipe -- this is an
     // independent premium variant.
     recipes.push_back({58,
                        "Heavy-Plated Armored Vehicles",
@@ -687,7 +687,7 @@ std::vector<ProductionRecipe> buildRecipes() {
                        1,
                        TechId{24}});
 
-    // WP-B3: Rare-Earth Semiconductors — alternate input path for civs
+    // WP-B3: Rare-Earth Semiconductors -- alternate input path for civs
     // that have a Rare Earth deposit (mountain tile) or Lunar Colony
     // byproduct. Higher output than the standard Precision+Wire recipe,
     // compensating for the scarce raw. Same Semiconductor Fab building
@@ -847,7 +847,7 @@ std::vector<ProductionRecipe> buildRecipes() {
                        BuildingId{0},
                        1});
 
-    // (Uranium intentionally has no refining recipe in this game — Nuclear
+    // (Uranium intentionally has no refining recipe in this game -- Nuclear
     //  Plant consumes it raw.  A self-loop refiner would break the ranker
     //  the same way Aluminium did.)
 

@@ -34,7 +34,7 @@ void MapRenderer::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::
     camera.screenToWorld(static_cast<double>(screenWidth), static_cast<double>(screenHeight),
                          botRightX, botRightY, screenWidth, screenHeight);
 
-    // Add margin to avoid popping at edges. Scale with zoom — at low
+    // Add margin to avoid popping at edges. Scale with zoom -- at low
     // zoom the visible viewport spans many hexes per pixel, so a fixed
     // 3-hex margin is too small relative to inverse-zoom drift and tiles
     // near the edges get culled. invZoom term keeps a generous border.
@@ -58,7 +58,7 @@ void MapRenderer::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::
 
     const bool cylindrical = (grid.topology() == aoc::map::MapTopology::Cylindrical);
 
-    // For cylindrical topology: don't clamp columns — let them extend beyond
+    // For cylindrical topology: don't clamp columns -- let them extend beyond
     // [0, width) so tiles wrap seamlessly. Use wrapped col for data lookup,
     // raw col for pixel position.
     const int32_t minCol =
@@ -520,7 +520,7 @@ void MapRenderer::drawRiverEdges(vulkan_app::renderer::Renderer2D& renderer2d, u
     // drawn as a capsule along the corresponding edge (dir → edge mapping
     // via (5 - dir + 6) % 6 in the hexVertices layout).  Generator enforces
     // adjacent-edge transitions so consecutive river segments share a vertex
-    // — rounded capsule caps then overlap cleanly at each junction.
+    // -- rounded capsule caps then overlap cleanly at each junction.
     float vertices[12];
     hex::hexVertices(cx, cy, this->m_hexSize, vertices);
 

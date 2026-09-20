@@ -57,7 +57,7 @@ void renderInfrastructureOverlay(vulkan_app::renderer::Renderer2D& renderer,
                                  const aoc::map::HexGrid& grid,
                                  float cameraX, float cameraY, float zoom,
                                  PlayerId player) {
-    // DEBT: no viewport culling — iterates every tile each frame. The
+    // DEBT: no viewport culling -- iterates every tile each frame. The
     // MapRenderer::drawToBuffer visible-range computation is NOT readily
     // reusable here: this overlay uses a different hex layout (pointy-top,
     // HEX_SIZE=32 in hexToScreen) vs MapRenderer's flat m_hexSize, and the
@@ -184,7 +184,7 @@ void renderAdjacencyArrowOverlay(vulkan_app::renderer::Renderer2D& renderer,
     }
     if (!drawArrows) { return; }
 
-    // World-space coordinates — renderer shader handles the camera transform
+    // World-space coordinates -- renderer shader handles the camera transform
     // when called inside the world-space draw pass.
     float cx = 0.0f, cy = 0.0f;
     aoc::hex::axialToPixel(hovered, 30.0f, cx, cy);

@@ -168,7 +168,7 @@ struct SphereField {
     // experienced from applyWilsonRifting. 1.0 = never rifted.
     // Written by applyWilsonRifting; used by the terrane-maturation pass
     // in accreteToNeighbours to exclude rift margins (which are supposed
-    // to stay thin — that is what makes them continental shelves).
+    // to stay thin -- that is what makes them continental shelves).
     std::vector<float> stretchFactor;
     // Which rigid terrane covers this cell, -1 = none (oceanic). Written by
     // bakeTerranesToRaster; see Terrane.hpp for why continental crust is

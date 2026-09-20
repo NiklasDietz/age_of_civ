@@ -152,7 +152,7 @@ void updateNavalPassageViolations(aoc::game::GameState& gameState,
                     diplomacy.addReputationModifier(a, b, -3, 10);
                 }
 
-                // Stage 3: Casus belli — naval-specific flag (distinct from land CB).
+                // Stage 3: Casus belli -- naval-specific flag (distinct from land CB).
                 if (effectiveTurns >= CASUS_BELLI_TURN && !rel.casusBelliNaval) {
                     rel.casusBelliNaval = true;
                     LOG_INFO("Casus belli granted: Player %u can declare war on Player %u "

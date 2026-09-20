@@ -94,7 +94,7 @@ void AllianceObligationTracker::tickObligations(DiplomacyManager& diplomacy,
         --it->turnsToRespond;
 
         if (it->turnsToRespond <= 0) {
-            // Obligation expired unfulfilled — apply penalties
+            // Obligation expired unfulfilled -- apply penalties
             PlayerId failedPlayer = it->obligatedPlayer;
             PlayerId defender = it->defender;
 

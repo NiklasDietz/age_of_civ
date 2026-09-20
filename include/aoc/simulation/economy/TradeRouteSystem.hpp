@@ -148,7 +148,7 @@ struct TraderComponent {
     float cultureSpread = 0.0f;
 
     /// WP-K3 v2: cargo by route type, with land split by infrastructure.
-    ///   Sea: 8 slots (bulk shipping — vastly highest, cheapest per-unit).
+    ///   Sea: 8 slots (bulk shipping -- vastly highest, cheapest per-unit).
     ///   Land + railway majority on path: 6 slots (train haulage).
     ///   Land wagon/truck (no rail majority): 2 slots (worst, slow).
     ///   Air: 3 slots (lower than train, but speed compensates).
@@ -177,7 +177,7 @@ struct TraderComponent {
 
     /// Movement speed (tiles per turn). Air is fastest, sea is medium, land
     /// depends on roads/rails. WP-C3: pipelines double the throughput of any
-    /// land trader whose current tile has `hasPipeline` — models bulk oil /
+    /// land trader whose current tile has `hasPipeline` -- models bulk oil /
     /// gas / fuel pumping rather than caravan hauling.
     [[nodiscard]] int32_t movementSpeed(bool onRoad, bool onRailway,
                                         bool onPipeline = false) const {

@@ -681,7 +681,7 @@ public:
     /// Tectonic plate id assigned by the Continents map generator.
     /// 0xFF = unset / not applicable (non-Continents map). Used by the
     /// tectonic-overlay UI mode.
-    /// Hotspot world positions (normalised 0..1 coords) — set by
+    /// Hotspot world positions (normalised 0..1 coords) -- set by
     /// MapGenerator on Continents maps. Empty otherwise. Used by the
     /// Hotspots overlay to render dark red dots at mantle plumes.
     [[nodiscard]] const std::vector<std::pair<float, float>>& hotspots() const {
@@ -843,19 +843,19 @@ public:
     [[nodiscard]] const std::vector<uint8_t>& permafrost() const { return this->m_permafrost; }
     void setPermafrost(std::vector<uint8_t> v) { this->m_permafrost = std::move(v); }
 
-    /// Per-tile lake flag — 1 if this water tile is a lake (positive
+    /// Per-tile lake flag -- 1 if this water tile is a lake (positive
     /// generation: tectonic rift, endorheic, glacial, volcanic), 0 if
     /// open ocean. Lakes still use TerrainType::ShallowWater so existing
     /// game code treats them as fishable water.
     [[nodiscard]] const std::vector<uint8_t>& lakeFlag() const { return this->m_lakeFlag; }
     void setLakeFlag(std::vector<uint8_t> v) { this->m_lakeFlag = std::move(v); }
 
-    /// Per-tile upwelling flag — 1 if coastal water with active deep-
+    /// Per-tile upwelling flag -- 1 if coastal water with active deep-
     /// water upwelling (high fishery productivity), 2 if fjord.
     [[nodiscard]] const std::vector<uint8_t>& upwelling() const { return this->m_upwelling; }
     void setUpwelling(std::vector<uint8_t> v) { this->m_upwelling = std::move(v); }
 
-    /// Per-tile flag — 1 if owning plate is biogeographically isolated
+    /// Per-tile flag -- 1 if owning plate is biogeographically isolated
     /// (never merged + old enough to develop endemic species).
     /// Australia, Madagascar, Antarctica analogues.
     [[nodiscard]] const std::vector<uint8_t>& isolatedRealm() const {
@@ -863,13 +863,13 @@ public:
     }
     void setIsolatedRealm(std::vector<uint8_t> v) { this->m_isolatedRealm = std::move(v); }
 
-    /// Per-tile flag — 1 if shallow water tile sits between two
-    /// continental landmasses (potential ice-age land bridge — Beringia,
+    /// Per-tile flag -- 1 if shallow water tile sits between two
+    /// continental landmasses (potential ice-age land bridge -- Beringia,
     /// Sahul shelf, Doggerland).
     [[nodiscard]] const std::vector<uint8_t>& landBridge() const { return this->m_landBridge; }
     void setLandBridge(std::vector<uint8_t> v) { this->m_landBridge = std::move(v); }
 
-    /// Per-tile flag — 1 if tile is a glacial refugium (mid-lat near
+    /// Per-tile flag -- 1 if tile is a glacial refugium (mid-lat near
     /// mountains, high biodiversity, ice-age species refuge).
     [[nodiscard]] const std::vector<uint8_t>& refugium() const { return this->m_refugium; }
     void setRefugium(std::vector<uint8_t> v) { this->m_refugium = std::move(v); }
@@ -979,7 +979,7 @@ public:
     [[nodiscard]] const std::vector<uint8_t>& eventMarker() const { return this->m_eventMarker; }
     void setEventMarker(std::vector<uint8_t> v) { this->m_eventMarker = std::move(v); }
 
-    /// Per-tile mountain-pass flag — 1 if saddle between two mountain
+    /// Per-tile mountain-pass flag -- 1 if saddle between two mountain
     /// massifs (movement chokepoint, low elevation surrounded by high).
     [[nodiscard]] const std::vector<uint8_t>& mountainPass() const { return this->m_mountainPass; }
     void setMountainPass(std::vector<uint8_t> v) { this->m_mountainPass = std::move(v); }
@@ -1152,7 +1152,7 @@ public:
     [[nodiscard]] const std::vector<uint8_t>& oreGrade() const { return this->m_oreGrade; }
     void setOreGrade(std::vector<uint8_t> v) { this->m_oreGrade = std::move(v); }
 
-    /// Per-tile strait / chokepoint flag — 1 if narrow water passage
+    /// Per-tile strait / chokepoint flag -- 1 if narrow water passage
     /// connecting two larger ocean basins (Hormuz / Malacca / Bosphorus
     /// / Gibraltar / Bering / Magellan / Hudson).
     [[nodiscard]] const std::vector<uint8_t>& strait() const { return this->m_strait; }
@@ -1166,8 +1166,8 @@ public:
     /// Per-river-tile channel pattern.
     /// 0 = none, 1 = straight (steep gradient), 2 = meandering (low
     /// gradient + sediment), 3 = braided (high sediment + variable
-    /// flow — glacial outwash), 4 = anastomosing (low-gradient
-    /// stable multi-channel — Okavango).
+    /// flow -- glacial outwash), 4 = anastomosing (low-gradient
+    /// stable multi-channel -- Okavango).
     [[nodiscard]] const std::vector<uint8_t>& channelPattern() const {
         return this->m_channelPattern;
     }
@@ -1300,7 +1300,7 @@ public:
     }
     void setVegetationType(std::vector<uint8_t> v) { this->m_vegetationType = std::move(v); }
 
-    /// Per-tile atmospheric-river-band flag — 1 if mid-latitude tile
+    /// Per-tile atmospheric-river-band flag -- 1 if mid-latitude tile
     /// in a concentrated moisture-transport corridor.
     [[nodiscard]] const std::vector<uint8_t>& atmosphericRiver() const {
         return this->m_atmosphericRiver;
@@ -1328,7 +1328,7 @@ public:
     [[nodiscard]] const std::vector<uint8_t>& iceShelfZone() const { return this->m_iceShelfZone; }
     void setIceShelfZone(std::vector<uint8_t> v) { this->m_iceShelfZone = std::move(v); }
 
-    /// Per-tile bedrock lithology — same enum as lithology(); separate
+    /// Per-tile bedrock lithology -- same enum as lithology(); separate
     /// vector lets surface and subsurface differ (sediment cover over
     /// granitic basement = sandstone+shale on top of granite).
     [[nodiscard]] const std::vector<uint8_t>& bedrockLithology() const {
@@ -1345,9 +1345,9 @@ public:
     void setPermafrostDepth(std::vector<uint8_t> v) { this->m_permafrostDepth = std::move(v); }
 
     /// Per-tile cliff-coast classification.
-    /// 0 = none / beach / passable, 1 = hard rock cliff (sheer drop —
+    /// 0 = none / beach / passable, 1 = hard rock cliff (sheer drop --
     /// units cannot embark/disembark, ships cannot land here),
-    /// 2 = fjord wall (glaciated cliff coast — sheltered deep harbor
+    /// 2 = fjord wall (glaciated cliff coast -- sheltered deep harbor
     /// but vertical sides), 3 = wave-cut headland (lower cliff, harder
     /// landing but possible at low tide), 4 = barrier ice cliff (polar
     /// ice-shelf wall).
@@ -1400,7 +1400,7 @@ public:
     }
 
     /// Per-tile lake-effect-snow flag (downwind of large lake in cold
-    /// air mass — Great Lakes effect).
+    /// air mass -- Great Lakes effect).
     [[nodiscard]] const std::vector<uint8_t>& lakeEffectSnow() const {
         return this->m_lakeEffectSnow;
     }
@@ -1413,7 +1413,7 @@ public:
     }
     void setDrumlinDirection(std::vector<uint8_t> v) { this->m_drumlinDirection = std::move(v); }
 
-    /// Per-tile reactivated-suture flag — 1 if tile lies on an
+    /// Per-tile reactivated-suture flag -- 1 if tile lies on an
     /// ophiolite suture that has been re-deformed by later collision
     /// (Atlas, Pyrenees, Variscan). Drives potential mineral riches +
     /// seismic anomalies.
@@ -1443,7 +1443,7 @@ public:
     [[nodiscard]] const std::vector<uint8_t>& slopeAngle() const { return this->m_slopeAngle; }
     void setSlopeAngle(std::vector<uint8_t> v) { this->m_slopeAngle = std::move(v); }
 
-    /// Per-tile ecotone flag — 1 if tile sits on a biome transition
+    /// Per-tile ecotone flag -- 1 if tile sits on a biome transition
     /// boundary (different terrain / feature on adjacent tiles). High
     /// ecological diversity, edge-effect species.
     [[nodiscard]] const std::vector<uint8_t>& ecotone() const { return this->m_ecotone; }
@@ -1500,7 +1500,7 @@ public:
     /// 0 if no river. Drives navigability (≥ 4 ocean-going).
     [[nodiscard]] const std::vector<uint8_t>& streamOrder() const { return this->m_streamOrder; }
     void setStreamOrder(std::vector<uint8_t> v) { this->m_streamOrder = std::move(v); }
-    /// Per-tile river navigability flag — 1 if ≥ Strahler order 4 +
+    /// Per-tile river navigability flag -- 1 if ≥ Strahler order 4 +
     /// perennial regime + low slope.
     [[nodiscard]] const std::vector<uint8_t>& navigable() const { return this->m_navigable; }
     void setNavigable(std::vector<uint8_t> v) { this->m_navigable = std::move(v); }
@@ -1508,7 +1508,7 @@ public:
     /// + downstream basin).
     [[nodiscard]] const std::vector<uint8_t>& damSite() const { return this->m_damSite; }
     void setDamSite(std::vector<uint8_t> v) { this->m_damSite = std::move(v); }
-    /// Per-tile riparian buffer flag — 1 if 1-tile band along a river.
+    /// Per-tile riparian buffer flag -- 1 if 1-tile band along a river.
     [[nodiscard]] const std::vector<uint8_t>& riparian() const { return this->m_riparian; }
     void setRiparian(std::vector<uint8_t> v) { this->m_riparian = std::move(v); }
     /// Per-tile aquifer recharge rate 0-255. Higher in humid climates
@@ -1573,7 +1573,7 @@ public:
         return this->m_stormWaveHeight;
     }
     void setStormWaveHeight(std::vector<uint8_t> v) { this->m_stormWaveHeight = std::move(v); }
-    /// Per-tile snow-line flag — 1 if elevation above current snow line
+    /// Per-tile snow-line flag -- 1 if elevation above current snow line
     /// for this latitude.
     [[nodiscard]] const std::vector<uint8_t>& snowLine() const { return this->m_snowLine; }
     void setSnowLine(std::vector<uint8_t> v) { this->m_snowLine = std::move(v); }
@@ -1686,7 +1686,7 @@ public:
     }
     void setTopoPositionIndex(std::vector<uint8_t> v) { this->m_topoPositionIndex = std::move(v); }
     /// Per-tile Topographic Wetness Index 0-255 (water accumulation
-    /// potential — drainage convergence × low slope).
+    /// potential -- drainage convergence × low slope).
     [[nodiscard]] const std::vector<uint8_t>& topoWetnessIndex() const {
         return this->m_topoWetnessIndex;
     }
@@ -1713,7 +1713,7 @@ public:
     }
     void setDrainageBasinArea(std::vector<uint8_t> v) { this->m_drainageBasinArea = std::move(v); }
     /// Per-tile watershed id 0-255 (tile cluster sharing common
-    /// drainage destination — Mississippi basin / Amazon basin / etc).
+    /// drainage destination -- Mississippi basin / Amazon basin / etc).
     [[nodiscard]] const std::vector<uint8_t>& watershedId() const { return this->m_watershedId; }
     void setWatershedId(std::vector<uint8_t> v) { this->m_watershedId = std::move(v); }
 
@@ -1795,7 +1795,7 @@ public:
     /// Tropical jungles + boreal forests + peat bogs hold most.
     [[nodiscard]] const std::vector<uint8_t>& carbonStock() const { return this->m_carbonStock; }
     void setCarbonStock(std::vector<uint8_t> v) { this->m_carbonStock = std::move(v); }
-    /// Per-tile pristine wilderness flag — 1 if undisturbed (low
+    /// Per-tile pristine wilderness flag -- 1 if undisturbed (low
     /// anthropogenic + high NPP + high biodiversity).
     [[nodiscard]] const std::vector<uint8_t>& wilderness() const { return this->m_wilderness; }
     void setWilderness(std::vector<uint8_t> v) { this->m_wilderness = std::move(v); }
@@ -1996,7 +1996,7 @@ private:
     std::vector<uint8_t> m_riparianForest;
     std::vector<uint8_t> m_magneticIntensity;
     std::vector<uint8_t> m_groundwaterDepth;
-    /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
+    /// WP-C4 Greenhouse planted-crop map. Sparse -- only tiles with a
     /// Greenhouse improvement actively populate. Tile index → good id.
     std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;
     std::unordered_map<int32_t, uint16_t> m_antiquitySite;   ///< v14 game layer, see antiquitySite()

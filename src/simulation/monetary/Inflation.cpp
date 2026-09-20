@@ -96,7 +96,7 @@ void computeInflation(MonetaryStateComponent& state,
     // printing is less inflationary. If shrinking, fully inflationary.
     // Capacity slope: 3.5 means ~3% real growth trims ~10% off inflation
     // (capacityPressure ~ 0.9), hitting the 0.3 floor at ~20% growth.
-    // Previous 14.0 was hair-trigger — a routine 5% expansion maxed out
+    // Previous 14.0 was hair-trigger -- a routine 5% expansion maxed out
     // the damping and erased most Fisher inflation, masking genuine
     // money-printing pressure.
     float capacityPressure = 1.0f;
@@ -111,7 +111,7 @@ void computeInflation(MonetaryStateComponent& state,
     state.inflationRate = fisherInflation * capacityPressure;
 
     // Fiat money printing inflation (direct impact from printMoney())
-    // This is ADDITIVE — printing always creates some inflation regardless
+    // This is ADDITIVE -- printing always creates some inflation regardless
     // of capacity, but capacity_pressure modulates how much.
     if (state.printAmountThisTurn > 0 && currentGDP > 0) {
         float printingInflation = static_cast<float>(state.printAmountThisTurn)

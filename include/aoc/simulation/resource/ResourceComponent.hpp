@@ -31,7 +31,7 @@ struct CityStockpileComponent {
     /// up by a trader. Frees stockpile space (incentivizes trading).
     /// Trader load step pulls from this map first; if empty, falls back
     /// to `goods`. If buffer goods sit too long with no pickup, they
-    /// trickle back to `goods` (capped) — the surplus that can't fit
+    /// trickle back to `goods` (capped) -- the surplus that can't fit
     /// is lost (modeled as warehouse spoilage).
     std::unordered_map<uint16_t, int32_t> exportBuffer;
     /// Per-good idle counter: turns since the buffer entry last gained

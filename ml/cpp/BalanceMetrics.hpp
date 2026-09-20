@@ -2,7 +2,7 @@
 
 /**
  * @file BalanceMetrics.hpp
- * @brief Pure game-health scoring metrics for the balance GA — Gini
+ * @brief Pure game-health scoring metrics for the balance GA -- Gini
  *        coefficient, triangle reward, and normalised Shannon entropy.
  *
  * Header-only (inline) so unit tests can exercise the math directly without

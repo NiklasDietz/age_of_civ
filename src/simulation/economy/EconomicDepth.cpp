@@ -268,7 +268,7 @@ void processMigration(aoc::game::GameState& gameState, const aoc::map::HexGrid& 
             if (destPolicy == ImmigrationPolicy::Closed) { continue; }
 
             // Migration happens slowly: ~1 citizen per 10 qualifying turns.
-            // Hash must vary with turn number — prior formula was pure in the
+            // Hash must vary with turn number -- prior formula was pure in the
             // tile coordinate and either always fired or never fired for a
             // given pair for the full game. Mixing turnNumber produces a
             // deterministic but pair-and-time-dependent gate.

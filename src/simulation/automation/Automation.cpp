@@ -181,7 +181,7 @@ void processAutoRenewTradeRoutes(aoc::game::GameState& gameState,
         // C26: validate state changed since expiry before spending the slot.
         // evaluateTradeConsent (inside establishTradeRoute) already blocks
         // new wars/embargoes, but we must also drop the renewal when the
-        // destination raised tolls above profitability floor — otherwise
+        // destination raised tolls above profitability floor -- otherwise
         // we keep re-establishing losing routes.
         if (destPlayer != nullptr) {
             std::unordered_map<PlayerId, float>::const_iterator tollIt =

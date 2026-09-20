@@ -81,7 +81,7 @@ struct PlayerTechComponent {
 
     /// Visibility / tree-display check: tech is known via research or trade.
     /// Use this for resource visibility, tech-tree display. NOT for build
-    /// gating — that uses hasResearched().
+    /// gating -- that uses hasResearched().
     [[nodiscard]] bool knows(TechId tech) const {
         if (!tech.isValid()) { return false; }
         if (tech.value < this->completedTechs.size()

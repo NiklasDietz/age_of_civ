@@ -387,7 +387,7 @@ void AIController::executeTurn(aoc::game::GameState& gameState, aoc::map::HexGri
                     continue;
                 }
 
-                // Pick the richest enemy as target — proxies wealth for
+                // Pick the richest enemy as target -- proxies wealth for
                 // SiphonFunds and significance for all offensive ops.
                 aoc::hex::AxialCoord targetLoc = spy.location;
                 float bestEnemyWealth          = 0.0f;
@@ -545,7 +545,7 @@ void AIController::executeTurn(aoc::game::GameState& gameState, aoc::map::HexGri
                 const float roll         = rng.nextFloat(0.0f, 1.0f);
 
                 if (roll <
-                    launchScore * 0.015f) { // was 0.04 — audit showed 1.7 strikes/sim, too spammy
+                    launchScore * 0.015f) { // was 0.04 -- audit showed 1.7 strikes/sim, too spammy
                     aoc::game::Player* enemy = gameState.player(enemyId);
                     aoc::hex::AxialCoord targetLoc{};
                     int32_t weakestPop = std::numeric_limits<int32_t>::max();
@@ -1190,7 +1190,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState, aoc::map:
 
         // ----------------------------------------------------------------
         // Build the candidate list and score each option. Reuse the
-        // per-AIController scratch vector — clear() preserves capacity, so
+        // per-AIController scratch vector -- clear() preserves capacity, so
         // the per-city ~32-entry allocation flagged in the 2026-05-10 audit
         // collapses into one growth episode at startup.
         // ----------------------------------------------------------------
@@ -1278,7 +1278,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState, aoc::map:
         // 0-2%; civs meeting 7-8 traded 75%+. More scouts = more met civs
         // = more trade.
         // Score must out-rank Mint (4.0) and Settlers (~2-5) in capital
-        // when civ has no scouts at all — exploration is the ONE early
+        // when civ has no scouts at all -- exploration is the ONE early
         // need that other branches don't cover. Cap at 2 per civ; once
         // exploration done, scouts naturally lose to other candidates.
         {
@@ -1292,7 +1292,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState, aoc::map:
                     static_cast<float>(unitTypeDef(UnitTypeId{2}).productionCost);
                 candidate.item.progress = 0.0f;
                 if (unitCounts.scouts == 0) {
-                    candidate.score = 6.0f; // Top priority — nothing met yet
+                    candidate.score = 6.0f; // Top priority -- nothing met yet
                 } else if (ownedCityCount <= 2) {
                     candidate.score = 4.5f; // Second scout in young empire
                 } else {
@@ -1579,7 +1579,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState, aoc::map:
             };
             // 2026-05-03: Forge/Workshop/Factory added at the top. The
             // Phase-2 diag sweep showed 97.6% of IR#1-blocked civs had no
-            // Charcoal in `totalSupply` even after the demand-pull fix —
+            // Charcoal in `totalSupply` even after the demand-pull fix --
             // generic scorer was leaving Forge unbuilt because higher-tier
             // industrial buildings (Refinery+) still won the score race once
             // their tech unlocked. Putting Forge/Workshop/Factory ahead in
@@ -2171,7 +2171,7 @@ void AIController::considerCanalBuilding(aoc::game::GameState& gameState, aoc::m
         return;
     }
 
-    // Canal requires Industrial Era — gate on base Industrialization (TechId{11}).
+    // Canal requires Industrial Era -- gate on base Industrialization (TechId{11}).
     constexpr TechId INDUSTRIALIZATION_TECH = TechId{11};
     if (!gsPlayer->tech().hasResearched(INDUSTRIALIZATION_TECH)) {
         return;
@@ -2219,7 +2219,7 @@ void AIController::considerCanalBuilding(aoc::game::GameState& gameState, aoc::m
                     continue;
                 }
 
-                // Tile is visible — we can observe this trader
+                // Tile is visible -- we can observe this trader
                 traderVisible = true;
                 ++tradeTrafficTiles;
 
@@ -2268,13 +2268,13 @@ void AIController::considerCanalBuilding(aoc::game::GameState& gameState, aoc::m
             continue;
         }
 
-        // Skip tiles with zero trade proximity — no traders nearby, canal is useless
+        // Skip tiles with zero trade proximity -- no traders nearby, canal is useless
         int32_t proximity = tradeProximity[static_cast<std::size_t>(i)];
         if (proximity == 0) {
             continue;
         }
 
-        // Count adjacent canals — tiles next to existing canals are just
+        // Count adjacent canals -- tiles next to existing canals are just
         // extending a canal field, not creating a new strategic shortcut.
         aoc::hex::AxialCoord center              = grid.toAxial(i);
         std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(center);
@@ -2287,7 +2287,7 @@ void AIController::considerCanalBuilding(aoc::game::GameState& gameState, aoc::m
                 ++adjacentCanals;
             }
         }
-        // Skip if already bordered by a canal — prevents canal sprawl
+        // Skip if already bordered by a canal -- prevents canal sprawl
         if (adjacentCanals > 0) {
             continue;
         }

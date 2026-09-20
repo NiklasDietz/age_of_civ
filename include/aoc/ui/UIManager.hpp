@@ -60,12 +60,12 @@ public:
     [[nodiscard]] WidgetId createMarkdown(WidgetId parent, Rect bounds, MarkdownData data);
     [[nodiscard]] WidgetId createListRow(WidgetId parent, Rect bounds, ListRowData data);
 
-    /// Wrap a `WidgetId` in a versioned handle — call when you want to
+    /// Wrap a `WidgetId` in a versioned handle -- call when you want to
     /// cache a reference across potential `removeWidget` + reuse.
     [[nodiscard]] WidgetHandle toHandle(WidgetId id) const;
 
     /// True if the handle still points to the same widget it did at
-    /// `toHandle()` time. Cheap — one vector lookup.
+    /// `toHandle()` time. Cheap -- one vector lookup.
     [[nodiscard]] bool isLive(WidgetHandle handle) const;
 
     /// Remove a widget and all its children.
@@ -150,7 +150,7 @@ public:
     /// Current focused widget.
     [[nodiscard]] WidgetId focusedWidget() const { return this->m_focusedWidget; }
 
-    /// Activate the focused widget — fires onClick for buttons,
+    /// Activate the focused widget -- fires onClick for buttons,
     /// toggles for sliders, etc. Bound to Enter/Space by the app.
     void activateFocused();
 
@@ -381,7 +381,7 @@ private:
 
     /// Cached list of focusable widgets, in creation order. Rebuilt
     /// lazily inside focusNext/focusPrev when m_focusCacheDirty is
-    /// true — invalidation happens on add/remove/setVisible. Earlier
+    /// true -- invalidation happens on add/remove/setVisible. Earlier
     /// code rebuilt this every Tab keypress (O(N) per press).
     mutable std::vector<WidgetId> m_focusableCache;
     mutable bool m_focusCacheDirty = true;
@@ -422,14 +422,14 @@ private:
     std::unordered_map<WidgetId, float> m_lastClickTime;
     float m_clockSec = 0.0f;
 
-    // Multi-select anchor — last single-click row used by Shift-extend.
+    // Multi-select anchor -- last single-click row used by Shift-extend.
     WidgetId m_selectAnchor = INVALID_WIDGET;
 
     // Network + audio outboxes drained by the host each frame.
     std::vector<NetworkEvent> m_netOutbox;
     std::vector<uint32_t> m_audioOutbox;
 
-    /// Strict layout mode — dev-only runtime overflow warnings.
+    /// Strict layout mode -- dev-only runtime overflow warnings.
     bool m_strictLayout = false;
 
     /// Command buffer for scissor push/pop. void* keeps Vulkan out

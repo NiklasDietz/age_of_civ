@@ -3,8 +3,8 @@
 /// @file Prestige.hpp
 /// @brief Prestige victory: participation-based endgame scoring.
 ///
-/// Rewards civilizations that act like functional nation-states — trading,
-/// allying, maintaining peace, keeping cities content — rather than those
+/// Rewards civilizations that act like functional nation-states -- trading,
+/// allying, maintaining peace, keeping cities content -- rather than those
 /// that rocket up one axis (science/culture/domination) at the expense of
 /// the rest of the world. Points accumulate every turn from every major
 /// subsystem. At game end (currentTurn >= maxTurns), highest prestige wins.

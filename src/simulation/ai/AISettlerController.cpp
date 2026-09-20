@@ -184,7 +184,7 @@ static constexpr uint16_t STRATEGIC_RESOURCE_ID_MAX = 12;
                     // that range.  For a candidate spot, we reward distances
                     // that place it inside the support band of at least one
                     // neighbour (dist <= radius/2) and penalise either
-                    // cramped overlap (dist 3-4 — shared worked tiles) or
+                    // cramped overlap (dist 3-4 -- shared worked tiles) or
                     // sprawl past the pressure edge (dist > radius) where
                     // the new city cannot be reinforced.
                     //
@@ -198,7 +198,7 @@ static constexpr uint16_t STRATEGIC_RESOURCE_ID_MAX = 12;
                     const float df = static_cast<float>(dist);
 
                     if (dist == 3) {
-                        score -= 12.0f;  // barely-legal stacking — loses work tiles
+                        score -= 12.0f;  // barely-legal stacking -- loses work tiles
                     } else if (dist == 4) {
                         score -= 5.0f;   // still cramped
                     } else if (df <= halfRadius) {
@@ -222,7 +222,7 @@ static constexpr uint16_t STRATEGIC_RESOURCE_ID_MAX = 12;
 
                     // Periphery tolerance still controls the soft upper
                     // limit when the AI is forced to spread onto a second
-                    // continent — overrides the per-city band when dist
+                    // continent -- overrides the per-city band when dist
                     // dwarfs the sweet spot.
                     const int32_t sweetSpot = static_cast<int32_t>(
                         8.0f + 4.0f * peripheryTolerance);

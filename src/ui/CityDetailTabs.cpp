@@ -4,7 +4,7 @@
  *        GameScreens.cpp so that 2300-line monolith becomes two
  *        1300-line translation units instead of one 2300.
  *
- * The five tabs — Overview, Production, Buildings, Citizens, Couriers —
+ * The five tabs -- Overview, Production, Buildings, Citizens, Couriers --
  * each add ~100-330 widgets to the content panel. They share the same
  * `resolveCityByLocation` helper, duplicated here as a static free
  * function (12 lines) to avoid cross-TU ceremony. If further tabs
@@ -734,7 +734,7 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
 
         (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth - 120.0f, 22.0f}, std::move(btn));
 
-        // "Build Now" — interrupt current production. Active item keeps its
+        // "Build Now" -- interrupt current production. Active item keeps its
         // progress field, just gets shifted to index 1; resumes after the
         // urgent item completes.
         ButtonData nowBtn;

@@ -74,7 +74,7 @@ void UnitSelection::selectInRegion(const aoc::game::GameState& gameState,
         const aoc::hex::AxialCoord pos = unitPtr->position();
         if (pos.q >= minQ && pos.q <= maxQ && pos.r >= minR && pos.r <= maxR) {
             // Store the unit's position as a synthetic EntityId for backward compatibility.
-            // This is a transitional representation — callers should migrate to Unit* tracking.
+            // This is a transitional representation -- callers should migrate to Unit* tracking.
             (void)unitPtr;
         }
     }

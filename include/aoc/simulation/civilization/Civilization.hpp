@@ -17,7 +17,7 @@ using CivId = uint8_t;
 /// Modifier bonuses unique to each civilization. Mostly flat global bonuses;
 /// conditional fields below give Civ-6-style situational advantages.
 struct CivAbilityModifiers {
-    // Flat global modifiers (use sparingly — favor conditional bonuses).
+    // Flat global modifiers (use sparingly -- favor conditional bonuses).
     float productionMultiplier = 1.0f;
     float scienceMultiplier    = 1.0f;
     float cultureMultiplier    = 1.0f;

@@ -10,7 +10,7 @@
  * events without hand-maintaining per-screen lists in Application.
  *
  * `onResize` lets each screen reflow when the backing viewport changes.
- * Default implementations live on `ScreenBase` — menus that don't inherit
+ * Default implementations live on `ScreenBase` -- menus that don't inherit
  * from it implement the three hooks directly via adapter shims.
  */
 

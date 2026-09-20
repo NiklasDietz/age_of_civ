@@ -176,13 +176,13 @@ bool LuaEngine::initialize(const std::string& scriptsPath) {
     // math, and utf8 where available). Mods are untrusted scripts that we
     // load from data/scripts/ and data/mods/, so the full standard library
     // would expose io.open / os.execute / package.loadlib / require /
-    // dofile / loadfile / debug.* — every one of these turns a malicious
+    // dofile / loadfile / debug.* -- every one of these turns a malicious
     // script into RCE on the host machine.
     //
     // LuaJIT 2.1 follows the Lua 5.1 C API and does NOT provide
     // luaL_requiref (added in Lua 5.2) or luaopen_utf8 (added in Lua 5.3).
     // For that path we replicate the Lua 5.1 idiom: push the loader,
-    // push the module name, call it, and discard the returned table —
+    // push the module name, call it, and discard the returned table --
     // luaL_openlibs() does exactly this internally.
     lua_State* L = this->m_impl->luaState;
 #if LUA_VERSION_NUM >= 502
@@ -200,7 +200,7 @@ bool LuaEngine::initialize(const std::string& scriptsPath) {
     lua_pushcfunction(L, luaopen_string); lua_pushstring(L, "string"); lua_call(L, 1, 0);
     lua_pushcfunction(L, luaopen_table);  lua_pushstring(L, "table");  lua_call(L, 1, 0);
     lua_pushcfunction(L, luaopen_math);   lua_pushstring(L, "math");   lua_call(L, 1, 0);
-    // utf8 lib is not shipped by LuaJIT 2.1 — skip on this path.
+    // utf8 lib is not shipped by LuaJIT 2.1 -- skip on this path.
 #endif
 
     // Defence in depth: nil out anything an attacker could reach via the

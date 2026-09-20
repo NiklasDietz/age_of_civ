@@ -26,7 +26,7 @@
 
 namespace aoc::ui {
 
-/// "AOCF" — checked on load; a mismatch is a hard failure, not a fallback.
+/// "AOCF" -- checked on load; a mismatch is a hard failure, not a fallback.
 inline constexpr uint32_t FONT_ATLAS_MAGIC   = 0x46434F41u;
 inline constexpr uint32_t FONT_ATLAS_VERSION = 1u;
 

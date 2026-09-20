@@ -67,11 +67,11 @@ BalanceBounds defaultBalanceBounds() {
     // found by a new test asserting the general property rather than either
     // instance.
     b.min[8]  = 0.5f;    b.max[8]  = 2.0f;
-    // chainOutputMult: [0.75, 2.0]  — production-chain yield multiplier
+    // chainOutputMult: [0.75, 2.0]  -- production-chain yield multiplier
     b.min[9]  = 0.75f;   b.max[9]  = 2.0f;
-    // consumerDemandScale: [0.5, 2.5]  — pop-driven consumer drain scalar
+    // consumerDemandScale: [0.5, 2.5]  -- pop-driven consumer drain scalar
     b.min[10] = 0.5f;    b.max[10] = 2.5f;
-    // workerCapacityPerPop: [0.4, 2.0] — recipe slots per population point.
+    // workerCapacityPerPop: [0.4, 2.0] -- recipe slots per population point.
     // Lower bound just under the shipped 0.5 so the tuner can explore tighter
     // labour as well as looser; upper bound 2.0 because past about 1.5 the
     // measured constraint stops being labour and becomes buildings, so there is

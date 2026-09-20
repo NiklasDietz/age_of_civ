@@ -30,7 +30,7 @@ void PauseMenu::build(UIManager& ui, float screenW, float screenH, std::function
     this->m_lastW      = screenW;
     this->m_lastH      = screenH;
 
-    // Full-screen frost dim — map shows through faintly.
+    // Full-screen frost dim -- map shows through faintly.
     this->m_rootPanel =
         ui.createPanel({0.0f, 0.0f, screenW, screenH}, PanelData{SURFACE_FROST_DIM, 0.0f});
     {
@@ -47,7 +47,7 @@ void PauseMenu::build(UIManager& ui, float screenW, float screenH, std::function
     const float panelX      = (screenW - PANEL_W) * 0.5f;
     const float panelY      = (screenH - PANEL_H) * 0.5f;
 
-    // --- Outer dark frame (mahogany shadow) — sits 4 px outside the panel.
+    // --- Outer dark frame (mahogany shadow) -- sits 4 px outside the panel.
     [[maybe_unused]] WidgetId outerFrame = ui.createPanel(
         this->m_rootPanel, {panelX - 4.0f, panelY - 4.0f, PANEL_W + 8.0f, PANEL_H + 8.0f},
         PanelData{SURFACE_MAHOGANY, CORNER_PANEL + 2.0f});

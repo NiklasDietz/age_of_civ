@@ -40,7 +40,7 @@ public:
     void refresh(UIManager& ui);
     [[nodiscard]] bool isBuilt() const { return this->m_isBuilt; }
 
-    // IScreen — adapter over build/destroy lifecycle. `isOpen` aliases
+    // IScreen -- adapter over build/destroy lifecycle. `isOpen` aliases
     // `isBuilt` so the screen participates in the registry (closing on
     // Esc, reflowing on resize) without reshaping the callsite API.
     [[nodiscard]] bool isOpen() const override { return this->m_isBuilt; }

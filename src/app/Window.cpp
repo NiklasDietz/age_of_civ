@@ -112,7 +112,7 @@ void Window::setFullscreen(bool fullscreen) {
         // Switch to fullscreen on primary monitor
         GLFWmonitor* monitor = glfwGetPrimaryMonitor();
         const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-        // Keep AUTO_ICONIFY off in fullscreen — alt-tab should not minimize.
+        // Keep AUTO_ICONIFY off in fullscreen -- alt-tab should not minimize.
         glfwSetWindowAttrib(this->m_window, GLFW_AUTO_ICONIFY, GLFW_FALSE);
         glfwSetWindowMonitor(this->m_window, monitor, 0, 0,
                              mode->width, mode->height, mode->refreshRate);

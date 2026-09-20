@@ -5,7 +5,7 @@
  * Guards two properties that a modal's pinned Close button depends on:
  *   1. A floating child keeps its authored bounds instead of being appended
  *      to the parent's vertical stack (where it landed past the panel edge).
- *   2. Flowing siblings are unaffected — a floating child consumes no cursor
+ *   2. Flowing siblings are unaffected -- a floating child consumes no cursor
  *      advance, no spacing, and no flex share.
  *
  * Property 2 is the important one: `floating` was first prototyped as

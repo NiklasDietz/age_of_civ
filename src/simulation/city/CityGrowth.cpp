@@ -335,7 +335,7 @@ static void processSingleCityGrowth(aoc::game::City& city,
 
     // Housing cap: independent of food. Above housing, growth throttles;
     // 4 past housing, growth stops. Models Civ6 housing mechanic without
-    // a separate resource — reuses building presence + nearby farms.
+    // a separate resource -- reuses building presence + nearby farms.
     const int32_t housing = computeCityHousing(city, grid);
     {
         const int32_t excess = city.population() - housing;

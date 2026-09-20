@@ -18,7 +18,7 @@ namespace aoc::sim {
 
 /// City workable radius in hexes from the city center.
 /// Civ 6 uses 3 (37 tiles). We use 4 (61 tiles) because our economy has more
-/// improvements to place — primary/processing chains, housing districts, and
+/// improvements to place -- primary/processing chains, housing districts, and
 /// cultivation plots all want real estate, so tighter footprints strangle play.
 inline constexpr int32_t CITY_WORK_RADIUS = 4;
 

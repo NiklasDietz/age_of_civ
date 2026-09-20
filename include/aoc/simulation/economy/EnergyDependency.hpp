@@ -177,11 +177,11 @@ void processOilShock(PlayerEnergyComponent& energy);
 // Agreement invalidation is reactive, not predictive: the seller's own grid
 // state determines whether the transfer fires this turn. If seller demand
 // outruns supply the transfer is skipped (no negative obligation), so the
-// buyer sees variable delivery — exactly the blackmail surface the mechanic
+// buyer sees variable delivery -- exactly the blackmail surface the mechanic
 // is meant to create. A declared war between the two players also breaks
 // the agreement immediately.
 //
-// Not tradeable as a stockpile good — electricity isn't storable. Contracts
+// Not tradeable as a stockpile good -- electricity isn't storable. Contracts
 // expire at `endTurn` (0 = indefinite).
 
 struct ElectricityAgreementComponent {
@@ -198,7 +198,7 @@ struct ElectricityAgreementComponent {
 
 /// Per-city fraction of total power demand that may be satisfied via imports.
 /// Hard cap, enforced at city power calc time. 0.40 leaves 60% minimum
-/// domestic generation required — imports stay a complement, not a crutch.
+/// domestic generation required -- imports stay a complement, not a crutch.
 inline constexpr float ELECTRICITY_IMPORT_CAP_FRACTION = 0.40f;
 
 /// Propose an electricity import. Validates both players exist, seller has
@@ -216,7 +216,7 @@ inline constexpr float ELECTRICITY_IMPORT_CAP_FRACTION = 0.40f;
 
 /// Tick all active agreements: enforce war-break, contract expiry, and
 /// settle the per-turn gold transfer. Energy delivery itself happens in
-/// `computeCityPower` — this hook only keeps bookkeeping honest.
+/// `computeCityPower` -- this hook only keeps bookkeeping honest.
 void processElectricityAgreements(aoc::game::GameState& gameState,
                                    const DiplomacyManager& diplomacy,
                                    int32_t currentTurn);

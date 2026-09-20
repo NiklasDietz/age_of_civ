@@ -20,7 +20,7 @@ namespace {
 
 /// Monotonic counter for EquityInvestment ids. Fresh investments get a
 /// unique id; saved games reload with id=0 and are reassigned on first
-/// processStockMarket pass. Process-local scope is sufficient — ids are
+/// processStockMarket pass. Process-local scope is sufficient -- ids are
 /// not persisted, only used for matching investor record <-> target
 /// mirror in memory. atomic_uint32_t makes the mint thread-safe even
 /// though the simulation is currently single-threaded.
@@ -155,7 +155,7 @@ void processStockMarket(aoc::game::GameState& gameState) {
     // -> EquityInvestment* map across ALL players' foreignInvestments
     // mirrors once per call. The previous code did a linear scan inside
     // the inner loop using `principalInvested` as part of a triple-field
-    // identity match — both slow AND broken (principalInvested is
+    // identity match -- both slow AND broken (principalInvested is
     // mutable in some flows, so the key shifted).
     //
     // Pointer stability: foreignInvestments is a std::vector<EquityInvestment>;

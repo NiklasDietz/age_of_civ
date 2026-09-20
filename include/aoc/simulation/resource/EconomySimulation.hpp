@@ -100,7 +100,7 @@ private:
     /// still considers ALL candidate recipes for the building but the
     /// preferred one wins ties + gets a large score bonus so it runs first
     /// if its inputs are available.  No entry = auto (ranked-by-profit).
-    /// Not persisted across save/load — UI is expected to set this from the
+    /// Not persisted across save/load -- UI is expected to set this from the
     /// city screen each session.
     std::unordered_map<uint64_t, uint16_t> m_recipePreference;
 

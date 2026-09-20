@@ -360,7 +360,7 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
             t.colorScheme = static_cast<ColorScheme>((static_cast<uint8_t>(t.colorScheme) + 1) % 5);
             t.bumpRevision();
             (void)schemeName; // Can't retarget the button label from here
-                              // without the widget id — refresh on next
+                              // without the widget id -- refresh on next
                               // menu open surfaces the new choice.
             (void)ui;
         };

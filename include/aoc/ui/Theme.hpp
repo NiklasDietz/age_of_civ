@@ -43,7 +43,7 @@ enum class ColorScheme : uint8_t {
     HighContrast = 4,
 };
 
-/// Pre-baked skin variant. Affects panel/button colours — orthogonal
+/// Pre-baked skin variant. Affects panel/button colours -- orthogonal
 /// to ColorScheme (which affects player-colours only).
 enum class ThemeSkin : uint8_t {
     Classic   = 0, ///< Current default: dark slate blue
@@ -75,7 +75,7 @@ struct Theme {
 
     /// Bump this counter from any callsite that mutates the theme so
     /// observers (HUD/screen-builders) can detect a need to relayout.
-    /// Cheap monotonic int — not a timestamp.
+    /// Cheap monotonic int -- not a timestamp.
     uint32_t revision = 0;
 
     /// Convenience: bump revision and recompute derived flags. Use

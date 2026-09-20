@@ -160,7 +160,7 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                 score += ownedCityCount * 100;
 
                 // Leader personality tech bias. Each category contributes
-                // at most ONE multiplier per tech — the previous per-building
+                // at most ONE multiplier per tech -- the previous per-building
                 // loop could multiply techEconomic two or three times when a
                 // single tech unlocked multiple economic buildings, yielding
                 // score * techEconomic^N and wildly overweighting diverse
@@ -173,7 +173,7 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                     bool hasIndustrial = false;
                     for (const BuildingId& bid : def.unlockedBuildings) {
                         // Economic/mint unlocks (includes Textile Mill + Food
-                        // Processing Plant — their outputs (clothing, processed
+                        // Processing Plant -- their outputs (clothing, processed
                         // food) feed the goods-economy tax path, so techs that
                         // unlock them deserve economicFocus weighting).
                         if (bid.value == 6 || bid.value == 20 || bid.value == 21
@@ -224,7 +224,7 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                 // generic unlock scores so the AI actually chases these rather
                 // than whatever the current leader-bias model prefers.
                 // 2026-05-03: bumped 15000 → 25000. Audit showed only 24/432
-                // civs reached IR #2 — research priority dilution across the
+                // civs reached IR #2 -- research priority dilution across the
                 // 77-tech tree starved IR-gate techs of attention.
                 for (const uint32_t reqTechId : nextRevTechs) {
                     if (reqTechId != 0xFFFFu && reqTechId == tid.value) {
@@ -253,7 +253,7 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
 
                 // Production-chain gateway bonus: techs that unlock whole
                 // downstream chains get a large flat bonus.  Tech IDs from
-                // TechTree.cpp — double-checked after discovering an earlier
+                // TechTree.cpp -- double-checked after discovering an earlier
                 // off-by-one had us boosting Economics (13) instead of
                 // Refining (12).
                 //   12 Refining:     OIL → PLASTICS → ELECTRONICS → CONSUMER

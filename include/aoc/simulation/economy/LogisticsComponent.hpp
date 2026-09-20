@@ -17,9 +17,9 @@ namespace aoc::sim {
 /// State machine for a Logistics unit's supply cycle.
 enum class LogisticsState : uint8_t {
     AssigningTask,    ///< Idle. Look for an encampment that needs refill.
-    LoadingAtCity,    ///< At source city — drain stockpile into onboard cargo.
+    LoadingAtCity,    ///< At source city -- drain stockpile into onboard cargo.
     EnRouteToDepot,   ///< Carrying supplies toward target encampment.
-    UnloadingAtDepot, ///< At encampment — dump cargo into buffer.
+    UnloadingAtDepot, ///< At encampment -- dump cargo into buffer.
     EnRouteToCity,    ///< Empty, returning to source city for next load.
 };
 

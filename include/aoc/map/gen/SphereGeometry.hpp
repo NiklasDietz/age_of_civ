@@ -9,7 +9,7 @@
  *
  * All angles are degrees on the public API. Internal trigonometry is in
  * radians. The unit sphere is the canonical representation; latitude is
- * geographic, not geocentric (no ellipsoidal flattening — Earth is treated
+ * geographic, not geocentric (no ellipsoidal flattening -- Earth is treated
  * as a perfect sphere).
  *
  * The Mollweide projection emits coordinates in the unit square
@@ -130,7 +130,7 @@ struct MollweidePoint {
 [[nodiscard]] MollweidePoint mollweideForward(LatLon p);
 
 /// Result of mollweideInverse(). `valid` is false when the input
-/// (mapX, mapY) lies outside the Mollweide ellipse — in that case `coord`
+/// (mapX, mapY) lies outside the Mollweide ellipse -- in that case `coord`
 /// is unspecified and must not be used.
 struct MollweideInverseResult {
     LatLon coord;
@@ -163,7 +163,7 @@ struct MollweideInverseResult {
 // the projection inverse with (nx, ny) = ((col + 0.5) / W,
 // (row + 0.5) / H) and gets back its lat/lon. Different projections
 // distribute area, distort shapes, and handle the polar voids
-// differently — letting the player pick is a UI feature.
+// differently -- letting the player pick is a UI feature.
 
 enum class MapProjection : uint8_t {
     /// Equal-area pseudocylindrical (default). Earth surface fills a

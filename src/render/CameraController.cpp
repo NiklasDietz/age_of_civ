@@ -122,7 +122,7 @@ void CameraController::update(const aoc::app::InputManager& input, float deltaTi
         }
     } else if (this->m_worldHeight > 0.0f) {
         // Non-cylindrical X clamp. Allow camera to pan up to half a screen
-        // past the world edge — beyond that, less than half the screen
+        // past the world edge -- beyond that, less than half the screen
         // would show tiles.
         const float halfWView = static_cast<float>(screenWidth)
             / (2.0f * this->m_zoom);

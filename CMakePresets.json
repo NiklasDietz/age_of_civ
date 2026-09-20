@@ -83,7 +83,7 @@
         },
         {
             "name": "release-portable",
-            "displayName": "Release portable (Linux: -O2, no march=native, no LTO — golden gate preset)",
+            "displayName": "Release portable (Linux: -O2, no march=native, no LTO -- golden gate preset)",
             "inherits": "linux-base",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",

@@ -19,7 +19,7 @@ class HexGrid;
 
 namespace aoc::sim {
 
-/// H6.6: cap prevents unbounded warming at late game. At 10000 = 10 degrees —
+/// H6.6: cap prevents unbounded warming at late game. At 10000 = 10 degrees --
 /// already catastrophic, but finite. Without a cap, 500 turns * 100 pop was
 /// hitting 5000+ and growing, with no path back.
 inline constexpr float CO2_MAX = 10000.0f;

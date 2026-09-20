@@ -7,7 +7,7 @@
 namespace aoc::ui {
 
 Theme& theme() {
-    // Single-threaded UI layer — a plain static suffices.
+    // Single-threaded UI layer -- a plain static suffices.
     static Theme s_theme;
     return s_theme;
 }

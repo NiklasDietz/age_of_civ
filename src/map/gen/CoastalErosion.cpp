@@ -19,7 +19,7 @@ void runCoastalErosion(HexGrid& grid) {
 
     // Single CA pass dropping only true spits: land attached by one
     // edge (5+ of 6 neighbours water). Mountains exempt (locked by
-    // orogeny). 2026-07-05: was 2 passes at >= 4 water neighbours —
+    // orogeny). 2026-07-05: was 2 passes at >= 4 water neighbours --
     // that is a curvature-flow smoother which peeled every cape and
     // peninsula tip and drove coastline fractal dimension toward 1.0
     // (and re-created the 1-3-tile crumbs AFTER the island purge had

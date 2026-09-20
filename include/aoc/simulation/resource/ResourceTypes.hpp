@@ -322,7 +322,7 @@ inline constexpr uint16_t RUBBER_GOODS          = 77;
 inline constexpr uint16_t BRONZE                = 78;
 inline constexpr uint16_t CHARCOAL              = 79; ///< Wood-based fuel, early coal substitute
 inline constexpr uint16_t DEUTERIUM =
-    80; ///< [deprecated] coastal fusion fuel — superseded by HELIUM_3 from Moon
+    80; ///< [deprecated] coastal fusion fuel -- superseded by HELIUM_3 from Moon
 inline constexpr uint16_t BIOFUEL = 81; ///< Renewable fuel from crops, substitutes for Fuel
 inline constexpr uint16_t GOLD_CONTACTS =
     82; ///< Gold plating for electronics; late-game use of gold ore

@@ -18,7 +18,7 @@ void runLakePurge(HexGrid& grid, bool cylindricalTopology) {
     const int32_t height = grid.height();
     const bool cylSim    = cylindricalTopology;
 
-    // 2026-07-05: 60 -> 8. At Standard scale 60 tiles is ~3M km2 —
+    // 2026-07-05: 60 -> 8. At Standard scale 60 tiles is ~3M km2 --
     // Caspian-, Great-Lakes- and Baltic-scale inland waters were all
     // converted to Plains, so no inland sea could ever exist. 8 fills
     // only pond-scale artifacts and keeps playable inland seas.

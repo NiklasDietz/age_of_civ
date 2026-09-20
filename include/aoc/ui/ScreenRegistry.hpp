@@ -9,10 +9,10 @@
  * SettingsMenu and broke input gating. Any `IScreen` that has been
  * registered participates automatically in:
  *
- *   - `anyOpen()` — gates game input when a screen is modal.
- *   - `onlyOpen(s)` — exclusivity test for a side panel that keeps the map live.
- *   - `closeAll()` — Esc-to-close handler.
- *   - `onResize()` — viewport change fanout so every screen can reflow.
+ *   - `anyOpen()` -- gates game input when a screen is modal.
+ *   - `onlyOpen(s)` -- exclusivity test for a side panel that keeps the map live.
+ *   - `closeAll()` -- Esc-to-close handler.
+ *   - `onResize()` -- viewport change fanout so every screen can reflow.
  *
  * Adding a new screen only touches the registration call site, not the
  * query helpers.
@@ -58,7 +58,7 @@ public:
     // ---------------------------------------------------------------
     // Modal screens can chain: pause menu → settings → graphics → back.
     // Pushing remembers the previous top so a later `popModal()` can
-    // reopen it. Screens themselves manage their own open/close — the
+    // reopen it. Screens themselves manage their own open/close -- the
     // stack is a pure bookkeeping aid for the "back" path.
 
     /// Push `screen` as the current modal. Its predecessor (if any)
@@ -85,8 +85,8 @@ public:
     }
 
     /// Close every entry on the modal stack (top-to-bottom) and clear
-    /// the stack. Complements `closeAll` — which closes every screen
-    /// including non-modal ones — with a modal-only variant.
+    /// the stack. Complements `closeAll` -- which closes every screen
+    /// including non-modal ones -- with a modal-only variant.
     void closeModalStack(UIManager& ui);
 
 private:

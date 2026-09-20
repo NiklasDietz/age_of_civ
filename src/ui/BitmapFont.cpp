@@ -234,7 +234,7 @@ void BitmapFont::drawText(vulkan_app::renderer::Renderer2D& renderer2d, std::str
 }
 
 Rect BitmapFont::measureText(std::string_view text, float fontSize) {
-    // Same factor drawText applies — must stay in lockstep or centring drifts.
+    // Same factor drawText applies -- must stay in lockstep or centring drifts.
     fontSize *= theme().fontScale();
 
     if (!g_font.initialized) {

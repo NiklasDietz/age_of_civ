@@ -266,7 +266,7 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
 
         case SpyMission::InsiderTrading: {
             // Award gold bonus based on target's stock market activity
-            // H5.2: debit target the same amount — the spy is front-running
+            // H5.2: debit target the same amount -- the spy is front-running
             // target-civ investors, so every credit to the owner is a loss
             // to the target's market participants. Cap at target treasury.
             aoc::game::Player* target = findCityOwner(gameState, spy.owner, spy.location);
@@ -344,7 +344,7 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
         }
 
         case SpyMission::SiphonTourism: {
-            // Drain ~20-35% of target's accumulated tourism — burns down
+            // Drain ~20-35% of target's accumulated tourism -- burns down
             // their cumulativeTourism so foreign-tourist count drops, breaking
             // a near-victory cultural lead. Counter-mechanic the target can
             // negate via their own counter-intelligence + open borders.
@@ -404,7 +404,7 @@ void processSpyMissions(aoc::game::GameState& gameState,
         }
     }
 
-    // WP8 — snapshot spy.owner alongside the doomed Unit*. The trailing
+    // WP8 -- snapshot spy.owner alongside the doomed Unit*. The trailing
     // removal pass must not re-deref `captured` to look up its owner, since
     // a duplicate push (future-edit hazard) would deref freed memory on the
     // second iteration. With (PlayerId, unit) pairs the lookup uses a
@@ -478,7 +478,7 @@ void processSpyMissions(aoc::game::GameState& gameState,
             continue;  // Still in progress
         }
 
-        // Mission complete — find counter-spy level at target
+        // Mission complete -- find counter-spy level at target
         aoc::game::Player* targetPlayer = findCityOwner(gameState, spy.owner, spy.location);
         const int32_t counterLvl = (targetPlayer != nullptr)
             ? counterSpyLevel(gameState, grid, targetPlayer->id(), spy.location) : 0;
@@ -516,7 +516,7 @@ void processSpyMissions(aoc::game::GameState& gameState,
             record.outcome                  = outcome;
             gameState.recordSpyMission(record);
 
-            LOG_WARN("Spy (P%u, %.*s) failed %.*s at (%d,%d) — %.*s",
+            LOG_WARN("Spy (P%u, %.*s) failed %.*s at (%d,%d) -- %.*s",
                      static_cast<unsigned>(spy.owner),
                      static_cast<int>(spyLevelName(spy.level).size()),
                      spyLevelName(spy.level).data(),
@@ -541,7 +541,7 @@ void processSpyMissions(aoc::game::GameState& gameState,
                     diplomacy->addModifier(targetPlayer->id(), spy.owner, mod);
                 }
 
-                // WP-A8: cascading grievance — three or more active
+                // WP-A8: cascading grievance -- three or more active
                 // EspionageCaught grievances against the same owner suspend
                 // every active trade agreement between the two players. The
                 // suspension lasts until grievances decay below the threshold
@@ -615,7 +615,7 @@ void processSpyMissions(aoc::game::GameState& gameState,
     }
 
     // Remove captured/killed spies. Owner snapshotted as a PlayerId so we
-    // never deref `captured` to look up its owner — duplicate pushes
+    // never deref `captured` to look up its owner -- duplicate pushes
     // (future-edit hazard) would otherwise UB on the second pass.
     for (const PendingSpyKill& kill : toRemove) {
         aoc::game::Player* ownerPlayer = gameState.player(kill.ownerId);

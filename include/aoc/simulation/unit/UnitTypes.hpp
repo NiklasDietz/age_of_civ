@@ -30,7 +30,7 @@ enum class UnitClass : uint8_t {
     Religious,     ///< Missionaries, apostles, inquisitors
     Trader,        ///< Trade units that carry goods between cities
     Logistics,     ///< WP-S2: military supply units (wagon, tanker, plane)
-                   ///< — refills Encampment buffers from city stockpiles.
+                   ///< -- refills Encampment buffers from city stockpiles.
 
     Count
 };
@@ -161,7 +161,7 @@ inline constexpr std::array<UnitTypeDef, 82> UNIT_TYPE_DEFS = {{
     {UnitTypeId{0},  "Warrior",         UnitClass::Melee,    UnitEra::Ancient,      100, 20,  0, 0, 2,  40, TechId{},   UnitTypeId{10}, 50},
     // 2026-05-03: melee chain rewired against post-tree-expansion IDs.
     // Swordsman gated by Iron Working (37, was Pottery 2). Man-at-Arms by
-    // Castles (54, was Currency 5). Musketman by Gunpowder (10) — existing
+    // Castles (54, was Currency 5). Musketman by Gunpowder (10) -- existing
     // Metallurgy(8) prereq drifts off Civ6's Gunpowder model.
     {UnitTypeId{10}, "Swordsman",       UnitClass::Melee,    UnitEra::Classical,    110, 35,  0, 0, 2,  90, TechId{37}, UnitTypeId{33}, 80,  {{60, 1}}},             // Iron Working
     {UnitTypeId{33}, "Man-at-Arms",     UnitClass::Melee,    UnitEra::Medieval,     120, 45,  0, 0, 2, 120, TechId{54}, UnitTypeId{34}, 100, {{64, 1}}},             // Castles
@@ -288,7 +288,7 @@ inline constexpr std::array<UnitTypeDef, 82> UNIT_TYPE_DEFS = {{
     {UnitTypeId{30}, "Trader",          UnitClass::Trader,   UnitEra::Ancient,       60,  0,  0, 0, 3,  40, TechId{},   UnitTypeId{31}, 30},
     {UnitTypeId{31}, "Caravan",         UnitClass::Trader,   UnitEra::Medieval,      80,  0,  0, 0, 4,  80, TechId{5},  UnitTypeId{},   0},
 
-    // WP-S2: Logistics — military supply chain. Refills Encampment buffers.
+    // WP-S2: Logistics -- military supply chain. Refills Encampment buffers.
     // Separate cap from trade slots so war doesn't choke commerce.
     {UnitTypeId{62}, "Supply Wagon",    UnitClass::Logistics,UnitEra::Classical,     50,  0,  0, 0, 3,  60, TechId{6},  UnitTypeId{63}, 80},
     {UnitTypeId{63}, "Tanker Ship",     UnitClass::Logistics,UnitEra::Industrial,    80,  0,  0, 0, 5, 140, TechId{12}, UnitTypeId{},   0},

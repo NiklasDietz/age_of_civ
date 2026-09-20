@@ -431,7 +431,7 @@ void EconomySimulation::harvestResources(aoc::game::GameState& gameState, aoc::m
                 // density asymmetry.  A seam of coal yields more per worked
                 // tile than wood for charcoal production; gold/silver yield
                 // little because ore veins are thin.  Charcoal is not a tile
-                // resource — it's a processed good from recipe 38 — so its
+                // resource -- it's a processed good from recipe 38 -- so its
                 // effective per-turn rate is already bounded by 3 Wood tiles.
                 if (imp == aoc::map::ImprovementType::Mine ||
                     imp == aoc::map::ImprovementType::MountainMine) {
@@ -511,7 +511,7 @@ void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
             const CityDistrictsComponent& districts = cityPtr->districts();
             CityStockpileComponent& stockpile       = cityPtr->stockpile();
 
-            // WP-B2/B3 Lunar Colony mining stream — independent of Fusion
+            // WP-B2/B3 Lunar Colony mining stream -- independent of Fusion
             // Reactor. Audit 2026-04 found the Ti/He3 delivery was gated on
             // Fusion Reactor (TechId 28 = Fusion Power, rarely reached in
             // 1000t sims), so Mars gate never cleared. Decoupled: any city
@@ -538,7 +538,7 @@ void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
             }
 
             // Fusion Reactor fuel supply. He3 / Ti / RARE_EARTH delivery
-            // handled above — this branch only covers the Deuterium
+            // handled above -- this branch only covers the Deuterium
             // fallback for pre-Moon-Landing Fusion Reactor cities.
             if (districts.hasBuilding(BuildingId{35})) {
                 const aoc::sim::PlayerSpaceRaceComponent& sr = playerPtr->spaceRace();
@@ -721,7 +721,7 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
             econ.totalNeeds[goods::ADV_CONSUMER_GOODS] += scaleLuxury(advConsumer);
 
             // Actually consume these goods from stockpiles each turn
-            // (not just register as demand — actually deplete them). C33:
+            // (not just register as demand -- actually deplete them). C33:
             // partial-consume so unmet wheat demand maps to foodShortfallRatio
             // (consumed downstream by CityGrowth for starvation penalty).
             for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
@@ -923,7 +923,7 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
 
                 int32_t robotSlots = city->automation().bonusRecipeSlots();
                 // 2026-05-03: Industrial Revolution tier grants free robot
-                // capacity. Singapore model — a tech-rich small civ can
+                // capacity. Singapore model -- a tech-rich small civ can
                 // out-produce a populous low-tech one without needing to
                 // mass-produce Robot Worker goods first.
                 //   IR #3 Digital Age: +3 free slots per city
@@ -1158,7 +1158,7 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 // DataCenter synergy: Software recipes (24 Platform, 60
                 // Bootstrap) get +50% output per worked DataCenter tile,
                 // capped at +200%.  Answers the "resource-poor civ should
-                // still be able to export software" design question — a
+                // still be able to export software" design question -- a
                 // Research Lab city with 3 Data Centers produces 3x the
                 // software of a resource-rich city without them.
                 float datacenterMult = 1.0f;
@@ -1381,7 +1381,7 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
             // price → recipe ranker deprioritised them → chain attrition.
             //
             // 2026-05-03 (option-1 fix): demand magnitude was only `in.amount`
-            // (typically 1-3), which moved prices ~+20% — not enough to make
+            // (typically 1-3), which moved prices ~+20% -- not enough to make
             // anti-profitable upstream recipes (Wood→Charcoal at 10/(7·3)≈0.48)
             // viable. Scale demand by the downstream output's base price so
             // high-tier chains pull harder on intermediates: the Charcoal-Steel
@@ -1410,7 +1410,7 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
 
             // 2026-05-03: also report demand from UNIT production requirements.
             // Late-game units (Stealth Fighter, Modern Armor, Nuclear Sub etc.)
-            // need Microchips/Software/Steel — each civ that has the tech to
+            // need Microchips/Software/Steel -- each civ that has the tech to
             // build those units pulls on the corresponding chain. Drives
             // Computers/Software demand into the market.
             for (const aoc::sim::UnitTypeDef& udef : aoc::sim::UNIT_TYPE_DEFS) {
@@ -1428,7 +1428,7 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
 
             // Actual consumption drain: convert population demand into real
             // stockpile depletion so there is pull on the production chain.
-            // Without this, reporting demand to the market did nothing —
+            // Without this, reporting demand to the market did nothing --
             // consumer goods piled up uncapped and downstream recipes had
             // no reason to fire.  Each citizen consumes a small fraction
             // per turn; missing goods just don't drain (no negative).

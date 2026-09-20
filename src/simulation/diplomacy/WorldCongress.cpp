@@ -106,9 +106,9 @@ int32_t scoreResolution(const aoc::game::Player& voter,
             if (voter.id() == target) { return -50; }
             if (diplomacy == nullptr)  { return 0; }
             const int32_t rel = diplomacy->relation(voter.id(), target).totalScore();
-            if (rel >= 40)  { return -20; }   // Ally — protect them
+            if (rel >= 40)  { return -20; }   // Ally -- protect them
             if (rel >= 10)  { return -5;  }   // Friend
-            if (rel <= -40) { return 18; }    // Hostile — happy to sanction
+            if (rel <= -40) { return 18; }    // Hostile -- happy to sanction
             if (rel <= -10) { return 8;  }
             return 0;
         }
@@ -119,9 +119,9 @@ int32_t scoreResolution(const aoc::game::Player& voter,
             if (voter.id() == proposer) { return 30; }
             if (diplomacy == nullptr)    { return 0; }
             const int32_t rel = diplomacy->relation(voter.id(), proposer).totalScore();
-            if (rel >= 40)  { return  8;  }    // Ally — happy to grant prestige
-            if (rel >= 10)  { return  3;  }    // Friend — mild support
-            if (rel <= -40) { return -12; }    // Hostile — block hard
+            if (rel >= 40)  { return  8;  }    // Ally -- happy to grant prestige
+            if (rel >= 10)  { return  3;  }    // Friend -- mild support
+            if (rel <= -40) { return -12; }    // Hostile -- block hard
             if (rel <= -10) { return -5;  }
             return 0;                          // Neutral abstain
         }

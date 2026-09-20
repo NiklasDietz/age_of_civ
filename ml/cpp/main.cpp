@@ -67,7 +67,7 @@ struct CLIArgs {
     /// Balance-winrate: reward rare winning victory types across a generation.
     bool    balanceWinrate = false;
     float   balanceBonus   = 0.8f;
-    /// Default: warn — simulation INFO spam (per-turn maintenance/growth/
+    /// Default: warn -- simulation INFO spam (per-turn maintenance/growth/
     /// supply logs) dominates wall time and adds zero value for GA search.
     aoc::log::Severity logLevel = aoc::log::Severity::Warn;
     /// Which GA to run.  "ai" = the leader-behavior tuner (default).

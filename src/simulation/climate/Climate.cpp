@@ -20,7 +20,7 @@ float climateFoodMultiplier(const GlobalClimateComponent& climate) {
         return 1.0f - 0.05f * (co2 - 3000.0f) / 2000.0f;
     }
     if (co2 <= 7500.0f) {
-        // 5000→7500: 0.95→0.85 (modern era — should be transitioning to green)
+        // 5000→7500: 0.95→0.85 (modern era -- should be transitioning to green)
         return 0.95f - 0.10f * (co2 - 5000.0f) / 2500.0f;
     }
     // 7500→CO2_MAX (10000): 0.85→0.70 (atomic/info-era crisis if no green energy)
@@ -65,7 +65,7 @@ void GlobalClimateComponent::processTurn(aoc::map::HexGrid& grid, aoc::Random& r
         if (terrain == aoc::map::TerrainType::Coast
             && floodsThisTurn < MAX_FLOODS_PER_TURN) {
             // Audit 2026-04: coast flood scaled to 10.9k events at 1000t.
-            // Further drop 2× — flood is a strong narrative event that
+            // Further drop 2× -- flood is a strong narrative event that
             // shouldn't blanket every coast over a full game.
             const float floodChance = (this->globalTemperature >= 2.5f) ? 0.0004f : 0.0002f;
             if (rng.chance(floodChance)) {

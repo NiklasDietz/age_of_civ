@@ -119,12 +119,12 @@ void generateInitialPlateOwnership(SphereField& field, const std::vector<Plate>&
     // polar-seeded plates sprawl east-west across the entire pole
     // because each cell at lat 80° is geographically tiny (~10 km
     // E-W) but counts the same as a mid-lat cell (~55 km E-W) in a
-    // pure round-robin scheme — producing latitudinal-band plate
+    // pure round-robin scheme -- producing latitudinal-band plate
     // shapes (audit on seed 42 initial-cut grid showed clearly
     // banded plates spanning all longitudes at high lat). With
     // area-balancing, polar plates accumulate small per-cell area,
     // so they pop more often (catching up by cell count) until
-    // their TOTAL surface area matches mid-lat plates — naturally
+    // their TOTAL surface area matches mid-lat plates -- naturally
     // pushing them out of the polar cap into mid-latitudes once the
     // cap is filled.
     std::vector<std::vector<std::size_t>> frontiers(P);
@@ -171,7 +171,7 @@ void generateInitialPlateOwnership(SphereField& field, const std::vector<Plate>&
 
     while (claimed < totalCells) {
         // Pick plate with smallest claimedArea AND non-empty frontier.
-        // Linear scan is O(P) — fine for P ~ 10-20 plates and
+        // Linear scan is O(P) -- fine for P ~ 10-20 plates and
         // amortised across 259200 cell claims (~2.5M scan ops total).
         std::size_t pick = P;
         double minArea   = std::numeric_limits<double>::infinity();
@@ -263,7 +263,7 @@ void recomputePlateCentroidsFromCells(SphereField& field, std::vector<Plate>& pl
 // converted to oceanic crust the moment their closing rate goes
 // divergent. Continental rifting is handled by `applyWilsonRifting`
 // on its own ~150-200 My thermal-blanketing timescale; ridge
-// accretion is the COMPLEMENT — it operates only on already-oceanic
+// accretion is the COMPLEMENT -- it operates only on already-oceanic
 // crust whose plates are pulling apart, modelling the ongoing
 // extrusion of basalt at a true mid-ocean ridge.
 void accreteAtDivergentBoundary(SphereField& field, float dtMy) {
@@ -303,7 +303,7 @@ void accreteAtDivergentBoundary(SphereField& field, float dtMy) {
 // its currently subducting margins. We sum convergent-boundary
 // closing rates as a torque proxy, normalise by total cell count
 // (so larger plates do not run away faster than smaller ones), and
-// scale the Δω cap at 10 % per epoch — the Müller 2022 short-term
+// scale the Δω cap at 10 % per epoch -- the Müller 2022 short-term
 // plate-motion variability envelope.
 //
 // Geometric simplification: torque magnitude is treated as a scalar
@@ -311,8 +311,8 @@ void accreteAtDivergentBoundary(SphereField& field, float dtMy) {
 // would compute the cross product of the slab-pull vector with the
 // Euler-pole axis to get a true torque about the rotation axis, but
 // the simplified scalar-gain version reproduces the dominant signal
-// — plates with active subduction accelerate, plates with no
-// subduction decelerate — at much lower implementation cost.
+// -- plates with active subduction accelerate, plates with no
+// subduction decelerate -- at much lower implementation cost.
 void applySlabPullFeedback(SphereField& field, std::vector<Plate>& plates, float dtMy) {
     if (plates.empty()) {
         LOG_WARN("SphereFieldPhysics: %s called with empty plates -- skipping", __func__);
@@ -412,10 +412,10 @@ void applySlabPullFeedback(SphereField& field, std::vector<Plate>& plates, float
 // breaks Pangaea apart and starts the Atlantic ocean.
 //
 // We model this with two timers:
-//   1. `field.thermalAgeMy[i]` — per-cell heat-accumulation clock,
+//   1. `field.thermalAgeMy[i]` -- per-cell heat-accumulation clock,
 //       advanced by dtMy each epoch the cell's owner is classified
 //       as a supercontinent (continental area >= SUPERCONTINENT_FRACTION).
-//   2. `meanThermal` — per-plate mean of `thermalAgeMy` over its
+//   2. `meanThermal` -- per-plate mean of `thermalAgeMy` over its
 //       continental cells. Once it exceeds RIFT_THRESHOLD_MY a
 //       Bernoulli trial fires per epoch with probability ramping from
 //       0 (at 0 My over threshold) to 1.0 (at +100 My).
@@ -479,7 +479,7 @@ inline constexpr float RIFT_THRESHOLD_MY          = 150.0f;
 // of that envelope.
 inline constexpr float RIFT_RAMP_MY = 100.0f;
 // Hard mechanical cap: no tectonic plate can physically span > 40 % of
-// a sphere — Earth's largest plate (Pacific) is ~20 %. Once a plate
+// a sphere -- Earth's largest plate (Pacific) is ~20 %. Once a plate
 // exceeds this fraction of total sphere cells, rift is forced regardless
 // of thermal age. Models flexural / gravitational instability that
 // prevented any second Pangaea from ever forming.
@@ -579,7 +579,7 @@ int32_t applyWilsonRifting(SphereField& field, std::vector<Plate>& plates, uint3
         if (share >= SUPERCONTINENT_CRUST_SHARE) {
             field.thermalAgeMy[i] += dtMy;
         } else {
-            // Reset slowly — once a plate is no longer supercontinent
+            // Reset slowly -- once a plate is no longer supercontinent
             // its thermal blanketing relaxes over ~RIFT_THRESHOLD_MY.
             field.thermalAgeMy[i] *= thermalDecayFactor;
         }
@@ -623,7 +623,7 @@ int32_t applyWilsonRifting(SphereField& field, std::vector<Plate>& plates, uint3
         const float totalFrac = static_cast<float>(totalCells[i]) / globeCells;
         const bool forceRift  = (totalFrac >= FORCE_RIFT_TOTAL_FRACTION);
         if (forceRift) {
-            // Forced split for over-large plates — bypass thermal age.
+            // Forced split for over-large plates -- bypass thermal age.
             // Minimum cell count still needed to form a meaningful child.
             if (totalCells[i] < 4) continue;
         } else {
@@ -714,7 +714,7 @@ int32_t applyWilsonRifting(SphereField& field, std::vector<Plate>& plates, uint3
         const float poleOffsetDeg = 60.0f * (xorshift01(rngState) - 0.5f) * 2.0f;
         child.eulerPoleLatDeg = std::clamp(child.eulerPoleLatDeg + poleOffsetDeg, -89.0f, 89.0f);
         child.eulerPoleLonDeg += poleOffsetDeg;
-        // Sign always flipped so child opposes parent rotation — this
+        // Sign always flipped so child opposes parent rotation -- this
         // is what makes the rift OPEN.
         child.angularVelDeg = -child.angularVelDeg;
         plates.push_back(child);
@@ -730,7 +730,7 @@ int32_t applyWilsonRifting(SphereField& field, std::vector<Plate>& plates, uint3
         // Reassign cells on the (negative-side) of the rift plane,
         // and convert a narrow band around the rift axis to fresh
         // oceanic crust. The band width scales with cell-size on the
-        // sphere — RIFT_AXIS_OCEAN_HALF_RAD radians on either side
+        // sphere -- RIFT_AXIS_OCEAN_HALF_RAD radians on either side
         // covers the new ocean-basin opening (Atlantic-style: South
         // America / Africa rifted ~60-Myr-after split with a ~200 km
         // wide proto-ocean centred on the rift axis, growing
@@ -1036,7 +1036,7 @@ void mergePlatesBatch(SphereField& field, std::vector<Plate>& plates,
 
     // Pass 1: zero closing rate on every pre-merge plate-plate suture
     // that ends up inside a unioned plate. After remap those cells are
-    // interior — the convergent rate left over from this epoch's
+    // interior -- the convergent rate left over from this epoch's
     // accumulateClosingRate is no longer physical.
     constexpr int32_t LON = SphereField::LON_CELLS;
     constexpr int32_t LAT = SphereField::LAT_CELLS;
@@ -1091,7 +1091,7 @@ void mergePlatesBatch(SphereField& field, std::vector<Plate>& plates,
         if (rootCount[r] <= 1) continue; // Not a merged root.
         const double mag =
             std::sqrt(rootSx[r] * rootSx[r] + rootSy[r] * rootSy[r] + rootSz[r] * rootSz[r]);
-        if (mag < 1e-9) continue; // antipodal — keep prior centroid.
+        if (mag < 1e-9) continue; // antipodal -- keep prior centroid.
         const double mx  = rootSx[r] / mag;
         const double my  = rootSy[r] / mag;
         const double mz  = rootSz[r] / mag;
@@ -1725,7 +1725,7 @@ namespace {
 /// over a 5x5 cell window (~1 deg, well below any real orogen arc
 /// radius), with the east offsets scaled by cos(lat) so the gradient
 /// lives in physical space (unweighted lattice offsets rotate normals
-/// poleward at high latitude). Pure function of the plateId raster —
+/// poleward at high latitude). Pure function of the plateId raster --
 /// safe inside the OpenMP boundary loop. Returns false when the
 /// gradient is degenerate (symmetric window, thin sliver); the caller
 /// falls back to the cardinal normal, which never degenerates.
@@ -1847,7 +1847,7 @@ void accumulateClosingRate(SphereField& field, const std::vector<Plate>& plates,
             // Boundary normal in the local east/north basis, pointing
             // FROM cell (lonIdx, latIdx) TOWARD the neighbour side.
             // Primary estimate: smoothed-indicator gradient over a 5x5
-            // window (boundaryNormalAt) — resolves oblique boundary
+            // window (boundaryNormalAt) -- resolves oblique boundary
             // strike instead of snapping to the raster axes, which
             // aliased every diagonal boundary into 0/90-degree
             // segments and made mountain belts, trenches, and the
@@ -1949,7 +1949,7 @@ void thickenFromClosingRate(SphereField& field, float dtMy) {
     std::vector<float> delta(SphereField::CELL_COUNT, 0.0f);
 
     for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
-        // Only convergent cells thicken — transform shear should not
+        // Only convergent cells thicken -- transform shear should not
         // build crust, and divergent cells extrude basalt instead.
         if (field.boundaryType[i] != 1u) continue;
         const float rate = field.convergenceRateRadPerMy[i];
@@ -2045,14 +2045,14 @@ void growContinentalFractionAtArcs(SphereField& field, float dtMy) {
     // unanchored datum era.
     constexpr float K_ARC_FRAC_PER_RADMY = 0.10f;
     // Continental thickness gain follows the same closing-rate
-    // proportionality but at a reduced K — andesitic arc thickens
+    // proportionality but at a reduced K -- andesitic arc thickens
     // to ~30 km (DeCelles 2002 modern Andean active-arc), not the
     // 70 km Tibet steady-state that calibrates K_THICKEN.
     constexpr float K_ARC_KM_PER_RADMY = 100.0f;
     // Inboard offset in cells from the trench cell to the arc cell.
     // Tatsumi 1986 ~100 km horizontal offset; on 0.5° pitch (55 km
     // at equator, ~28 km at 60° lat) this maps to 2 cells equatorial
-    // / up to 4 polar. Use 2 as a global mean — refining to a
+    // / up to 4 polar. Use 2 as a global mean -- refining to a
     // latitude-aware step is an optimisation, not a physics fix.
     constexpr int32_t ARC_OFFSET_CELLS = 2;
     const float maxCrust               = PhysicsConstants::maxCrustThicknessKm;
@@ -2145,7 +2145,7 @@ void growContinentalFractionAtArcs(SphereField& field, float dtMy) {
             arcLon                   = ((arcLon % LON) + LON) % LON;
             const std::size_t arcIdx = SphereField::cellIndex(arcLon, arcLat);
             // Stop if the inboard cell is no longer the overrider
-            // (e.g. another plate sits in the way) — arc volcanism
+            // (e.g. another plate sits in the way) -- arc volcanism
             // does not punch across plate boundaries.
             if (field.plateId[arcIdx] != arcOwnerId) continue;
             const float dFrac = K_ARC_FRAC_PER_RADMY * rate * dtMy;
@@ -2903,7 +2903,7 @@ void applySubduction(SphereField& field, const std::vector<Plate>& plates, float
             // Pick consumed side. Primary rule: lower continental-
             // fraction side subducts (denser oceanic basalt sinks
             // beneath buoyant continental crust). Tie-break for
-            // ocean-ocean boundaries by crust AGE — older oceanic
+            // ocean-ocean boundaries by crust AGE -- older oceanic
             // crust is colder and denser (Stein & Stein 1992 t^1/2
             // cooling-subsidence relation), so the older side
             // subducts. Without the age tie-break, two oceanic
@@ -2927,11 +2927,11 @@ void applySubduction(SphereField& field, const std::vector<Plate>& plates, float
             // this gate the iteration-order resolves the tie
             // deterministically, producing a runaway cascade where
             // one plate progressively eats every adjacent oceanic
-            // plate — audit on seed 42 showed a single plate
+            // plate -- audit on seed 42 showed a single plate
             // growing from 1085 to >5000 cells over 60 epochs.
             //
             // CF_SUBDUCTION_THRESHOLD = 0.05 corresponds to ~5
-            // percentage points of continental fraction — roughly
+            // percentage points of continental fraction -- roughly
             // the difference between a true mid-ocean basin
             // (cf ≈ 0) and an oceanic plateau or accreted seamount
             // chain (cf ~ 0.05-0.10). Below that, the contrast is
@@ -4526,7 +4526,7 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
                             std::vector<uint8_t>& boundaryScratch, uint32_t& rngState, float dtMy,
                             std::vector<Terrane>* terranes, TerraneBody* terraneBody) {
     // Per-epoch passes in physical order:
-    //   0. plate-cell advection — Lagrangian transport: each owned cell
+    //   0. plate-cell advection -- Lagrangian transport: each owned cell
     //      rotates about its plate's Euler pole by omega*dt (Rodrigues
     //      rotation, backward semi-Lagrangian sample with a vacated-cell
     //      wake-fill pass for divergent boundaries). Replaces the legacy
@@ -4541,7 +4541,7 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
     //   8. stream-power surface erosion.
     //   9. compact + recompute plate centroids for next epoch.
     //
-    // No per-epoch ownership reset — plateId persists across epochs
+    // No per-epoch ownership reset -- plateId persists across epochs
     // (Lagrangian path), set ONCE by `generateInitialPlateOwnership`
     // at sim init. Boundary changes come exclusively through
     // mechanism passes (subduction flip, ridge accretion, docking
@@ -4638,7 +4638,7 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
     thickenFromClosingRate(field, dtMy);
     budgetSnap(dThicken);
     // Arc volcanism converts oceanic margins into andesitic
-    // continental crust at convergent boundaries — the mechanism
+    // continental crust at convergent boundaries -- the mechanism
     // that grows the global continental fraction over the 3 Gy run
     // from the ~5 % Archean baseline to the ~29 % modern figure.
     // Must run before applySubduction so cells about to be consumed

@@ -1023,7 +1023,7 @@ bool UIManager::handleInput(float mouseX, float mouseY, bool mousePressed, bool 
             w.isPressed           = true;
             this->m_pressedWidget = hit;
             // Left-drag on a pan canvas's own background grabs it for panning.
-            // Only when the canvas itself is the hit widget — pressing a card
+            // Only when the canvas itself is the hit widget -- pressing a card
             // inside it must still click the card, not start a pan. Right-drag
             // (below) additionally works from anywhere inside the canvas.
             if (w.canPan) {
@@ -1092,7 +1092,7 @@ bool UIManager::handleInput(float mouseX, float mouseY, bool mousePressed, bool 
                         this->m_lastClickTime[clickTarget] = now;
                     }
 
-                    // Disabled buttons swallow the click silently — no
+                    // Disabled buttons swallow the click silently -- no
                     // handler, no audio, no event log spam.
                     if (!disabled && onClick) {
                         onClick();
@@ -1133,7 +1133,7 @@ bool UIManager::handleInput(float mouseX, float mouseY, bool mousePressed, bool 
                 } else if (ListRowData* row = std::get_if<ListRowData>(&targetWidget->data)) {
                     // Row fires its own handler and toggles selection
                     // via the multi-select helpers. Ctrl / Shift are
-                    // not threaded here yet — callers that need them
+                    // not threaded here yet -- callers that need them
                     // can invoke `selectToggle`/`selectRangeTo` from
                     // within onClick.
                     this->selectOnly(clickTarget);
@@ -1164,7 +1164,7 @@ bool UIManager::handleInput(float mouseX, float mouseY, bool mousePressed, bool 
         // Right-click path. Mirrors the left-click press/release logic
         // but is opt-in: only widgets with `onRightClick` set react.
         // The primary-click pressed-widget state is intentionally not
-        // shared with the right button — right-click is simpler (no
+        // shared with the right button -- right-click is simpler (no
         // drift tolerance) since it's used for context menus.
         if (rightPressed) {
             this->m_rightPressedWidget = hit;
@@ -1485,8 +1485,8 @@ void UIManager::layoutWidget(WidgetId id, float parentX, float parentY) {
         // parent's content area would overflow. When `clampChildren`
         // is on (the default), shrink the requested size before
         // layout so the child draws inside the panel. ScrollList
-        // parents keep the height axis un-clamped — scrolling
-        // deliberately overflows the visible window on Y — but
+        // parents keep the height axis un-clamped -- scrolling
+        // deliberately overflows the visible window on Y -- but
         // horizontal clamping still applies so bars don't spill
         // sideways.
         const bool isScrollListParent = std::holds_alternative<ScrollListData>(w->data);
@@ -1534,7 +1534,7 @@ void UIManager::layoutWidget(WidgetId id, float parentX, float parentY) {
             // (panX, panY) so right-mouse drag scrolls the graph.
             // layoutWidget adds the child's own requestedBounds.x/y to
             // its parent origin, so we pass the parent's content origin
-            // (plus pan) — NOT contentX + child->requestedBounds.x, or
+            // (plus pan) -- NOT contentX + child->requestedBounds.x, or
             // the offset would land twice.
             const float ax = contentX + w->panX;
             const float ay = contentY + w->panY;
@@ -1608,7 +1608,7 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
             using T = std::decay_t<decltype(data)>;
 
             if constexpr (std::is_same_v<T, PanelData>) {
-                // Base fill — `Widget.alpha` modulates so fade tweens
+                // Base fill -- `Widget.alpha` modulates so fade tweens
                 // ripple through. Gradient bottom is layered on top as a
                 // second band if provided.
                 const float a = data.backgroundColor.a * w->alpha;
@@ -1620,7 +1620,7 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
                     renderer2d.drawFilledRect(b.x, b.y, b.w, b.h, data.backgroundColor.r,
                                               data.backgroundColor.g, data.backgroundColor.b, a);
                 }
-                // Two-band gradient. Cheap — no shader change — just
+                // Two-band gradient. Cheap -- no shader change -- just
                 // blends the bottom half toward `gradientBottom`. Six
                 // slices give a visible gradient without the banding an
                 // extreme step count introduces.
@@ -1649,7 +1649,7 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
                                               data.bottomShadow.r, data.bottomShadow.g,
                                               data.bottomShadow.b, data.bottomShadow.a * w->alpha);
                 }
-                // Leading accent bar — Civ-6 style ribbon.
+                // Leading accent bar -- Civ-6 style ribbon.
                 if (data.accentBarColor.a > 0.0f) {
                     const float abw = data.accentBarWidth * scale;
                     renderer2d.drawFilledRect(b.x, b.y, abw, b.h, data.accentBarColor.r,
@@ -1729,7 +1729,7 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
                                               0.9f);
                 }
 
-                // Optional leading icon — from IconAtlas by spriteId.
+                // Optional leading icon -- from IconAtlas by spriteId.
                 // Rendered at left edge; label offset accounts for it.
                 float labelOffset = 0.0f;
                 if (data.iconSpriteId != 0) {

@@ -118,11 +118,11 @@ public:
     /// / Continents) wire in here too.
     enum class MapOverlay : uint8_t {
         // Modes:
-        //   None             — normal terrain, no tint
-        //   TectonicPlates   — per-plate hue + boundary borders
-        //   Winds            — arrows showing prevailing wind direction
+        //   None             -- normal terrain, no tint
+        //   TectonicPlates   -- per-plate hue + boundary borders
+        //   Winds            -- arrows showing prevailing wind direction
         //                       (trade easterlies / westerlies / polar)
-        //   OceanCurrents    — arrows along coast water tiles showing
+        //   OceanCurrents    -- arrows along coast water tiles showing
         //                       gyre direction with warm/cold colour
         None,
         TectonicPlates,
@@ -130,10 +130,10 @@ public:
         OceanCurrents,
         Hotspots,
         PlateMotion,    ///< Arrow at each plate centre showing its velocity vector
-        PlateBoundaries,///< Boundary lines only (no plate-id fill) — collision-type colours
-        CrustAge,       ///< Per-tile crust age — red young / blue ancient
-        Sediment,       ///< Per-tile sediment depth — yellow basins
-        RockType,       ///< Per-tile rock-type tag — Sed / Igneous / Metamorphic / Ophiolite
+        PlateBoundaries,///< Boundary lines only (no plate-id fill) -- collision-type colours
+        CrustAge,       ///< Per-tile crust age -- red young / blue ancient
+        Sediment,       ///< Per-tile sediment depth -- yellow basins
+        RockType,       ///< Per-tile rock-type tag -- Sed / Igneous / Metamorphic / Ophiolite
         Margins,        ///< Active (red) vs passive (blue) continental margins
         Volcanism,      ///< Volcano/hot-spring/dune/inselberg markers
         Hazard,         ///< Seismic + tsunami hazard intensity

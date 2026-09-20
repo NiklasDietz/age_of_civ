@@ -14,7 +14,7 @@
  * The screen is an `IScreen` so it participates in the registry and
  * reflows on resize. It is non-modal in the sense of blocking input:
  * registry queries still return `isOpen == true`, which is exactly
- * what callers want — game input is blocked while the worker runs.
+ * what callers want -- game input is blocked while the worker runs.
  */
 
 #include "aoc/ui/IScreen.hpp"
@@ -40,7 +40,7 @@ public:
     [[nodiscard]] bool isOpen() const override { return this->m_isOpen; }
     void onResize(UIManager& ui, float width, float height) override;
 
-    /// Thread-safe progress setter — the worker thread may call this.
+    /// Thread-safe progress setter -- the worker thread may call this.
     void setProgress(float fraction) {
         this->m_progress.store(fraction, std::memory_order_relaxed);
     }
@@ -83,7 +83,7 @@ private:
     /// rotate even while a single long generation phase is running.
     uint32_t m_tipIndex     = 0;
     double m_lastTipSwapSec = 0.0;
-    // Manual mutex avoided — string writes are coarse (per-phase) and
+    // Manual mutex avoided -- string writes are coarse (per-phase) and
     // the UI-thread read tolerates the occasional torn update.
 };
 

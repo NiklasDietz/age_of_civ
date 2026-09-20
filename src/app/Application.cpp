@@ -1836,7 +1836,7 @@ ErrorCode Application::initialize(const Config& config) {
     this->applySettings();
 
     // Register every modal screen with the central registry. Any future
-    // screen just needs one `add()` call — the `anyScreenOpen`,
+    // screen just needs one `add()` call -- the `anyScreenOpen`,
     // `closeAllScreens`, and `onResize` helpers all pick it up
     // automatically. SettingsMenu is included so it no longer slips past
     // the input-gate while open.
@@ -1936,7 +1936,7 @@ ErrorCode Application::initialize(const Config& config) {
     aoc::ui::IconAtlas::instance().seedBuiltIns();
     (void)aoc::ui::IconAtlas::instance().loadPlaceholders("data/icons.txt");
 
-    // Standard GLFW cursors created once — swapped per-frame based on
+    // Standard GLFW cursors created once -- swapped per-frame based on
     // the hovered widget's `hoverCursor` hint. Saves repeated alloc.
     // Stored as void* in the header so GLFW stays out of public API.
     this->m_cursors.arrow     = glfwCreateStandardCursor(GLFW_ARROW_CURSOR);
@@ -2032,9 +2032,9 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     // Apply user-selected turn limit. Used by Score victory + spectator HUD.
     this->m_spectatorMaxTurns = config.maxTurns;
 
-    // Loading overlay. Rendered on next frame — we synchronously
+    // Loading overlay. Rendered on next frame -- we synchronously
     // block through map-gen / spawn below, so each phase explicitly pumps a
-    // frame via `phase()` — otherwise the overlay is built but never drawn and
+    // frame via `phase()` -- otherwise the overlay is built but never drawn and
     // the window just freezes until the game appears.
     this->m_loadingScreen.setTipSeed(config.mapSeed);
     this->m_loadingScreen.open(this->m_uiManager, "Generating World");
@@ -2077,14 +2077,14 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     mapConfig.tectonicTotalMy = config.tectonicTotalMy;
     mapConfig.landPlateCount  = config.landPlateCount;
     // Continents wrap horizontally (cylindrical topology) so scrolling
-    // east past the right edge re-enters from the west — the world has
+    // east past the right edge re-enters from the west -- the world has
     // no east/west boundary, matching a globe's longitude band.
     if (config.mapType == aoc::map::MapType::Continents) {
         mapConfig.topology = aoc::map::MapTopology::Cylindrical;
     }
     // Map Editor handoff: when "Use This Map" was pressed in the editor,
     // skip MapGenerator and reuse the in-memory grid the user just edited.
-    // Flag is one-shot — cleared after consumption so the next game falls
+    // Flag is one-shot -- cleared after consumption so the next game falls
     // back to normal generation.
     if (this->m_useExistingGridOnNextStart && this->m_hexGrid.width() > 0) {
         this->m_useExistingGridOnNextStart = false;
@@ -2301,7 +2301,7 @@ void Application::startSpectate(int32_t playerCount, int32_t maxTurns) {
 
     for (int32_t i = 0; i < playerCount; ++i) {
         config.players[static_cast<std::size_t>(i)].isActive = true;
-        // All slots are AI — no human player in spectator mode.
+        // All slots are AI -- no human player in spectator mode.
         config.players[static_cast<std::size_t>(i)].isHuman = false;
         config.players[static_cast<std::size_t>(i)].civId =
             static_cast<uint8_t>(i % static_cast<int32_t>(aoc::sim::CIV_COUNT));
@@ -2323,7 +2323,7 @@ void Application::startSpectate(int32_t playerCount, int32_t maxTurns) {
     this->m_aiControllers.emplace(this->m_aiControllers.begin(), aoc::PlayerId{0},
                                   config.aiDifficulty);
 
-    // Reveal all tiles immediately — spectator sees everything.
+    // Reveal all tiles immediately -- spectator sees everything.
     this->spectatorRevealAll();
 
     // Initialize spectator state.
@@ -2335,7 +2335,7 @@ void Application::startSpectate(int32_t playerCount, int32_t maxTurns) {
     this->m_spectatorFollowPlayer    = -1;
     this->m_spectatorFogEnabled      = false;
 
-    // Hide the end-turn button — spectator does not need it.
+    // Hide the end-turn button -- spectator does not need it.
     if (this->m_endTurnButton != aoc::ui::INVALID_WIDGET) {
         this->m_uiManager.setVisible(this->m_endTurnButton, false);
     }
@@ -3129,7 +3129,7 @@ void Application::regenerateContinentPreview(int32_t timeMy) {
         } else {
             // Generator runs OUTSIDE the lock would be ideal, but
             // m_hexGrid itself is the destination so we'd need a
-            // staging copy. Profile first — generator dominates,
+            // staging copy. Profile first -- generator dominates,
             // mutex is uncontended.
             aoc::map::MapGenerator::generate(cfg, this->m_hexGrid);
             this->m_creatorEpochCache.emplace(epochLimit, this->m_hexGrid);
@@ -3357,12 +3357,12 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             w->childSpacing    = 6.0f;
         }
     }
-    // Advanced cyclers — climate + sea level + axial tilt + super-
+    // Advanced cyclers -- climate + sea level + axial tilt + super-
     // sample + ENSO + Milankovitch. Inlined into main creator panel
     // (HorizontalWrap auto-flows them onto separate rows).
     {
         // Use main creator panel as parent for cyclers (no separate
-        // advanced panel — keeps minimap clear).
+        // advanced panel -- keeps minimap clear).
         this->m_creatorAdvPanelId = this->m_creatorPanelId;
         // Helper: add cycler button (label + tap-to-cycle through ints).
         auto addCycler = [&](const std::string& prefix, int32_t* value, int32_t lo, int32_t hi,
@@ -3399,7 +3399,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         addCycler("Milan:", &this->m_creatorMilanTenths, 0, 10, 1, &this->m_creatorMilanLabel,
                   88.0f);
 
-        // Map projection cycler — labels with the projection NAME so it's
+        // Map projection cycler -- labels with the projection NAME so it's
         // clear which one is active. Order and names both come from
         // CREATOR_PROJECTIONS so this stays in step with the enum
         // automatically; index 0 is the default (equal-area).
@@ -3487,7 +3487,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                                              std::move(minus));
     }
 
-    // Age button — click to type total sim length directly.
+    // Age button -- click to type total sim length directly.
     {
         aoc::ui::ButtonData epoch;
         epoch.label = formatCreatorAgeLabel(this->m_creatorTimeCurrentMy, this->m_creatorTotalMy);
@@ -3608,7 +3608,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                                              std::move(moreEp));
     }
 
-    // Land plate count adjuster — no upper cap. Hold-to-repeat for fast scan.
+    // Land plate count adjuster -- no upper cap. Hold-to-repeat for fast scan.
     {
         aoc::ui::ButtonData lessC;
         lessC.label          = "Cont-";
@@ -3640,7 +3640,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 50.0f, 36.0f},
                                              std::move(lessC));
 
-        // Plates value box — click to type initial-plate count.
+        // Plates value box -- click to type initial-plate count.
         {
             aoc::ui::ButtonData pBtn;
             pBtn.label        = "P:" + std::to_string(this->m_creatorLandPlates);
@@ -3730,7 +3730,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 36.0f, 36.0f},
                                              std::move(minus));
 
-        // Value box — Button styled like a label. Click to focus + type.
+        // Value box -- Button styled like a label. Click to focus + type.
         aoc::ui::ButtonData valBtn;
         valBtn.label        = pfx + ":" + std::to_string(*target);
         valBtn.fontSize     = 11.0f;
@@ -3870,7 +3870,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
     addOverlayBtn("SedD", aoc::render::GameRenderer::MapOverlay::SedDir);
     addOverlayBtn("Cchg", aoc::render::GameRenderer::MapOverlay::CoastChg);
 
-    // Generate — rebuilds the world with current parameters. Apply
+    // Generate -- rebuilds the world with current parameters. Apply
     // when the user is done tweaking values; deferred so each
     // setting change doesn't hang the UI.
     {
@@ -3884,7 +3884,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         gen.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         gen.onClick      = [this]() {
             this->numInputDefocus();
-            // Clear epoch cache — config changed, old snapshots are stale.
+            // Clear epoch cache -- config changed, old snapshots are stale.
             this->clearCreatorEpochCache();
             this->m_creatorTimeCurrentMy = this->m_creatorTotalMy.load();
             this->enqueueRegen(this->m_creatorTotalMy);
@@ -3949,7 +3949,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             this->clearCreatorEpochCache();
             std::random_device rd;
             this->m_creatorSeed = rd();
-            // Don't snap to total when Play is running — let it
+            // Don't snap to total when Play is running -- let it
             // continue from the current epoch on the new seed and
             // walk forward to the endpoint naturally.
             if (!this->m_creatorPlaying) {
@@ -4363,7 +4363,7 @@ void Application::spectatorMaybeSnapshot() {
         LOG_WARN("spectatorSnapshot turn %d: saveGame failed", turn);
         return;
     }
-    // Store a sentinel (empty vector) — the file on disk is the real snapshot.
+    // Store a sentinel (empty vector) -- the file on disk is the real snapshot.
     this->m_spectatorSnapshots[turn] = std::vector<uint8_t>{};
 
     // Cap the ring: drop the oldest snapshots when the history grows beyond
@@ -4888,7 +4888,7 @@ void Application::run() {
         // regenerateContinentPreview() takes hundreds of ms on a full-
         // sim run; with `while`, a single laggy frame would compound
         // make-up regens and freeze the UI for seconds. With `if`, at
-        // most ONE regen fires per frame — globe input + UI buttons
+        // most ONE regen fires per frame -- globe input + UI buttons
         // stay responsive even if regens take longer than
         // PLAY_INTERVAL. The play loop slips back proportionally to
         // regen cost, which is the right behaviour: the user sees
@@ -4900,7 +4900,7 @@ void Application::run() {
             if (this->m_creatorPlayAccum >= PLAY_INTERVAL) {
                 this->m_creatorPlayAccum = 0.0f; // reset, do not accumulate make-up
                 if (this->m_creatorTimeCurrentMy >= this->m_creatorTotalMy) {
-                    // Reached endpoint — stop play.
+                    // Reached endpoint -- stop play.
                     this->m_creatorPlaying = false;
                     if (this->m_creatorPlayBtnId != aoc::ui::INVALID_WIDGET) {
                         this->m_uiManager.setButtonLabel(this->m_creatorPlayBtnId, "Play");
@@ -4998,10 +4998,10 @@ void Application::run() {
                 }
             }
 
-            // WP-H takeover: T (or Ctrl+T) in spectator mode — assume control
+            // WP-H takeover: T (or Ctrl+T) in spectator mode -- assume control
             // of the currently-followed player. Sim switches to human-driven
             // for that slot; AI skips it; fog resolves from their POV.
-            // Plain 'T' kept as alias for Ctrl+T per user request — clicking
+            // Plain 'T' kept as alias for Ctrl+T per user request -- clicking
             // a civ in the scoreboard sets m_spectatorFollowPlayer, then
             // pressing T overtakes that civ.
             if (this->m_inputManager.isKeyPressed(GLFW_KEY_T)) {
@@ -5040,7 +5040,7 @@ void Application::run() {
                 }
             }
 
-            // Snapshot ring tick — capture state every SNAPSHOT_INTERVAL
+            // Snapshot ring tick -- capture state every SNAPSHOT_INTERVAL
             // turns so backward seek has restore points.
             this->spectatorMaybeSnapshot();
 
@@ -5434,7 +5434,7 @@ void Application::run() {
         // Suppress edge-scroll while the mouse sits over a UI widget,
         // over the minimap, or while a modal is open. Without this the
         // map slides whenever the cursor brushes the HUD bar or hovers
-        // a button — caller wants edge-scroll only over the actual map.
+        // a button -- caller wants edge-scroll only over the actual map.
         aoc::render::Minimap::Rect mmRect =
             aoc::render::Minimap::computeRect(this->m_hexGrid, fbHeight);
         mmRect.y -= this->m_gameRenderer.m_minimapBottomOffset;
@@ -5549,7 +5549,7 @@ void Application::run() {
             this->m_mapEditorMode && this->m_inputManager.isMouseButtonHeld(GLFW_MOUSE_BUTTON_LEFT);
         // When only the city detail panel is open (right-side, non-blocking),
         // allow map interactions on the MAP area (left of the city panel).
-        // Don't check m_uiConsumedInput — the HUD widgets shouldn't block tile clicks.
+        // Don't check m_uiConsumedInput -- the HUD widgets shouldn't block tile clicks.
         if (!this->m_spectatorMode && this->onlyCityDetailScreenOpen() &&
             this->m_gameState.player(0) != nullptr &&
             this->m_gameState.player(0)->cityAt(this->m_cityDetailScreen.cityLocation()) !=
@@ -5859,7 +5859,7 @@ void Application::run() {
                                     frame.extent.width, frame.extent.height, &this->m_eventLog,
                                     &this->m_notificationManager, &this->m_tutorialManager);
 
-        // Dev-only widget inspector overlay — toggled via F11.
+        // Dev-only widget inspector overlay -- toggled via F11.
         // Drawn last so it sits on top of HUD + screens.
         if (this->m_widgetInspector.isEnabled()) {
             this->m_renderer2d->resetCamera();
@@ -6198,15 +6198,15 @@ void Application::buildMainMenu(float screenW, float screenH) {
         },
         [this, screenW, screenH]() {
             // Spectate: reuse the GameSetup screen so the user can configure
-            // map type/size, placement, player count, civs, difficulty — same
-            // as a regular game — then start in spectator mode (all slots AI).
+            // map type/size, placement, player count, civs, difficulty -- same
+            // as a regular game -- then start in spectator mode (all slots AI).
             this->m_mainMenu.destroy(this->m_uiManager);
             this->m_settingsMenu.destroy(this->m_uiManager);
             this->m_gameSetupScreen.build(
                 this->m_uiManager, screenW, screenH,
                 [this](const aoc::ui::GameSetupConfig& config) {
                     this->m_gameSetupScreen.destroy(this->m_uiManager);
-                    // Force all slots to AI — spectator has no human.
+                    // Force all slots to AI -- spectator has no human.
                     aoc::ui::GameSetupConfig specConfig = config;
                     for (size_t i = 0; i < specConfig.players.size(); ++i) {
                         if (specConfig.players[i].isActive) {
@@ -6296,14 +6296,14 @@ void Application::buildMainMenu(float screenW, float screenH) {
             this->m_spectatorMode       = true;
             this->m_spectatorPaused     = true;
             this->m_spectatorFogEnabled = false;
-            // Hide top resource/Tech/Gov bar — it has no purpose in the
+            // Hide top resource/Tech/Gov bar -- it has no purpose in the
             // creator. Keep the End Turn button visible but relabel it
             // "Back to Main Menu"; handleEndTurn checks creator mode and
             // routes to returnToMainMenu so the same widget serves both.
             if (this->m_topBar != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setVisible(this->m_topBar, false);
             }
-            // Hide End Turn button entirely in Continent Creator —
+            // Hide End Turn button entirely in Continent Creator --
             // creator has its own "Back" + "Use This Map" controls in
             // the bottom panel; ingame UI is irrelevant here.
             if (this->m_endTurnButton != aoc::ui::INVALID_WIDGET) {
@@ -6497,7 +6497,7 @@ void Application::onResize(uint32_t width, uint32_t height) {
     }
 
     // Rebuild the unit action panel so the bottom-right anchored widget
-    // picks up the new window corner. Drop the menu dropdown — it uses
+    // picks up the new window corner. Drop the menu dropdown -- it uses
     // absolute positioning anchored on a one-off click.
     if (this->m_appState == AppState::InGame) {
         this->rebuildUnitActionPanel();
@@ -6627,7 +6627,7 @@ void Application::handleSelect() {
             if (this->m_hexGrid.movementCost(idx) != 0 && this->m_hexGrid.owner(idx) == 0) {
                 aoc::game::City* selCity = this->m_selectedCity;
                 if (selCity->isTileWorked(clickedTile)) {
-                    // Free a worker — always allowed.
+                    // Free a worker -- always allowed.
                     selCity->toggleWorker(clickedTile);
                 } else {
                     // Assigning a worker: must have a free citizen slot.
@@ -7080,7 +7080,7 @@ void Application::handleUndoAction() {
 
 void Application::handleEndTurn() {
     // In design tools (Continent Creator / Map Editor) the End Turn button
-    // is repurposed as "Back to Main Menu" — game logic is paused, so
+    // is repurposed as "Back to Main Menu" -- game logic is paused, so
     // there is no turn to advance. Just exit back to the main menu.
     if (this->m_continentCreatorMode || this->m_mapEditorMode) {
         this->m_continentCreatorMode = false;
@@ -7666,7 +7666,7 @@ void Application::spawnStartingEntities(aoc::sim::CivId civId, hex::AxialCoord s
 hex::AxialCoord Application::findNearbyLandTile(hex::AxialCoord target) const {
     // Spiral outward from target to find a good starting tile.
     // Prefer grassland/plains over desert/tundra/snow. Radius extended
-    // to 60 — ocean-heavy maps could push the nearest land far from the
+    // to 60 -- ocean-heavy maps could push the nearest land far from the
     // requested anchor; the older 15-radius cap silently returned the
     // original tile (which was water) when no land was reachable, and
     // that's how AI civs ended up spawning on water.

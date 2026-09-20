@@ -182,7 +182,7 @@ CityCommModifiers computeCityCommModifiers(
 
     float dist = commData.commDistance;
     if (dist <= 1.0f) {
-        return mods;  // Capital or adjacent city — no penalty
+        return mods;  // Capital or adjacent city -- no penalty
     }
 
     // Penalties scale with communication distance beyond 1.0

@@ -2,7 +2,7 @@
 
 /// @file CityState.hpp
 /// @brief City-state definitions, ECS components, quest state, and per-turn
-///        processing. All city-state code shares this header — a separate
+///        processing. All city-state code shares this header -- a separate
 ///        CityStateQuest.hpp used to exist but was folded in to avoid
 ///        include-order fragility between the component (which embeds the
 ///        quest struct) and the quest definitions.
@@ -141,7 +141,7 @@ struct CityStateComponent {
     PlayerId      levyPlayer      = INVALID_PLAYER;
     int32_t       levyTurnsLeft   = 0;
 
-    /// Turns since last bully attempt — bully is rate-limited.
+    /// Turns since last bully attempt -- bully is rate-limited.
     int32_t       turnsSinceBully = 0;
 
     [[nodiscard]] bool hasMet(PlayerId p) const {

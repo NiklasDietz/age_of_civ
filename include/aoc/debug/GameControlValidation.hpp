@@ -12,7 +12,7 @@ namespace aoc::debug {
 
 /// Returns true if `itemId` is within the static bounds table for `type`.
 /// Does NOT check buildability prereqs (lock reasons, wonder adjacency, etc.)
-/// — bounds-only validation, matching the scope of the HTTP POST /game/city/production route.
+/// -- bounds-only validation, matching the scope of the HTTP POST /game/city/production route.
 [[nodiscard]] bool isProductionItemValid(aoc::sim::ProductionItemType type, int32_t itemId);
 
 /// Returns true if `techId` is in [0, techCount()) AND

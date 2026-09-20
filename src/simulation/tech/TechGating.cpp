@@ -103,7 +103,7 @@ uint8_t buildingChainLockReason(const aoc::game::Player& player, const aoc::game
 } // namespace
 
 
-// Forward decl — definition lower in file.
+// Forward decl -- definition lower in file.
 static uint8_t checkSpatial(const aoc::map::HexGrid* grid,
                              const aoc::game::City& city,
                              const aoc::sim::WonderAdjacencyReq& req);
@@ -531,7 +531,7 @@ bool canBuildWonder(const aoc::game::GameState& gameState, PlayerId player, uint
     if (wonderId >= WONDER_COUNT) {
         return false;
     }
-    // Use detailed lock check — without grid we miss adjacency, but UI
+    // Use detailed lock check -- without grid we miss adjacency, but UI
     // listing path (via getBuildableItems) does pass grid. Production
     // enqueue path will need grid passed too (see getBuildableItems).
     const aoc::game::Player* gsPlayer = gameState.player(player);

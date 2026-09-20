@@ -368,7 +368,7 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       0.8f, 0.5f, 1.1f, 1.8f}},
 
     // 10: Russia - Peter -- SCIENCE EXPANSIONIST
-    // GA optimized: near-optimal profile — high expansion + science + economy.
+    // GA optimized: near-optimal profile -- high expansion + science + economy.
     {CivId{10}, "The Grand Embassy",
      "Respects scientifically advanced civilizations. Dislikes those behind in tech.",
      AgendaCondition::HasHigherScience, AgendaCondition::HasLessMilitary,

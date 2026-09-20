@@ -51,7 +51,7 @@ struct DiagKey {
 };
 struct DiagKeyHash {
     size_t operator()(const DiagKey& k) const noexcept {
-        // Fold into 64 bits before hashing — avoids reinterpret aliasing.
+        // Fold into 64 bits before hashing -- avoids reinterpret aliasing.
         uint64_t mixed = (uint64_t{k.player} << 32)
                        | (uint64_t{k.rev} << 24)
                        | (uint64_t{k.reason} << 16)

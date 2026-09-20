@@ -21,10 +21,10 @@ How it works
    default AI opponents. Fitness = average normalized EraVP score across games.
    Higher score = better AI.
 
-3. **Selection**: Tournament selection — pick 3 random individuals, keep the
+3. **Selection**: Tournament selection -- pick 3 random individuals, keep the
    best. This maintains diversity better than pure elitism.
 
-4. **Crossover**: Uniform crossover — for each weight, randomly pick from
+4. **Crossover**: Uniform crossover -- for each weight, randomly pick from
    parent A or parent B. This works well because the 25 weights are largely
    independent (militaryAggression doesn't need to be paired with prodMilitary).
 
@@ -50,16 +50,16 @@ Why GA over gradient-based optimization?
 =========================================
 
 - The fitness function is a BLACK BOX (run a C++ simulator, read CSV output).
-  No gradients available — can't backprop through the game engine.
-- The search space is small (25 floats) — GAs are efficient here.
-- GAs naturally produce a POPULATION of solutions, not just one — perfect for
+  No gradients available -- can't backprop through the game engine.
+- The search space is small (25 floats) -- GAs are efficient here.
+- GAs naturally produce a POPULATION of solutions, not just one -- perfect for
   difficulty tiers.
 - GAs handle non-smooth, non-convex fitness landscapes well. The interaction
   between 25 AI parameters creates many local optima.
 
 Usage:
     python evolve_utility.py --generations 50 --population 20 --games 3
-    python evolve_utility.py --quick  # 5 gens, 8 pop, 1 game — fast test
+    python evolve_utility.py --quick  # 5 gens, 8 pop, 1 game -- fast test
 """
 
 import argparse
@@ -252,14 +252,14 @@ def evaluate_fitness(individual: Individual, num_games: int = 3,
     gene_quality: how well the individual's parameters match empirically known
     good strategies (high expansion, moderate military, strong economy).
 
-    game_outcome: actual score spread from simulation runs — broader spreads
+    game_outcome: actual score spread from simulation runs -- broader spreads
     (decisive winners) indicate the game mechanics are producing differentiated
     outcomes, which validates the parameter space.
     """
     total_score = 0.0
     total_games = 0
 
-    # Run games (sequentially within one individual — parallelism is at
+    # Run games (sequentially within one individual -- parallelism is at
     # the population level, not per-individual)
     for game_idx in range(num_games):
         final_scores = _run_single_game((num_turns, os.getpid() * 100 + game_idx))
@@ -338,7 +338,7 @@ def mutate(individual: Individual, mutation_rate: float = 0.2,
 
 def evolve(args):
     print("=" * 60)
-    print("Age of Civilization — Genetic Algorithm for Utility AI")
+    print("Age of Civilization -- Genetic Algorithm for Utility AI")
     print("=" * 60)
 
     if not os.path.exists(SIMULATOR_PATH):

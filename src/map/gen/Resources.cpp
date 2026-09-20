@@ -3,7 +3,7 @@
  * @brief Resource-placement passes (geology / basic / random / fair).
  *        Extracted 2026-05-02 from MapGenerator.cpp during the gen/ split.
  *        Definitions remain MapGenerator:: members so the public class API
- *        is unchanged — they just live in their own translation unit.
+ *        is unchanged -- they just live in their own translation unit.
  */
 
 #include "aoc/map/MapGenerator.hpp"
@@ -115,7 +115,7 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
 
             ResourceId placed{};
 
-            // Volcanic arc — convergent + mountain elevation. Cu+Au
+            // Volcanic arc -- convergent + mountain elevation. Cu+Au
             // porphyry deposits cluster on subduction arcs (Andes,
             // Carpathians). Rare-earth on alkaline intrusives.
             if (bType == BoundaryType::Convergent && elev >= 2) {
@@ -132,7 +132,7 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
                 }
             }
             // Lower-elevation convergent: foothills / forearc accretionary
-            // wedge — tin (greisens), copper (volcanic-hosted massive
+            // wedge -- tin (greisens), copper (volcanic-hosted massive
             // sulfide), gold (orogenic), silver.
             else if (bType == BoundaryType::Convergent) {
                 if (resRng.chance(0.06f)) {
@@ -145,7 +145,7 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
                     placed = ResourceId{aoc::sim::goods::SILVER_ORE};
                 }
             }
-            // Divergent boundary — continental rift basins (East African
+            // Divergent boundary -- continental rift basins (East African
             // Rift accumulates oil + gas in graben sediments). Mid-ocean
             // ridges proper are submarine (already filtered out: water).
             else if (bType == BoundaryType::Divergent) {
@@ -157,7 +157,7 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
                     placed = ResourceId{aoc::sim::goods::COPPER_ORE};
                 }
             }
-            // Passive margin — wide sediment apron, prolific oil + gas.
+            // Passive margin -- wide sediment apron, prolific oil + gas.
             // Real Earth: Gulf of Mexico, North Sea, West African margin
             // host most offshore-onshore hydrocarbon basins. Salt domes
             // from old evaporite layers trap oil.
@@ -331,7 +331,7 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
                 grid.feature(index) == aoc::map::FeatureType::Hills && resRng.chance(0.025f)) {
                 placed = ResourceId{aoc::sim::goods::FLUORITE};
             }
-            // DOLOMITE: tropical carbonate / shelf platform — but we
+            // DOLOMITE: tropical carbonate / shelf platform -- but we
             // skip water tiles (water already filtered out at top).
             // Place on temperate sediment + age (diagenetic).
             if (!placed.isValid() && rType == 0 && tileAge > 30.0f &&
@@ -358,13 +358,13 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
                 resRng.chance(0.02f)) {
                 placed = ResourceId{aoc::sim::goods::PYRITE};
             }
-            // PHOSPHATE: biogenic — coastal land tiles in arid zones
+            // PHOSPHATE: biogenic -- coastal land tiles in arid zones
             // adjacent to upwelling water.
             if (!placed.isValid() && nearCoast &&
                 grid.terrain(index) == aoc::map::TerrainType::Desert && resRng.chance(0.05f)) {
                 placed = ResourceId{aoc::sim::goods::PHOSPHATE};
             }
-            // VMS_ORE: volcanic massive sulfide — ophiolite-region rare.
+            // VMS_ORE: volcanic massive sulfide -- ophiolite-region rare.
             if (!placed.isValid() && rType == 3 && resRng.chance(0.06f)) {
                 placed = ResourceId{aoc::sim::goods::VMS_ORE};
             }
@@ -375,7 +375,7 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid, ao
                 resRng.chance(0.03f)) {
                 placed = ResourceId{aoc::sim::goods::SKARN_ORE};
             }
-            // MVT_ORE: Mississippi-Valley Pb-Zn — sediment + age,
+            // MVT_ORE: Mississippi-Valley Pb-Zn -- sediment + age,
             // continental interior carbonate platform proxy.
             if (!placed.isValid() && rType == 0 && tileAge > 80.0f && bType == BoundaryType::None &&
                 resRng.chance(0.025f)) {
@@ -960,7 +960,7 @@ void MapGenerator::placeBasicResources(const Config& config, HexGrid& grid, aoc:
 }
 
 // ============================================================================
-// Random placement — uniform per-tile chance, geology-blind
+// Random placement -- uniform per-tile chance, geology-blind
 // ============================================================================
 
 void MapGenerator::placeRandomResources(const Config& config, HexGrid& grid, aoc::Random& rng) {

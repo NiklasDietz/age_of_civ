@@ -299,10 +299,10 @@ void MapGenerator::assignFeatures(const Config& config, HexGrid& grid, aoc::Rand
             // Hills feature is now placed by the orogeny pass in
             // assignTerrain (tied to actual mountain root rock).
             // Random Hills sprinkling scattered them across plains
-            // unrelated to geology — disabled.
+            // unrelated to geology -- disabled.
 
             // Forest / Jungle placement via low-frequency noise so
-            // neighboring tiles share their forest status — produces
+            // neighboring tiles share their forest status -- produces
             // coherent forest/jungle patches instead of random
             // scattered tiles. Jungle = tropical-only band; Forest =
             // outside that band.

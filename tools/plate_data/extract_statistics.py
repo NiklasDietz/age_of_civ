@@ -3,7 +3,7 @@
 files for procedural sim calibration.
 
 Produces ``data/plate_statistics.csv`` consumed by MapGenerator.cpp at
-plate-spawn time. The sim is purely algorithmic — these numbers are
+plate-spawn time. The sim is purely algorithmic -- these numbers are
 distribution parameters, not seed positions.
 
 Inputs (Müller 2022 1000-Ma reconstruction):
@@ -13,9 +13,9 @@ Each line in a .rot file:
   <plate_id> <time_Ma> <pole_lat> <pole_lon> <angle_deg> <ref_plate_id> ! comment
 
 Stats extracted:
-  - active_plate_count_at_age(age_Ma) — number of plates with ANY rotation
+  - active_plate_count_at_age(age_Ma) -- number of plates with ANY rotation
     record at that time. Drops near present (some plates are young).
-  - plate_motion_speed(plate_id, age_Ma) — magnitude of finite-rotation
+  - plate_motion_speed(plate_id, age_Ma) -- magnitude of finite-rotation
     angular velocity at that time, in deg/Ma.
   - log-normal fit of motion-speed distribution.
   - active-plate-count time-series → mean/median/p95.
@@ -92,7 +92,7 @@ def compute_motion_speeds(records):
     """For every (plate, t1, t2) pair with t2 > t1, compute the
     angular speed |dω/dt| in deg/Ma between adjacent rotation records.
 
-    Skips (0, 0, 0, 0) sentinels (plates fixed in their ref frame —
+    Skips (0, 0, 0, 0) sentinels (plates fixed in their ref frame --
     these are not real motion, they are book-keeping).
     """
     speeds = []
@@ -245,8 +245,8 @@ def main():
     md.append(f"| Motion speed p95 | {speed_p95:.3f} | deg/Ma |\n")
     md.append(f"| Motion log-normal μ | {mu:.3f} | ln(deg/Ma) |\n")
     md.append(f"| Motion log-normal σ | {sigma:.3f} | ln(deg/Ma) |\n")
-    md.append(f"| Total speed records | {len(speeds)} | — |\n")
-    md.append(f"| Total plate IDs | {len(records)} | — |\n")
+    md.append(f"| Total speed records | {len(speeds)} | -- |\n")
+    md.append(f"| Total plate IDs | {len(records)} | -- |\n")
     md.append("\n## Generator-side calibration targets\n")
     md.append(f"- Initial plate-count seed: draw from "
               f"truncated normal centred on {count_p50} (±{count_p95 - count_p50}).\n")

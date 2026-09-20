@@ -238,7 +238,7 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rn
     if (result.attackerKilled) {
         result.defenderXpGained += 10;
     }
-    // Apply XP to survivors now — applying after the removeUnit() calls
+    // Apply XP to survivors now -- applying after the removeUnit() calls
     // below would either dangle (if the side died) or require re-lookup.
     // Dead units don't need XP; a killed side's `xpGained` still reports
     // for UI/analytics but never touches the unit.
@@ -275,7 +275,7 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rn
     const int32_t defenderCargoQuantity =
         (defenderIsCourier && !defender.courier().delivered) ? defender.courier().quantity : 0;
 
-    // WP8 — unified deferred-removal list. All raw Unit* derefs above this
+    // WP8 -- unified deferred-removal list. All raw Unit* derefs above this
     // block must be done with live pointers; removeUnit() invalidates the
     // unique_ptr storage and yields dangling pointers. We collect every
     // (Player*, Unit*) pair to remove and process them in a single trailing
@@ -311,7 +311,7 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rn
             if (!tileHasCity && !tileHasFort) {
                 // Collect pointers to stack units before any removal to avoid
                 // invalidating the vector while iterating. Units in a Corps or
-                // Army formation are excluded — a formation represents a
+                // Army formation are excluded -- a formation represents a
                 // single logical force whose HP is what the defender already
                 // rolled, so removing its component units on an open-terrain
                 // stack-kill would double-punish the defender.
@@ -344,7 +344,7 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rn
             pendingKills.push_back({atkPlayer, &attacker});
         }
     }
-    // defender / attacker references are still LIVE here — they only become
+    // defender / attacker references are still LIVE here -- they only become
     // dangling after the trailing removal pass at the end of this function.
 
     // Military economic benefits when a unit is killed.
@@ -406,7 +406,7 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rn
             }
 
             // Bonus pillage gold if the tile has improvements or resources.
-            // Represents looting infrastructure — like Civ 6's pillaging.
+            // Represents looting infrastructure -- like Civ 6's pillaging.
             const int32_t tileIdx                   = grid.toIndex(defenderTile);
             const aoc::ResourceId tileRes           = grid.resource(tileIdx);
             const aoc::map::ImprovementType tileImp = grid.improvement(tileIdx);
@@ -457,7 +457,7 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState, aoc::Random& rn
              result.attackerKilled ? " (attacker killed)" : "",
              result.defenderKilled ? " (defender killed)" : "");
 
-    // WP8 — trailing removal pass. All Unit* derefs are complete; safe to
+    // WP8 -- trailing removal pass. All Unit* derefs are complete; safe to
     // free now. Each kill is processed once (dedup via skip-if-already-gone
     // would only matter on duplicate pushes, which the collection above does
     // not produce: stack-kill skips &defender; defender / attacker are
@@ -503,7 +503,7 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState, aoc::Random& r
         defender.experience().addExperience(result.defenderXpGained);
     }
 
-    // WP8 — unified deferred-removal list (mirrors resolveMeleeCombat). The
+    // WP8 -- unified deferred-removal list (mirrors resolveMeleeCombat). The
     // owning player's removeUnit() frees the unique_ptr that backs `defender`,
     // dangling the caller's Unit&. We collect the (Player*, Unit*) pair while
     // the reference is still live and drain it in a single trailing pass once
@@ -520,7 +520,7 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState, aoc::Random& r
         }
     }
 
-    // WP8 — trailing removal pass. No Unit reference/pointer is touched after
+    // WP8 -- trailing removal pass. No Unit reference/pointer is touched after
     // this point.
     for (const PendingKill& kill : pendingKills) {
         kill.owner->removeUnit(kill.unit);
@@ -815,7 +815,7 @@ CombatStrengths computeCombatStrengths(const aoc::game::GameState& gameState,
         defStrength += static_cast<float>(defender.experience().totalCombatBonus());
 
         // Civ-specific unique unit bonuses. Applies only when the unit's type
-        // matches the civ's `uniqueUnit.baseUnit` — Civ-6 style: Romans get the
+        // matches the civ's `uniqueUnit.baseUnit` -- Civ-6 style: Romans get the
         // Legion bonus only on Swordsmen, not on Warriors.
         {
             const aoc::game::Player* atkP = gameState.player(attacker.owner());

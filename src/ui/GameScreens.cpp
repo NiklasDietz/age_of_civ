@@ -301,7 +301,7 @@ const aoc::sim::EurekaBoostDef* findTechEureka(TechId id) {
 }
 
 /// Build the rich tooltip body for a tech card (name + era + cost +
-/// unlock list). Multi-line via "\n" — TooltipManager handles wrapping.
+/// unlock list). Multi-line via "\n" -- TooltipManager handles wrapping.
 std::string formatTechTooltip(const aoc::sim::TechDef& def) {
     std::string out;
     out.reserve(256);
@@ -378,7 +378,7 @@ WidgetId ScreenBase::createScreenFrame(UIManager& ui, const std::string& title, 
     // is nothing to clip against. Child panels that DO overflow set
     // `clipChildren` themselves (the pannable tech/civic canvases below).
     // Since the screen-space UI pass landed, `clipChildren` works on every
-    // render path — it is no longer menu-only.
+    // render path -- it is no longer menu-only.
     // Frost-dim full-screen overlay (style guide: SURFACE_FROST_DIM under modals).
     this->m_rootPanel =
         ui.createPanel({0.0f, 0.0f, screenW, screenH}, PanelData{tokens::SURFACE_FROST_DIM, 0.0f});
@@ -393,7 +393,7 @@ WidgetId ScreenBase::createScreenFrame(UIManager& ui, const std::string& title, 
     }
     ui.tweenAlpha(this->m_rootPanel, 1.0f, 0.15f);
 
-    // Centered inner panel — rich chrome: vertical gradient from
+    // Centered inner panel -- rich chrome: vertical gradient from
     // slate-blue top to near-black bottom, subtle gold border, 1px
     // bright top highlight + dark bottom shadow, and a gold accent
     // ribbon on the left edge. Gives modal screens the Civ-6
@@ -459,7 +459,7 @@ WidgetId ScreenBase::createScreenFrame(UIManager& ui, const std::string& title, 
 // ProductionScreen
 // ============================================================================
 
-// Forward declaration — defined after CityDetailScreen below.
+// Forward declaration -- defined after CityDetailScreen below.
 static aoc::game::City* resolveCityByLocation(aoc::game::GameState*, PlayerId,
                                               aoc::hex::AxialCoord);
 
@@ -708,7 +708,7 @@ void ProductionScreen::open(UIManager& ui) {
                                      LabelData{"LOCKED", tokens::STATE_DANGER, 10.0f});
             }
 
-            // Build action — child button at bottom of text column.
+            // Build action -- child button at bottom of text column.
             if (!buildable.locked) {
                 const aoc::sim::ProductionItemType itemType = buildable.type;
                 const uint16_t itemId                       = buildable.id;
@@ -858,7 +858,7 @@ void TechScreen::open(UIManager& ui) {
 
     // Civ-6-style horizontal tech graph. Eight era columns, prereq lines
     // from each tech to its dependents. Cards laid out absolutely so the
-    // connector lines can land precisely on card centres. No scroll —
+    // connector lines can land precisely on card centres. No scroll --
     // 31 techs × max 7 per era fit at 100×56 cards.
     constexpr int ERA_COUNT = 8;
     const float CARD_W  = theme().scaled(200.0f);
@@ -1128,7 +1128,7 @@ void TechScreen::open(UIManager& ui) {
 
     // Third pass: draw the cards themselves. Skip any tech that the
     // layout couldn't place (>32 in the same era). That's a soft
-    // failure — the user-visible part stays clean even if obscure
+    // failure -- the user-visible part stays clean even if obscure
     // expanded-content branches lose a placeholder.
     for (std::size_t i = 0; i < techs.size(); ++i) {
         if (pos[i].row < 0) {

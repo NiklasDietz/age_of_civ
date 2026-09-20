@@ -62,7 +62,7 @@ struct GameSnapshot {
     std::vector<PlayerSnapshot> players;
 };
 
-/// Build a snapshot from the current game state. Pure function — no I/O,
+/// Build a snapshot from the current game state. Pure function -- no I/O,
 /// no side effects. Safe to call in unit tests with a hand-built GameState.
 GameSnapshot buildGameSnapshot(const aoc::game::GameState&, const aoc::sim::TurnManager&);
 

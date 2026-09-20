@@ -155,7 +155,7 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
     // middle of otherwise hilly terrain (Mississippi delta, Po Plain,
     // Ganges Plain, Pampas). After rivers are generated, find any
     // land tile within 2 hexes of a river and convert any Hills
-    // feature back to None — fluvial sediment buries the relief and
+    // feature back to None -- fluvial sediment buries the relief and
     // the land flattens. Mountain tiles unaffected (rivers cut
     // through, but mountains themselves persist).
     {
@@ -333,7 +333,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // Plate-tectonic continent layout. Plate seeds placed here
         // parameterise rigid motion (Euler pole + angular velocity)
         // only; raster ownership comes from stochastic region
-        // growing (generateInitialPlateOwnership — NO Voronoi), and
+        // growing (generateInitialPlateOwnership -- NO Voronoi), and
         // continental crust from the independent craton BFS below.
         // Land/water emerges from 3 Gy of raster physics
         // (SphereFieldPhysics), not from these seeds' positions.
@@ -407,7 +407,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // Müller 2022 1000-Ma reconstruction filtered to
             // major plates (README findings: median 0.1 deg/Ma,
             // p95 1.0 deg/Ma) which gives μ=-2.30, σ=1.40 in
-            // ln(deg/Ma) — see `data/plate_statistics.csv` and
+            // ln(deg/Ma) -- see `data/plate_statistics.csv` and
             // `tools/plate_data/extract_statistics.py`. Box-Muller
             // for Gaussian sampling so a single deterministic RNG
             // call drives the whole draw. Continental plates are
@@ -465,7 +465,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // realism: every plate has SOME land and SOME ocean
             // intrinsic to it.
             // CRATONIC INIT. Initial continental plates are SMALL
-            // STABLE CRATONS (0.45-0.65 land coverage) — Archean-
+            // STABLE CRATONS (0.45-0.65 land coverage) -- Archean-
             // shield-like nuclei representing early continental
             // crust. Over the sim they GROW via:
             //   • Subduction-arc volcanism along their boundaries
@@ -532,9 +532,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // land at one Y-band on small samples. Stratified sampling
         // forces at least one land plate per Y-band so the layout
         // reads as a globe with multiple latitudinal continents.
-        // Up to landCountTarget bands — each band seeds one plate.
+        // Up to landCountTarget bands -- each band seeds one plate.
         // Cap at landCountTarget so extra plates fill via fallback.
-        // Cylindrical maps wrap on X — placement uses the full [0,1)
+        // Cylindrical maps wrap on X -- placement uses the full [0,1)
         // range and proximity tests use the wrapped (shortest) dx.
         // Flat maps keep an interior buffer so seeds don't sit on
         // the rectangle edge.
@@ -606,7 +606,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // pole / angular velocity drawn from the standard
         // distribution. Without this, polar plates default to
         // (lat=0, lon=0) and collide at the prime-meridian
-        // equator — both want the same seed cell, only one
+        // equator -- both want the same seed cell, only one
         // claims, the other dies silently in
         // generateInitialPlateOwnership.
         pushPlate(0.5f, centerRng.nextFloat(0.03f, 0.10f), false); // Arctic
@@ -654,7 +654,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 ++htAttempts;
                 const float hcx = centerRng.nextFloat(0.05f, 0.95f);
                 const float hcy = centerRng.nextFloat(0.10f, 0.90f);
-                // Reject if too close to a LAND plate centre — keep
+                // Reject if too close to a LAND plate centre -- keep
                 // hotspots in the deep ocean where they belong.
                 bool nearLand = false;
                 for (const Plate& p : plates) {
@@ -682,7 +682,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         }
         break;
     }
-        // (continents tectonic-sim runs after the switch — see below)
+        // (continents tectonic-sim runs after the switch -- see below)
     }
 
     // ========================================================================
@@ -691,7 +691,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // orogeny field per tile that captures cumulative uplift from
     // convergent boundaries. The final elevation pass below adds this
     // field on top of the base Voronoi heights, giving mountain ranges
-    // ONLY where actual subduction stress accumulated — passive
+    // ONLY where actual subduction stress accumulated -- passive
     // (divergent / no-stress) coasts stay flat. Light box-blur erosion
     // afterward smooths peaks into ranges instead of solitary spikes.
     // ========================================================================
@@ -714,7 +714,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     std::vector<float> crustAgeTile(static_cast<std::size_t>(width * height), 0.0f);
     if (config.mapType == MapType::Continents && !plates.empty()) {
         // Multi-cycle plate-tectonic sim. EPOCHS scales the simulated
-        // geological age — more epochs = more cycles of drift, collide,
+        // geological age -- more epochs = more cycles of drift, collide,
         // rift, drift-back. Earth's history has ~4 supercontinent cycles
         // (Rodinia → Pannotia → Pangaea + present + projected); we
         // approximate by triggering a global-rift event every CYCLE
@@ -744,7 +744,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // continental nuclei at random sphere positions with a
         // minimum angular separation, expand each via stochastic BFS
         // to an absolute log-normal area drawn per nucleus. Total
-        // initial continental fraction ~5 % of the sphere — matches
+        // initial continental fraction ~5 % of the sphere -- matches
         // mid-Archean Earth (~3.5 Ga, Cawood et al. 2013, Belousova
         // et al. 2010 detrital-zircon record). The remaining ~25
         // percentage points needed to reach modern Earth's 29 %
@@ -752,7 +752,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // (`thickenFromClosingRate`) over the 3-Gy run; quota-based
         // shapers (CLAUDE.md rule 3) are not allowed to fill the gap.
         // Stochastic BFS in random frontier order produces non-
-        // convex shapes with embayments and peninsulas — the
+        // convex shapes with embayments and peninsulas -- the
         // Lautenschlager & Wraight 2013 cellular-automaton craton
         // seeding pattern.
         aoc::map::gen::SphereField sphereField;
@@ -858,11 +858,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     return std::max(0.0, std::cos(latDeg * 0.01745329252));
                 };
 
-                // Per-nucleus absolute area drawn from log-normal — no
+                // Per-nucleus absolute area drawn from log-normal -- no
                 // global quota. 2026-07-05: median raised 0.7 % -> 1.8 %
                 // of sphere. The old value targeted the ~5 % mid-Archean
                 // (~3.5 Ga) baseline and hoped arc volcanism would grow
-                // it to the modern 29 % — measured across every seed
+                // it to the modern 29 % -- measured across every seed
                 // sweep, that growth reliably undershot (final land
                 // 13-29 %). The sim's own sources say most continental
                 // crust already existed EARLY: ~60-70 % of today's volume
@@ -1030,7 +1030,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 for (int32_t i = 0; i < numCratons; ++i) {
                     // Two-tier rejection sampling: first 64 attempts use the
                     // strict separation MIN_SEP_RAD. On failure (high craton
-                    // count + small sphere — the strict packing is
+                    // count + small sphere -- the strict packing is
                     // infeasible) emit a warning and retry once with a
                     // relaxed 0.5x separation. The relaxed band still
                     // prevents craton overlap while admitting denser
@@ -1296,7 +1296,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // P6.10 Euler-pole jitter: drift each plate's pole and
                 // perturb |omega| before the raster physics integrates
                 // motion this epoch. The legacy 2D centroid advance that
-                // lived here was dead weight — plate lat/lon is overwritten
+                // lived here was dead weight -- plate lat/lon is overwritten
                 // every epoch by recomputePlateCentroidsFromCells, and the
                 // raster motion is integrated by advectPlateOwnership from
                 // the Euler parameters this jitter perturbs.
@@ -1447,7 +1447,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // World-frame elevation: tile (col, row) maps to lat/lon via the user-
         // selected projection; elevation comes from the SphereField
         // surfaceElevationM raster (authoritative state produced by 3 Gy of
-        // mechanism physics — subduction trims, ridges accrete, continents dock,
+        // mechanism physics -- subduction trims, ridges accrete, continents dock,
         // Wilson cycles rift). Tiles outside the projection's valid range get a
         // deep ocean elevation so the rendering still draws them as water. Output
         // is a percentile-rank map: ClimateBiome.cpp picks ocean / shore / land
@@ -2343,7 +2343,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // Rain-shadow / wind conversion is now integrated into the
     // moisture computation above (windMoist field walks upwind across
     // the same wind belts and subtracts moisture per mountain crossed).
-    // No separate binary post-pass needed — biome assignment already
+    // No separate binary post-pass needed -- biome assignment already
     // produces the correct Desert/Plains/Grassland mix from T × M.
     (void)config;
 
@@ -2653,10 +2653,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
 
         // ---- CORAL REEF TIER CLASSIFICATION ----
         // Categorize each Reef-feature tile:
-        //   1 fringing — adjacent to land
-        //   2 barrier — within 3 hexes of land but not adjacent
-        //   3 atoll — biome subtype 11 (hotspot ring)
-        //   4 patch — open shelf, isolated
+        //   1 fringing -- adjacent to land
+        //   2 barrier -- within 3 hexes of land but not adjacent
+        //   3 atoll -- biome subtype 11 (hotspot ring)
+        //   4 patch -- open shelf, isolated
         std::vector<uint8_t> reefT(static_cast<std::size_t>(totalT), 0);
         for (int32_t row = 0; row < height; ++row) {
             for (int32_t col = 0; col < width; ++col) {
@@ -2746,11 +2746,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
 
     // Erosion pass: connected-component flood fill on land. Components
     // smaller than MIN_ISLAND_SIZE tiles get drowned (converted to
-    // Ocean) — clears single-tile confetti along continental shelves.
+    // Ocean) -- clears single-tile confetti along continental shelves.
     {
         // 2026-07-05: fixed at 4 tiles (was clamp(12 + totalMy/200,
         // 12, 50) = 27 at the 3 Gy default, ~1.4M km2 at Standard
-        // scale — everything below Greenland drowned, no archipelagos
+        // scale -- everything below Greenland drowned, no archipelagos
         // possible and every hotspot island purged). Earth's island
         // inventory is dominated by small features; 4 keeps 1-3-tile
         // flecks out while letting Japan/Indonesia-scale groups
@@ -2807,7 +2807,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             if (compSize[static_cast<std::size_t>(cid)] < MIN_ISLAND_SIZE) {
                 grid.setTerrain(i, TerrainType::Ocean);
                 grid.setElevation(i, -1);
-                // Clear any feature (Hills/Forest/Jungle) — drowned
+                // Clear any feature (Hills/Forest/Jungle) -- drowned
                 // land mustn't carry land-only features into the ocean.
                 grid.setFeature(i, FeatureType::None);
             }

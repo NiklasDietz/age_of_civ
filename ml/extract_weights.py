@@ -4,18 +4,18 @@ Extract learned knowledge from trained models back into the utility AI.
 
 This script analyzes a trained CivTransformer model and produces:
 
-1. **Feature importance by game phase** — which features matter most in early,
+1. **Feature importance by game phase** -- which features matter most in early,
    mid, and late game for predicting a winner. Maps directly to adjusting
    AI advisor update frequencies and utility curve weights.
 
-2. **Attention patterns** — which turns the model considers most predictive.
+2. **Attention patterns** -- which turns the model considers most predictive.
    Reveals whether early expansion or late-game economy matters more.
 
-3. **Gradient-based sensitivity** — "if I increase military by 1 unit at
+3. **Gradient-based sensitivity** -- "if I increase military by 1 unit at
    turn X, how much does my predicted win probability change?" Directly
    calibrates scoreMilitary(), scoreSettler(), etc. base weights.
 
-4. **Recommended LeaderBehavior adjustments** — concrete weight suggestions
+4. **Recommended LeaderBehavior adjustments** -- concrete weight suggestions
    that can be copy-pasted into the C++ AI code.
 
 Usage:
@@ -60,7 +60,7 @@ def compute_feature_importance(model: CivTransformer, dataset: CivDataset,
 
     Returns:
         {
-            "early": np.ndarray (NUM_FEATURES,) — importance per feature,
+            "early": np.ndarray (NUM_FEATURES,) -- importance per feature,
             "mid":   np.ndarray (NUM_FEATURES,),
             "late":  np.ndarray (NUM_FEATURES,),
             "overall": np.ndarray (NUM_FEATURES,),
@@ -122,9 +122,9 @@ def analyze_attention_patterns(model: CivTransformer, dataset: CivDataset,
 
     Returns:
         {
-            "winners_attention": np.ndarray (num_turns,) — avg attention for winners,
-            "losers_attention":  np.ndarray (num_turns,) — avg attention for losers,
-            "critical_turns":    list of int — turns with highest attention delta,
+            "winners_attention": np.ndarray (num_turns,) -- avg attention for winners,
+            "losers_attention":  np.ndarray (num_turns,) -- avg attention for losers,
+            "critical_turns":    list of int -- turns with highest attention delta,
         }
     """
     model.eval()
@@ -303,7 +303,7 @@ def generate_recommendations(importance: dict, sensitivity: dict) -> str:
         lines.append(f"\n  3. MILITARY: Each additional unit adds +{mil_sens:.6f} win probability")
         lines.append(f"     → At 10 units, that's +{mil_sens*10:.4f} total advantage")
     else:
-        lines.append(f"\n  3. MILITARY: Negative sensitivity ({mil_sens:.6f}) — armies may be over-built")
+        lines.append(f"\n  3. MILITARY: Negative sensitivity ({mil_sens:.6f}) -- armies may be over-built")
         lines.append("     → Consider reducing scoreMilitary() weight or desiredMilitaryUnits")
 
     return "\n".join(lines)
@@ -322,7 +322,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60)
-    print("Age of Civilization — Weight Extraction Tool")
+    print("Age of Civilization -- Weight Extraction Tool")
     print("=" * 60)
 
     device = detect_device()

@@ -293,7 +293,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
         // wasting 2/3 of scout's movement (move=3). Now picks a frontier
         // tile up to 8 hex away with the fewest own-territory tiles in a
         // wider neighbourhood; moveUnitAlongPath then consumes the full
-        // budget. Drives met-players-count up — audit showed civs meeting
+        // budget. Drives met-players-count up -- audit showed civs meeting
         // 1-2 others almost never trade (0-2%) while civs meeting 7-8
         // trade 75%+.
         if (def.unitClass == aoc::sim::UnitClass::Scout) {
@@ -907,7 +907,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                 if (weakestNeighbour != INVALID_PLAYER) {
                     // WP-D3: actually declare war (not just move troops). Without
                     // a formal war state the engine treats movement as ZoC stops
-                    // and city-capture occurs without diplomatic consequence —
+                    // and city-capture occurs without diplomatic consequence --
                     // muddles AI decisions on retaliation, alliance triggers,
                     // and peace-deal negotiation.
                     //
@@ -1040,7 +1040,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                         }
                     }
                     if (distToOwnCity > strikingRange) {
-                        continue; // Overextended — hold position this turn.
+                        continue; // Overextended -- hold position this turn.
                     }
 
                     // WP-D2: only ONE unit per captured capital stays as
@@ -1081,7 +1081,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                         continue;
                     }
 
-                    // WP-D3: army coordination — every military unit converges
+                    // WP-D3: army coordination -- every military unit converges
                     // on the SAME enemy capital (or nearest non-captured city
                     // if capital already ours). Without this, units scatter to
                     // closest enemy cities + never amass enough force on the
@@ -1114,7 +1114,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                     aoc::hex::AxialCoord targetCity = capitalLoc;
                     int32_t bestDist                = capitalDist;
                     if (capitalDist > strikingRange) {
-                        // Capital out of reach — fall back to nearest city.
+                        // Capital out of reach -- fall back to nearest city.
                         for (const std::unique_ptr<aoc::game::City>& city :
                              targetPlayer->cities()) {
                             const int32_t d = grid.distance(unit->position(), city->location());

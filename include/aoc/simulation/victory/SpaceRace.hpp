@@ -10,10 +10,10 @@
  * technology; progress comes from the player's science.
  *
  * Project chain:
- *   1. Launch Earth Satellite  — requires Rocketry tech, 1500 production
- *   2. Launch Moon Landing     — requires Satellites tech, 2000 production
- *   3. Mars Colony Ship        — requires Nuclear Fusion tech, 3000 production
- *   4. Exoplanet Expedition    — requires Nanotechnology tech, 4000 production
+ *   1. Launch Earth Satellite  -- requires Rocketry tech, 1500 production
+ *   2. Launch Moon Landing     -- requires Satellites tech, 2000 production
+ *   3. Mars Colony Ship        -- requires Nuclear Fusion tech, 3000 production
+ *   4. Exoplanet Expedition    -- requires Nanotechnology tech, 4000 production
  *
  * One project at a time per player; the Spaceport only gates it (progress is
  * empire science, not a city's production).
